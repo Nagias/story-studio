@@ -42,7 +42,10 @@ Không đụng phần true-crime (case_fictionalizer, true_crime router, modal t
 - [x] Sửa thêm: `LongVideoProduceRequest.image_provider` mặc định `None` (trước là "9router_gemini", ghi đè ngầm provider Muse/mock của dự án khi sản xuất)
 - [x] Test lại các file chạm phần vừa sửa: 30 + 28 pass (adversarial, comic, vox, 2 file test mới), dọn comic_slices test tạo
 - [ ] Cần người dùng: cập nhật `NINEROUTER_API_KEY` trong `.env`
-- [ ] Cần người dùng: cài VieNeu (thư viện chưa có trong cache uv nên mỗi lần gọi đều quá 60 s rồi rơi về Edge)
+- [x] Cài VieNeu lên ổ D (người dùng đồng ý): `.cache/uv` (gói, 658 MB) + `.cache/huggingface` (model, 581 MB), Python 3.11 qua uv; ổ C không đổi. `.cache/` đã trong .gitignore, build_release chặn thêm
+- [x] Giữ model trong RAM: `backend/services/vieneu_server.py` (từ douyin), `tts_service.ensure_vieneu_server()` tự bật ở 127.0.0.1:5005 với cache trên ổ D; CLI (26 s/cảnh) và Edge chỉ còn là dự phòng, lý do dự phòng ghi đủ
+- [x] Kiểm chứng thật: bật server 39,9 s; câu đầu 13,7 s, các câu sau 5–7 s; route gen-voice cảnh 3 `proj_ea5b04db` với vieneu-MaiAnh → 200, không có `voice_fallback`; test mới 31 pass
+- [ ] Khởi động lại server cổng 8000 (code cũ: nếu VieNeu chậm quá 8 s sẽ gọi CLI không có biến cache → có thể tải lại về ổ C)
 
 # TASKS — dọn dẹp & đóng gói bán (2026-10-19, phiên 2)
 

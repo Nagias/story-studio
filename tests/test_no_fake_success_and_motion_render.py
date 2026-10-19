@@ -205,6 +205,37 @@ async def test_scene_analysis_reports_why_it_fell_back_offline(monkeypatch):
     assert "401" in res["fallback_reason"]
 
 
+@pytest.mark.asyncio
+async def test_storyboard_llm_request_disables_streaming(monkeypatch):
+    """Thiếu stream:false thì 9router trả body không phải JSON, storyboard luôn rơi về offline."""
+    from services import storyboard_engine
+    sent = {}
+
+    class FakeResp:
+        status_code = 500
+        text = "stop here"
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def post(self, url, json=None, headers=None):
+            sent["payload"] = json
+            return FakeResp()
+
+    monkeypatch.setattr(storyboard_engine.httpx, "AsyncClient", FakeClient)
+    await storyboard_engine.deconstruct_script_async(
+        "Đêm mưa. Một chiếc taxi dừng lại.", api_key="test-key", base_url="http://127.0.0.1:9/v1")
+
+    assert sent["payload"]["stream"] is False
+
+
 def test_create_from_script_records_offline_analysis(api_client, monkeypatch):
     async def offline_analysis(**kwargs):
         return {"scenes": [], "fallback_reason": "9router HTTP 401: Invalid API key"}
@@ -239,6 +270,53 @@ def _fake_tts(fallback: bool):
             "fallback_reason": "VieNeu voice 'vieneu-MaiAnh' unavailable" if fallback else None,
         }
     return fake_generate_speech
+
+
+def test_vieneu_env_keeps_heavy_caches_in_project_folder(monkeypatch):
+    """uv cache, Python của uv và model HuggingFace của VieNeu phải nằm trong .cache của dự án (ổ D)."""
+    from services import tts_service
+    monkeypatch.setenv("UV_CACHE_DIR", r"C:\Users\someone\AppData\Local\uv\cache")
+    env = tts_service.vieneu_env()
+    cache = (ROOT / ".cache").resolve()
+    for key in ("UV_CACHE_DIR", "UV_PYTHON_INSTALL_DIR", "HF_HOME"):
+        assert Path(env[key]).resolve().is_relative_to(cache), key
+
+
+@pytest.mark.asyncio
+async def test_vieneu_failure_reason_is_reported(tmp_path, monkeypatch):
+    """Server VieNeu không bật được + CLI lỗi → đọc bằng Edge nhưng fallback_reason nói rõ vì sao."""
+    from services import tts_service
+
+    async def no_server():
+        return False
+
+    class FakeProc:
+        returncode = 1
+
+        async def communicate(self):
+            return b"", b"model load failed"
+
+    async def fake_exec(*cmd, **kwargs):
+        assert Path(kwargs["env"]["HF_HOME"]).resolve().is_relative_to((ROOT / ".cache").resolve())
+        return FakeProc()
+
+    class FakeCommunicate:
+        def __init__(self, **kwargs):
+            pass
+
+        async def stream(self):
+            yield {"type": "audio", "data": b"\xff\xfb" + b"\x00" * 2000}
+
+    monkeypatch.setattr(tts_service, "ensure_vieneu_server", no_server)
+    monkeypatch.setattr(tts_service.asyncio, "create_subprocess_exec", fake_exec)
+    monkeypatch.setattr(tts_service.edge_tts, "Communicate", FakeCommunicate)
+
+    res = await tts_service.generate_speech("Đêm mưa tháng mười.", voice="vieneu-MaiAnh",
+                                            output_audio_path=str(tmp_path / "a.mp3"))
+    assert res["fallback_used"] is True
+    assert res["voice"] == "vi-VN-HoaiMyNeural"
+    assert "server VieNeu không bật được" in res["fallback_reason"]
+    assert "model load failed" in res["fallback_reason"]
 
 
 def test_gen_voice_records_fallback_on_scene(api_client, monkeypatch):

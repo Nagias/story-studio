@@ -3,11 +3,100 @@ import logging
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import edge_tts
 
 logger = logging.getLogger("story_studio.tts_service")
+
+# ----------------- VieNeu (giọng Việt offline) -----------------
+# Mọi thứ nặng của VieNeu (uv cache, Python do uv tải, model HuggingFace) nằm trong thư mục
+# dự án (ổ D), không rơi về ổ C. Thư mục này nằm trong .gitignore và bị chặn khi đóng gói.
+VIENEU_CACHE_DIR = Path(__file__).resolve().parents[2] / ".cache"
+VIENEU_URL = f"http://{os.getenv('VIENEU_HOST', '127.0.0.1')}:{os.getenv('VIENEU_PORT', '5005')}"
+VIENEU_UV_CMD = ["uv", "run", "--with", "vieneu", "--python", "3.11"]
+VIENEU_SERVER_START_TIMEOUT = 240.0  # nạp model khi đã có cache ~20 s; lần cài đầu tiên lâu hơn nhiều
+VIENEU_SERVER_RETRY_AFTER = 600.0    # server vừa chết thì 10 phút sau mới thử bật lại
+VIENEU_CLI_TIMEOUT = 90.0            # CLI nạp lại model mỗi lần (~26 s khi đã có cache)
+
+_vieneu_lock: Optional[asyncio.Lock] = None
+_vieneu_proc: Optional[subprocess.Popen] = None
+_vieneu_started_at = 0.0
+_vieneu_failed_at = 0.0
+
+
+def vieneu_env() -> Dict[str, str]:
+    """Biến môi trường khi gọi VieNeu: ép cache của uv/Python/HuggingFace vào thư mục .cache của dự án."""
+    env = {"PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1", **os.environ}
+    env["UV_CACHE_DIR"] = str(VIENEU_CACHE_DIR / "uv")
+    env["UV_PYTHON_INSTALL_DIR"] = str(VIENEU_CACHE_DIR / "uv-python")
+    env["HF_HOME"] = str(VIENEU_CACHE_DIR / "huggingface")
+    env["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+    return env
+
+
+async def _vieneu_server_ready(timeout: float = 2.0) -> bool:
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(f"{VIENEU_URL}/health")
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+async def ensure_vieneu_server() -> bool:
+    """
+    Đảm bảo server VieNeu (giữ model trong RAM, xem vieneu_server.py) đang chạy ở VIENEU_URL.
+    Chưa chạy thì tự bật nền bằng uv với cache trên ổ D rồi chờ model nạp xong. Trả True khi dùng được.
+    """
+    global _vieneu_lock, _vieneu_proc, _vieneu_started_at, _vieneu_failed_at
+    if await _vieneu_server_ready():
+        return True
+    if os.getenv("STORY_STUDIO_DISABLE_VIENEU_AUTOSTART") == "1":
+        return False
+    if _vieneu_lock is None:
+        _vieneu_lock = asyncio.Lock()
+
+    async with _vieneu_lock:
+        if await _vieneu_server_ready():
+            return True
+        if _vieneu_proc is None or _vieneu_proc.poll() is not None:
+            if time.time() - _vieneu_failed_at < VIENEU_SERVER_RETRY_AFTER:
+                return False
+            server_script = Path(__file__).resolve().parent / "vieneu_server.py"
+            VIENEU_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            flags = (subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP) if os.name == "nt" else 0
+            try:
+                with open(VIENEU_CACHE_DIR / "vieneu_server.log", "ab") as log:
+                    _vieneu_proc = subprocess.Popen(
+                        [*VIENEU_UV_CMD, str(server_script)],
+                        env=vieneu_env(),
+                        stdin=subprocess.DEVNULL,
+                        stdout=log,
+                        stderr=subprocess.STDOUT,
+                        cwd=str(VIENEU_CACHE_DIR.parent),
+                        creationflags=flags,
+                    )
+            except Exception as e:
+                _vieneu_failed_at = time.time()
+                logger.warning(f"Không bật được server VieNeu: {e}")
+                return False
+            _vieneu_started_at = time.time()
+            logger.info(f"Đang bật server VieNeu (pid {_vieneu_proc.pid}), chờ nạp model...")
+
+        while time.time() - _vieneu_started_at < VIENEU_SERVER_START_TIMEOUT:
+            if _vieneu_proc.poll() is not None:
+                _vieneu_failed_at = time.time()
+                logger.warning(f"Server VieNeu đã thoát (mã {_vieneu_proc.returncode}), xem {VIENEU_CACHE_DIR / 'vieneu_server.log'}")
+                return False
+            if await _vieneu_server_ready():
+                logger.info(f"Server VieNeu sẵn sàng sau {time.time() - _vieneu_started_at:.0f}s")
+                return True
+            await asyncio.sleep(1.0)
+        logger.warning(f"Server VieNeu chưa sẵn sàng sau {VIENEU_SERVER_START_TIMEOUT:.0f}s")
+        return False
 
 AVAILABLE_VOICES: List[Dict[str, Any]] = [
     # --- TIẾNG VIỆT (VIETNAMESE) ---
@@ -475,31 +564,33 @@ async def generate_speech(
             worker_script = Path(__file__).resolve().parent.parent.parent.parent / "douyin-movie-studio" / "backend" / "services" / "vieneu_worker.py"
 
         vieneu_success = False
+        vieneu_errors: List[str] = []
 
-        # Try local HTTP server first (if running on port 5005)
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=8.0) as client:
-                resp = await client.post(
-                    "http://127.0.0.1:5005/v1/audio/speech",
-                    json={"input": clean_text, "voice": target_vieneu_voice, "response_format": "mp3"}
-                )
+        # 1a. Server VieNeu giữ model trong RAM (tự bật nếu chưa chạy): mỗi cảnh chỉ tốn thời gian đọc
+        if await ensure_vieneu_server():
+            try:
+                import httpx
+                # CPU đọc ~1 giây cho mỗi vài từ: câu dài cần timeout dài hơn
+                async with httpx.AsyncClient(timeout=max(60.0, len(clean_text) / 4)) as client:
+                    resp = await client.post(
+                        f"{VIENEU_URL}/v1/audio/speech",
+                        json={"input": clean_text, "voice": target_vieneu_voice, "response_format": "mp3"},
+                    )
                 if resp.status_code == 200 and len(resp.content) > 500:
                     audio_path.write_bytes(resp.content)
                     vieneu_success = True
-        except Exception:
-            pass
+                else:
+                    vieneu_errors.append(f"server HTTP {resp.status_code}: {resp.text[:150]}")
+            except Exception as e:
+                vieneu_errors.append(f"server: {e}")
+        else:
+            vieneu_errors.append("server VieNeu không bật được")
 
-        # Try CLI worker if server unavailable
+        # 1b. Dự phòng: CLI nạp lại model mỗi lần (~26 s), cache vẫn trên ổ D
         if not vieneu_success and worker_script.exists():
             try:
-                sub_env = {
-                    "PYTHONIOENCODING": "utf-8",
-                    "PYTHONUTF8": "1",
-                    **os.environ,
-                }
                 cmd = [
-                    "uv", "run", "--with", "vieneu", "--python", "3.11",
+                    *VIENEU_UV_CMD,
                     str(worker_script),
                     "--text", clean_text,
                     "--voice", target_vieneu_voice,
@@ -509,23 +600,26 @@ async def generate_speech(
                     *cmd,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
-                    env=sub_env,
+                    env=vieneu_env(),
                 )
                 try:
-                    stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=60.0)
+                    stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=VIENEU_CLI_TIMEOUT)
                     if proc.returncode == 0 and audio_path.exists() and audio_path.stat().st_size > 500:
                         vieneu_success = True
                     else:
                         err_str = stderr_b.decode("utf-8", errors="replace") if stderr_b else "Unknown error"
                         logger.warning(f"VieNeu CLI synthesis exited with code {proc.returncode}: {err_str}")
+                        vieneu_errors.append(f"CLI mã {proc.returncode}: {err_str.strip()[-150:]}")
                 except asyncio.TimeoutError:
                     try:
                         proc.kill()
                     except Exception:
                         pass
-                    logger.warning(f"VieNeu CLI synthesis timed out after 60s for text: {clean_text[:40]}...")
+                    logger.warning(f"VieNeu CLI synthesis timed out after {VIENEU_CLI_TIMEOUT:.0f}s for text: {clean_text[:40]}...")
+                    vieneu_errors.append(f"CLI quá {VIENEU_CLI_TIMEOUT:.0f}s")
             except Exception as e:
                 logger.warning(f"VieNeu CLI launch failed: {e}")
+                vieneu_errors.append(f"CLI không chạy được: {e}")
 
         if vieneu_success:
             # VieNeu không có mốc thời gian từng từ: xoá file .words.json cũ (nếu cảnh từng đọc bằng Edge)
@@ -551,7 +645,10 @@ async def generate_speech(
             voice_meta = next((v for v in AVAILABLE_VOICES if v.get("id", "").lower() == voice.lower()), None)
             is_male = voice_meta.get("gender") == "Male" if voice_meta else any(m in voice.lower() for m in ("thienminh", "haidang", "nam"))
             fallback_voice = "vi-VN-NamMinhNeural" if is_male else "vi-VN-HoaiMyNeural"
-            fallback_reason = f"VieNeu voice '{requested_voice}' unavailable, fell back to Edge-TTS '{fallback_voice}'"
+            fallback_reason = (
+                f"VieNeu voice '{requested_voice}' unavailable, fell back to Edge-TTS '{fallback_voice}'"
+                + (f" ({'; '.join(vieneu_errors)})" if vieneu_errors else "")
+            )
             logger.info(fallback_reason)
             voice = fallback_voice
             fallback_used = True
