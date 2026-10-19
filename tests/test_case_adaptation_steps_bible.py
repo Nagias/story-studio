@@ -1,0 +1,414 @@
+"""
+G1–G4 của luồng chuyển thể vụ án: cắt bài thành đoạn, đọc từng đoạn, gộp tên, đặt tên hư cấu → hồ sơ (CaseBible).
+
+- LLM giả (tests/case_adaptation_fakes.py) đọc marker ở dòng đầu prompt và trả fixture trong
+  tests/fixtures/case_adaptation/; không gọi 9router thật.
+- Đầu ra mỏng, sai cấu trúc hoặc vi phạm quy tắc tên phải bị loại và gọi lại kèm lý do; hỏng 3 lần thì StepFailed.
+- Chạy trong thư mục tạm qua fixture isolated_projects_dir.
+"""
+import asyncio
+import copy
+import re
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pytest
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent / "backend"
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+from models.case_adaptation_schemas import MAX_ATTEMPTS, CaseBible, CasePipeline
+from services import case_adaptation_llm, case_store
+from services.case_adaptation_llm import LLMError
+from services.case_adaptation_steps import (
+    StepFailed,
+    StepRejected,
+    StepResult,
+    ask_validated,
+    chunk_source,
+    initial_steps,
+    run_step,
+)
+from tests.case_adaptation_fakes import FIXTURES_DIR, load_fixture, make_fake_llm
+
+DOSSIER = (FIXTURES_DIR / "dossier.txt").read_text(encoding="utf-8")
+RETRY_MARK = "LẦN TRƯỚC BỊ LOẠI VÌ"
+LAZY_EXTRACT = {
+    "names": [],
+    "events": [{"summary": "Có án mạng.", "time_label": "", "names": []}],
+    "evidence": [],
+    "relations": [],
+}
+
+
+# ---------------------------------------------------------------- helpers
+
+def _new_pipeline() -> CasePipeline:
+    """Vụ án mẫu trên đĩa tạm: bài gốc, 2 đoạn (chunk_chars=900) và hàng việc ban đầu."""
+    now = datetime.now(timezone.utc).isoformat()
+    case_id = case_store.new_case_id()
+    chunks = chunk_source(DOSSIER, 900)
+    pipeline = CasePipeline(
+        case_id=case_id, target_minutes=8, visual_style="cinematic", chunk_chars=900,
+        created_at=now, updated_at=now, steps=initial_steps(len(chunks)),
+    )
+    case_store.save_source(case_id, DOSSIER)
+    case_store.save_chunks(case_id, chunks)
+    case_store.save_pipeline(pipeline)
+    return pipeline
+
+
+def _step(pipeline: CasePipeline, step_id: str):
+    return next(s for s in pipeline.steps if s.id == step_id)
+
+
+def _run(pipeline: CasePipeline, step_id: str, llm) -> StepResult:
+    """Chạy một việc rồi lưu kết quả như worker sẽ làm."""
+    result = asyncio.run(run_step(pipeline, _step(pipeline, step_id), llm=llm))
+    case_store.save_step_output(pipeline.case_id, step_id, result.output)
+    return result
+
+
+def _run_until(pipeline: CasePipeline, last_step_id: str, llm) -> StepResult:
+    result = None
+    for step in pipeline.steps:
+        result = _run(pipeline, step.id, llm)
+        if step.id == last_step_id:
+            return result
+    raise AssertionError(f"không có việc {last_step_id}")
+
+
+# ---------------------------------------------------------------- G1: cắt đoạn, hàng việc ban đầu
+
+def test_chunk_source_respects_paragraphs():
+    short_a = "Đoạn mở đầu ngắn kể về bối cảnh của vụ việc ở một thị trấn ven biển."
+    sentences = [f"Câu số {i} kể một chi tiết riêng của cuộc điều tra kéo dài nhiều tuần liền." for i in range(1, 41)]
+    long_b = " ".join(sentences[:20]) + "\n" + " ".join(sentences[20:])
+    short_c = "Đoạn kết ngắn nói về những câu hỏi còn bỏ ngỏ sau phiên toà."
+    text = f"{short_a}\n\n{long_b}\n\n\n{short_c}\n"
+    max_chars = 500
+
+    chunks = chunk_source(text, max_chars)
+
+    assert len(chunks) > 2
+    assert all(0 < len(c) <= max_chars for c in chunks)
+    for sentence in sentences:                       # mọi câu còn nguyên trong một đoạn nào đó
+        assert any(sentence in c for c in chunks), sentence
+    assert any(short_a in c for c in chunks)         # đoạn văn vừa cỡ không bị cắt
+    assert any(short_c in c for c in chunks)
+    assert " ".join(chunks).split() == text.split()  # nối lại thì đủ chữ, đúng thứ tự
+
+
+def test_chunk_source_splits_overlong_sentence_without_losing_words():
+    words = [f"chu{i}" for i in range(400)]          # một "câu" không có dấu chấm, dài hơn max_chars
+    text = " ".join(words)
+    chunks = chunk_source(text, 300)
+    assert all(len(c) <= 300 for c in chunks)
+    assert " ".join(chunks).split() == words
+    assert chunk_source("   \n\n  ", 300) == []
+
+
+def test_dossier_splits_into_two_chunks_and_initial_steps():
+    chunks = chunk_source(DOSSIER, 900)
+    assert len(chunks) == 2
+    assert " ".join(chunks).split() == DOSSIER.split()
+    steps = initial_steps(2)
+    assert [(s.id, s.kind) for s in steps] == [
+        ("extract_00", "extract_chunk"), ("extract_01", "extract_chunk"),
+        ("cluster", "cluster_names"), ("aliases", "assign_aliases"), ("outline", "build_outline"),
+    ]
+    assert [s.params.get("index") for s in steps[:2]] == [0, 1]
+    assert all(s.status == "pending" for s in steps)
+
+
+# ---------------------------------------------------------------- ask_validated
+
+def test_ask_validated_scalar_result_is_rejected_and_retried():
+    seen = []
+
+    async def llm(system, user, *, temperature=0.4, timeout=240.0, client=None):
+        seen.append(user)
+        return [None, 42, {"ok": True}][len(seen) - 1]
+
+    result = asyncio.run(ask_validated("TASK: X", lambda raw: raw, llm=llm, step_label="thử"))
+    assert result == {"ok": True}
+    assert len(seen) == 3
+    assert RETRY_MARK in seen[1] and "JSON object/array" in seen[1]
+
+
+def test_ask_validated_reason_appended_and_failure_names_step():
+    seen = []
+
+    async def llm(system, user, *, temperature=0.4, timeout=240.0, client=None):
+        seen.append(user)
+        return {"n": len(seen)}
+
+    def validate(raw):
+        raise StepRejected("thiếu thứ gì đó.")
+
+    with pytest.raises(StepFailed) as info:
+        asyncio.run(ask_validated("TASK: X", validate, llm=llm, step_label="gộp tên"))
+    assert len(seen) == MAX_ATTEMPTS
+    assert seen[0] == "TASK: X"
+    assert seen[1] == "TASK: X\n\nLẦN TRƯỚC BỊ LOẠI VÌ: thiếu thứ gì đó. Hãy làm lại đầy đủ, không tóm gọn."
+    assert info.value.user_message == f"Bước gộp tên thất bại sau {MAX_ATTEMPTS} lần: thiếu thứ gì đó."
+
+
+def test_retryable_llm_error_is_retried(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    llm, calls = make_fake_llm({"EXTRACT 0": [LLMError("invalid_json", "Model trả về nội dung không phải JSON hợp lệ.")]})
+    result = _run(pipeline, "extract_00", llm)
+    assert calls == ["EXTRACT 0", "EXTRACT 0"]
+    assert len(result.output["events"]) == 6
+
+
+# ---------------------------------------------------------------- G2: đọc đoạn
+
+def test_extract_lazy_output_retried_with_reason(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    llm, calls = make_fake_llm({"EXTRACT 0": [LAZY_EXTRACT, load_fixture("EXTRACT 0")]})
+
+    result = _run(pipeline, "extract_00", llm)
+
+    assert calls == ["EXTRACT 0", "EXTRACT 0"]
+    assert RETRY_MARK not in llm.prompts[0]
+    assert RETRY_MARK in llm.prompts[1]
+    assert "Có án mạng." in llm.prompts[1]            # lý do nêu đúng tóm tắt bị chê
+    assert len(result.output["events"]) == 6
+    assert result.new_steps == []
+    assert llm.prompts[0].split("\n", 1)[0] == "TASK: EXTRACT 0"
+
+
+def test_extract_fails_after_three_lazy_attempts(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    llm, calls = make_fake_llm({"EXTRACT 0": LAZY_EXTRACT})
+    with pytest.raises(StepFailed) as info:
+        _run(pipeline, "extract_00", llm)
+    assert calls == ["EXTRACT 0"] * MAX_ATTEMPTS
+    assert "đọc đoạn 1" in info.value.user_message
+    assert info.value.user_message.startswith(f"Bước đọc đoạn 1 thất bại sau {MAX_ATTEMPTS} lần:")
+
+
+def test_extract_too_few_events_for_long_chunk_rejected(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    long_chunk = " ".join(["Ông Hùng đi bộ dọc bờ biển vào lúc chiều muộn và nhìn về phía cảng."] * 50)  # 800 từ
+    case_store.save_chunks(pipeline.case_id, [long_chunk, "đoạn hai"])
+    one_event = copy.deepcopy(load_fixture("EXTRACT 0"))
+    one_event["events"] = one_event["events"][:2]       # 800 từ cần ít nhất 4 sự việc
+    llm, calls = make_fake_llm({"EXTRACT 0": [one_event, load_fixture("EXTRACT 0")]})
+    _run(pipeline, "extract_00", llm)
+    assert calls == ["EXTRACT 0", "EXTRACT 0"]
+    assert RETRY_MARK in llm.prompts[1] and "sự việc" in llm.prompts[1].split(RETRY_MARK, 1)[1]
+
+
+def test_extract_bad_schema_retried(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    bad = copy.deepcopy(load_fixture("EXTRACT 0"))
+    bad["names"][0]["kind"] = "spaceship"
+    llm, calls = make_fake_llm({"EXTRACT 0": [bad, load_fixture("EXTRACT 0")]})
+    _run(pipeline, "extract_00", llm)
+    assert calls == ["EXTRACT 0", "EXTRACT 0"]
+    assert RETRY_MARK in llm.prompts[1] and "kind" in llm.prompts[1].split(RETRY_MARK, 1)[1]
+
+
+def test_extract_name_missing_from_names_rejected(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    bad = copy.deepcopy(load_fixture("EXTRACT 0"))
+    bad["names"] = [n for n in bad["names"] if n["name"] != "Lê Thị Mai"]
+    llm, calls = make_fake_llm({"EXTRACT 0": [bad, load_fixture("EXTRACT 0")]})
+    _run(pipeline, "extract_00", llm)
+    assert calls == ["EXTRACT 0", "EXTRACT 0"]
+    assert RETRY_MARK in llm.prompts[1] and "Lê Thị Mai" in llm.prompts[1].split(RETRY_MARK, 1)[1]
+
+
+def test_extract_second_chunk_gets_known_names(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    llm, calls = make_fake_llm()
+    _run(pipeline, "extract_00", llm)
+    _run(pipeline, "extract_01", llm)
+    assert calls == ["EXTRACT 0", "EXTRACT 1"]
+    first_prompt, second_prompt = llm.prompts
+    assert "Nguyễn Văn Hùng" in second_prompt and "Cảng Tân Hải" in second_prompt
+    assert "Vũ Đình Trọng" in second_prompt          # chính văn bản đoạn 2
+    assert "Vũ Đình Trọng" not in first_prompt       # đoạn 1 không chứa đoạn 2
+
+
+def test_no_credentials_not_retried(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    llm, calls = make_fake_llm({"EXTRACT 0": LLMError("no_credentials", "9router chưa có tài khoản Gemini đang hoạt động.")})
+    with pytest.raises(StepFailed) as info:
+        _run(pipeline, "extract_00", llm)
+    assert calls.count("EXTRACT 0") == 1
+    assert "đọc đoạn 1" in info.value.user_message
+    assert "9router chưa có tài khoản Gemini" in info.value.user_message
+
+
+def test_run_step_resolves_llm_at_call_time(isolated_projects_dir, monkeypatch):
+    pipeline = _new_pipeline()
+    llm, calls = make_fake_llm()
+    monkeypatch.setattr(case_adaptation_llm, "call_llm_json", llm)
+    result = asyncio.run(run_step(pipeline, _step(pipeline, "extract_00")))
+    assert calls == ["EXTRACT 0"]
+    assert len(result.output["events"]) == 6
+
+
+# ---------------------------------------------------------------- G3: gộp tên
+
+def test_cluster_rejects_missing_name(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    missing = copy.deepcopy(load_fixture("CLUSTER"))
+    for group in missing["groups"]:
+        group["real_names"] = [n for n in group["real_names"] if n != "bà Mai"]
+    llm, calls = make_fake_llm({"CLUSTER": [missing, load_fixture("CLUSTER")]})
+
+    result = _run_until(pipeline, "cluster", llm)
+
+    assert calls.count("CLUSTER") == 2
+    reason = llm.prompts[-1].split(RETRY_MARK, 1)[1]
+    assert "bà Mai" in reason
+    names = [n for g in result.output["groups"] for n in g["real_names"]]
+    assert "bà Mai" in names and len(names) == len(set(names))
+
+
+def test_cluster_rejects_name_in_two_groups(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    doubled = copy.deepcopy(load_fixture("CLUSTER"))
+    doubled["groups"][0]["real_names"].append("bà Mai")     # bà Mai vừa ở nhóm Hùng vừa ở nhóm Mai
+    llm, calls = make_fake_llm({"CLUSTER": [doubled, load_fixture("CLUSTER")]})
+    _run_until(pipeline, "cluster", llm)
+    assert calls.count("CLUSTER") == 2
+    assert "bà Mai" in llm.prompts[-1].split(RETRY_MARK, 1)[1]
+
+
+def test_cluster_input_has_every_distinct_name_once(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    llm, _calls = make_fake_llm()
+    result = _run_until(pipeline, "cluster", llm)
+    prompt = llm.prompts[-1]
+    assert prompt.split("\n", 1)[0] == "TASK: CLUSTER"
+    for name in ["Nguyễn Văn Hùng", "ông Hùng", "Lê Thị Mai", "bà Mai", "Vũ Đình Trọng", "ông Trọng",
+                 "Cảng Tân Hải", "Đường Lê Lợi", "Hải Phòng", "Công ty Vận tải Biển Đông", "15B1-987.65", "0912345678"]:
+        assert f'"{name}"' in prompt, name
+    assert prompt.count('"bà Mai"') == 1                 # có ở cả hai đoạn nhưng chỉ gửi một lần
+    ids = [g["id"] for g in result.output["groups"]]
+    assert len(ids) == len(set(ids)) == 9
+
+
+# ---------------------------------------------------------------- G4: đặt tên hư cấu → hồ sơ
+
+def test_aliases_builds_bible(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    llm, calls = make_fake_llm()
+
+    result = _run_until(pipeline, "aliases", llm)
+
+    assert calls == ["EXTRACT 0", "EXTRACT 1", "CLUSTER", "ALIASES"]
+    bible = CaseBible.model_validate(result.output)
+    entity_ids = {e.id for e in bible.entities}
+    assert len(bible.entities) == 9
+    assert bible.source_language == "vi" and bible.culture == "vietnamese" and bible.solved is False
+    assert "Hùng" not in bible.title_vi
+
+    # sự việc: id ev_<đoạn>_<n>, thứ tự theo (đoạn, vị trí), entity_ids trỏ tới entity có thật
+    assert [e.id for e in bible.timeline][:2] == ["ev_0_1", "ev_0_2"]
+    assert bible.timeline[6].id == "ev_1_1" and bible.timeline[6].chunk_index == 1
+    assert [e.order for e in bible.timeline] == list(range(1, 13))
+    for event in bible.timeline:
+        assert set(event.entity_ids) <= entity_ids
+    assert any(event.entity_ids for event in bible.timeline)
+    by_id = {e.id: e for e in bible.timeline}
+    assert by_id["ev_1_2"].entity_ids == ["person_3", "person_1"]     # "ông Trọng", "ông Hùng"
+
+    # bằng chứng và quan hệ: ánh xạ bằng fold; quan hệ không ánh xạ được thì bỏ, trùng thì gộp
+    for ev in bible.evidence:
+        assert set(ev.entity_ids) <= entity_ids
+    assert len(bible.evidence) == 8
+    pairs = [(r.source_id, r.target_id, r.relation_type) for r in bible.relations]
+    assert ("person_2", "person_1", "witness_seen") in pairs
+    assert pairs.count(("person_3", "person_1", "motive")) == 1
+    assert ("person_3", "person_1", "alibi_contradiction") in pairs
+    assert len(pairs) == 4
+    for rel in bible.relations:
+        assert rel.source_id in entity_ids and rel.target_id in entity_ids
+    assert len({r.id for r in bible.relations}) == len(bible.relations)
+
+    hung = next(e for e in bible.entities if e.id == "person_1")
+    assert hung.real_names == ["Nguyễn Văn Hùng", "ông Hùng"]
+    assert hung.alias_vi == "Trịnh Quang Vũ" and hung.alias_en == "Trinh Quang Vu"
+    assert hung.role == "victim" and hung.appearance_en
+
+
+@pytest.mark.parametrize("entity_id", ["person_2", "person_1"])   # alias trùng tên thật của chính nó / của người khác
+def test_aliases_rejects_alias_equal_real_name(isolated_projects_dir, entity_id):
+    pipeline = _new_pipeline()
+    bad = copy.deepcopy(load_fixture("ALIASES"))
+    next(e for e in bad["entities"] if e["id"] == entity_id)["alias_vi"] = "Lê Thị Mai"
+    llm, calls = make_fake_llm({"ALIASES": [bad, load_fixture("ALIASES")]})
+
+    result = _run_until(pipeline, "aliases", llm)
+
+    assert calls.count("ALIASES") == 2
+    assert "Lê Thị Mai" in llm.prompts[-1].split(RETRY_MARK, 1)[1]
+    aliases = {e["alias_vi"] for e in result.output["entities"]}
+    assert "Lê Thị Mai" not in aliases
+
+
+def test_aliases_rejects_unaccented_real_name_and_duplicates(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    unaccented = copy.deepcopy(load_fixture("ALIASES"))
+    unaccented["entities"][2]["alias_en"] = "VU DINH TRONG"          # bỏ dấu, viết hoa: vẫn là tên thật
+    duplicate = copy.deepcopy(load_fixture("ALIASES"))
+    duplicate["entities"][1]["alias_vi"] = "Trịnh Quang Vũ"          # trùng alias của person_1
+    empty = copy.deepcopy(load_fixture("ALIASES"))
+    empty["entities"][3]["alias_en"] = "  "
+    llm, calls = make_fake_llm({"ALIASES": [unaccented, duplicate, empty]})
+
+    with pytest.raises(StepFailed) as info:
+        _run_until(pipeline, "aliases", llm)
+
+    assert calls.count("ALIASES") == MAX_ATTEMPTS
+    assert "VU DINH TRONG" in llm.prompts[-2].split(RETRY_MARK, 1)[1]
+    assert "Trịnh Quang Vũ" in llm.prompts[-1].split(RETRY_MARK, 1)[1]
+    assert info.value.user_message.startswith("Bước đặt tên hư cấu thất bại sau")
+    assert "place_1" in info.value.user_message
+
+
+def test_aliases_rejects_person_alias_keeping_real_given_name(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    bad = copy.deepcopy(load_fixture("ALIASES"))
+    bad["entities"][0]["alias_vi"] = "Phạm Văn Hùng"                 # người thật là Nguyễn Văn Hùng
+    llm, calls = make_fake_llm({"ALIASES": [bad, load_fixture("ALIASES")]})
+    _run_until(pipeline, "aliases", llm)
+    assert calls.count("ALIASES") == 2
+    assert "Phạm Văn Hùng" in llm.prompts[-1].split(RETRY_MARK, 1)[1]
+
+
+def test_aliases_rejects_real_name_in_title(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    bad = copy.deepcopy(load_fixture("ALIASES"))
+    bad["title_vi"] = "Kỳ án Cảng Tân Hải"
+    llm, calls = make_fake_llm({"ALIASES": [bad, load_fixture("ALIASES")]})
+    result = _run_until(pipeline, "aliases", llm)
+    assert calls.count("ALIASES") == 2
+    assert "Cảng Tân Hải" in llm.prompts[-1].split(RETRY_MARK, 1)[1]
+    assert result.output["title_vi"] == load_fixture("ALIASES")["title_vi"]
+
+
+def test_aliases_prompt_has_groups_and_only_opening_excerpt(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    tail = "ĐOẠN CUỐI KHÔNG ĐƯỢC GỬI CHO VIỆC ĐẶT TÊN."
+    base = DOSSIER.replace("\r\n", "\n").strip()        # git trên Windows có thể đổi file sang CRLF
+    long_source = base + "\n\n" + "Thêm chi tiết điều tra. " * 60 + "\n\n" + tail
+    assert len(long_source) > 1500 + len(tail)
+    case_store.save_source(pipeline.case_id, long_source)
+    llm, _calls = make_fake_llm()
+
+    _run_until(pipeline, "aliases", llm)
+
+    prompt = llm.prompts[-1]
+    assert prompt.split("\n", 1)[0] == "TASK: ALIASES"
+    assert "person_2" in prompt and '"bà Mai"' in prompt
+    assert long_source[:1500] in prompt                  # đúng 1.500 ký tự đầu bài
+    assert tail not in prompt

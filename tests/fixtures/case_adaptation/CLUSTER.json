@@ -1,0 +1,13 @@
+{
+  "groups": [
+    {"id": "person_1", "kind": "person", "role": "victim", "real_names": ["Nguyễn Văn Hùng", "ông Hùng"]},
+    {"id": "person_2", "kind": "person", "role": "witness", "real_names": ["Lê Thị Mai", "bà Mai"]},
+    {"id": "person_3", "kind": "person", "role": "suspect", "real_names": ["Vũ Đình Trọng", "ông Trọng"]},
+    {"id": "place_1", "kind": "place", "role": "other", "real_names": ["Cảng Tân Hải"]},
+    {"id": "place_2", "kind": "place", "role": "other", "real_names": ["Đường Lê Lợi"]},
+    {"id": "place_3", "kind": "place", "role": "other", "real_names": ["TP Hải Phòng", "Hải Phòng"]},
+    {"id": "organization_1", "kind": "organization", "role": "other", "real_names": ["Công ty Vận tải Biển Đông"]},
+    {"id": "identifier_1", "kind": "identifier", "role": "other", "real_names": ["15B1-987.65"]},
+    {"id": "identifier_2", "kind": "identifier", "role": "other", "real_names": ["0912345678"]}
+  ]
+}

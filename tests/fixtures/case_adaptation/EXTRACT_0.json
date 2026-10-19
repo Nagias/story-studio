@@ -1,0 +1,81 @@
+{
+  "names": [
+    {"name": "Cảng Tân Hải", "kind": "place", "role": "other", "context": "Kho bãi bốc dỡ Cảng Tân Hải là nơi xảy ra án mạng."},
+    {"name": "Đường Lê Lợi", "kind": "place", "role": "other", "context": "Kho bãi nằm ở số 88 Đường Lê Lợi."},
+    {"name": "TP Hải Phòng", "kind": "place", "role": "other", "context": "Thành phố nơi có cảng và nơi nạn nhân cư trú."},
+    {"name": "Hải Phòng", "kind": "place", "role": "other", "context": "Tên thành phố ghi ở tiêu đề hồ sơ vụ án."},
+    {"name": "Nguyễn Văn Hùng", "kind": "person", "role": "victim", "context": "Nạn nhân, 48 tuổi, Giám đốc Công ty Vận tải Biển Đông."},
+    {"name": "Công ty Vận tải Biển Đông", "kind": "organization", "role": "other", "context": "Công ty do nạn nhân làm giám đốc, bà Mai là kế toán trưởng."},
+    {"name": "Lê Thị Mai", "kind": "person", "role": "witness", "context": "Kế toán trưởng 36 tuổi, người phát hiện hiện trường và báo án."},
+    {"name": "bà Mai", "kind": "person", "role": "witness", "context": "Cách gọi tắt của kế toán trưởng Lê Thị Mai."},
+    {"name": "15B1-987.65", "kind": "identifier", "role": "other", "context": "Biển số xe máy Air Blade của bà Lê Thị Mai."},
+    {"name": "0912345678", "kind": "identifier", "role": "other", "context": "Số điện thoại bà Mai dùng để gọi trực ban hình sự."}
+  ],
+  "events": [
+    {
+      "summary": "Đêm 15/10/2021, khoảng 23 giờ 30 phút, một vụ án mạng xảy ra tại kho bãi bốc dỡ Cảng Tân Hải, số 88 Đường Lê Lợi, TP Hải Phòng.",
+      "time_label": "đêm 15/10/2021, khoảng 23 giờ 30",
+      "names": ["Cảng Tân Hải", "Đường Lê Lợi", "TP Hải Phòng"]
+    },
+    {
+      "summary": "Ông Nguyễn Văn Hùng, 48 tuổi, Giám đốc Công ty Vận tải Biển Đông, được phát hiện tử vong tại khu vực container số 14.",
+      "time_label": "đêm 15/10/2021",
+      "names": ["Nguyễn Văn Hùng", "Công ty Vận tải Biển Đông"]
+    },
+    {
+      "summary": "Trên thi thể ông Nguyễn Văn Hùng có vết thương chí mạng ở vùng gáy do vật sắc nhọn tác động.",
+      "time_label": "",
+      "names": ["Nguyễn Văn Hùng"]
+    },
+    {
+      "summary": "Bà Lê Thị Mai, kế toán trưởng 36 tuổi của công ty, đi xe máy biển số 15B1-987.65 quay lại văn phòng lấy sổ sách tài chính thì phát hiện hiện trường.",
+      "time_label": "đêm 15/10/2021",
+      "names": ["Lê Thị Mai", "15B1-987.65"]
+    },
+    {
+      "summary": "Bà Mai gọi điện đến trực ban hình sự qua số điện thoại 0912345678 để trình báo vụ việc.",
+      "time_label": "khoảng 23 giờ 30",
+      "names": ["bà Mai", "0912345678"]
+    },
+    {
+      "summary": "Bà Mai khai đã thấy một bóng người mặc áo khoác sẫm màu chạy vụt qua cổng cảng trong cơn mưa tầm tã.",
+      "time_label": "",
+      "names": ["bà Mai"]
+    }
+  ],
+  "evidence": [
+    {
+      "label_vi": "Vết thương ở gáy",
+      "label_en": "Wound to the neck",
+      "description_vi": "Vết thương chí mạng ở vùng gáy do vật sắc nhọn tác động.",
+      "description_en": "A fatal wound to the back of the neck caused by a sharp object.",
+      "names": ["Nguyễn Văn Hùng"]
+    },
+    {
+      "label_vi": "Cuộc gọi báo án",
+      "label_en": "The report call",
+      "description_vi": "Cuộc gọi của bà Mai đến trực ban hình sự để trình báo vụ việc.",
+      "description_en": "The call the chief accountant made to the police duty desk to report the crime.",
+      "names": ["bà Mai", "0912345678"]
+    },
+    {
+      "label_vi": "Xe máy của nhân chứng",
+      "label_en": "The witness's motorbike",
+      "description_vi": "Chiếc xe máy Air Blade bà Lê Thị Mai đi khi quay lại văn phòng.",
+      "description_en": "The Air Blade motorbike the chief accountant rode back to the office.",
+      "names": ["Lê Thị Mai", "15B1-987.65"]
+    },
+    {
+      "label_vi": "Bóng người áo sẫm màu",
+      "label_en": "Figure in a dark jacket",
+      "description_vi": "Một bóng người mặc áo khoác sẫm màu chạy qua cổng cảng trong mưa.",
+      "description_en": "A figure in a dark jacket running through the port gate in the rain.",
+      "names": []
+    }
+  ],
+  "relations": [
+    {"source_name": "Lê Thị Mai", "target_name": "Nguyễn Văn Hùng", "relation_type": "witness_seen", "label_vi": "Phát hiện thi thể", "label_en": "Found the body"},
+    {"source_name": "Nguyễn Văn Hùng", "target_name": "Công ty Vận tải Biển Đông", "relation_type": "suspect_link", "label_vi": "Giám đốc công ty", "label_en": "Company director"},
+    {"source_name": "bà Mai", "target_name": "bóng người áo sẫm màu", "relation_type": "witness_seen", "label_vi": "Thấy bóng người", "label_en": "Saw a figure"}
+  ]
+}

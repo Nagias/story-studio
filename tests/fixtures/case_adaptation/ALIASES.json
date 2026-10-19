@@ -1,0 +1,23 @@
+{
+  "culture": "vietnamese",
+  "solved": false,
+  "title_vi": "Bí ẩn đêm mưa ở cảng Hải Yến",
+  "title_en": "The Rainy Night at Hai Yen Port",
+  "logline_vi": "Một giám đốc công ty vận tải bị sát hại trong kho bãi cảng giữa đêm mưa, và giờ tử vong lệch hơn một giờ so với cuộc gọi báo án.",
+  "logline_en": "A shipping company director is killed in a rain-soaked port warehouse, and the time of death does not match the call to police.",
+  "setting_notes_en": "A port city in northern Vietnam in the early 2020s, heavy autumn rain at night, container yards under sodium lights, concrete warehouses and offices with metal filing cabinets, people in office shirts, raincoats and dark jackets, motorbikes on wet streets.",
+  "entities": [
+    {"id": "person_1", "alias_vi": "Trịnh Quang Vũ", "alias_en": "Trinh Quang Vu", "gender": "male", "age_range": "late 40s",
+     "appearance_en": "A Vietnamese man in his late forties, stocky build, short graying hair, square face, wearing a pressed white office shirt and dark trousers."},
+    {"id": "person_2", "alias_vi": "Đặng Thu Hà", "alias_en": "Dang Thu Ha", "gender": "female", "age_range": "mid-30s",
+     "appearance_en": "A Vietnamese woman in her mid-thirties, slim, shoulder-length black hair tied back, thin glasses, wearing a light blouse under a transparent raincoat."},
+    {"id": "person_3", "alias_vi": "Phan Đức Lâm", "alias_en": "Phan Duc Lam", "gender": "male", "age_range": "50s",
+     "appearance_en": "A Vietnamese man in his early fifties, tall and lean, receding hairline, deep frown lines, wearing a dark polo shirt and a leather business bag."},
+    {"id": "place_1", "alias_vi": "Cảng Hải Yến", "alias_en": "Hai Yen Port", "gender": "", "age_range": "", "appearance_en": ""},
+    {"id": "place_2", "alias_vi": "Đường Thanh Lam", "alias_en": "Thanh Lam Street", "gender": "", "age_range": "", "appearance_en": ""},
+    {"id": "place_3", "alias_vi": "Hải Đông", "alias_en": "Hai Dong City", "gender": "", "age_range": "", "appearance_en": ""},
+    {"id": "organization_1", "alias_vi": "Công ty Vận tải Sao Biển", "alias_en": "Sao Bien Shipping Company", "gender": "", "age_range": "", "appearance_en": ""},
+    {"id": "identifier_1", "alias_vi": "29C2-456.78", "alias_en": "29C2-456.78", "gender": "", "age_range": "", "appearance_en": ""},
+    {"id": "identifier_2", "alias_vi": "0987 654 321", "alias_en": "0987 654 321", "gender": "", "age_range": "", "appearance_en": ""}
+  ]
+}

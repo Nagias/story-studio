@@ -1,0 +1,75 @@
+{
+  "names": [
+    {"name": "Vũ Đình Trọng", "kind": "person", "role": "suspect", "context": "Đối tác kinh doanh của nạn nhân, có khoản nợ tranh chấp hơn 2 tỷ đồng, bị tình nghi ban đầu."},
+    {"name": "ông Trọng", "kind": "person", "role": "suspect", "context": "Cách gọi tắt của nghi phạm Vũ Đình Trọng."},
+    {"name": "ông Hùng", "kind": "person", "role": "victim", "context": "Cách gọi tắt của nạn nhân Nguyễn Văn Hùng, người từng bị ông Trọng đe dọa."},
+    {"name": "bà Mai", "kind": "person", "role": "witness", "context": "Người báo án; thời điểm báo án chênh hơn 1 giờ so với giờ tử vong."}
+  ],
+  "events": [
+    {
+      "summary": "Cơ quan điều tra tình nghi ông Vũ Đình Trọng, đối tác kinh doanh đang tranh chấp khoản nợ hơn 2 tỷ đồng với nạn nhân.",
+      "time_label": "",
+      "names": ["Vũ Đình Trọng"]
+    },
+    {
+      "summary": "Ông Trọng có mặt gần hiện trường vào buổi chiều cùng ngày và trước đó từng có lời đe dọa ông Hùng.",
+      "time_label": "buổi chiều cùng ngày",
+      "names": ["ông Trọng", "ông Hùng"]
+    },
+    {
+      "summary": "Pháp y xác định ông Hùng tử vong vào khoảng 22 giờ 15 phút, sớm hơn hơn một giờ so với lúc bà Mai báo án.",
+      "time_label": "khoảng 22 giờ 15",
+      "names": ["ông Hùng", "bà Mai"]
+    },
+    {
+      "summary": "Điều tra viên phát hiện một chiếc bật lửa kim loại khắc chữ rơi dưới gầm tủ tài liệu đã bị lục soát.",
+      "time_label": "",
+      "names": []
+    },
+    {
+      "summary": "Dấu vết bùn đất đỏ đặc trưng tại hiện trường không trùng khớp với tuyến đường di chuyển của ông Trọng.",
+      "time_label": "",
+      "names": ["ông Trọng"]
+    },
+    {
+      "summary": "Camera giao thông ghi lại hình ảnh ông Trọng ở nơi khác lúc 22h15, tạo cho ông chứng cứ ngoại phạm vững chắc.",
+      "time_label": "22h15",
+      "names": ["ông Trọng"]
+    }
+  ],
+  "evidence": [
+    {
+      "label_vi": "Giờ tử vong",
+      "label_en": "Time of death",
+      "description_vi": "Pháp y xác định nạn nhân tử vong khoảng 22 giờ 15, sớm hơn lúc báo án hơn một giờ.",
+      "description_en": "The coroner placed the death at about 10:15 p.m., more than an hour before the call to police.",
+      "names": ["ông Hùng", "bà Mai"]
+    },
+    {
+      "label_vi": "Bật lửa khắc chữ",
+      "label_en": "Engraved lighter",
+      "description_vi": "Chiếc bật lửa kim loại khắc chữ rơi dưới gầm tủ tài liệu bị lục soát.",
+      "description_en": "An engraved metal lighter found under the ransacked filing cabinet.",
+      "names": []
+    },
+    {
+      "label_vi": "Bùn đất đỏ",
+      "label_en": "Red mud traces",
+      "description_vi": "Dấu vết bùn đất đỏ tại hiện trường không khớp với tuyến đường của nghi phạm.",
+      "description_en": "Red mud at the scene that does not match the suspect's route.",
+      "names": ["ông Trọng"]
+    },
+    {
+      "label_vi": "Camera giao thông",
+      "label_en": "Traffic camera footage",
+      "description_vi": "Hình ảnh camera giao thông lúc 22h15 cho thấy nghi phạm ở nơi khác.",
+      "description_en": "Traffic camera footage at 10:15 p.m. placing the suspect somewhere else.",
+      "names": ["ông Trọng"]
+    }
+  ],
+  "relations": [
+    {"source_name": "ông Trọng", "target_name": "ông Hùng", "relation_type": "motive", "label_vi": "Nợ tranh chấp", "label_en": "Disputed debt"},
+    {"source_name": "Vũ Đình Trọng", "target_name": "Nguyễn Văn Hùng", "relation_type": "motive", "label_vi": "Đối tác làm ăn", "label_en": "Business partner"},
+    {"source_name": "ông Trọng", "target_name": "ông Hùng", "relation_type": "alibi_contradiction", "label_vi": "Ngoại phạm qua camera", "label_en": "Camera alibi"}
+  ]
+}
