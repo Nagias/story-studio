@@ -270,8 +270,8 @@ _UNAMBIGUOUS_UNIT_AFTER = re.compile(
 # đứng ngay trước con số ("about 2000 people", "hơn 2000 người").
 _AMBIGUOUS_UNIT_AFTER = re.compile(r"\s*(?:người|people|words|miles|meters|feet)(?!\w)", re.IGNORECASE)
 _QUANTITY_CUE_BEFORE = re.compile(
-    r"(?<!\w)(?:of|about|over|around|nearly|almost|than|approximately|roughly|some|only|up\s+to|"
-    r"hơn|khoảng|gần|tầm|chừng|trên|dưới|tới|xấp\s+xỉ|ước|cỡ)\s*$",
+    r"(?<!\w)(?:total\s+of|number\s+of|about|over|around|nearly|almost|than|approximately|roughly|some|only|"
+    r"up\s+to|hơn|khoảng|gần|tầm|chừng|trên|dưới|xấp\s+xỉ|ước|cỡ)\s*$",
     re.IGNORECASE,
 )
 

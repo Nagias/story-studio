@@ -244,6 +244,20 @@ def test_year_followed_by_plural_noun_is_still_flagged():
     assert find_dates("Sau 2014 người dân rời đi") == ["2014"]
 
 
+def test_of_and_toi_are_not_quantity_cues():
+    # "of" và "tới" đứng trước năm rất thường gặp ("the end of 2014", "mãi tới 2014"): không được miễn.
+    for text in [
+        "At the end of 2014 people left",
+        "In the summer of 2014 people fled",
+        "By the end of 2014 people had forgotten",
+        "Mãi tới 2014 người ta mới biết",
+    ]:
+        assert find_dates(text), text
+    # chỉ cụm hai từ rõ nghĩa số lượng mới được miễn
+    assert find_dates("a total of 2000 people") == []
+    assert find_dates("the number of 2000 people") == []
+
+
 def test_counts_and_amounts_are_kept_only_with_a_quantity_cue_or_unambiguous_unit():
     for text in [
         "about 2000 people came", "more than 2000 people", "over 1999 miles of road", "nearly 2000 words",
