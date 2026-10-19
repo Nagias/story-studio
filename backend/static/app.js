@@ -1281,6 +1281,9 @@ function renderFullUI() {
   renderPreviewPlayer();
   renderCharacterCard();
   renderSettings();
+  // Nút "Tạo bản tiếng Anh" (true_crime.js) hiện hay ẩn tuỳ dự án đang mở. Hook ở đây thay vì ở switchProject để
+  // cũng đúng khi tải lại trang, tạo dự án mới hay nhập dự án.
+  window.refreshLanguageVersionButton?.(AppState.currentProject);
 }
 
 function formatDisplayVoice(rawVoice) {

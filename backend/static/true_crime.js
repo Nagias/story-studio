@@ -13,7 +13,10 @@
  *   chỉ hiện ở màn xem lại. create-project chỉ gửi ngôn ngữ, giọng, phong cách và engine hình.
  * - Bảng ghim trong modal vẽ từ bản sao evidence/relations của kế hoạch (chỉ nhãn, không có mô tả), không sửa kế
  *   hoạch và không gửi gì lên máy chủ.
- * Dùng các global của app.js: DOM, AppState, showToast, escapeHtml, switchProject, switchStep, loadProjectsList.
+ * - Nút "Tạo bản tiếng Anh" trên thanh đầu trang (dự án true-crime bản Việt): xem mục TẠO BẢN TIẾNG ANH. app.js gọi
+ *   refreshLanguageVersionButton(project) mỗi lần vẽ lại giao diện (renderFullUI).
+ * Dùng các global của app.js: DOM, AppState, showToast, escapeHtml, switchProject, switchStep, loadProjectsList,
+ * flushProjectSave.
  */
 
 const TC_API = '/api/true-crime';
@@ -995,22 +998,156 @@ async function tcCreateVietnameseProject() {
       showToast('Máy chủ không trả mã dự án sau khi tạo.', 'error', 7000);
       return;
     }
-    tcDetach();        // dự án đã có trên máy chủ: thôi theo dõi vụ án này
     if (typeof loadProjectsList === 'function') loadProjectsList();
     await switchProject(projectId);
     if (AppState.currentProject?.id !== projectId) {
+      // Giữ nguyên màn xem lại (chưa thôi theo dõi vụ án) để người dùng còn thấy kế hoạch và thử lại.
       showToast(`Đã tạo dự án ${tcEsc(projectId)} nhưng chưa mở được. Hãy mở nó trong danh sách dự án.`, 'warning', 9000);
       return;
     }
+    tcDetach();        // dự án đã có trên máy chủ và đã mở xong: thôi theo dõi vụ án này
     closeTrueCrimeModal();
     switchStep(2);
-    refreshLanguageVersionButton(AppState.currentProject);
     showToast('Đã tạo dự án bản Việt và chuyển sang Bảng Đạo Diễn (Bước 2).', 'success', 6000);
   }));
 }
 
-// Nút "Tạo bản tiếng Anh" ở Bước 2/4: thân hàm viết ở Task 10.
-function refreshLanguageVersionButton(project) { // eslint-disable-line no-unused-vars
+// ================= TẠO BẢN TIẾNG ANH (nút trên thanh đầu trang) =================
+// Chỉ hiện ở dự án true-crime bản Việt (metadata.case_id có giá trị và metadata.language === 'vi'). Bấm: lưu dự án,
+// gửi job tạo bản Anh (dùng lại ảnh và video, đổi lời kể và giọng), hỏi trạng thái job mỗi 2 giây rồi mở dự án mới.
+// Máy chủ không chặn tạo trùng, nên giao diện chặn: mỗi dự án gốc chỉ có một job tại một thời điểm, đăng ký ngay
+// lúc bấm (trước mọi await) và chỉ gỡ khi job kết thúc.
+
+const TC_LANG_JOBS = new Map();   // id dự án gốc -> {jobId, timer, retrying}
+
+function tcLanguageEligible(project) {
+  const meta = project && project.metadata;
+  return !!(meta && meta.case_id && meta.language === 'vi');
+}
+
+function refreshLanguageVersionButton(project) {
+  const btn = tcEl('btn-create-en-version');
+  if (!btn) return;
+  const eligible = tcLanguageEligible(project);
+  btn.classList.toggle('hidden', !eligible);
+  const job = eligible ? TC_LANG_JOBS.get(project.id) : undefined;
+  btn.disabled = !!job;
+  btn.title = job
+    ? 'Đang tạo bản tiếng Anh. Chờ xong rồi dự án mới sẽ tự mở.'
+    : 'Tạo bản tiếng Anh: dùng lại ảnh và video, đổi sang lời kể và giọng đọc tiếng Anh';
+  tcSetBusyLabel(btn, !!job, job && job.retrying ? 'Mất kết nối, thử lại...' : 'Đang tạo bản Anh...');
+}
+
+function tcEndLanguageJob(sourceId, job) {
+  if (job.timer) clearTimeout(job.timer);
+  job.timer = null;
+  if (TC_LANG_JOBS.get(sourceId) === job) TC_LANG_JOBS.delete(sourceId);
+  refreshLanguageVersionButton(AppState.currentProject);
+}
+
+async function tcCreateEnglishVersion() {
+  const project = AppState.currentProject;
+  if (!tcLanguageEligible(project)) return;
+  const sourceId = project.id;
+  if (TC_LANG_JOBS.has(sourceId)) return;
+  const siblings = project.metadata.sibling_project_ids;
+  if (Array.isArray(siblings) && siblings.length
+      && !window.confirm('Dự án này đã có bản ngôn ngữ khác. Tạo thêm một bản tiếng Anh nữa?')) return;
+
+  const job = { jobId: null, timer: null, retrying: false };
+  TC_LANG_JOBS.set(sourceId, job);
+  refreshLanguageVersionButton(AppState.currentProject);
+  try {
+    // Máy chủ dựng bản Anh từ dự án đã lưu trên đĩa: lưu nốt chỉnh sửa đang chờ trước.
+    if (!(await flushProjectSave())) {
+      throw new Error('Dự án chưa lưu được lên máy chủ nên chưa tạo được bản tiếng Anh.');
+    }
+    // Không gửi `voice`: máy chủ dùng giọng Anh đã nhớ trong dự án, hoặc giọng mặc định.
+    const started = await tcFetch(`/api/projects/${encodeURIComponent(sourceId)}/create-language-version`,
+      { method: 'POST', body: { language: 'en' } });
+    if (!started || !started.job_id) throw new Error('Máy chủ không trả mã việc tạo bản tiếng Anh.');
+    job.jobId = started.job_id;
+    showToast('Đã bắt đầu tạo bản tiếng Anh. Nếu phải viết lại lời thì có thể mất vài phút; xong sẽ tự mở dự án mới.',
+      'info', 7000);
+    tcScheduleLanguagePoll(sourceId, job, TC_POLL_MS);
+  } catch (err) {
+    tcEndLanguageJob(sourceId, job);
+    showToast(`Không tạo được bản tiếng Anh: ${tcEsc(err.message)}`, 'error', 9000);
+  }
+}
+
+function tcScheduleLanguagePoll(sourceId, job, delay) {
+  if (job.timer) clearTimeout(job.timer);
+  job.timer = setTimeout(() => tcPollLanguageJob(sourceId, job), delay);
+}
+
+async function tcPollLanguageJob(sourceId, job) {
+  job.timer = null;
+  if (TC_LANG_JOBS.get(sourceId) !== job) return;
+  let data;
+  try {
+    data = await tcFetch(`${TC_API}/jobs/${encodeURIComponent(job.jobId)}`);
+  } catch (err) {
+    if (TC_LANG_JOBS.get(sourceId) !== job) return;
+    if (err.status === 404) {       // job nằm trong RAM của máy chủ: khởi động lại máy chủ là mất
+      tcEndLanguageJob(sourceId, job);
+      showToast('Máy chủ không còn nhớ việc tạo bản tiếng Anh này (có thể máy chủ vừa khởi động lại). '
+        + 'Xem danh sách dự án; chưa thấy bản tiếng Anh thì bấm tạo lại.', 'error', 12000);
+      return;
+    }
+    job.retrying = true;            // mất kết nối hoặc máy chủ lỗi tạm thời: hỏi lại chậm hơn
+    refreshLanguageVersionButton(AppState.currentProject);
+    tcScheduleLanguagePoll(sourceId, job, TC_POLL_RETRY_MS);
+    return;
+  }
+  if (TC_LANG_JOBS.get(sourceId) !== job) return;
+  if (job.retrying) {
+    job.retrying = false;
+    refreshLanguageVersionButton(AppState.currentProject);
+  }
+  const status = data && data.status;
+  if (status === 'queued' || status === 'running') {
+    tcScheduleLanguagePoll(sourceId, job, TC_POLL_MS);
+  } else if (status === 'failed') {
+    tcEndLanguageJob(sourceId, job);
+    const reason = String(data.error || '').trim() || 'Máy chủ không nêu lý do.';
+    showToast(`Không tạo được bản tiếng Anh: ${tcEsc(reason)}`, 'error', 12000);
+  } else if (status === 'done' && data.result && typeof data.result.project_id === 'string' && data.result.project_id) {
+    await tcLanguageJobDone(sourceId, job, data.result);
+  } else {
+    // Không thừa nhận thành công khi máy chủ không nói rõ: kết thúc theo dõi và báo lỗi.
+    tcEndLanguageJob(sourceId, job);
+    showToast('Máy chủ trả về trạng thái việc tạo bản tiếng Anh mà giao diện không hiểu. '
+      + 'Xem danh sách dự án; chưa thấy bản tiếng Anh thì bấm tạo lại.', 'error', 12000);
+  }
+}
+
+async function tcLanguageJobDone(sourceId, job, result) {
+  const newId = result.project_id;
+  const rewritten = Array.isArray(result.rewritten_orders) ? result.rewritten_orders : [];
+  tcEndLanguageJob(sourceId, job);
+  if (typeof loadProjectsList === 'function') loadProjectsList();
+  // Máy chủ đã ghi liên kết hai chiều vào dự án gốc trên đĩa (PUT của giao diện không đụng metadata cấp dự án).
+  // Ghi nốt vào bản đang mở trên giao diện để lần bấm sau còn biết dự án này đã có bản khác (hỏi trước khi tạo thêm).
+  const open = AppState.currentProject;
+  if (open && open.id === sourceId && open.metadata) {
+    const siblings = Array.isArray(open.metadata.sibling_project_ids) ? open.metadata.sibling_project_ids : [];
+    if (!siblings.includes(newId)) open.metadata.sibling_project_ids = [...siblings, newId];
+  }
+  const detail = rewritten.length
+    ? `Viết lại lời cho cảnh: ${rewritten.map(tcEsc).join(', ')}.`
+    : 'Không cảnh nào cần viết lại lời.';
+  if (AppState.currentProject?.id !== sourceId) {
+    // Người dùng đã sang dự án khác trong lúc chờ: không kéo họ đi khỏi chỗ đang làm.
+    showToast(`Đã tạo bản tiếng Anh (dự án ${tcEsc(newId)}). ${detail} Mở nó trong danh sách dự án.`, 'success', 10000);
+    return;
+  }
+  showToast(`Đã tạo bản tiếng Anh. ${detail}`, 'success', 9000);
+  await switchProject(newId);
+  if (AppState.currentProject?.id !== newId) {
+    showToast(`Đã tạo bản tiếng Anh (dự án ${tcEsc(newId)}) nhưng chưa mở được. Hãy mở nó trong danh sách dự án.`,
+      'warning', 9000);
+  }
 }
 
 // ================= BẢNG GHIM (vẽ từ bản sao evidence/relations) =================
@@ -1470,6 +1607,7 @@ function initTrueCrimeStudio() {
   on('btn-tc-save-entities', 'click', tcSaveEntities);
   on('btn-tc-add-entity', 'click', tcAddEntity);
   on('btn-tc-create-vi', 'click', tcCreateVietnameseProject);
+  on('btn-create-en-version', 'click', tcCreateEnglishVersion);
   on('tc-warnings', 'click', (e) => {
     const target = e.target.closest('[data-tc-goto]');
     if (target) tcGotoScene(target.dataset.tcGoto);

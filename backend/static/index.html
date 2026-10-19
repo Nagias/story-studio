@@ -251,6 +251,12 @@
         <span class="text-[11px]">Lưu</span>
       </button>
 
+      <!-- Tạo bản tiếng Anh từ dự án true-crime bản Việt (ẩn sẵn; true_crime.js hiện khi dự án đang mở đủ điều kiện) -->
+      <button id="btn-create-en-version" class="hidden flex px-2 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold border border-emerald-300 transition items-center gap-1 whitespace-nowrap disabled:opacity-50" title="Tạo bản tiếng Anh: dùng lại ảnh và video, đổi sang lời kể và giọng đọc tiếng Anh">
+        <i class="fa-solid fa-language text-emerald-600 text-xs"></i>
+        <span class="hidden xl:inline text-[11px]">Tạo bản tiếng Anh</span>
+      </button>
+
       <!-- Stepper Long Video Produce Button -->
       <button id="btn-produce-long-video" class="px-3 py-1.5 bg-gradient-to-r from-red-600 via-rose-600 to-indigo-600 hover:from-red-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold shadow-md shadow-red-500/25 flex items-center gap-1.5 transition transform active:scale-95 whitespace-nowrap">
         <i class="fa-solid fa-wand-magic-sparkles animate-pulse text-[11px]"></i>
@@ -2253,8 +2259,8 @@
     <!-- Dynamic toasts -->
   </div>
 
-  <!-- Main JavaScript Logic (v2.9.0 Cache Buster: app.js không còn code true-crime, đã tách ra true_crime.js) -->
-  <script src="/static/app.js?v=2.9.0"></script>
-  <script src="/static/true_crime.js?v=1.0.0"></script>
+  <!-- Main JavaScript Logic (v2.9.1 Cache Buster: renderFullUI báo cho true_crime.js để hiện nút "Tạo bản tiếng Anh") -->
+  <script src="/static/app.js?v=2.9.1"></script>
+  <script src="/static/true_crime.js?v=1.1.0"></script>
 </body>
 </html>
