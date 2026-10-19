@@ -1,15 +1,19 @@
 """
-Prompt LLM cho luồng chuyển thể vụ án thật thành truyện song ngữ Việt/Anh (spec mục 6, 7.1a, 7.2, 7.10).
+Prompt LLM cho luồng chuyển thể vụ án thật thành truyện song ngữ Việt/Anh (spec mục 6, 7.1a–7.4, 7.10).
 
 - SYSTEM_PROMPT dùng chung cho mọi việc nhỏ.
 - Mỗi hàm *_prompt trả user prompt cho đúng một việc. Dòng đầu luôn là marker "TASK: <TÊN>" (LLM giả trong test
   đọc dòng này để chọn fixture). Câu chữ tiếng Việt; khoá JSON tiếng Anh, khớp với phần kiểm ở case_adaptation_steps.
-- Mỗi prompt nói rõ kích thước đầu ra mong đợi (số sự việc, độ dài tối thiểu), vì model hay lười và tóm gọn.
+- Mỗi prompt nói rõ kích thước đầu ra mong đợi (số sự việc, số cảnh, số từ), vì model hay lười và tóm gọn.
+- G5–G6 (dàn ý, viết cảnh): tóm tắt sự việc và mô tả bằng chứng đã được thay sang tên hư cấu trước khi gửi;
+  riêng đoạn gốc giữ nguyên văn (có tên thật) để model bám đúng sự thật, kèm bảng tên thật → tên hư cấu.
 """
 import math
-from typing import Iterable
+from typing import Iterable, Optional
 
-from services.case_adaptation_checks import GENERIC_TERMS
+from models.case_adaptation_schemas import CaseBible, CaseEntity, StoryPart, TimelineEvent
+from services.case_adaptation_checks import GENERIC_TERMS, apply_aliases, build_forbidden_names
+from services.video_service import CAMERA_MOTIONS
 
 # Ngưỡng kiểm của bước đọc đoạn (spec 7.2). case_adaptation_steps dùng lại đúng các số này.
 EVENT_RULE_MIN_WORDS = 150   # đoạn từ 150 từ trở lên mới bị kiểm số sự việc
@@ -21,6 +25,40 @@ ROLES = ("victim", "suspect", "perpetrator", "witness", "investigator", "family"
 RELATION_TYPES = (
     "motive", "alibi_contradiction", "blood_match", "call_log", "witness_seen", "suspect_link", "causal", "timeline",
 )
+
+# Ngưỡng kiểm của dàn ý và các việc viết cảnh (spec 7.3, 7.4). case_adaptation_steps dùng lại đúng các số này.
+SCENES_PER_PART = (2, 6)        # số cảnh mỗi nhịp
+MAX_SCENE_OVERSHOOT = 1.2       # tổng số cảnh không vượt mục tiêu tối đa quá 20%
+MAX_EVENTS_PER_SCENE = 3        # mỗi cảnh kể tối đa 3 sự việc (nhiều hơn là tóm gọn)
+VI_WORDS = (25, 80)             # độ dài narration_vi (từ)
+EN_WORDS = (20, 70)             # độ dài narration_en (từ)
+MIN_IMAGE_PROMPT_WORDS = 20
+MIN_VIDEO_PROMPT_WORDS = 8
+PART_KINDS = ("hook", "setup", "discovery", "investigation", "twist", "resolution", "open_questions", "epilogue")
+VISUAL_KINDS = ("image", "video", "board")
+NARRATIVE_BEATS = ("hook", "setting", "escalation", "climax", "resolution")
+BGM_ENERGIES = ("ambient_low", "tension_buildup", "dramatic_climax")
+# Mức mong đợi nói với model (chặt hơn ngưỡng loại).
+_VI_TARGET, _VI_VIDEO_TARGET = "35–50", "25–30"
+_EN_TARGET, _EN_VIDEO_TARGET = "30–45", "20–25"
+
+_KIND_HINTS = {
+    "hook": "mở đầu gây tò mò: hé lộ khoảnh khắc bí ẩn hoặc đáng sợ nhất, đặt câu hỏi; không tiết lộ hung thủ hay kết cục",
+    "setup": "bối cảnh: nơi chốn, con người, cuộc sống và các mối quan hệ trước khi vụ án xảy ra",
+    "discovery": "phát hiện vụ án: ai phát hiện, phát hiện ra sao, hiện trường lúc đó thế nào",
+    "investigation": "điều tra: từng bước điều tra, lời khai, giám định, manh mối, nghi vấn",
+    "twist": "bước ngoặt: phát hiện làm đổi hướng điều tra",
+    "resolution": "phá án: hung thủ bị xác định, bắt giữ, xét xử, đúng như bài viết",
+    "open_questions": "những câu hỏi còn bỏ ngỏ: vụ án chưa có lời giải, các giả thuyết và điều còn bí ẩn, đúng như bài viết",
+    "epilogue": "kết và dư âm: hệ quả, những người ở lại, điều vụ án để lại",
+}
+_KIND_LABELS = {
+    "person": "người", "place": "địa danh", "organization": "tổ chức", "identifier": "mã số",
+}
+_ROLE_LABELS = {
+    "victim": "nạn nhân", "suspect": "nghi phạm", "perpetrator": "hung thủ", "witness": "nhân chứng",
+    "investigator": "điều tra viên", "family": "người nhà", "other": "khác",
+}
 
 SYSTEM_PROMPT = """\
 Bạn là biên kịch chuyên chuyển thể vụ án có thật thành truyện kể và phim tài liệu kể chuyện cho kênh YouTube ở Việt Nam và Mỹ.
@@ -187,3 +225,291 @@ YÊU CẦU
 Trả về đúng một JSON object theo mẫu:
 {{"culture": "...", "solved": true, "title_vi": "...", "title_en": "...", "logline_vi": "...", "logline_en": "...", "setting_notes_en": "...",
  "entities": [{{"id": "...", "alias_vi": "...", "alias_en": "...", "gender": "male", "age_range": "...", "appearance_en": "..."}}]}}"""
+
+
+# ---------------------------------------------------------------- G5–G6: phần dùng chung
+
+def _aliased(text: str, bible: CaseBible, lang: str = "vi") -> str:
+    """Thay tên thật (real_names của entity) bằng tên hư cấu của `lang` trước khi đưa vào prompt."""
+    fixed, _replaced = apply_aliases(text or "", build_forbidden_names(bible, ""), lang)
+    return fixed
+
+
+def _entity_kind(ent: CaseEntity) -> str:
+    label = _KIND_LABELS.get(ent.kind, ent.kind)
+    if ent.kind == "person":
+        extras = [_ROLE_LABELS.get(ent.role, ent.role)] + [v for v in (ent.gender, ent.age_range) if v]
+        label += " (" + ", ".join(extras) + ")"
+    return label
+
+
+def _name_table_vi(bible: CaseBible) -> str:
+    lines = [f"- {_entity_kind(e)}: {', '.join(_quote(n) for n in e.real_names)} → {_quote(e.alias_vi)}"
+             for e in bible.entities]
+    return "\n".join(lines) if lines else "(không có tên riêng nào)"
+
+
+def _name_table_en(bible: CaseBible) -> str:
+    lines = []
+    for e in bible.entities:
+        real = ", ".join(_quote(n) for n in e.real_names)
+        lines.append(f"- {_entity_kind(e)}: tên thật {real}; tên trong lời Việt {_quote(e.alias_vi)} → "
+                     f"lời Anh dùng {_quote(e.alias_en)}")
+    return "\n".join(lines) if lines else "(không có tên riêng nào)"
+
+
+def _alias_vi_of(bible: CaseBible, entity_id: str) -> str:
+    ent = next((e for e in bible.entities if e.id == entity_id), None)
+    return ent.alias_vi if ent is not None else entity_id
+
+
+def _event_lines(events: Iterable[TimelineEvent], bible: CaseBible, indent: str = "") -> str:
+    lines = []
+    for ev in events:
+        when = f' | mốc trong bài: "{_one_line(ev.time_label, 80)}"' if ev.time_label.strip() else ""
+        lines.append(f"{indent}- {ev.id}{when} | {_one_line(_aliased(ev.summary, bible), 400)}")
+    return "\n".join(lines) if lines else f"{indent}(không có sự việc nào)"
+
+
+def _board_lines(bible: CaseBible, revealed: Iterable[str] = ()) -> str:
+    shown = set(revealed)
+    lines = []
+    for ev in bible.evidence:
+        mark = " (đã hiện ở nhịp trước)" if ev.id in shown else ""
+        desc = _one_line(_aliased(ev.description_vi or ev.description_en, bible), 200)
+        lines.append(f"- {ev.id}{mark}: bằng chứng \"{_aliased(ev.label_vi or ev.label_en, bible)}\" — {desc}")
+    for rel in bible.relations:
+        mark = " (đã hiện ở nhịp trước)" if rel.id in shown else ""
+        label = _aliased(rel.label_vi or rel.label_en, bible)
+        lines.append(f"- {rel.id}{mark}: quan hệ {_alias_vi_of(bible, rel.source_id)} → "
+                     f"{_alias_vi_of(bible, rel.target_id)}: \"{label}\"")
+    return "\n".join(lines) if lines else "(hồ sơ không có bằng chứng hay quan hệ nào)"
+
+
+def _chunks_block(chunks: list[str]) -> str:
+    return "\n\n".join(f"<<<\n{c.strip()}\n>>>" for c in chunks) if chunks else "(không có)"
+
+
+def _solved_rule(bible: CaseBible) -> str:
+    if bible.solved:
+        return "Vụ án này ĐÃ được phá: chỉ kể hung thủ, cách phá án và bản án đúng như bài viết."
+    return ("Vụ án này CHƯA được phá: không được nói ai là hung thủ, không kể bắt giữ, nhận tội hay xét xử nào "
+            "mà bài không có; chỉ kể các nghi vấn và giả thuyết đúng như bài.")
+
+
+def _where(part: StoryPart, part_position: Optional[tuple[int, int]]) -> str:
+    return f"nhịp {part_position[0]}/{part_position[1]}" if part_position else f"nhịp {part.id}"
+
+
+def _scene_list(scenes: list[dict], fields: tuple[tuple[str, str], ...]) -> str:
+    blocks = []
+    for n, scene in enumerate(scenes, start=1):
+        head = f"Cảnh {n}/{len(scenes)} (visual_kind: {scene.get('visual_kind', 'image')})"
+        body = [f"  {label}: {scene.get(key, '')}" for key, label in fields if scene.get(key)]
+        blocks.append("\n".join([head, *body]))
+    return "\n".join(blocks)
+
+
+# ---------------------------------------------------------------- G5: dàn ý
+
+def outline_prompt(bible: CaseBible, target_minutes: int, target_scenes: tuple[int, int]) -> str:
+    lo, hi = target_scenes
+    cap = math.floor(hi * MAX_SCENE_OVERSHOOT)
+    min_part, max_part = SCENES_PER_PART
+    kinds = " | ".join(PART_KINDS)
+    ending = ('"resolution" (phá án)' if bible.solved
+              else '"open_questions" (những câu hỏi còn bỏ ngỏ); KHÔNG dùng "resolution" vì vụ chưa phá được')
+    n_events = len(bible.timeline)
+    return f"""TASK: OUTLINE
+Việc: lập dàn ý cho một video kể chuyện khoảng {target_minutes} phút, chuyển thể từ một vụ án có thật. Chia câu chuyện thành các nhịp (phần) theo cấu trúc phim; mỗi nhịp có từ {min_part} đến {max_part} cảnh, mỗi cảnh khoảng 15 giây lời kể. Chỉ lập dàn ý, chưa viết lời kể.
+
+HỒ SƠ (tên đã đổi sang tên hư cấu)
+- Tên tập: {_quote(bible.title_vi)}
+- Logline: {_one_line(bible.logline_vi, 400) or "(không có)"}
+- {_solved_rule(bible)}
+- Cảnh đầu tiên của video là câu miễn trừ do hệ thống tự thêm: KHÔNG lập nhịp hay cảnh cho nó.
+
+DÒNG THỜI GIAN: {n_events} sự việc, theo thứ tự trong bài (id | mốc thời gian | nội dung):
+{_event_lines(bible.timeline, bible)}
+
+BẰNG CHỨNG VÀ QUAN HỆ TRONG HỒ SƠ:
+{_board_lines(bible)}
+
+THỜI LƯỢNG VÀ SỐ CẢNH
+1. "supported_minutes": số phút (số nguyên, ít nhất 1) mà bài này đủ chất liệu để kể hấp dẫn mà không phải bịa thêm; tính khoảng 4 cảnh cho mỗi phút, mỗi sự việc thường đủ cho 1–2 cảnh. Ước trung thực: không nâng lên cho bằng {target_minutes} phút, không hạ xuống để viết ít.
+2. Tổng số cảnh (cộng "scene_count" của mọi nhịp):
+   - nếu "supported_minutes" ≥ {target_minutes}: từ {lo} đến {hi} cảnh; ít hơn {lo} cảnh là thiếu và sẽ bị trả lại;
+   - nếu "supported_minutes" < {target_minutes}: ít hơn, vừa với chất liệu (khoảng "supported_minutes" × 4 cảnh), không kéo dài cho đủ;
+   - trong mọi trường hợp không quá {cap} cảnh.
+
+QUY TẮC NHỊP
+1. Thứ tự theo cấu trúc phim: hook (mở đầu gây tò mò, không tiết lộ kết) → setup (bối cảnh, con người) → discovery (phát hiện vụ án) → investigation (điều tra) → twist (bước ngoặt) → kết thúc → epilogue (kết và dư âm). Kết thúc của vụ này là {ending}. Không bắt buộc đủ mọi loại; một loại có thể có nhiều nhịp liền nhau (ví dụ ba nhịp investigation).
+2. "kind": một trong {kinds}.
+3. "event_ids": id các sự việc nhịp này kể, theo thứ tự kể. MỌI sự việc trong dòng thời gian (đủ {n_events} id) phải nằm trong ít nhất một nhịp: không bỏ sót sự việc nào, kể cả sự việc nhỏ. Chỉ dùng id có trong danh sách trên. Nhịp hook có thể mượn trước một sự việc của nhịp sau để gây tò mò (sự việc đó vẫn phải có trong nhịp của nó).
+4. "scene_count": số nguyên từ {min_part} đến {max_part}, và không ít hơn số sự việc của nhịp chia {MAX_EVENTS_PER_SCENE} (mỗi cảnh kể tối đa {MAX_EVENTS_PER_SCENE} sự việc). Nhịp có nhiều sự việc thì tách thành nhiều nhịp.
+5. "summary_vi": 1–2 câu tiếng Việt nói nhịp này kể gì; chỉ dùng tên hư cấu như trong hồ sơ trên; không ghi ngày, tháng hay năm cụ thể.
+6. "id": "p1", "p2", "p3"... theo thứ tự.
+
+Trả về đúng một JSON object theo mẫu:
+{{"supported_minutes": {target_minutes}, "parts": [{{"id": "p1", "kind": "hook", "summary_vi": "...", "event_ids": ["..."], "scene_count": 3}}]}}"""
+
+
+# ---------------------------------------------------------------- G6: lời Việt
+
+def write_vi_prompt(bible: CaseBible, part: StoryPart, events: list[TimelineEvent], source_chunks: list[str],
+                    prev_scenes: list[dict], *, part_position: Optional[tuple[int, int]] = None,
+                    revealed_ids: Iterable[str] = ()) -> str:
+    """`revealed_ids`: id bằng chứng/quan hệ đã hiện ở các nhịp trước (đánh dấu trong danh sách)."""
+    n = part.scene_count
+    lo, hi = VI_WORDS
+    per_scene = max(MAX_EVENTS_PER_SCENE, math.ceil(len(events) / max(n, 1)))
+    event_ids = ", ".join(ev.id for ev in events) or "(không có)"
+    if prev_scenes:
+        prev = "\n".join(f"- {s.get('narration_vi', '')}" for s in prev_scenes)
+        prev_rule = "Nối tiếp mạch kể từ hai cảnh này, không lặp lại nội dung của chúng."
+    else:
+        prev = "(đây là nhịp đầu tiên, ngay sau câu miễn trừ ở đầu video)"
+        prev_rule = "Câu đầu tiên mở màn câu chuyện, không nhắc lại câu miễn trừ."
+    return f"""TASK: WRITE_VI {part.id}
+Việc: viết lời kể tiếng Việt cho ĐÚNG {n} cảnh của {_where(part, part_position)} ("{part.kind}") trong video chuyển thể vụ án có thật {_quote(bible.title_vi)}. Chỉ viết nhịp này, không viết các nhịp khác.
+
+NHỊP NÀY
+- Loại nhịp: {part.kind}: {_KIND_HINTS.get(part.kind, part.kind)}.
+- Nội dung: {_one_line(_aliased(part.summary_vi, bible), 400) or "(không có)"}
+- Số cảnh: đúng {n} cảnh.
+- {_solved_rule(bible)}
+- Sự việc phải kể, theo thứ tự (mỗi sự việc phải được kể ít nhất trong một cảnh):
+{_event_lines(events, bible, indent="  ")}
+
+BẢNG TÊN: đoạn gốc dưới đây dùng tên thật; lời kể CHỈ được dùng tên hư cấu ở bên phải mũi tên (gọi tắt theo tên hư cấu cũng được, ví dụ "ông" + tên):
+{_name_table_vi(bible)}
+Tên riêng nào trong đoạn gốc không có trong bảng (tên đường, tên người chỉ nhắc qua...): không viết ra, thay bằng cách gọi chung ("một con phố gần cảng", "một người hàng xóm").
+
+BẰNG CHỨNG VÀ QUAN HỆ (id dùng cho "board_reveal"):
+{_board_lines(bible, revealed_ids)}
+
+HAI CẢNH CUỐI CỦA NHỊP TRƯỚC:
+{prev}
+{prev_rule}
+
+ĐOẠN GỐC CHỨA CÁC SỰ VIỆC TRÊN (nguồn sự thật duy nhất; có tên thật, chỉ để đọc):
+{_chunks_block(source_chunks)}
+
+CÁCH VIẾT
+1. Mỗi cảnh có "narration_vi" dài khoảng {_VI_TARGET} từ (khoảng 15 giây đọc); bắt buộc từ {lo} đến {hi} từ, ngoài khoảng này sẽ bị trả lại. Lời kể ngôi thứ ba, giọng người kể chuyện điện ảnh, câu trọn vẹn, liền mạch từ cảnh này sang cảnh sau.
+2. Kể đúng thứ tự sự việc. Mỗi cảnh kể 1–{per_scene} sự việc; sự việc quan trọng có thể kéo dài 2 cảnh. Kể cụ thể (ai, làm gì, ở đâu, bằng cách nào, thấy gì), không tóm gọn kiểu "sau đó cảnh sát vào cuộc điều tra".
+3. "Như phim": được thêm không khí, cảm xúc, nội tâm và lời thoại dựng lại (đặt trong lời kể, ví dụ: cô run giọng nói: "..."), nhưng chỉ từ những gì đoạn gốc có. Không thêm sự kiện, nhân vật có vai trò trong vụ án, động cơ, nghi phạm hay bằng chứng mới; nhân vật phụ không tên (người qua đường, hàng xóm) thì được.
+4. Ngày giờ: không viết ngày, tháng, năm cụ thể (không "15 tháng 10", không "15/10", không "năm 2021"); năm đổi thành thời kỳ ("đầu những năm 2020"). Giữ giờ trong ngày ("khoảng 23 giờ 30"), mùa và các mốc tương đối ("chiều hôm đó", "hơn một giờ sau"). Tuổi để xấp xỉ hoặc viết bằng chữ.
+5. Giữ tên quốc gia và tên chung của cơ quan ("cảnh sát", "công an", "toà án"). Tôn trọng nạn nhân, không tả máu me.
+6. "visual_kind" của từng cảnh:
+   - "board": cảnh nói về bằng chứng hoặc mối quan hệ; "board_reveal" là id các bằng chứng/quan hệ hiện lên bảng điều tra ở cảnh này (chỉ dùng id trong danh sách trên, ưu tiên những cái chưa hiện).
+   - "video": một khoảnh khắc hành động ngắn (chạy, bỏ trốn, xe lao đi...). Tối đa 1 cảnh video trong nhịp này; lời cảnh video ngắn hơn, khoảng {_VI_VIDEO_TARGET} từ.
+   - "image": mọi cảnh còn lại.
+   Cảnh không phải "board" thì "board_reveal" là [].
+7. "covers_event_ids": id các sự việc cảnh đó kể. Gộp mọi cảnh lại phải có đủ: {event_ids}.
+
+Trả về đúng một JSON object, "scenes" có đúng {n} phần tử theo thứ tự kể:
+{{"scenes": [{{"narration_vi": "...", "visual_kind": "image", "board_reveal": [], "covers_event_ids": ["..."]}}]}}"""
+
+
+# ---------------------------------------------------------------- G6: lời Anh
+
+def _en_writing_rules(count_rule: str) -> str:
+    lo, hi = EN_WORDS
+    return f"""CÁCH VIẾT
+1. Mỗi cảnh có "narration_en" dài khoảng {_EN_TARGET} từ tiếng Anh; bắt buộc từ {lo} đến {hi} từ, ngoài khoảng này sẽ bị trả lại. Cảnh "video" ngắn hơn, khoảng {_EN_VIDEO_TARGET} từ.
+2. {count_rule}
+3. Văn phong người dẫn chuyện phim tài liệu true-crime Mỹ: câu rõ, nhịp tự nhiên khi đọc to; viết lại cho tự nhiên chứ không dịch sát từng chữ. Lời thoại dựng lại thì viết lại bằng tiếng Anh tự nhiên.
+4. Tên: chỉ dùng tên ở phần "lời Anh dùng" trong bảng tên; không dùng tên thật, không dùng dạng tên tiếng Việt khi hai dạng khác nhau. Bỏ danh xưng tiếng Việt ("ông", "bà", "anh", "chị"); gọi bằng tên hoặc "he", "she".
+5. Ngày giờ: không ngày, tháng, năm cụ thể ("October 15", "2021"); dùng thời kỳ ("in the early 2020s"), mùa và mốc tương đối ("one autumn night", "three days later"). Giữ giờ trong ngày ("around 11:30 p.m.").
+6. Giữ tên quốc gia và tên chung của cơ quan bằng tiếng Anh ("Vietnam", "Taiwan", "the police", "the court"). Tôn trọng nạn nhân, không tả máu me."""
+
+
+def write_en_prompt(bible: CaseBible, part: StoryPart, vi_scenes: list[dict], source_chunks: list[str], *,
+                    part_position: Optional[tuple[int, int]] = None) -> str:
+    n = len(vi_scenes)
+    rules = _en_writing_rules(
+        "Cảnh tiếng Anh số k kể đúng nội dung cảnh tiếng Việt số k (hình ảnh dùng chung): không gộp hai cảnh, "
+        "không tách một cảnh, không đảo thứ tự, không thêm chi tiết mà cảnh Việt và đoạn gốc không có.")
+    return f"""TASK: WRITE_EN {part.id}
+Việc: viết lời kể tiếng Anh cho ĐÚNG {n} cảnh của {_where(part, part_position)} trong video chuyển thể vụ án có thật {_quote(bible.title_en)}, cho khán giả Mỹ nghe qua giọng đọc. Lời tiếng Việt của các cảnh đã có ở dưới; viết đúng {n} cảnh tiếng Anh tương ứng.
+
+BẢNG TÊN:
+{_name_table_en(bible)}
+
+CÁC CẢNH TIẾNG VIỆT:
+{_scene_list(vi_scenes, (("narration_vi", "VI"),))}
+
+ĐOẠN GỐC (để hiểu đúng sự thật; có tên thật, chỉ để đọc):
+{_chunks_block(source_chunks)}
+
+{rules}
+
+Trả về đúng một JSON object, "scenes" có đúng {n} phần tử theo thứ tự cảnh:
+{{"scenes": [{{"narration_en": "..."}}]}}"""
+
+
+# ---------------------------------------------------------------- G6: prompt hình
+
+def prompts_prompt(bible: CaseBible, part: StoryPart, scenes: list[dict], visual_style: str, *,
+                   part_position: Optional[tuple[int, int]] = None) -> str:
+    """`scenes`: mỗi cảnh có narration_vi, narration_en, visual_kind."""
+    n = len(scenes)
+    people = [f"- {_quote(e.alias_en)} / {_quote(e.alias_vi)} — {_entity_kind(e)}: "
+              f"{e.appearance_en or '(chưa có mô tả; tả cho hợp vai và thời đại)'}"
+              for e in bible.entities if e.kind == "person"]
+    places = [f"- {_quote(e.alias_en)} / {_quote(e.alias_vi)} — {_entity_kind(e)}"
+              for e in bible.entities if e.kind in ("place", "organization")]
+    motions = " | ".join(CAMERA_MOTIONS)
+    beats = " | ".join(NARRATIVE_BEATS)
+    energies = " | ".join(BGM_ENERGIES)
+    return f"""TASK: PROMPTS {part.id}
+Việc: viết prompt tạo hình bằng tiếng Anh (ảnh tĩnh, và clip 5 giây cho cảnh video) cho ĐÚNG {n} cảnh của {_where(part, part_position)}. Mỗi hình được tạo riêng bằng AI, không biết các cảnh khác, nên mỗi prompt phải đọc riêng vẫn hiểu.
+
+PHONG CÁCH HÌNH: {visual_style}
+BỐI CẢNH CHUNG: {bible.setting_notes_en or "(không có)"}
+
+NHÂN VẬT (lời kể gọi bằng tên; prompt KHÔNG được ghi tên, chỉ tả bằng ngoại hình dưới đây, chép đủ các đặc điểm chính mỗi lần nhân vật xuất hiện để các cảnh giống nhau):
+{chr(10).join(people) or "(không có)"}
+NƠI CHỐN, TỔ CHỨC (prompt tả kiểu nơi chốn, không ghi tên):
+{chr(10).join(places) or "(không có)"}
+
+CÁC CẢNH:
+{_scene_list(scenes, (("narration_vi", "VI"), ("narration_en", "EN")))}
+
+YÊU CẦU CHO TỪNG CẢNH
+1. "image_prompt": tiếng Anh, khoảng 40–80 từ, ít nhất {MIN_IMAGE_PROMPT_WORDS} từ (ngắn hơn sẽ bị trả lại). Gồm: khung hình (wide shot, medium shot, close-up...), chủ thể (tả bằng ngoại hình ở trên), hành động, bối cảnh lấy từ bối cảnh chung, ánh sáng, và phong cách "{visual_style}". Không ghi tên người hay tên địa danh; không có chữ, logo, biển số đọc được trong hình.
+   - Cảnh "board": tả một bảng điều tra (corkboard) với ảnh, ghi chú, vật chứng và sợi chỉ đỏ nối các manh mối mà cảnh đó nói tới.
+2. "video_prompt": tiếng Anh, 15–40 từ, tả chuyển động của máy quay và của chủ thể trong 5 giây. Bắt buộc với cảnh "video" (ít nhất {MIN_VIDEO_PROMPT_WORDS} từ); cảnh khác để "".
+3. "camera_motion": một trong {motions}.
+4. "narrative_beat": một trong {beats}.
+5. "sfx_cue": 0–2 tiếng động ngắn, tiếng Anh, viết kiểu snake_case (ví dụ "heavy_rain_loop", "footsteps", "distant_thunder_subtle", "clock_ticking", "heartbeat_single_pulse", "rusty_iron_gate_creak"); không cần thì [].
+6. "bgm_energy": một trong {energies}.
+7. An toàn cho YouTube: không máu, không vết thương, không thi thể lộ rõ, không vũ khí đang gây thương tích; bạo lực chỉ được gợi qua bóng tối, hậu cảnh hoặc đồ vật (tấm bạt che, dây phong toả, đèn pin, bóng người).
+
+Trả về đúng một JSON object, "scenes" có đúng {n} phần tử theo thứ tự cảnh:
+{{"scenes": [{{"image_prompt": "...", "video_prompt": "", "camera_motion": "zoom_in", "narrative_beat": "setting", "sfx_cue": [], "bgm_energy": "tension_buildup"}}]}}"""
+
+
+# ---------------------------------------------------------------- viết lại lời Anh cho cảnh đã sửa
+
+def rewrite_en_prompt(bible: CaseBible, items: list[tuple[int, str]]) -> str:
+    orders = ", ".join(str(order) for order, _text in items)
+    scenes = "\n".join(f"- order {order}: {_one_line(text, 1200)}" for order, text in items)
+    rules = _en_writing_rules(
+        "Mỗi cảnh tiếng Anh kể đúng nội dung cảnh tiếng Việt cùng order; không gộp, không tách, không bỏ cảnh nào, "
+        "không thêm chi tiết mà lời Việt không có.")
+    example_order = items[0][0] if items else 1
+    return f"""TASK: REWRITE_EN
+Việc: lời tiếng Việt của {len(items)} cảnh dưới đây vừa được thêm hoặc sửa trong bản chuyển thể vụ án có thật {_quote(bible.title_en)}. Hãy viết lại lời kể tiếng Anh cho ĐÚNG các cảnh này (order: {orders}), cho khán giả Mỹ nghe qua giọng đọc.
+
+BẢNG TÊN:
+{_name_table_en(bible)}
+
+CÁC CẢNH TIẾNG VIỆT:
+{scenes}
+
+{rules}
+
+Trả về đúng một JSON object, "scenes" có đúng {len(items)} phần tử, mỗi phần tử ghi đúng "order" của cảnh:
+{{"scenes": [{{"order": {example_order}, "narration_en": "..."}}]}}"""

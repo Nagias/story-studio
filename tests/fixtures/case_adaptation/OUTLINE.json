@@ -1,0 +1,19 @@
+{
+  "supported_minutes": 2,
+  "parts": [
+    {
+      "id": "p1",
+      "kind": "hook",
+      "summary_vi": "Đêm mưa ở Cảng Hải Yến: giám đốc Trịnh Quang Vũ được phát hiện tử vong giữa kho bãi, kế toán trưởng Đặng Thu Hà báo án và kể về một bóng người chạy qua cổng cảng.",
+      "event_ids": ["ev_0_1", "ev_0_2", "ev_0_3", "ev_0_4", "ev_0_5", "ev_0_6"],
+      "scene_count": 3
+    },
+    {
+      "id": "p2",
+      "kind": "resolution",
+      "summary_vi": "Nghi vấn đổ về đối tác Phan Đức Lâm, nhưng giờ tử vong, chiếc bật lửa, vết bùn đỏ và camera giao thông khiến hướng điều tra đầu tiên đổ vỡ.",
+      "event_ids": ["ev_1_1", "ev_1_2", "ev_1_3", "ev_1_4", "ev_1_5", "ev_1_6"],
+      "scene_count": 3
+    }
+  ]
+}

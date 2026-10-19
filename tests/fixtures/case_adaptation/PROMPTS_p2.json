@@ -1,0 +1,28 @@
+{
+  "scenes": [
+    {
+      "image_prompt": "Medium shot of a Vietnamese man in his early fifties, tall and lean, receding hairline, deep frown lines, dark polo shirt and a leather business bag, standing at the edge of a port road in grey afternoon light, containers and cranes behind him, tense posture, cinematic documentary style.",
+      "video_prompt": "",
+      "camera_motion": "warp_speed",
+      "narrative_beat": "escalation",
+      "sfx_cue": [],
+      "bgm_energy": "tension_buildup"
+    },
+    {
+      "image_prompt": "Investigation corkboard in a dim police office, pinned photos of a rainy container yard, a handwritten time-of-death note, an engraved metal lighter in an evidence bag, a red mud sample, grainy traffic camera stills, all connected with red string, warm desk lamp glow, cinematic noir style.",
+      "video_prompt": "",
+      "camera_motion": "zoom_out",
+      "narrative_beat": "climax",
+      "sfx_cue": ["clock_ticking"],
+      "bgm_energy": "dramatic_climax"
+    },
+    {
+      "image_prompt": "High-angle traffic camera view of a city intersection at night in light rain, a dark sedan passing through, grainy surveillance look without any text, wet asphalt reflecting traffic lights, northern Vietnamese port city, cinematic noir mood.",
+      "video_prompt": "Grainy surveillance-style shot: a dark sedan drives slowly through a rain-slicked intersection while the camera holds still, then a slow push-in on the car as its headlights flare on the wet asphalt.",
+      "camera_motion": "static",
+      "narrative_beat": "resolution",
+      "sfx_cue": ["heavy_rain_loop"],
+      "bgm_energy": "ambient_low"
+    }
+  ]
+}

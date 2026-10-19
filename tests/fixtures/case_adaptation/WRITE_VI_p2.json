@@ -1,0 +1,22 @@
+{
+  "scenes": [
+    {
+      "narration_vi": "Mũi nghi vấn đầu tiên chĩa vào ông Phan Đức Lâm, đối tác làm ăn đang tranh chấp với nạn nhân một khoản nợ hơn hai tỷ đồng. Chiều hôm đó, chính ông Lâm đã có mặt gần hiện trường. Trước đó, ông từng buông lời đe dọa ông Vũ.",
+      "visual_kind": "image",
+      "board_reveal": [],
+      "covers_event_ids": ["ev_1_1", "ev_1_2"]
+    },
+    {
+      "narration_vi": "Pháp y đưa ra kết luận đầu tiên: ông Vũ tử vong vào khoảng 22 giờ 15, sớm hơn cuộc gọi của bà Hà hơn một giờ. Khoảng trống ấy chưa ai giải thích được. Rồi dưới gầm tủ tài liệu bị lục tung, điều tra viên nhặt được một chiếc bật lửa kim loại khắc chữ.",
+      "visual_kind": "board",
+      "board_reveal": ["evd_1", "evd_2", "evd_3", "evd_4", "evd_5", "evd_6", "evd_7", "evd_8"],
+      "covers_event_ids": ["ev_1_3", "ev_1_4"]
+    },
+    {
+      "narration_vi": "Nhưng vết bùn đất đỏ ở hiện trường không khớp với đường đi của ông Lâm, và camera giao thông lúc 22 giờ 15 cho thấy ông đang ở nơi khác.",
+      "visual_kind": "video",
+      "board_reveal": [],
+      "covers_event_ids": ["ev_1_5", "ev_1_6"]
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "scenes": [
+    {
+      "image_prompt": "Wide cinematic shot of a rain-soaked container yard at a northern Vietnamese port at night, stacked shipping containers under orange sodium lights, a narrow gap between containers sealed with police tape, a shape covered by a dark tarp in the distance, heavy rain streaks, wet concrete reflections, moody noir lighting.",
+      "video_prompt": "",
+      "camera_motion": "neo_noir_rain_motion",
+      "narrative_beat": "hook",
+      "sfx_cue": ["heavy_rain_loop"],
+      "bgm_energy": "tension_buildup"
+    },
+    {
+      "image_prompt": "Medium shot of a Vietnamese woman in her mid-thirties, slim, shoulder-length black hair tied back, thin glasses, light blouse under a transparent raincoat, standing frozen beside a parked motorbike in a wet container yard at night, flashlight beam on the ground, shocked expression, cold blue and orange light, cinematic noir style.",
+      "video_prompt": "",
+      "camera_motion": "zoom_in",
+      "narrative_beat": "hook",
+      "sfx_cue": ["distant_thunder_subtle"],
+      "bgm_energy": "tension_buildup"
+    },
+    {
+      "image_prompt": "Close-up of a Vietnamese woman in her mid-thirties with thin glasses and a transparent raincoat, holding a mobile phone to her ear with trembling hands under a dripping warehouse awning, behind her a blurred figure in a dark jacket running through a port gate, cinematic noir lighting.",
+      "video_prompt": "",
+      "camera_motion": "pan_left",
+      "narrative_beat": "hook",
+      "sfx_cue": ["heartbeat_single_pulse"],
+      "bgm_energy": "tension_buildup"
+    }
+  ]
+}
