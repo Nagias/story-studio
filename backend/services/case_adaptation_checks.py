@@ -69,6 +69,8 @@ _KEPT_TERMS = frozenset(_key(t) for t in [
 
 # ---------------------------------------------------------------- tên cấm
 
+_LINE_BREAKS = re.compile(r"[\r\n\v\f\x85  ]+")
+
 @dataclass(frozen=True)
 class ForbiddenName:
     real: str
@@ -92,9 +94,12 @@ def build_forbidden_names(bible: CaseBible, source_text: str) -> list[ForbiddenN
             seen.add(key)
             out.append(ForbiddenName(name.strip(), ent.id, ent.alias_vi.strip() or None, ent.alias_en.strip() or None))
     if source_text:
-        for name in sorted(AnonymizerShield().extract_pii_candidates(source_text)["persons"]):
+        # REGEX_PERSON nối chữ qua cả dòng mới ("Lê Thu Hà\nTrần"), nên đổi mỗi chỗ xuống dòng thành dấu chấm
+        # để tên không bao giờ vắt qua dòng; tên còn dính ký tự xuống dòng thì bỏ.
+        flat = _LINE_BREAKS.sub(" . ", source_text)
+        for name in sorted(AnonymizerShield().extract_pii_candidates(flat)["persons"]):
             key = _key(name)
-            if key and key not in seen and key not in _KEPT_TERMS:
+            if key and key not in seen and key not in _KEPT_TERMS and not _LINE_BREAKS.search(name):
                 seen.add(key)
                 out.append(ForbiddenName(name.strip()))
     return out
@@ -256,15 +261,24 @@ _STANDALONE_YEAR = re.compile(rf"(?<![\w.,:/$€£¥])({_Y})(?!\w)(?![.,]\d)(?!:
 
 _DECADE_BEFORE = re.compile(r"(?:thap\s+nien|thap\s+ky|thap\s+ki|decades?)\s*(?:(?:of|the)\s+)?$")
 _PLURAL_AFTER = re.compile(r"['’]?s(?!\w)")
-_UNIT_AFTER = re.compile(
-    r"\s*(?:usd|vnd|vnđ|ntd|nt\$|đồng|đ(?!\w)|đô|euros?|dollars?|bucks|yuan|rmb|baht|tệ|người|mét|km|kg|"
-    r"people|meters|feet|miles|words)(?!\w)",
+# Đơn vị tiền và đơn vị đo viết tắt: đứng ngay sau con số thì đó là số lượng, không phải năm.
+_UNAMBIGUOUS_UNIT_AFTER = re.compile(
+    r"\s*(?:usd|vnd|vnđ|ntd|nt\$|đồng|đ|đô|euros?|dollars?|bucks|yuan|rmb|baht|tệ|triệu|tỷ|mét|km|kg)(?!\w)",
+    re.IGNORECASE,
+)
+# Danh từ có thể đứng ngay sau một năm ("In 2014 people left"): chỉ coi là số lượng khi có từ chỉ lượng
+# đứng ngay trước con số ("about 2000 people", "hơn 2000 người").
+_AMBIGUOUS_UNIT_AFTER = re.compile(r"\s*(?:người|people|words|miles|meters|feet)(?!\w)", re.IGNORECASE)
+_QUANTITY_CUE_BEFORE = re.compile(
+    r"(?<!\w)(?:of|about|over|around|nearly|almost|than|approximately|roughly|some|only|up\s+to|"
+    r"hơn|khoảng|gần|tầm|chừng|trên|dưới|tới|xấp\s+xỉ|ước|cỡ)\s*$",
     re.IGNORECASE,
 )
 
 
-def _year_is_kept(norm: str, folded: str, start: int, end: int) -> bool:
-    """Năm đứng riêng nhưng thực ra là thập niên (2010s, thập niên 2010, những năm 1990) hoặc số tiền/số lượng."""
+def _year_is_kept(norm: str, folded: str, start: int, end: int, *, allow_units: bool = True) -> bool:
+    """Năm đứng riêng nhưng thực ra là thập niên (2010s, thập niên 2010, những năm 1990) hoặc số tiền/số lượng.
+    `allow_units=False` cho dạng "in YYYY": đã có giới từ chỉ thời gian nên không bao giờ là số lượng."""
     if _PLURAL_AFTER.match(norm, end):
         return True
     before = folded[:start].rstrip()
@@ -272,9 +286,11 @@ def _year_is_kept(norm: str, folded: str, start: int, end: int) -> bool:
         return True
     if norm[start:end].endswith("0") and before.endswith("nhung nam"):
         return True
-    if _UNIT_AFTER.match(norm, end):
+    if not allow_units:
+        return False
+    if _UNAMBIGUOUS_UNIT_AFTER.match(norm, end):
         return True
-    return False
+    return bool(_AMBIGUOUS_UNIT_AFTER.match(norm, end) and _QUANTITY_CUE_BEFORE.search(norm[:start]))
 
 
 def _valid_numeric_date(a: int, b: int, sep: str, year: Optional[str]) -> bool:
@@ -316,7 +332,7 @@ def find_dates(text: str) -> list[str]:
     for pattern in (_EN_MONTH_DAY, _EN_DAY_MONTH, _EN_MONTH_YEAR):
         spans.extend(m.span() for m in pattern.finditer(norm))
     for m in _EN_IN_YEAR.finditer(norm):
-        if not _year_is_kept(norm, folded, m.start(1), m.end(1)):
+        if not _year_is_kept(norm, folded, m.start(1), m.end(1), allow_units=False):
             spans.append(m.span())
     for m in _STANDALONE_YEAR.finditer(norm):
         if not _year_is_kept(norm, folded, m.start(1), m.end(1)):

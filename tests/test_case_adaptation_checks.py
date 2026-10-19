@@ -234,6 +234,29 @@ def test_numbers_that_are_not_dates_are_kept():
         assert find_dates(text) == [], text
 
 
+def test_year_followed_by_plural_noun_is_still_flagged():
+    # Danh từ số nhiều đứng sau năm không phải đơn vị: "In 2014 people left" là một năm thật.
+    assert find_dates("In 2014 people left town") == ["In 2014"]
+    assert find_dates("By 2014 people had forgotten") == ["2014"]
+    assert find_dates("After 1998 people stopped asking") == ["1998"]
+    assert find_dates("In 2014 words failed him") == ["In 2014"]
+    assert find_dates("In 2014, people left") == ["In 2014"]
+    assert find_dates("Sau 2014 người dân rời đi") == ["2014"]
+
+
+def test_counts_and_amounts_are_kept_only_with_a_quantity_cue_or_unambiguous_unit():
+    for text in [
+        "about 2000 people came", "more than 2000 people", "over 1999 miles of road", "nearly 2000 words",
+        "around 2000 meters up", "hơn 2000 người", "khoảng 1990 người", "gần 2000 người",
+        "chuyển 2000 USD", "giá 2000 đồng", "trả $2000", "nợ 2000 triệu", "nặng 2000 kg", "dài 1999 km",
+    ]:
+        assert find_dates(text) == [], text
+
+
+def test_unit_exemption_never_applies_to_in_year():
+    assert find_dates("in 1999 dollars") == ["in 1999"]
+
+
 def test_overlapping_matches_collapse_to_longest_span():
     # Ruling 1: "năm 2021" nằm trong "ngày 15 tháng 10 năm 2021" nên chỉ còn một mục.
     assert find_dates("ngày 15 tháng 10 năm 2021") == ["ngày 15 tháng 10 năm 2021"]
@@ -256,6 +279,25 @@ def test_build_forbidden_names_has_entity_names_and_regex_names_not_in_any_entit
     assert regex_ones[0].alias_vi is None and regex_ones[0].alias_en is None
     # tên regex trùng tên entity (khác hoa thường/dấu) thì không thêm lần nữa
     assert reals.count("Nguyễn Văn Hùng") == 1
+
+
+def test_regex_names_do_not_span_line_breaks():
+    # REGEX_PERSON gộp tên qua dòng mới ("Lê Thu Hà\nTrần"), khiến "Trần Quang Minh" không bao giờ bị cấm.
+    source = "Nghi phạm: Trần Quang Minh\nNạn nhân: Lê Thu Hà\nTrần Quang Minh bị bắt."
+    fb = build_forbidden_names(_plan([_scene(1)]).bible, source)
+    reals = [f.real for f in fb]
+    assert "Trần Quang Minh" in reals and "Lê Thu Hà" in reals
+    assert not any("\n" in r or "\r" in r for r in reals)
+    # và kiểm cả kế hoạch: tên đó trong lời kể phải bị đánh dấu
+    checked = check_plan(_plan([_scene(1, narration_vi="Trần Quang Minh nhìn qua cửa sổ.")]), source)
+    assert [(f.kind, f.field) for f in checked.scenes[0].flags] == [("unknown_name", "narration_vi")]
+
+
+def test_regex_names_do_not_span_other_whitespace_breaks():
+    source = "Lê Thu Hà\r\n\r\nTrần Quang Minh Đặng Văn Bình"
+    reals = [f.real for f in build_forbidden_names(_plan([_scene(1)]).bible, source)]
+    for expected in ("Lê Thu Hà", "Trần Quang Minh", "Đặng Văn Bình"):
+        assert expected in reals
 
 
 def test_build_forbidden_names_skips_kept_country_and_agency_terms():
