@@ -56,7 +56,8 @@ Nay 9router đã chạy được với `ag/gemini-3.8-flash-high`: một request
 - Không thêm thư viện mới; `httpx` và `pydantic` đã có.
 - Windows 11, `.venv\Scripts\python.exe` (Python 3.14). Không in và không chép `.env`.
 - Route nào nhận id hoặc đường dẫn thì dùng các helper trong `backend/security.py` (`require_safe_id`, `validate_path_ids`, kiểm path containment).
-- **Test offline phải mock LLM.** Không gọi 9router hay Muse thật trong bộ test thường. Test gọi thật chỉ chạy khi người dùng yêu cầu.
+- **Test offline phải mock LLM.** Không gọi 9router hay Muse thật trong bộ test thường, để bộ test chạy nhanh và cho kết quả ổn định.
+- **Được test thật thoải mái** bằng 9router và Muse (người dùng cho phép ngày 19/10/2026). Test thật được đánh dấu riêng để không chạy chung với bộ test offline.
 - Repo có git từ 19/10/2026, commit message bằng tiếng Việt. Có thể có phiên khác cùng làm trong folder: không đổi nhánh, chỉ commit file của mình.
 - Dữ liệu người dùng (văn bản vụ án, kế hoạch, dự án) không nằm trong danh sách đóng gói của `tools/build_release.py`, và không được phục vụ qua `/static`.
 
@@ -73,6 +74,8 @@ Nay 9router đã chạy được với `ag/gemini-3.8-flash-high`: một request
 - **Mức kịch tính hoá: "như phim".** Được thêm không khí, cảm xúc, nội tâm và thoại dựng lại, nhưng chỉ dựa trên những sự kiện có trong bài. Được có nhân vật phụ không tên (người qua đường, hàng xóm). Không được thêm sự kiện, nhân vật có vai trò trong vụ án, hay bằng chứng mới.
 - **Địa danh lớn: giữ quốc gia.** Giữ tên nước ("Đài Loan", "Việt Nam", "Mỹ") và tên chung của cơ quan ("cảnh sát", "toà án", "viện kiểm sát"). Đổi mọi địa danh từ thành phố, huyện trở xuống, và cả tên đơn vị cụ thể (ví dụ "đội trọng án Đào Viên").
 - **Ngày giờ: năm thành thời kỳ.** Bỏ ngày và tháng cụ thể. Năm đổi thành cách nói chung ("giữa thập niên 2010"). Giữ mùa và các mốc tương đối ("ba ngày sau"). Giữ giờ trong ngày, vì giờ có thể là bằng chứng (ví dụ cuộc gọi lúc 02:21).
+- **Chia nhỏ việc cho LLM, chạy tuần tự.** Model của 9router hay lười và tóm gọn, nên phân tích phải được chia thành nhiều việc nhỏ chạy lần lượt cho tới khi xong việc lớn. Dùng scheduler nào cũng được, miễn là tuần tự (xem 7.1a).
+- **Được test thoải mái bằng LLM 9router và Muse.**
 - **Phần cố định: chỉ có câu miễn trừ** ở cảnh đầu video, bằng cả tiếng Việt và tiếng Anh: "Câu chuyện dựa trên một vụ án có thật; tên người và địa danh đã được thay đổi." Không có lời chào của kênh, không có lời kêu gọi đăng ký.
 
 ## 7. Thiết kế
@@ -81,21 +84,59 @@ Nay 9router đã chạy được với `ag/gemini-3.8-flash-high`: một request
 
 ```
 Dán vụ án + chọn thời lượng/giọng/phong cách
-└─ [Phân tích] — chạy nền, giao diện xem tiến độ
-   ├─ B1. Đọc toàn bộ vụ án → hồ sơ chuyển thể (nhân vật, địa danh, mốc thời gian, bằng chứng)
-   ├─ B2. Dàn ý theo thời lượng (các phần như một bộ phim)
-   ├─ B3. Viết cảnh theo từng phần: lời kể vi + en, loại hình, prompt ảnh/video
-   └─ B4. Kiểm tra bằng code: đúng schema, không lọt tên thật, đủ hai thứ tiếng
+└─ [Phân tích] → tạo hàng việc cho vụ án (lưu trên đĩa); worker chạy từng việc nhỏ, lần lượt
+   ├─ G1. Chia bài thành các đoạn khoảng 3.000 ký tự, cắt theo ranh giới đoạn văn ......... code
+   ├─ G2. Đọc từng đoạn: nhân vật, địa danh, sự việc, bằng chứng có trong đoạn ............ 1 lần gọi mỗi đoạn
+   ├─ G3. Gộp các cách gọi khác nhau của cùng một người hay một nơi ....................... 1 lần gọi
+   ├─ G4. Đặt tên hư cấu, xác định văn hoá, đặt tên tập, tả ngoại hình → hồ sơ chuyển thể .. 1 lần gọi
+   ├─ G5. Dàn ý: chia thành các nhịp, mỗi nhịp 2–6 cảnh ................................. 1 lần gọi
+   ├─ G6. Lần lượt từng nhịp: viết lời Việt → viết lời Anh → viết prompt hình ............. 3 lần gọi mỗi nhịp
+   └─ G7. Ráp kế hoạch, kiểm tra bằng code (lọt tên, ngày tháng, đủ nội dung) ............. code
 └─ Màn xem lại: bảng tên thật → tên Việt → tên Anh (sửa được), cảnh báo, dàn ý, danh sách cảnh
 └─ [Tạo dự án bản Việt] → Bước 2 như hiện có: Muse tạo hình, VieNeu đọc, dựng video
 └─ [Tạo bản tiếng Anh] → chép hình/video, thay lời kể + giọng Anh + bảng ghim nhãn Anh → dựng bản Anh
 ```
 
-### 7.2 B1: Hồ sơ chuyển thể (một lần gọi LLM)
+### 7.1a Vì sao chia nhỏ, và cách chạy tuần tự
 
-**Đầu vào:** toàn bộ văn bản vụ án, không cắt. Văn bản dài quá giới hạn an toàn (mặc định 200.000 ký tự) thì báo lỗi rõ, không cắt ngầm.
+**Lý do.** Người dùng đã quan sát thấy model của 9router hay "lười suy nghĩ và tóm gọn vấn đề" khi phải làm một việc lớn trong một lần gọi. Vì vậy:
+- mỗi lần gọi chỉ làm một việc hẹp, với kích thước đầu ra cố định (ví dụ "đúng 4 cảnh cho nhịp này");
+- đầu ra được code kiểm ngay: số lượng, độ dài tối thiểu, có kể đủ các sự việc được giao hay không;
+- đầu ra mỏng hoặc thiếu thì gọi lại, kèm lý do bị loại;
+- một việc được thử tối đa 3 lần. Vẫn hỏng thì dừng hàng việc và báo rõ việc nào hỏng, vì sao. Người dùng bấm "Thử lại" để chạy tiếp từ đúng việc đó.
 
-**Đầu ra:** JSON, kiểm bằng pydantic, gồm:
+**Hàng việc.**
+- `projects/_cases/<case_id>/pipeline.json` liệt kê các việc theo thứ tự, mỗi việc có trạng thái `pending`, `running`, `done` hoặc `failed`. Kết quả từng việc lưu ở `projects/_cases/<case_id>/steps/<step_id>.json`.
+- Danh sách việc lớn dần trong lúc chạy: việc G5 xong mới sinh ra các việc G6 (3 việc mỗi nhịp) và việc G7.
+
+**Worker.**
+- Chạy ngay trong tiến trình server, khởi động cùng app. Không cần cron bên ngoài.
+- Mỗi lúc chỉ chạy **một** việc, cho mọi vụ án. Vụ cũ hơn được làm trước.
+- Server khởi động lại thì các việc đang `running` trở về `pending` và chạy tiếp. Việc đã `done` không làm lại.
+
+**Thời gian.** Mỗi lần gọi mất khoảng 5–20 giây. Một vụ dài như Nhũ Cô làm video 8 phút tốn khoảng 10–15 phút phân tích; làm video 30 phút có thể tới 30 phút. Giao diện hiện việc đang làm và số việc đã xong trên tổng số.
+
+### 7.2 G2–G4: Hồ sơ chuyển thể
+
+**Đầu vào:** toàn bộ văn bản vụ án, chia thành đoạn ở G1. Văn bản dài quá giới hạn an toàn (mặc định 200.000 ký tự) thì báo lỗi rõ, không cắt ngầm.
+
+**G2, đọc từng đoạn.**
+- Đầu vào: đúng một đoạn, kèm danh sách tên đã gặp ở các đoạn trước để LLM gọi thống nhất.
+- Đầu ra: các tên xuất hiện trong đoạn (kèm loại và vai đoán được), các sự việc (tóm tắt, mốc thời gian, những tên liên quan), bằng chứng (nhãn vi/en, mô tả, tên liên quan), quan hệ (nguồn, đích, loại, nhãn vi/en).
+- Prompt dặn: mỗi sự việc riêng biệt là một mục, không gộp nhiều sự việc làm một.
+- Kiểm tra: đoạn dài từ 150 từ trở lên phải có ít nhất 1 sự việc mỗi 250 từ. Mỗi tóm tắt sự việc phải dài ít nhất 12 từ.
+
+**G3, gộp tên.**
+- Đầu vào: mọi tên khác nhau gom từ G2, mỗi tên kèm loại, vai và một câu ngữ cảnh.
+- Đầu ra: các nhóm, mỗi nhóm là một entity (ví dụ "Nguyễn Văn Hùng", "ông Hùng", "Hùng" là một người).
+- Kiểm tra: mỗi tên đầu vào nằm trong đúng một nhóm.
+
+**G4, đặt tên hư cấu.**
+- Đầu vào: các nhóm của G3, cộng một đoạn trích đầu bài để LLM nhận ra văn hoá và thời đại.
+- Code ghép kết quả với sự việc, bằng chứng, quan hệ từ G2, để ra **hồ sơ chuyển thể**. Các tên được ánh xạ sang id entity bằng cách so dạng bỏ dấu.
+- Kiểm tra: entity nào cũng có `alias_vi` và `alias_en`; không có alias trùng nhau; không alias nào trùng một tên thật.
+
+**Hồ sơ chuyển thể** là JSON, kiểm bằng pydantic, gồm:
 - `source_language`
 - `culture`: ví dụ `chinese_taiwan`, `vietnamese`, `american`. Dùng để chọn kiểu tên hư cấu.
 - `title_vi`, `title_en`: tên tập hư cấu, không chứa tên thật. Thay cho cách cũ lấy dòng đầu của bài.
@@ -116,8 +157,15 @@ Dán vụ án + chọn thời lượng/giọng/phong cách
 - `relations[]`: `source_id`, `target_id`, `relation_type` (theo các giá trị `RelationEdge.relation_type` đang có), `label_vi`, `label_en`, `reveal_timeline_order`
 - `setting_notes_en`: thời đại, khí hậu, kiến trúc, trang phục. Dùng cho prompt hình.
 
-### 7.3 B2: Dàn ý
+### 7.3 G5: Dàn ý
 
+- Đầu vào: dòng thời gian đầy đủ (danh sách sự việc có id), danh sách id bằng chứng, `solved`, và số cảnh mục tiêu.
+- Đầu ra: `supported_minutes` và danh sách nhịp. Mỗi nhịp có `id`, `kind`, `event_ids`, `scene_count` (từ 2 đến 6), `summary_vi`.
+- Kiểm tra:
+  - mọi sự việc nằm trong ít nhất một nhịp;
+  - `scene_count` của mỗi nhịp từ 2 đến 6;
+  - tổng số cảnh không vượt mục tiêu quá 20%;
+  - nếu `supported_minutes` ≥ thời lượng đã chọn mà tổng số cảnh vẫn dưới mục tiêu tối thiểu, thì coi là lười và gọi lại.
 - Số cảnh mục tiêu lấy theo bảng thời lượng đang hiện trong modal. Trung bình khoảng 15 giây mỗi cảnh:
 
   | Thời lượng | Số cảnh |
@@ -127,20 +175,31 @@ Dán vụ án + chọn thời lượng/giọng/phong cách
   | 20 phút | 70–80 |
   | 30 phút | 100–120 |
 
-- **Số cảnh co theo lượng tư liệu.** B2 ước lượng bài đủ chất liệu cho tối đa bao nhiêu phút mà không phải bịa. Người dùng chọn dài hơn mức đó thì làm ít cảnh hơn, kèm cảnh báo trên màn xem lại ("bài chỉ đủ khoảng N phút"). Không kéo dài cho đủ số cảnh.
-- LLM chia câu chuyện thành các phần theo cấu trúc phim: mở đầu gây tò mò (không tiết lộ kết), bối cảnh, phát hiện, điều tra, bước ngoặt, phá án, kết và dư âm. Mỗi phần gồm tóm tắt, các mốc `timeline` mà phần đó kể, và số cảnh. Vụ chưa phá được thì phần "phá án" đổi thành "những câu hỏi còn bỏ ngỏ".
-- Code kiểm tra mọi mốc `timeline` đều nằm trong ít nhất một phần. Thiếu thì gọi lại.
+- **Số cảnh co theo lượng tư liệu.** G5 ước lượng bài đủ chất liệu cho tối đa bao nhiêu phút mà không phải bịa. Người dùng chọn dài hơn mức đó thì làm ít cảnh hơn, kèm cảnh báo trên màn xem lại ("bài chỉ đủ khoảng N phút"). Không kéo dài cho đủ số cảnh.
+- Các nhịp đi theo cấu trúc phim: mở đầu gây tò mò (không tiết lộ kết), bối cảnh, phát hiện, điều tra, bước ngoặt, phá án, kết và dư âm. Vụ chưa phá được thì nhịp "phá án" đổi thành "những câu hỏi còn bỏ ngỏ".
 - **Cảnh miễn trừ** luôn là cảnh số 1. Lời kể vi/en là chuỗi cố định trong code, không do LLM viết. Hình là ảnh nền tối có chữ (builder chọn cách vẽ, ví dụ dùng PIL như bảng ghim). Cảnh này được tính vào số cảnh, và không thuộc diện kiểm "không bịa tình tiết".
 
-### 7.4 B3: Viết cảnh (mỗi phần một lần gọi; được chạy song song)
+### 7.4 G6: Viết cảnh (3 lần gọi cho mỗi nhịp, chạy tuần tự)
 
-**Đầu vào mỗi lần gọi:**
-- hồ sơ B1 (đã có tên hư cấu) và dàn ý B2;
-- phần đang viết, kèm 2 cảnh cuối của phần trước để nối mạch;
-- toàn bộ văn bản gốc, để LLM bám đúng sự thật. Prompt dặn rõ chỉ được dùng tên hư cấu.
+Các nhịp được viết lần lượt theo thứ tự trong dàn ý, để nhịp sau đọc được những cảnh cuối của nhịp trước.
+
+1. **Lời Việt.**
+   - Đầu vào: hồ sơ (dùng tên `alias_vi`); tóm tắt nhịp; các sự việc của nhịp, mỗi sự việc kèm toàn văn những đoạn gốc chứa nó (để bám đúng sự thật; prompt dặn chỉ được dùng tên hư cấu); 2 cảnh cuối của nhịp trước.
+   - Đầu ra: đúng `scene_count` cảnh. Mỗi cảnh có `narration_vi`, `visual_kind`, `board_reveal`, `covers_event_ids`.
+   - Kiểm tra: đúng số cảnh; mỗi lời dài 25–80 từ; các cảnh gộp lại kể đủ mọi sự việc của nhịp; id trong `board_reveal` đều có thật.
+2. **Lời Anh.**
+   - Đầu vào: hồ sơ (dùng tên `alias_en`), các cảnh lời Việt của nhịp, và cùng những đoạn gốc ở trên.
+   - Đầu ra: `narration_en` cho từng cảnh. Viết lại tự nhiên, không dịch sát từng chữ.
+   - Kiểm tra: đúng số cảnh; mỗi lời dài 20–70 từ.
+3. **Prompt hình.**
+   - Đầu vào: `appearance_en` của các nhân vật, `setting_notes_en`, phong cách hình đã chọn, lời Việt và lời Anh của các cảnh.
+   - Đầu ra: `image_prompt`, `video_prompt`, `camera_motion`, `narrative_beat`, `sfx_cue`, `bgm_energy` cho từng cảnh.
+   - Kiểm tra: đúng số cảnh; `image_prompt` dài ít nhất 20 từ; cảnh `video` phải có `video_prompt`.
+
+**G7** ráp mọi nhịp thành danh sách cảnh: chèn cảnh miễn trừ làm cảnh 1, đánh số lại, rồi kiểm tra theo 7.5.
 
 **Mỗi cảnh gồm:**
-- `order` (đánh số toàn cục) và `part_id`.
+- `order` (đánh số toàn cục) và `part_id` (id của nhịp).
 - `narration_vi`, `narration_en`: lời kể ngôi thứ ba, giọng người kể chuyện điện ảnh, dùng tên hư cấu. Kịch tính hoá theo mức "như phim" ở mục 6: được dựng thoại (đặt trong lời kể, ví dụ: anh ta nói: "…") và nội tâm, nhưng chỉ dựa trên sự kiện có trong bài. Ngày giờ theo mục 7.6. Độ dài tham khảo cho cảnh khoảng 15 giây: tiếng Việt 35–45 từ, tiếng Anh 30–40 từ. LLM được co giãn theo nhịp truyện.
 - `visual_kind`, một trong ba loại:
   - `board`: cảnh nói về bằng chứng hoặc quan hệ. Dùng ảnh bảng ghim vẽ bằng engine PIL hiện có. `board_reveal[]` là id các evidence/relation hiện ra ở cảnh này.
@@ -151,9 +210,9 @@ Dán vụ án + chọn thời lượng/giọng/phong cách
 - `camera_motion`: chỉ dùng các giá trị renderer trong `backend/services/video_service.py` hỗ trợ.
 - `narrative_beat`, `sound_design` (`sfx_cue`, `bgm_energy`): giữ các field đang có.
 
-### 7.5 B4: Kiểm tra (bằng code, không dùng LLM)
+### 7.5 G7: Kiểm tra (bằng code, không dùng LLM)
 
-- **Schema:** kiểm JSON bằng pydantic. Phần nào lỗi thì gọi lại phần đó, tối đa 2 lần; vẫn lỗi thì báo lỗi.
+- **Schema và chất lượng từng việc:** kiểm ngay sau mỗi việc nhỏ, theo 7.1a–7.4. Một việc được thử tối đa 3 lần; lần 2 và lần 3 gửi kèm lý do lần trước bị loại.
 - **Lọt tên thật:**
   - Danh sách chuỗi cấm gồm `entities[].real_names`, cộng với các tên mà regex hiện có (`AnonymizerShield.extract_pii_candidates`) bắt được trên văn bản gốc.
   - So khớp theo ranh giới từ, không phân biệt hoa thường, bỏ dấu.
@@ -168,7 +227,7 @@ Dán vụ án + chọn thời lượng/giọng/phong cách
   - số cảnh không vượt mục tiêu quá 20%; ít hơn mục tiêu thì được, kèm cảnh báo (xem 7.3);
   - mọi id trong `board_reveal` đều tồn tại;
   - mỗi evidence xuất hiện ít nhất một lần.
-- **Không có đường lui offline.** 9router lỗi (mạng, 401, 404 chưa kết nối Gemini, timeout) thì job thất bại, kèm thông báo cụ thể và nút thử lại.
+- **Không có đường lui offline.** 9router lỗi (mạng, 401, 404 chưa kết nối Gemini, timeout) thì hàng việc dừng ở việc đó, kèm thông báo cụ thể và nút "Thử lại". Lỗi 401 và 404 không tự thử lại, vì gọi lại cũng sẽ hỏng y như vậy.
 
 ### 7.6 Ngày tháng và chi tiết nhận dạng khác
 
@@ -198,15 +257,18 @@ Mình tự quyết thêm: tuổi giữ ở dạng xấp xỉ ("khoảng năm mư
 
 | Route | Việc |
 |---|---|
-| `POST /api/true-crime/analyze` | body `{raw_report, target_minutes, languages, visual_style}` → `{job_id}`. Chạy nền. |
-| `GET /api/true-crime/jobs/{job_id}` | `{status: queued/running/done/failed, step, part_done, part_total, error, case_id}` |
-| `GET /api/true-crime/cases/{case_id}` | Trả về kế hoạch. |
+| `POST /api/true-crime/analyze` | body `{raw_report, target_minutes, languages, visual_style}` → `{case_id}`. Lưu văn bản gốc, tạo hàng việc; worker tự nhận và chạy. |
+| `GET /api/true-crime/cases/{case_id}/progress` | `{status: running/done/failed, step_label, steps_done, steps_total, error}`. `step_label` là câu tiếng Việt, ví dụ "Đang đọc đoạn 3/20" hoặc "Đang viết lời Anh, nhịp 4/12". |
+| `POST /api/true-crime/cases/{case_id}/resume` | Đưa việc bị hỏng về `pending` và cho hàng việc chạy tiếp. |
+| `GET /api/true-crime/cases/{case_id}` | Trả về kế hoạch. Phân tích chưa xong thì trả 409. |
+| `GET /api/true-crime/jobs/{job_id}` | Chỉ dùng cho job tạo bản ngôn ngữ khác (ngắn, chạy trong bộ nhớ). |
 | `PUT /api/true-crime/cases/{case_id}/entities` | Người dùng sửa tên hư cấu, hoặc thêm tên mới (thường là tên mà regex bắt được). Áp tên mới cho toàn bộ cảnh và nhãn, rồi chạy lại kiểm tra. |
 | `PUT /api/true-crime/cases/{case_id}/scenes/{order}` | Sửa `narration_vi` và/hoặc `narration_en` của một cảnh, rồi chạy lại kiểm tra cho cảnh đó. |
 | `POST /api/true-crime/cases/{case_id}/create-project` | body `{language, voice, visual_style, image_provider}` → dự án; bảng ghim vẽ bằng nhãn của ngôn ngữ đó. Trả **409** khi còn cảnh bị đánh dấu (7.5). |
-| `POST /api/projects/{pid}/create-language-version` | body `{language, voice}` → `{job_id}`. Các bước: (1) chép ảnh, clip Muse và ảnh tải lên; (2) lấy `text` từ `metadata.narration[lang]`; (3) vẽ lại các cảnh bảng ghim theo ngôn ngữ mới; (4) xoá audio, segment và video cuối; (5) đặt giọng mới; (6) lưu thành dự án mới, liên kết hai chiều qua `sibling_project_ids`. **Cảnh mới thêm, hoặc có lời Việt đã sửa sau khi tạo dự án** (so với bản gốc lưu ở `metadata.narration_source`), thì LLM viết lại lời Anh cho riêng các cảnh đó: dùng bảng tên `alias_en` và mức kịch tính hoá như B3, rồi chạy kiểm tra B4 cho các cảnh đó. Kết quả liệt kê những cảnh đã được viết lại. |
+| `POST /api/projects/{pid}/create-language-version` | body `{language, voice}` → `{job_id}`. Các bước: (1) chép ảnh, clip Muse và ảnh tải lên; (2) lấy `text` từ `metadata.narration[lang]`; (3) vẽ lại các cảnh bảng ghim theo ngôn ngữ mới; (4) xoá audio, segment và video cuối; (5) đặt giọng mới; (6) lưu thành dự án mới, liên kết hai chiều qua `sibling_project_ids`. **Cảnh mới thêm, hoặc có lời Việt đã sửa sau khi tạo dự án** (so với bản gốc lưu ở `metadata.narration_source`), thì LLM viết lại lời Anh cho riêng các cảnh đó: dùng bảng tên `alias_en` và mức kịch tính hoá như G6, rồi chạy kiểm tra của G7 cho các cảnh đó. Kết quả liệt kê những cảnh đã được viết lại. |
 
-- Job lưu trong bộ nhớ, theo kiểu `active_renders` đang dùng. Kế hoạch ghi ra đĩa khi job xong. Tắt server giữa chừng thì chỉ mất job đang chạy; người dùng chạy lại.
+- Phân tích chạy qua hàng việc lưu trên đĩa (7.1a), nên tắt server giữa chừng vẫn chạy tiếp được.
+- Riêng job tạo bản ngôn ngữ khác thì ngắn (chỉ viết lại vài cảnh), nên lưu trong bộ nhớ theo kiểu `active_renders`. Tắt server lúc đang chạy job này thì người dùng bấm lại.
 - Khi giao diện đã chuyển sang luồng mới, bỏ `/api/true-crime/fictionalize` và `/api/true-crime/create-project` cũ. `/render-board-scene` chuyển sang đọc kế hoạch mới.
 
 ### 7.9 Giao diện (modal Hồ Sơ Kỳ Án)
@@ -247,7 +309,10 @@ Mình tự quyết thêm: tuổi giữ ở dạng xấp xỉ ("khoảng năm mư
 - **Offline** (mock hàm gọi LLM), cần có:
   - tên hư cấu được áp đúng;
   - kiểm lọt tên bắt được tên thật (có dấu, không dấu, khác hoa thường) trong lời kể, prompt và nhãn bảng ghim;
-  - LLM lỗi thì job ở trạng thái `failed`, không có đường lui;
+  - LLM lỗi thì hàng việc ở trạng thái `failed`, không có đường lui; "Thử lại" chạy tiếp từ đúng việc hỏng;
+  - đầu ra mỏng (ít sự việc, lời quá ngắn, thiếu cảnh) bị loại và gọi lại kèm lý do; hỏng 3 lần thì dừng;
+  - server khởi động lại giữa chừng thì hàng việc chạy tiếp, việc đã xong không gọi lại LLM;
+  - mỗi lúc chỉ có một lần gọi LLM, kể cả khi có hai vụ án cùng phân tích;
   - dự án bản Việt có `text` tiếng Việt và có `metadata.narration`;
   - tạo bản Anh thì media được chép, `text` và giọng được đổi, bảng ghim có nhãn tiếng Anh;
   - tạo bản Anh: cảnh mới thêm hoặc đã sửa thì được gọi LLM viết lại (mock), các cảnh khác giữ nguyên;
@@ -258,7 +323,7 @@ Mình tự quyết thêm: tuổi giữ ở dạng xấp xỉ ("khoảng năm mư
   - route kiểm id.
 - Viết lại `tests/test_true_crime_e2e.py`, `tests/test_case_fictionalizer.py`, `tests/test_true_crime_router.py` theo luồng mới.
 - Không được tệ hơn baseline: 128 test offline đang đạt.
-- **Chạy thật** (chỉ khi người dùng yêu cầu): vụ Nhũ Cô, 8 phút, gọi 9router thật. File mẫu `_archive_2026-10-19/case_input_text.txt` hiện nằm trong Thùng rác của Windows. Trước khi chạy, xin người dùng cho khôi phục, rồi đặt vào một thư mục đã có trong `.gitignore` và không nằm trong danh sách đóng gói (bài gốc có tác giả, không đưa lên git). Tiêu chí:
+- **Chạy thật** (người dùng đã cho phép test thoải mái bằng 9router và Muse): vụ Nhũ Cô, 8 phút, gọi 9router thật; sau đó tạo vài ảnh và một video bằng Muse để kiểm cả chuỗi. File mẫu `_archive_2026-10-19/case_input_text.txt` hiện nằm trong Thùng rác của Windows. Khôi phục file rồi đặt vào một thư mục đã có trong `.gitignore` và không nằm trong danh sách đóng gói (bài gốc có tác giả, không đưa lên git). Tiêu chí:
   - không lọt tên thật;
   - đủ các sự kiện chính;
   - bản Anh đọc tự nhiên (người dùng tự đánh giá);
@@ -266,7 +331,7 @@ Mình tự quyết thêm: tuổi giữ ở dạng xấp xỉ ("khoảng năm mư
 
 ### 7.12 Để builder tự quyết
 
-- Gộp hay tách các lần gọi LLM, số phần, mức chạy song song, timeout và retry cụ thể. Mức nên nhắm: phân tích xong trong vài phút.
+- Các ngưỡng kiểm tra cụ thể (độ dài lời, số sự việc mỗi đoạn, kích thước đoạn), timeout của từng lần gọi, và câu chữ trong prompt. Các con số trong 7.1a–7.4 là mặc định khởi đầu, chỉnh lại sau khi chạy thật.
 - Tên file, tên module, chi tiết các model pydantic.
 - Thay hẳn `FictionalCasePlan` hay giữ để tương thích.
 - Cách bố trí thẻ trên bảng ghim (có thể giữ `assign_fixed_anchor_layout`).
@@ -275,7 +340,7 @@ Mình tự quyết thêm: tuổi giữ ở dạng xấp xỉ ("khoảng năm mư
 ## 8. Mặc định mình tự chọn (người dùng có thể đổi)
 
 - Bỏ công thức 70/30 và sổ phục bút. Bảng ghim giữ lại như một kiểu hình B-roll, nhưng dùng bằng chứng thật trong vụ án.
-- Phân tích chạy dưới dạng job nền có tiến độ, không gói trong một request dài.
+- Hàng việc lưu trên đĩa, worker tuần tự chạy ngay trong server; không dùng cron bên ngoài. Đoạn khoảng 3.000 ký tự, nhịp 2–6 cảnh, mỗi việc thử tối đa 3 lần.
 - Kế hoạch lưu ở `projects/_cases/`. Bảng ghim không ghi vào `/static` nữa.
 - Khoảng 15 giây mỗi cảnh, theo bảng thời lượng có sẵn. Cảnh video tối đa khoảng 15%.
 - Mỗi lần viết cảnh đều gửi kèm toàn bộ văn bản gốc, để lời kể bám đúng sự thật.
@@ -304,4 +369,5 @@ Mình tự quyết thêm: tuổi giữ ở dạng xấp xỉ ("khoảng năm mư
 - **Edge-TTS** dùng endpoint "Đọc to" của Microsoft Edge, không phải dịch vụ chính thức. Không có cam kết, quyền dùng thương mại không rõ, có thể bị chặn. Cần chọn engine tiếng Anh trước khi bán tool.
 - **Nhận ra vụ án:** dù đã đổi tên, một câu chuyện giữ đúng diễn biến vẫn có thể nhận ra là vụ nào. Bài viết gốc có tác giả, nên bản chuyển thể có thể bị coi là tác phẩm phái sinh. Việc rà soát pháp lý vẫn đang để ngỏ.
 - **Thời gian và quota Muse:** 30 phút tương đương 100–120 cảnh, khoảng 85–100 ảnh. Mỗi ảnh mất khoảng 45 giây, nên một luồng ảnh cần khoảng 1–1,5 giờ.
+- **Thời gian phân tích dài hơn và tốn nhiều lần gọi hơn,** vì chia nhỏ việc: khoảng 10–30 phút mỗi vụ, vài chục tới hơn một trăm lần gọi 9router. Đổi lại, lời kể đủ chi tiết và không bị tóm gọn.
 - **Giới hạn của kiểm lọt tên:** chỉ bắt được những tên đã biết. LLM có thể bỏ sót một biến thể, nên màn xem lại là lớp kiểm tra cuối, do người dùng duyệt.
