@@ -7,6 +7,8 @@ BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+import asyncio
+
 import uvicorn
 from contextlib import asynccontextmanager
 
@@ -20,7 +22,33 @@ from security import LocalAccessMiddleware, is_safe_id
 from routers.api import router as api_router, active_renders, active_connections
 from routers.muse_bridge import router as muse_bridge_router
 from routers.true_crime import router as true_crime_router
+from services import case_worker
 from services.video_service import get_available_bgm_tracks
+
+
+async def _start_case_worker():
+    """Worker phân tích vụ án (spec 7.1a): đưa việc bị gián đoạn về hàng chờ rồi chạy hàng việc ngầm.
+    Trả (stop, task), hoặc (None, None) khi bị tắt bằng STORY_STUDIO_DISABLE_CASE_WORKER=1."""
+    if case_worker.worker_disabled():
+        return None, None
+    try:
+        recovered = await asyncio.to_thread(case_worker.recover_interrupted)
+        if recovered:
+            print(f"[*] Case worker: {recovered} việc phân tích bị gián đoạn sẽ chạy lại")
+    except Exception as e:  # đĩa lỗi lúc khởi động không được chặn server; worker tự đánh dấu việc lạ
+        print(f"Warning recovering case analysis queue: {e}")
+    stop = asyncio.Event()
+    return stop, asyncio.create_task(case_worker.worker_loop(stop))
+
+
+async def _stop_case_worker(stop, task) -> None:
+    """Dừng ngay, kể cả khi đang chờ LLM: việc đang chạy giữ `running` và được chạy lại ở lần khởi động sau."""
+    if task is None:
+        return
+    stop.set()
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)   # nuốt CancelledError của task con, không nuốt của lifespan
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -34,8 +62,11 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Warning initializing BGM tracks: {e}")
 
-    yield
-    # Shutdown logic if any
+    worker_stop, worker_task = await _start_case_worker()
+    try:
+        yield
+    finally:
+        await _stop_case_worker(worker_stop, worker_task)
 
 app = FastAPI(
     title="YouTube Story Maker API",
