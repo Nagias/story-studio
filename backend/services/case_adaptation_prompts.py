@@ -28,8 +28,10 @@ RELATION_TYPES = (
 
 # Ngưỡng kiểm của dàn ý và các việc viết cảnh (spec 7.3, 7.4). case_adaptation_steps dùng lại đúng các số này.
 SCENES_PER_PART = (2, 6)        # số cảnh mỗi nhịp
-MAX_SCENE_OVERSHOOT = 1.2       # tổng số cảnh không vượt mục tiêu tối đa quá 20%
+MAX_SCENE_OVERSHOOT = 1.2       # tổng số cảnh (kể cả cảnh miễn trừ) không vượt mục tiêu tối đa quá 20%
 MAX_EVENTS_PER_SCENE = 3        # mỗi cảnh kể tối đa 3 sự việc (nhiều hơn là tóm gọn)
+MAX_SCENES_PER_EVENT = 2        # một sự việc đủ cho tối đa 2 cảnh (nhiều hơn là kéo dài cho đủ)
+SCENES_PER_MINUTE = 4           # trung bình khoảng 15 giây mỗi cảnh
 VI_WORDS = (25, 80)             # độ dài narration_vi (từ)
 EN_WORDS = (20, 70)             # độ dài narration_en (từ)
 MIN_IMAGE_PROMPT_WORDS = 20
@@ -89,6 +91,21 @@ def _one_line(text: str, limit: int) -> str:
 
 def word_count(text: str) -> int:
     return len(str(text or "").split())
+
+
+def max_events_per_scene(n_events: int, n_scenes: int) -> int:
+    """Số sự việc tối đa một cảnh được kể: 3, hoặc nhiều hơn nếu số sự việc buộc phải dồn (bài rất dày)."""
+    return max(MAX_EVENTS_PER_SCENE, math.ceil(n_events / max(n_scenes, 1)))
+
+
+def video_scene_cap(target_max: int) -> int:
+    """Số cảnh tối đa của cả video (kể cả cảnh miễn trừ): mục tiêu tối đa + 20%."""
+    return math.floor(target_max * MAX_SCENE_OVERSHOOT)
+
+
+def supported_scene_cap(supported_minutes: int) -> int:
+    """Số cảnh dàn ý tối đa khi bài chỉ đủ tư liệu cho `supported_minutes` phút (khoảng 4 cảnh/phút, + 20%)."""
+    return math.floor(supported_minutes * SCENES_PER_MINUTE * MAX_SCENE_OVERSHOOT)
 
 
 def min_events_for(words: int) -> int:
@@ -314,8 +331,9 @@ def _scene_list(scenes: list[dict], fields: tuple[tuple[str, str], ...]) -> str:
 
 def outline_prompt(bible: CaseBible, target_minutes: int, target_scenes: tuple[int, int]) -> str:
     lo, hi = target_scenes
-    cap = math.floor(hi * MAX_SCENE_OVERSHOOT)
+    cap = video_scene_cap(hi)
     min_part, max_part = SCENES_PER_PART
+    example_minutes = 3
     kinds = " | ".join(PART_KINDS)
     ending = ('"resolution" (phá án)' if bible.solved
               else '"open_questions" (những câu hỏi còn bỏ ngỏ); KHÔNG dùng "resolution" vì vụ chưa phá được')
@@ -336,22 +354,22 @@ BẰNG CHỨNG VÀ QUAN HỆ TRONG HỒ SƠ:
 {_board_lines(bible)}
 
 THỜI LƯỢNG VÀ SỐ CẢNH
-1. "supported_minutes": số phút (số nguyên, ít nhất 1) mà bài này đủ chất liệu để kể hấp dẫn mà không phải bịa thêm; tính khoảng 4 cảnh cho mỗi phút, mỗi sự việc thường đủ cho 1–2 cảnh. Ước trung thực: không nâng lên cho bằng {target_minutes} phút, không hạ xuống để viết ít.
-2. Tổng số cảnh (cộng "scene_count" của mọi nhịp):
-   - nếu "supported_minutes" ≥ {target_minutes}: từ {lo} đến {hi} cảnh; ít hơn {lo} cảnh là thiếu và sẽ bị trả lại;
-   - nếu "supported_minutes" < {target_minutes}: ít hơn, vừa với chất liệu (khoảng "supported_minutes" × 4 cảnh), không kéo dài cho đủ;
-   - trong mọi trường hợp không quá {cap} cảnh.
+1. "supported_minutes": số phút (số nguyên, ít nhất 1) mà bài này đủ chất liệu để kể hấp dẫn mà không phải bịa thêm; tính khoảng {SCENES_PER_MINUTE} cảnh cho mỗi phút, mỗi sự việc đủ cho 1–{MAX_SCENES_PER_EVENT} cảnh. Ước trung thực theo lượng sự việc ở trên, không theo thời lượng người dùng chọn: không nâng lên cho bằng {target_minutes} phút, không hạ xuống để viết ít.
+2. Video luôn có thêm 1 cảnh miễn trừ ở đầu, đã tính vào các mức dưới đây. Tổng số cảnh của dàn ý (cộng "scene_count" của mọi nhịp):
+   - nếu "supported_minutes" ≥ {target_minutes}: từ {lo - 1} đến {hi - 1} cảnh (video có {lo}–{hi} cảnh, kể cả cảnh miễn trừ); ít hơn {lo - 1} cảnh là thiếu và sẽ bị trả lại;
+   - nếu "supported_minutes" < {target_minutes}: vừa với chất liệu, khoảng "supported_minutes" × {SCENES_PER_MINUTE} cảnh và không quá "supported_minutes" × {SCENES_PER_MINUTE * MAX_SCENE_OVERSHOOT:g} cảnh (làm tròn xuống; ví dụ {example_minutes} phút: khoảng {example_minutes * SCENES_PER_MINUTE} cảnh, tối đa {supported_scene_cap(example_minutes)} cảnh). Không kéo dài cho đủ số cảnh;
+   - trong mọi trường hợp không quá {cap - 1} cảnh (video tối đa {cap} cảnh, kể cả cảnh miễn trừ).
 
 QUY TẮC NHỊP
 1. Thứ tự theo cấu trúc phim: hook (mở đầu gây tò mò, không tiết lộ kết) → setup (bối cảnh, con người) → discovery (phát hiện vụ án) → investigation (điều tra) → twist (bước ngoặt) → kết thúc → epilogue (kết và dư âm). Kết thúc của vụ này là {ending}. Không bắt buộc đủ mọi loại; một loại có thể có nhiều nhịp liền nhau (ví dụ ba nhịp investigation).
 2. "kind": một trong {kinds}.
-3. "event_ids": id các sự việc nhịp này kể, theo thứ tự kể. MỌI sự việc trong dòng thời gian (đủ {n_events} id) phải nằm trong ít nhất một nhịp: không bỏ sót sự việc nào, kể cả sự việc nhỏ. Chỉ dùng id có trong danh sách trên. Nhịp hook có thể mượn trước một sự việc của nhịp sau để gây tò mò (sự việc đó vẫn phải có trong nhịp của nó).
-4. "scene_count": số nguyên từ {min_part} đến {max_part}, và không ít hơn số sự việc của nhịp chia {MAX_EVENTS_PER_SCENE} (mỗi cảnh kể tối đa {MAX_EVENTS_PER_SCENE} sự việc). Nhịp có nhiều sự việc thì tách thành nhiều nhịp.
+3. "event_ids": id các sự việc nhịp này kể, theo thứ tự kể. MỌI sự việc trong dòng thời gian (đủ {n_events} id) phải nằm trong ĐÚNG MỘT nhịp: không bỏ sót sự việc nào, kể cả sự việc nhỏ, và không kể lại cùng một sự việc ở hai nhịp. Chỉ dùng id có trong danh sách trên. Ngoại lệ duy nhất: nhịp hook được mượn trước tối đa 1 sự việc của một nhịp sau để gây tò mò (sự việc đó vẫn nằm trong nhịp của nó).
+4. "scene_count": số nguyên từ {min_part} đến {max_part}; không ít hơn số sự việc của nhịp chia {MAX_EVENTS_PER_SCENE} (mỗi cảnh kể tối đa {MAX_EVENTS_PER_SCENE} sự việc), và không nhiều hơn {MAX_SCENES_PER_EVENT} × số sự việc của nhịp (mỗi sự việc đủ cho tối đa {MAX_SCENES_PER_EVENT} cảnh; nhịp 1 sự việc thì đúng {min_part} cảnh). Nhịp có nhiều sự việc thì tách thành nhiều nhịp.
 5. "summary_vi": 1–2 câu tiếng Việt nói nhịp này kể gì; chỉ dùng tên hư cấu như trong hồ sơ trên; không ghi ngày, tháng hay năm cụ thể.
 6. "id": "p1", "p2", "p3"... theo thứ tự.
 
-Trả về đúng một JSON object theo mẫu:
-{{"supported_minutes": {target_minutes}, "parts": [{{"id": "p1", "kind": "hook", "summary_vi": "...", "event_ids": ["..."], "scene_count": 3}}]}}"""
+Trả về đúng một JSON object theo mẫu (thay phần trong <...> bằng số nguyên):
+{{"supported_minutes": <số phút tư liệu đủ để kể mà không bịa>, "parts": [{{"id": "p1", "kind": "hook", "summary_vi": "...", "event_ids": ["..."], "scene_count": 3}}]}}"""
 
 
 # ---------------------------------------------------------------- G6: lời Việt
@@ -362,7 +380,7 @@ def write_vi_prompt(bible: CaseBible, part: StoryPart, events: list[TimelineEven
     """`revealed_ids`: id bằng chứng/quan hệ đã hiện ở các nhịp trước (đánh dấu trong danh sách)."""
     n = part.scene_count
     lo, hi = VI_WORDS
-    per_scene = max(MAX_EVENTS_PER_SCENE, math.ceil(len(events) / max(n, 1)))
+    per_scene = max_events_per_scene(len(events), n)
     event_ids = ", ".join(ev.id for ev in events) or "(không có)"
     if prev_scenes:
         prev = "\n".join(f"- {s.get('narration_vi', '')}" for s in prev_scenes)
@@ -406,7 +424,7 @@ CÁCH VIẾT
    - "video": một khoảnh khắc hành động ngắn (chạy, bỏ trốn, xe lao đi...). Tối đa 1 cảnh video trong nhịp này; lời cảnh video ngắn hơn, khoảng {_VI_VIDEO_TARGET} từ.
    - "image": mọi cảnh còn lại.
    Cảnh không phải "board" thì "board_reveal" là [].
-7. "covers_event_ids": id các sự việc cảnh đó kể. Gộp mọi cảnh lại phải có đủ: {event_ids}.
+7. "covers_event_ids": id các sự việc (của nhịp này) mà lời kể của cảnh đó thật sự kể ra: mỗi cảnh có từ 1 đến {per_scene} id, chia đều cho các cảnh theo thứ tự. Gộp mọi cảnh lại phải có đủ: {event_ids}.
 
 Trả về đúng một JSON object, "scenes" có đúng {n} phần tử theo thứ tự kể:
 {{"scenes": [{{"narration_vi": "...", "visual_kind": "image", "board_reveal": [], "covers_event_ids": ["..."]}}]}}"""

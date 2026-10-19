@@ -23,6 +23,7 @@ from models.case_adaptation_schemas import DISCLAIMER, MAX_ATTEMPTS, CaseBible, 
 from services import case_store
 from services.case_adaptation_checks import fold, has_blocking_flags
 from services.case_adaptation_llm import LLMError
+from services.case_adaptation_prompts import outline_prompt
 from services.case_adaptation_steps import (
     SoftRejected,
     StepFailed,
@@ -63,10 +64,13 @@ def _new_pipeline(target_minutes: int = 8) -> CasePipeline:
 
 
 def _run_pipeline(pipeline: CasePipeline, llm, *, stop_after: str = ""):
-    """Chạy hàng việc như worker; trả kết quả của việc cuối cùng đã chạy."""
+    """Chạy hàng việc như worker (bỏ qua việc đã xong); trả kết quả của việc cuối cùng đã chạy."""
     result, i = None, 0
     while i < len(pipeline.steps):
         step = pipeline.steps[i]
+        if step.status == "done":
+            i += 1
+            continue
         result = asyncio.run(run_step(pipeline, step, llm=llm))
         case_store.save_step_output(pipeline.case_id, step.id, result.output)
         step.status = "done"
@@ -223,6 +227,96 @@ def test_outline_rejections(isolated_projects_dir, bad, hint):
     assert hint in _reason(llm)
 
 
+def _parts(*specs) -> list[dict]:
+    """specs: (kind, event_ids, scene_count) cho từng nhịp."""
+    return [{"id": f"p{n}", "kind": kind, "summary_vi": "x", "event_ids": list(ids), "scene_count": count}
+            for n, (kind, ids, count) in enumerate(specs, start=1)]
+
+
+def _outline_reason(outline: dict, *, pipeline: CasePipeline = None) -> str:
+    """Chạy việc dàn ý với `outline` ở lần đầu, fixture ở lần sau; trả lý do bị loại."""
+    pipeline = pipeline or _new_pipeline()
+    llm, calls = make_fake_llm({"OUTLINE": [outline, load_fixture("OUTLINE")]})
+    _run_pipeline(pipeline, llm, stop_after="outline")
+    assert calls.count("OUTLINE") == 2
+    return _reason(llm)
+
+
+def test_outline_rejects_events_repeated_across_parts(isolated_projects_dir):
+    # (A) 7 nhịp × 6 cảnh, nhịp nào cũng kể lại cả 12 sự việc: đủ 43 cảnh nhưng là độn.
+    padded = _outline_with(supported_minutes=8, parts=_parts(*[("investigation", ALL_EVENTS, 6)] * 7))
+    reason = _outline_reason(padded)
+    assert "nhiều nhịp" in reason and "ev_0_1" in reason
+
+
+def test_outline_rejects_one_event_stretched_over_many_scenes(isolated_projects_dir):
+    # (B) mỗi nhịp 1 sự việc kéo dài 3 cảnh: 36 cảnh + cảnh miễn trừ vừa mục tiêu, nhưng là kéo dài cho đủ.
+    stretched = _outline_with(supported_minutes=8, parts=_parts(*[("investigation", [e], 3) for e in ALL_EVENTS]))
+    reason = _outline_reason(stretched)
+    assert "tối đa 2 cảnh" in reason and "nhiều nhịp" not in reason
+
+
+def test_outline_hook_may_borrow_one_later_event_only(isolated_projects_dir):
+    one = _outline_with(parts=_parts(("hook", ["ev_1_6", *ALL_EVENTS[:6]], 3), ("investigation", ALL_EVENTS[6:], 3)))
+    pipeline = _new_pipeline()
+    llm, calls = make_fake_llm({"OUTLINE": one})
+    result = _run_pipeline(pipeline, llm, stop_after="outline")
+    assert calls.count("OUTLINE") == 1
+    assert result.output["parts"][0]["event_ids"][0] == "ev_1_6"
+
+    two = _outline_with(parts=_parts(("hook", ["ev_1_5", "ev_1_6", *ALL_EVENTS[:6]], 3),
+                                     ("investigation", ALL_EVENTS[6:], 3)))
+    reason = _outline_reason(two)
+    assert "mượn" in reason and "ev_1_5" in reason
+
+
+def test_outline_total_capped_by_supported_minutes(isolated_projects_dir):
+    # Bài chỉ đủ 2 phút (khoảng 8 cảnh, tối đa floor(2 × 4 × 1,2) = 9) mà dàn ý có 12 cảnh.
+    padded = _outline_with(supported_minutes=2, parts=_parts(("hook", ALL_EVENTS[:6], 6),
+                                                             ("investigation", ALL_EVENTS[6:], 6)))
+    reason = _outline_reason(padded)
+    assert "tối đa 9 cảnh" in reason and "2 phút" in reason
+
+
+def _pipeline_with_events(n_events: int) -> CasePipeline:
+    """Hàng việc đã qua bước đặt tên hư cấu, dòng thời gian thay bằng `n_events` sự việc (đều ở đoạn 0)."""
+    pipeline = _new_pipeline()
+    llm, _calls = make_fake_llm()
+    _run_pipeline(pipeline, llm, stop_after="aliases")
+    bible = case_store.load_step_output(pipeline.case_id, "aliases")
+    bible["timeline"] = [{"id": f"ev_0_{i}", "order": i, "chunk_index": 0, "time_label": "", "entity_ids": [],
+                          "summary": f"Sự việc thứ {i} trong cuộc điều tra kéo dài nhiều tuần ở thành phố cảng."}
+                         for i in range(1, n_events + 1)]
+    case_store.save_step_output(pipeline.case_id, "aliases", bible)
+    return pipeline
+
+
+def test_outline_cap_counts_the_disclaimer_scene(isolated_projects_dir):
+    ids = [f"ev_0_{i}" for i in range(1, 31)]
+    groups = [ids[i:i + 4] for i in range(0, 24, 4)] + [ids[24:27], ids[27:30]]   # 6 nhịp × 4 + 2 nhịp × 3 sự việc
+    at_cap = _outline_with(supported_minutes=8, parts=_parts(*[("investigation", g, 6) for g in groups]))  # 48 cảnh
+    under = copy.deepcopy(at_cap)
+    under["parts"][-1]["scene_count"] = 5                                          # 47 cảnh + cảnh miễn trừ = 48
+    pipeline = _pipeline_with_events(30)
+    llm, calls = make_fake_llm({"OUTLINE": [at_cap, under]})
+
+    result = _run_pipeline(pipeline, llm, stop_after="outline")
+
+    assert calls == ["OUTLINE", "OUTLINE"]
+    reason = _reason(llm)
+    assert "48" in reason and "miễn trừ" in reason
+    assert sum(p["scene_count"] for p in result.output["parts"]) == 47
+
+
+def test_outline_prompt_does_not_anchor_supported_minutes_to_target(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    llm, _calls = make_fake_llm()
+    _run_pipeline(pipeline, llm, stop_after="outline")
+    prompt = _prompt_for(llm, "OUTLINE")
+    assert '"supported_minutes": 8' not in prompt and '"supported_minutes": <' in prompt
+    assert "đúng một nhịp" in prompt.lower() and "tối đa 2 cảnh" in prompt
+
+
 def test_outline_ids_renumbered_and_unsolved_resolution_becomes_open_questions(isolated_projects_dir):
     pipeline = _new_pipeline()
     odd = copy.deepcopy(load_fixture("OUTLINE"))
@@ -233,6 +327,49 @@ def test_outline_ids_renumbered_and_unsolved_resolution_becomes_open_questions(i
     assert [p["id"] for p in result.output["parts"]] == ["p1", "p2"]
     assert _bible(pipeline).solved is False
     assert [p["kind"] for p in result.output["parts"]] == ["hook", "open_questions"]   # vụ chưa phá: không "phá án"
+
+
+def test_prompt_aliasing_leaves_generic_terms_that_fold_like_real_names():
+    bible = CaseBible.model_validate({
+        "source_language": "vi", "culture": "vietnamese", "solved": False, "title_vi": "Đêm mưa", "title_en": "Rain",
+        "entities": [
+            {"id": "person_1", "kind": "person", "real_names": ["Hưng Thu"], "alias_vi": "Lê Minh", "alias_en": "Le Minh"},
+            {"id": "place_1", "kind": "place", "real_names": ["Gia Định"], "alias_vi": "Phú An", "alias_en": "Phu An"},
+        ],
+        "timeline": [{"id": "ev_0_1", "order": 1, "chunk_index": 0,
+                      "summary": "Cảnh sát chưa tìm ra hung thủ; cả gia đình nạn nhân nghi Hưng Thu ở Bệnh viện Gia Định."}],
+        "evidence": [{"id": "evd_1", "label_vi": "Lời khai của gia đình", "label_en": "Family statement"}],
+    })
+    prompt = outline_prompt(bible, 8, (35, 40))
+    assert "Cảnh sát chưa tìm ra hung thủ; cả gia đình nạn nhân nghi Lê Minh ở Bệnh viện Phú An." in prompt
+    assert '"Lời khai của gia đình"' in prompt
+    assert "Hưng Thu" not in prompt and "Gia Định" not in prompt
+
+
+def test_pipeline_does_not_treat_generic_term_as_colliding_real_name(isolated_projects_dir):
+    # Người thật tên "Hưng Thu" (bỏ dấu trùng "hung thủ"): lời kể có "hung thủ" không bị gọi lại, không bị thay tên.
+    pipeline = _new_pipeline()
+    first = copy.deepcopy(load_fixture("EXTRACT 0"))
+    first["names"].append({"name": "Hưng Thu", "kind": "person", "role": "witness", "context": "Bảo vệ cổng cảng."})
+    first["events"][5]["names"].append("Hưng Thu")
+    cluster = copy.deepcopy(load_fixture("CLUSTER"))
+    cluster["groups"].append({"id": "person_4", "kind": "person", "role": "witness", "real_names": ["Hưng Thu"]})
+    aliases = copy.deepcopy(load_fixture("ALIASES"))
+    aliases["entities"].append({"id": "person_4", "alias_vi": "Lê Minh", "alias_en": "Le Minh", "gender": "male",
+                                "age_range": "60s", "appearance_en": "A Vietnamese man in his sixties, thin, grey "
+                                "crew cut, wearing a faded security guard uniform and rubber boots."})
+    vi = copy.deepcopy(load_fixture("WRITE_VI p1"))
+    vi["scenes"][2]["narration_vi"] = vi["scenes"][2]["narration_vi"].replace(
+        "Bóng người ấy là ai?", "Bóng người ấy có phải là hung thủ?")
+    llm, calls = make_fake_llm({"EXTRACT 0": first, "CLUSTER": cluster, "ALIASES": aliases, "WRITE_VI p1": vi})
+
+    _run_pipeline(pipeline, llm)
+
+    assert calls.count("WRITE_VI p1") == 1
+    assert "Hưng Thu" in [n for e in _bible(pipeline).entities for n in e.real_names]
+    plan = case_store.load_plan(pipeline.case_id)
+    assert plan.scenes[3].narration_vi.endswith("có phải là hung thủ?") and plan.scenes[3].flags == []
+    assert not any("Hưng Thu" in w for w in plan.warnings)
 
 
 def test_outline_prompt_has_events_with_fictional_names_only(isolated_projects_dir):
@@ -278,6 +415,23 @@ def test_write_vi_missing_event_rejected(isolated_projects_dir):
     assert "lời Việt" in info.value.user_message
     assert "ev_0_6" in info.value.user_message
     assert "WRITE_EN p1" not in calls
+
+
+def test_write_vi_each_scene_must_cover_one_to_three_events(isolated_projects_dir):
+    # (C) cảnh 1 nhận kể cả 6 sự việc, cảnh 2–3 không kể gì; lời toàn chữ "mưa": phải bị loại.
+    pipeline = _new_pipeline()
+    filler = " ".join(["mưa"] * 30)
+    lazy = {"scenes": [
+        {"narration_vi": filler, "visual_kind": "image", "board_reveal": [], "covers_event_ids": ALL_EVENTS[:6]},
+        {"narration_vi": filler, "visual_kind": "image", "board_reveal": [], "covers_event_ids": []},
+        {"narration_vi": filler, "visual_kind": "image", "board_reveal": [], "covers_event_ids": []},
+    ]}
+    llm, calls = make_fake_llm({"WRITE_VI p1": [lazy, load_fixture("WRITE_VI p1")]})
+    _run_pipeline(pipeline, llm, stop_after="write_vi_p1")
+    assert calls.count("WRITE_VI p1") == 2
+    reason = _reason(llm)
+    assert "cảnh 1" in reason and "tối đa 3" in reason
+    assert "cảnh 2" in reason and "cảnh 3" in reason and "ít nhất 1" in reason
 
 
 def test_write_vi_short_narration_and_unknown_reveal_rejected(isolated_projects_dir):

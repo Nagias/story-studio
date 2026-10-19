@@ -182,6 +182,43 @@ def test_single_syllable_name_does_not_rewrite_common_words():
     assert replaced == ["Lâm"]
 
 
+# Tên thật mà bỏ dấu thì trùng một danh từ chung: chỗ viết đúng dấu danh từ chung không phải là tên.
+COLLIDING = [ForbiddenName("Hưng Thu", "e1", "Lê Minh", "Le Minh"),
+             ForbiddenName("Gia Định", "e2", "Phú An", "Phu An")]
+
+
+@pytest.mark.parametrize("text", [
+    "Cảnh sát chưa tìm ra hung thủ.",
+    "Hung thủ vẫn lẩn trốn.",
+    "Cả gia đình ông đều có mặt.",
+    "GIA ĐÌNH nạn nhân im lặng.",
+])
+def test_generic_term_text_is_not_a_folded_real_name(text):
+    assert apply_aliases(text, COLLIDING, "vi") == (text, [])
+    assert find_unknown_names(text, COLLIDING, []) == []
+
+
+def test_colliding_real_names_are_still_replaced_and_flagged():
+    new, replaced = apply_aliases("Hưng Thu đã khai ở Bệnh viện Gia Định, trước mặt gia đình.", COLLIDING, "vi")
+    assert new == "Lê Minh đã khai ở Bệnh viện Phú An, trước mặt gia đình."
+    assert replaced == ["Hưng Thu", "Gia Định"]
+    assert find_unknown_names("HUNG THU said nothing.", COLLIDING, []) == ["Hưng Thu"]   # tên viết không dấu
+    assert find_unknown_names("Ông Hưng Thu, hung thủ?", COLLIDING, ["Lê Minh"]) == ["Hưng Thu"]
+
+
+def test_check_plan_leaves_generic_terms_alone_when_real_names_collide():
+    ents = [_entity("e1", ["Hưng Thu"], "Lê Minh", "Le Minh"),
+            _entity("e2", ["Gia Định"], "Phú An", "Phu An", kind="place")]
+    clean = "Cả gia đình ông đều có mặt, nhưng cảnh sát chưa tìm ra hung thủ."
+    named = "Hưng Thu lớn lên ở Gia Định."
+    plan = _plan([_scene(1, narration_vi=clean), _scene(2, narration_vi=named)], entities=ents)
+    checked = check_plan(plan, "")
+    assert checked.scenes[0].narration_vi == clean and checked.scenes[0].flags == []
+    assert checked.scenes[1].narration_vi == "Lê Minh lớn lên ở Phú An."
+    assert all("cảnh 1 " not in w for w in checked.warnings)
+    assert len(checked.warnings) == 2 and not has_blocking_flags(checked)
+
+
 # ---------------------------------------------------------------- find_dates
 
 def test_dates_found_but_times_kept():

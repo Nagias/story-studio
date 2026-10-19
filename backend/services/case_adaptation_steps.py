@@ -62,8 +62,7 @@ from services.case_adaptation_llm import RETRYABLE_KINDS, LLMCall, LLMError
 from services.case_adaptation_prompts import (
     BGM_ENERGIES,
     EN_WORDS,
-    MAX_EVENTS_PER_SCENE,
-    MAX_SCENE_OVERSHOOT,
+    MAX_SCENES_PER_EVENT,
     MIN_EVENT_WORDS,
     MIN_IMAGE_PROMPT_WORDS,
     MIN_VIDEO_PROMPT_WORDS,
@@ -78,10 +77,13 @@ from services.case_adaptation_prompts import (
     aliases_prompt,
     cluster_prompt,
     extract_prompt,
+    max_events_per_scene,
     min_events_for,
     outline_prompt,
     prompts_prompt,
     rewrite_en_prompt,
+    supported_scene_cap,
+    video_scene_cap,
     word_count,
     write_en_prompt,
     write_vi_prompt,
@@ -1055,14 +1057,44 @@ class _OutlineOutput(_Item):
     parts: list[_OutlinePart]
 
 
+def _repeated_event_problems(drafts: list[tuple[str, str, list[str], int]]) -> list[str]:
+    """Mỗi sự việc thuộc đúng một nhịp; riêng nhịp hook được mượn trước tối đa 1 sự việc của một nhịp khác.
+    `drafts`: (kind, summary, event_ids, scene_count) theo thứ tự nhịp."""
+    owners: dict[str, list[int]] = {}
+    for n, (_kind, _summary, ids, _count) in enumerate(drafts, start=1):
+        for event_id in ids:
+            owners.setdefault(event_id, []).append(n)
+    kinds = {n: draft[0] for n, draft in enumerate(drafts, start=1)}
+    borrowed: dict[int, list[str]] = {}
+    repeated: list[str] = []
+    for event_id, where in owners.items():
+        if len(where) < 2:
+            continue
+        hooks = [n for n in where if kinds[n] == "hook"]
+        if len(where) == 2 and len(hooks) == 1:
+            borrowed.setdefault(hooks[0], []).append(event_id)
+        else:
+            repeated.append(f"{event_id} (nhịp {', '.join(map(str, where))})")
+    problems = []
+    for n, events in borrowed.items():
+        if len(events) > 1:
+            problems.append(f"Nhịp {n} (hook) mượn trước {len(events)} sự việc của nhịp khác ({_id_list(events)}); "
+                            "nhịp hook chỉ được mượn tối đa 1 sự việc")
+    if repeated:
+        problems.append(f"Các sự việc sau nằm trong nhiều nhịp: {_id_list(repeated)}. Mỗi sự việc chỉ thuộc đúng một "
+                        "nhịp, không kể lại để độn cảnh (riêng nhịp hook được mượn trước 1 sự việc)")
+    return problems
+
+
 def _validate_outline(raw: Any, bible: CaseBible, target_minutes: int) -> dict:
     parsed = _OutlineOutput.model_validate(raw)
     lo, hi = target_scenes(target_minutes)
+    video_cap = video_scene_cap(hi)                     # cả video, kể cả cảnh miễn trừ
     min_part, max_part = SCENES_PER_PART
     known = [ev.id for ev in bible.timeline]
     known_set = set(known)
     # Bài có quá nhiều sự việc so với số cảnh tối đa thì mỗi cảnh buộc phải kể nhiều hơn.
-    per_scene = max(MAX_EVENTS_PER_SCENE, math.ceil(len(known) / max(hi, 1)))
+    per_scene = max_events_per_scene(len(known), hi)
     forbidden = build_forbidden_names(bible, "")
     problems: list[str] = []
 
@@ -1093,6 +1125,10 @@ def _validate_outline(raw: Any, bible: CaseBible, target_minutes: int) -> dict:
             need = math.ceil(len(ids) / per_scene)
             problems.append(f"Nhịp {n} có {len(ids)} sự việc mà chỉ {item.scene_count} cảnh; mỗi cảnh kể tối đa "
                             f"{per_scene} sự việc, nên cần ít nhất {need} cảnh hoặc tách thành nhiều nhịp")
+        elif ids and item.scene_count > MAX_SCENES_PER_EVENT * len(ids):
+            most = max(min_part, MAX_SCENES_PER_EVENT * len(ids))
+            problems.append(f"Nhịp {n} có {len(ids)} sự việc mà tới {item.scene_count} cảnh; mỗi sự việc đủ cho tối đa "
+                            f"{MAX_SCENES_PER_EVENT} cảnh, nên nhịp này tối đa {most} cảnh. Không kéo dài cho đủ số cảnh")
         covered.update(ids)
         summary, _replaced = apply_aliases(item.summary_vi, forbidden, "vi")
         drafts.append((kind, summary, ids, item.scene_count))
@@ -1100,15 +1136,21 @@ def _validate_outline(raw: Any, bible: CaseBible, target_minutes: int) -> dict:
     missing = [e for e in known if e not in covered]
     if missing:
         problems.append(f"Có {len(missing)} sự việc chưa nằm trong nhịp nào: {_id_list(missing)}. "
-                        "Mọi sự việc phải nằm trong ít nhất một nhịp")
+                        "Mọi sự việc phải nằm trong đúng một nhịp")
+    problems += _repeated_event_problems(drafts)
     total = sum(item.scene_count for item in parsed.parts)
-    if total > hi * MAX_SCENE_OVERSHOOT:
-        problems.append(f"Tổng số cảnh là {total}, vượt mức tối đa {math.floor(hi * MAX_SCENE_OVERSHOOT)} cảnh "
-                        f"(mục tiêu {lo}–{hi} cảnh cho {target_minutes} phút)")
-    elif total < lo and parsed.supported_minutes >= target_minutes:
-        problems.append(f"Tổng số cảnh chỉ có {total}, trong khi supported_minutes = {parsed.supported_minutes} "
-                        f"(≥ {target_minutes} phút) thì cần từ {lo} đến {hi} cảnh. Hãy thêm nhịp và thêm cảnh, "
-                        "hoặc ước lại supported_minutes cho đúng lượng tư liệu của bài")
+    if total + 1 > video_cap:
+        problems.append(f"Tổng số cảnh là {total} ({total + 1} kể cả cảnh miễn trừ), vượt mức tối đa {video_cap} cảnh "
+                        f"của video {target_minutes} phút; dàn ý tối đa {video_cap - 1} cảnh")
+    elif parsed.supported_minutes < target_minutes and total > supported_scene_cap(parsed.supported_minutes):
+        problems.append(f"Bài chỉ đủ tư liệu cho {parsed.supported_minutes} phút nên tổng số cảnh tối đa "
+                        f"{supported_scene_cap(parsed.supported_minutes)} cảnh, nhưng dàn ý có {total} cảnh. "
+                        "Không kéo dài cho đủ số cảnh; bớt cảnh, hoặc ước lại supported_minutes cho đúng lượng tư liệu")
+    elif total + 1 < lo and parsed.supported_minutes >= target_minutes:
+        problems.append(f"Tổng số cảnh chỉ có {total} ({total + 1} kể cả cảnh miễn trừ), trong khi supported_minutes = "
+                        f"{parsed.supported_minutes} (≥ {target_minutes} phút) thì dàn ý cần từ {lo - 1} đến {hi - 1} "
+                        f"cảnh ({lo}–{hi} cảnh kể cả cảnh miễn trừ). Hãy thêm nhịp và thêm cảnh, hoặc ước lại "
+                        "supported_minutes cho đúng lượng tư liệu của bài")
     if problems:
         raise StepRejected("; ".join(problems))
 
@@ -1218,7 +1260,8 @@ def _validate_write_vi(raw: Any, ctx: _PartContext, guard: _TextGuard) -> dict:
     n = ctx.part.scene_count
     lo, hi = VI_WORDS
     board_ids = {e.id for e in ctx.bible.evidence} | {r.id for r in ctx.bible.relations}
-    event_ids = {e.id for e in ctx.bible.timeline}
+    part_events = set(ctx.part.event_ids)
+    per_scene = max_events_per_scene(len(ctx.part.event_ids), n)
     problems: list[str] = []
     soft: list[str] = []
     if len(parsed.scenes) != n:
@@ -1234,7 +1277,14 @@ def _validate_write_vi(raw: Any, ctx: _PartContext, guard: _TextGuard) -> dict:
         if unknown:
             problems.append(f"cảnh {k}: board_reveal có id không có trong danh sách bằng chứng/quan hệ: "
                             f"{_id_list(unknown)}")
-        covers = [e for e in _clean_ids(scene.covers_event_ids) if e in event_ids]
+        # Chỉ tính sự việc của nhịp này; mỗi cảnh phải kể 1..per_scene sự việc, để không dồn hết vào một cảnh.
+        covers = [e for e in _clean_ids(scene.covers_event_ids) if e in part_events]
+        if not covers:
+            problems.append(f"cảnh {k}: covers_event_ids không có sự việc nào của nhịp; mỗi cảnh phải kể ít nhất 1 "
+                            f"sự việc của nhịp")
+        elif len(covers) > per_scene:
+            problems.append(f"cảnh {k}: covers_event_ids có {len(covers)} sự việc, mỗi cảnh kể tối đa {per_scene} "
+                            "sự việc; hãy chia các sự việc cho các cảnh theo thứ tự")
         covered.update(covers)
         soft += [f"cảnh {k} {issue}" for issue in guard.narration(scene.narration_vi, "vi")]
         scenes.append({"narration_vi": scene.narration_vi, "visual_kind": _norm_visual(scene.visual_kind),

@@ -8,6 +8,8 @@ Kiểm lọt tên thật, ngày tháng cụ thể và tự áp tên hư cấu (G
     * Tên thật chỉ có một âm tiết và ngắn hơn 3 ký tự thì bỏ qua.
     * Tên thật một âm tiết (ví dụ "Lâm") chỉ khớp khi viết hoa chữ đầu và đúng dấu (hoặc bỏ hết dấu),
       để không thay nhầm "làm", "lắm" vì khi bỏ dấu chúng trùng "lam".
+    * Chỗ khớp mà viết đúng dấu là một danh từ chung trong GENERIC_TERMS thì bỏ qua: tên thật "Hưng Thu" hay
+      "Gia Định" bỏ dấu trùng "hung thủ", "gia đình", nhưng hai cụm này trong lời kể không phải tên.
     * Tên quốc gia và tên chung của cơ quan được giữ nguyên (spec mục 6): build_forbidden_names không đưa
       chúng vào danh sách cấm (khi entity là địa danh hoặc cơ quan), nên không bị coi là lọt tên.
 - find_dates: ngày-tháng cụ thể và năm viết bằng số; giờ trong ngày và thập niên được giữ.
@@ -199,6 +201,8 @@ def _scan(norm: str, forbidden: Iterable[ForbiddenName], alias_pool: Iterable[st
         s, e = m.span()
         if any(a <= s and e <= b for a, b in spans):
             continue
+        if _accented_key(norm[s:e]) in _GENERIC_KEYS:
+            continue    # chữ viết đúng dấu là danh từ chung ("hung thủ"), không phải tên thật bỏ dấu ("Hưng Thu")
         key = " ".join(m.group(0).split())
         fn = entries[key]
         if " " not in key and not _single_token_ok(norm[s:e], fn.real):
