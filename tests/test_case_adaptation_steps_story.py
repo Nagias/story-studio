@@ -278,6 +278,23 @@ def test_outline_total_capped_by_supported_minutes(isolated_projects_dir):
     assert "tối đa 9 cảnh" in reason and "2 phút" in reason
 
 
+def test_outline_too_few_events_for_target_asks_to_lower_supported_minutes(isolated_projects_dir):
+    # 12 sự việc: tối đa 2 × 12 = 24 cảnh (25 kể cả cảnh miễn trừ) < 35, nên không thể "thêm cảnh" cho đủ 8 phút.
+    claims_full = _outline_with(supported_minutes=8)
+    lowered = _outline_with(supported_minutes=6)
+    pipeline = _new_pipeline()
+    llm, calls = make_fake_llm({"OUTLINE": [claims_full, lowered]})
+
+    result = _run_pipeline(pipeline, llm, stop_after="outline")
+
+    assert calls.count("OUTLINE") == 2
+    reason = _reason(llm)
+    assert "12 sự việc" in reason and "tối đa 24 cảnh" in reason and "35" in reason
+    assert "hạ supported_minutes" in reason and "6 phút" in reason
+    assert "thêm cảnh" not in reason.replace("thay vì thêm cảnh", "")
+    assert result.output["supported_minutes"] == 6
+
+
 def _pipeline_with_events(n_events: int) -> CasePipeline:
     """Hàng việc đã qua bước đặt tên hư cấu, dòng thời gian thay bằng `n_events` sự việc (đều ở đoạn 0)."""
     pipeline = _new_pipeline()
@@ -306,6 +323,20 @@ def test_outline_cap_counts_the_disclaimer_scene(isolated_projects_dir):
     reason = _reason(llm)
     assert "48" in reason and "miễn trừ" in reason
     assert sum(p["scene_count"] for p in result.output["parts"]) == 47
+
+
+def test_outline_too_few_scenes_with_enough_events_asks_for_more_scenes(isolated_projects_dir):
+    ids = [f"ev_0_{i}" for i in range(1, 31)]
+    thin = _outline_with(supported_minutes=8, parts=_parts(*[("investigation", ids[i:i + 3], 2) for i in range(0, 30, 3)]))
+    groups = [ids[i:i + 4] for i in range(0, 24, 4)] + [ids[24:27], ids[27:30]]
+    full = _outline_with(supported_minutes=8, parts=_parts(*[("investigation", g, 6) for g in groups[:-1]],
+                                                           ("investigation", groups[-1], 5)))      # 47 cảnh
+    pipeline = _pipeline_with_events(30)
+    llm, calls = make_fake_llm({"OUTLINE": [thin, full]})
+    _run_pipeline(pipeline, llm, stop_after="outline")
+    assert calls == ["OUTLINE", "OUTLINE"]
+    reason = _reason(llm)
+    assert "chỉ có 20" in reason and "tăng scene_count" in reason and "tối đa 47 cảnh" in reason
 
 
 def test_outline_prompt_does_not_anchor_supported_minutes_to_target(isolated_projects_dir):

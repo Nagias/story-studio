@@ -70,6 +70,7 @@ from services.case_adaptation_prompts import (
     PART_KINDS,
     RELATION_TYPES,
     ROLES,
+    SCENES_PER_MINUTE,
     SCENES_PER_PART,
     SYSTEM_PROMPT,
     VI_WORDS,
@@ -1086,6 +1087,26 @@ def _repeated_event_problems(drafts: list[tuple[str, str, list[str], int]]) -> l
     return problems
 
 
+def _too_few_scenes_problem(total: int, n_events: int, supported: int, target_minutes: int,
+                            target: tuple[int, int], video_cap: int) -> str:
+    """Lý do khi bài nhận đủ tư liệu (supported ≥ target) mà dàn ý ít cảnh hơn mục tiêu. Nếu số sự việc không cho
+    phép đạt mục tiêu (mỗi sự việc tối đa 2 cảnh) thì bảo hạ supported_minutes, không bảo thêm cảnh."""
+    lo, hi = target
+    have = f"Tổng số cảnh chỉ có {total} ({total + 1} kể cả cảnh miễn trừ)"
+    reachable = min(MAX_SCENES_PER_EVENT * n_events, video_cap - 1)
+    if reachable + 1 < lo:
+        honest = max(1, min(reachable // SCENES_PER_MINUTE, target_minutes - 1))
+        return (f"{have}, trong khi supported_minutes = {supported} (≥ {target_minutes} phút) thì video cần ít nhất "
+                f"{lo} cảnh. Bài có {n_events} sự việc nên dàn ý tối đa {reachable} cảnh (mỗi sự việc tối đa "
+                f"{MAX_SCENES_PER_EVENT} cảnh, {reachable + 1} cảnh kể cả cảnh miễn trừ), vẫn ít hơn {lo}: tư liệu "
+                f"không đủ cho {target_minutes} phút. Hãy hạ supported_minutes xuống mức tư liệu thật sự đủ "
+                f"(khoảng {honest} phút) thay vì thêm cảnh, rồi giữ số cảnh vừa với số phút đó")
+    return (f"{have}, trong khi supported_minutes = {supported} (≥ {target_minutes} phút) thì dàn ý cần từ {lo - 1} "
+            f"đến {hi - 1} cảnh ({lo}–{hi} cảnh kể cả cảnh miễn trừ). Hãy tăng scene_count của các nhịp (mỗi sự việc "
+            f"tối đa {MAX_SCENES_PER_EVENT} cảnh, dàn ý tối đa {reachable} cảnh), hoặc hạ supported_minutes nếu "
+            "tư liệu không đủ")
+
+
 def _validate_outline(raw: Any, bible: CaseBible, target_minutes: int) -> dict:
     parsed = _OutlineOutput.model_validate(raw)
     lo, hi = target_scenes(target_minutes)
@@ -1147,10 +1168,8 @@ def _validate_outline(raw: Any, bible: CaseBible, target_minutes: int) -> dict:
                         f"{supported_scene_cap(parsed.supported_minutes)} cảnh, nhưng dàn ý có {total} cảnh. "
                         "Không kéo dài cho đủ số cảnh; bớt cảnh, hoặc ước lại supported_minutes cho đúng lượng tư liệu")
     elif total + 1 < lo and parsed.supported_minutes >= target_minutes:
-        problems.append(f"Tổng số cảnh chỉ có {total} ({total + 1} kể cả cảnh miễn trừ), trong khi supported_minutes = "
-                        f"{parsed.supported_minutes} (≥ {target_minutes} phút) thì dàn ý cần từ {lo - 1} đến {hi - 1} "
-                        f"cảnh ({lo}–{hi} cảnh kể cả cảnh miễn trừ). Hãy thêm nhịp và thêm cảnh, hoặc ước lại "
-                        "supported_minutes cho đúng lượng tư liệu của bài")
+        problems.append(_too_few_scenes_problem(total, len(known), parsed.supported_minutes, target_minutes,
+                                                (lo, hi), video_cap))
     if problems:
         raise StepRejected("; ".join(problems))
 
