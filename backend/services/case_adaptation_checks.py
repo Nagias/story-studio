@@ -73,11 +73,14 @@ GENERIC_TERMS: tuple[str, ...] = (
     "cảnh sát", "công an", "toà án", "toà án nhân dân", "viện kiểm sát", "viện kiểm sát nhân dân", "bệnh viện",
     "cơ quan điều tra", "cơ quan công an", "cơ quan cảnh sát điều tra", "cơ quan chức năng", "lực lượng chức năng",
     "chính quyền địa phương", "công an phường", "công an xã", "công an huyện", "công an tỉnh", "đội trọng án",
-    "trực ban hình sự", "pháp y", "bác sĩ pháp y", "giám định viên", "nạn nhân", "gia đình nạn nhân", "nghi phạm",
-    "nghi can", "hung thủ", "nhân chứng", "điều tra viên", "kiểm sát viên", "thẩm phán", "luật sư", "người dân",
-    "hàng xóm",
+    "cảnh sát giao thông", "cảnh sát hình sự", "cảnh sát cơ động", "phòng cháy chữa cháy",
+    "cảnh sát phòng cháy chữa cháy", "trực ban hình sự", "pháp y", "bác sĩ pháp y", "giám định viên",
+    "bệnh viện đa khoa", "trường học", "trường tiểu học", "trường trung học", "nạn nhân", "gia đình",
+    "gia đình nạn nhân", "người thân", "nghi phạm", "nghi can", "hung thủ", "nhân chứng", "điều tra viên",
+    "kiểm sát viên", "thẩm phán", "luật sư", "người dân", "hàng xóm", "người đàn ông", "người phụ nữ", "cô gái",
+    "chàng trai", "người lạ", "đứa trẻ",
     "police", "court", "prosecutor", "hospital", "investigators", "detective", "coroner", "medical examiner",
-    "victim", "suspect", "witness", "killer", "neighbors",
+    "victim", "suspect", "witness", "killer", "neighbors", "family",
 )
 _GENERIC_KEYS = frozenset(_key(t) for t in GENERIC_TERMS)
 

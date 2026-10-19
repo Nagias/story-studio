@@ -312,6 +312,54 @@ def test_extract_nickname_missing_from_names_rejected(isolated_projects_dir):
     assert "thiếu trong names" in reason and "Sáu lùn" in reason
 
 
+@pytest.mark.parametrize("phrase, kind", [
+    ("Cảnh sát giao thông", "organization"), ("Trường tiểu học", "place"), ("Bệnh viện đa khoa", "organization"),
+])
+def test_extract_listed_generic_phrase_accepted_without_alias(isolated_projects_dir, phrase, kind):
+    # Model liệt kê cụm chung vào names và nhắc trong sự việc: nhận ngay, cụm đó không thành tên cần đặt alias.
+    pipeline = _new_pipeline()
+    first = copy.deepcopy(load_fixture("EXTRACT 0"))
+    first["names"].append({"name": phrase, "kind": kind, "role": "other", "context": "Có mặt ở hiện trường."})
+    first["events"][0]["names"].append(phrase)
+    llm, calls = make_fake_llm({"EXTRACT 0": first})
+
+    result = _run_until(pipeline, "cluster", llm)
+
+    assert calls == ["EXTRACT 0", "EXTRACT 1", "CLUSTER"]
+    assert phrase not in [n["name"] for n in case_store.load_step_output(pipeline.case_id, "extract_00")["names"]]
+    assert f'"{phrase}"' not in llm.prompts[-1]               # không có trong danh sách gửi đi gộp tên
+    assert phrase not in [n for g in result.output["groups"] for n in g["real_names"]]
+
+
+@pytest.mark.parametrize("phrase", ["Cảnh sát giao thông", "Gia đình", "Phòng cháy chữa cháy"])
+def test_extract_event_only_generic_phrase_accepted(isolated_projects_dir, phrase):
+    pipeline = _new_pipeline()
+    first = copy.deepcopy(load_fixture("EXTRACT 0"))
+    first["events"][0]["names"].append(phrase)
+    llm, calls = make_fake_llm({"EXTRACT 0": first})
+    _run(pipeline, "extract_00", llm)
+    assert calls == ["EXTRACT 0"]
+
+
+def test_listing_missing_name_on_retry_clears_rejection(isolated_projects_dir):
+    # Cụm không có trong GENERIC_TERMS, chỉ nhắc trong sự việc: bị đòi thêm vào names. Model thêm (kind bất kỳ)
+    # là qua, dù bước lọc vẫn bỏ cụm đó khỏi danh sách tên; không thành vòng loại đi loại lại.
+    phrase = "Đội phản ứng nhanh"
+    assert not is_kept_term(phrase)
+    pipeline = _new_pipeline()
+    attempt1 = copy.deepcopy(load_fixture("EXTRACT 0"))
+    attempt1["events"][0]["names"].append(phrase)
+    attempt2 = copy.deepcopy(attempt1)
+    attempt2["names"].append({"name": phrase, "kind": "organization", "role": "other", "context": "Đội tới hiện trường."})
+    llm, calls = make_fake_llm({"EXTRACT 0": [attempt1, attempt2, LAZY_EXTRACT]})
+
+    result = _run(pipeline, "extract_00", llm)
+
+    assert calls == ["EXTRACT 0", "EXTRACT 0"]
+    assert phrase in llm.prompts[1].split(RETRY_MARK, 1)[1]
+    assert phrase not in [n["name"] for n in result.output["names"]]
+
+
 def test_extract_second_chunk_gets_known_names(isolated_projects_dir):
     pipeline = _new_pipeline()
     llm, calls = make_fake_llm()

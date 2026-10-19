@@ -425,10 +425,13 @@ def _validate_extract(raw: Any, chunk: str, known_names: list[str]) -> dict:
         problems.append(f"Còn {len(short) - 5} tóm tắt sự việc khác cũng quá ngắn")
 
     # Tên nhắc trong sự việc, bằng chứng, quan hệ phải có trong "names" (hoặc đã gặp ở đoạn trước),
-    # nếu không thì tên đó không bao giờ được đặt tên hư cấu.
+    # nếu không thì tên đó không bao giờ được đặt tên hư cấu. "Có trong names" tính theo mọi mục model đã liệt kê,
+    # kể cả mục bị lọc bỏ ở trên (ví dụ "Cảnh sát giao thông" ghi là organization): liệt kê vào names, với kind
+    # bất kỳ, luôn gỡ được lý do bị loại, nên không có vòng loại đi loại lại.
     index = _NameIndex()
-    for n in [*known_names, *(item["name"] for item in names)]:
-        index.add(n, n)
+    for n in [*known_names, *(" ".join(item.name.split()) for item in parsed.names)]:
+        if n:
+            index.add(n, n)
     referenced = [n for ev in parsed.events for n in ev.names]
     referenced += [n for ev in parsed.evidence for n in ev.names]
     referenced += [n for rel in parsed.relations for n in (rel.source_name, rel.target_name)]
