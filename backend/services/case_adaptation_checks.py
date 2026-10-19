@@ -70,11 +70,14 @@ _KEPT_TERMS = frozenset(_key(t) for t in [
 # Prompt đọc bài (case_adaptation_prompts.extract_prompt) liệt kê đúng danh sách này, và bước đọc bài bỏ các mục
 # này khỏi danh sách tên, nên prompt và code luôn khớp nhau.
 GENERIC_TERMS: tuple[str, ...] = (
-    "cảnh sát", "công an", "toà án", "viện kiểm sát", "bệnh viện", "cơ quan điều tra", "cơ quan công an",
-    "cơ quan cảnh sát điều tra", "trực ban hình sự", "pháp y", "nạn nhân", "nghi phạm", "nghi can", "hung thủ",
-    "nhân chứng", "điều tra viên", "kiểm sát viên", "thẩm phán", "luật sư",
+    "cảnh sát", "công an", "toà án", "toà án nhân dân", "viện kiểm sát", "viện kiểm sát nhân dân", "bệnh viện",
+    "cơ quan điều tra", "cơ quan công an", "cơ quan cảnh sát điều tra", "cơ quan chức năng", "lực lượng chức năng",
+    "chính quyền địa phương", "công an phường", "công an xã", "công an huyện", "công an tỉnh", "đội trọng án",
+    "trực ban hình sự", "pháp y", "bác sĩ pháp y", "giám định viên", "nạn nhân", "gia đình nạn nhân", "nghi phạm",
+    "nghi can", "hung thủ", "nhân chứng", "điều tra viên", "kiểm sát viên", "thẩm phán", "luật sư", "người dân",
+    "hàng xóm",
     "police", "court", "prosecutor", "hospital", "investigators", "detective", "coroner", "medical examiner",
-    "victim", "suspect", "witness", "killer",
+    "victim", "suspect", "witness", "killer", "neighbors",
 )
 _GENERIC_KEYS = frozenset(_key(t) for t in GENERIC_TERMS)
 

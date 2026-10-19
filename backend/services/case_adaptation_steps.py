@@ -251,22 +251,26 @@ def _has_capital(token: str) -> bool:
     return any(c.isdigit() or (c.isalpha() and not c.islower()) for c in token)
 
 
-def _looks_proper(name: str) -> bool:
-    """Trông như tên riêng hay mã số. Không phải tên riêng:
-    - không có chữ hoa hay chữ số nào ("cơ quan điều tra");
-    - nhiều chữ mà chỉ chữ đầu viết hoa ("Cơ quan điều tra", "Lực lượng chức năng"): đó là chữ hoa đầu câu.
-    Tên riêng nhiều chữ luôn viết hoa cả chữ sau ("ông Hùng", "Cảng Tân Hải", "TP Hải Phòng")."""
+def _looks_proper(name: str, kind: Optional[str] = None) -> bool:
+    """Trông như tên riêng hay mã số.
+    - Không có chữ hoa hay chữ số nào ("cơ quan điều tra") thì không phải, với mọi loại.
+    - Người (`kind == "person"`) và tên chưa rõ loại (`kind` None, ở phần kiểm tên thiếu): chỉ cần có chữ hoa, vì
+      biệt danh chỉ viết hoa chữ đầu ("Hùng sẹo", "Sáu lùn"); bỏ sót biệt danh là lọt tên thật.
+    - Nơi chốn, tổ chức nhiều chữ mà chỉ chữ đầu viết hoa ("Trường tiểu học") là chữ hoa đầu câu, không phải tên
+      riêng; tên riêng của nơi chốn, tổ chức viết hoa cả chữ sau ("Cảng Tân Hải", "TP Hải Phòng")."""
     tokens = name.split()
     if not tokens or not any(_has_capital(t) for t in tokens):
         return False
+    if kind in (None, "person"):
+        return True
     return len(tokens) == 1 or any(_has_capital(t) for t in tokens[1:])
 
 
 def _skip_name(name: str, kind: Optional[str] = None) -> bool:
-    """Tên không cần tên hư cấu: không trông như tên riêng, hoặc là tên giữ nguyên (tên nước, danh từ chung chỉ
-    cơ quan/vai trò; xem case_adaptation_checks.is_kept_term). Dùng chung cho danh sách tên và phần kiểm tên thiếu,
-    để khớp đúng điều prompt đọc bài dặn model không liệt kê."""
-    return not _looks_proper(name) or is_kept_term(name, kind)
+    """Tên không cần tên hư cấu: không trông như tên riêng, hoặc là tên giữ nguyên (tên nước, danh từ chung trong
+    GENERIC_TERMS; xem case_adaptation_checks.is_kept_term). Dùng chung cho danh sách tên (biết kind) và phần kiểm
+    tên thiếu (kind None), để khớp đúng điều prompt đọc bài dặn model không liệt kê."""
+    return not _looks_proper(name, kind) or is_kept_term(name, kind)
 
 
 class _NameIndex:

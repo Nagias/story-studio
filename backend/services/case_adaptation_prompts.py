@@ -86,6 +86,7 @@ Các tên đã gặp ở những đoạn trước. Nếu đoạn này nhắc l�
 
 YÊU CẦU
 1. "names": mọi tên riêng xuất hiện trong đoạn. Mỗi cách viết khác nhau là một mục riêng, chép nguyên văn (ví dụ họ tên đầy đủ, "ông/bà + tên", tên gọi tắt là ba mục khác nhau).
+   - MỌI người được gọi bằng tên trong đoạn đều phải có trong "names", kể cả biệt danh (ví dụ "Hùng sẹo", "Sáu lùn"), tên gọi ở nhà và người chỉ được nhắc một lần.
    - "kind": "person" (người), "place" (địa danh: thành phố, huyện, xã, đường, núi, sông, cảng, toà nhà...), "organization" (công ty, trường, bệnh viện hay đơn vị có tên cụ thể), "identifier" (biển số xe, số điện thoại, số giấy tờ, số tài khoản...).
    - "role" (người): {roles}. Nơi chốn, tổ chức, mã số ghi "other".
    - "context": một câu ngắn nói người/nơi đó là ai, ở đâu, liên quan thế nào trong đoạn.

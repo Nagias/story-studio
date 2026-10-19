@@ -288,6 +288,30 @@ def test_extract_generic_terms_listed_in_names_are_dropped(isolated_projects_dir
     assert "Nguyễn Văn Hùng" in names and "bà Mai" in names
 
 
+def test_extract_keeps_person_nickname(isolated_projects_dir):
+    # Biệt danh chỉ viết hoa chữ đầu vẫn là tên người: bỏ đi thì không có tên hư cấu và lọt tên thật.
+    pipeline = _new_pipeline()
+    first = copy.deepcopy(load_fixture("EXTRACT 0"))
+    first["names"].append({"name": "Hùng sẹo", "kind": "person", "role": "suspect", "context": "Biệt danh của một người."})
+    first["events"][1]["names"].append("Hùng sẹo")
+    llm, calls = make_fake_llm({"EXTRACT 0": first})
+    result = _run(pipeline, "extract_00", llm)
+    assert calls == ["EXTRACT 0"]
+    assert "Hùng sẹo" in [n["name"] for n in result.output["names"]]
+    assert "Hùng sẹo" in result.output["events"][1]["names"]
+
+
+def test_extract_nickname_missing_from_names_rejected(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    bad = copy.deepcopy(load_fixture("EXTRACT 0"))
+    bad["events"][2]["names"].append("Sáu lùn")                       # có trong sự việc, thiếu trong names
+    llm, calls = make_fake_llm({"EXTRACT 0": [bad, load_fixture("EXTRACT 0")]})
+    _run(pipeline, "extract_00", llm)
+    assert calls == ["EXTRACT 0", "EXTRACT 0"]
+    reason = llm.prompts[1].split(RETRY_MARK, 1)[1]
+    assert "thiếu trong names" in reason and "Sáu lùn" in reason
+
+
 def test_extract_second_chunk_gets_known_names(isolated_projects_dir):
     pipeline = _new_pipeline()
     llm, calls = make_fake_llm()
