@@ -4,7 +4,8 @@ Bộ chạy một việc nhỏ của hàng việc phân tích vụ án, cùng c�
 - ask_validated: gọi LLM một lần, kiểm kết quả bằng code; kết quả mỏng hoặc sai thì gọi lại, nối lý do bị loại
   vào cuối prompt; tối đa MAX_ATTEMPTS lần. Lỗi 9router không đáng thử lại (auth, no_credentials, http) thì
   dừng ngay. Hỏng thì raise StepFailed với thông báo tiếng Việt nêu đúng tên việc.
-- chunk_source (G1): cắt bài theo đoạn văn; đoạn văn dài quá thì cắt theo câu, câu dài quá thì cắt ở khoảng trắng.
+- chunk_source (G1): cắt bài theo đoạn văn (dòng trống, rồi tới xuống dòng); đoạn văn dài quá thì cắt theo câu,
+  câu dài quá thì cắt ở khoảng trắng.
   Mỗi đoạn là một lát cắt nguyên văn của bài, nên nối lại không mất chữ nào.
 - run_step: chạy một việc theo step.kind và trả StepResult. Không ghi kết quả; worker lưu
   StepResult.output vào steps/<step_id>.json rồi mới đánh dấu việc xong.
@@ -32,7 +33,7 @@ from models.case_adaptation_schemas import (
     TimelineEvent,
 )
 from services import case_adaptation_llm, case_store
-from services.case_adaptation_checks import _KEPT_TERMS, ForbiddenName, find_unknown_names, fold
+from services.case_adaptation_checks import ForbiddenName, find_unknown_names, fold, is_kept_term
 from services.case_adaptation_llm import RETRYABLE_KINDS, LLMCall, LLMError
 from services.case_adaptation_prompts import (
     MIN_EVENT_WORDS,
@@ -136,7 +137,10 @@ async def ask_validated(
 # ---------------------------------------------------------------- G1: cắt bài
 
 _PARAGRAPH_BREAK = re.compile(r"\n[ \t]*\n")
+_LINE_BREAK = re.compile(r"\n")   # bài dán từ web thường tách đoạn văn chỉ bằng một lần xuống dòng
 _SENTENCE_END = re.compile(r"[.!?…。！？]+[\"'”’»)\]]*(?=\s)")
+# Ranh giới để cắt, ưu tiên từ trên xuống: dòng trống, xuống dòng, hết câu. Hết cấp thì cắt ở khoảng trắng.
+_BOUNDARIES = (_PARAGRAPH_BREAK, _LINE_BREAK, _SENTENCE_END)
 
 
 def _trim(text: str, start: int, end: int) -> Optional[tuple[int, int]]:
@@ -162,13 +166,11 @@ def _split_at(text: str, start: int, end: int, pattern: re.Pattern) -> list[tupl
 
 
 def _hard_split(text: str, start: int, end: int, max_chars: int) -> list[tuple[int, int]]:
-    """Câu dài hơn max_chars: cắt ở chỗ xuống dòng (nếu không quá sớm), không thì ở khoảng trắng cuối cùng."""
+    """Câu dài hơn max_chars: cắt ở khoảng trắng cuối cùng trong giới hạn, không có thì cắt cứng."""
     spans = []
     while end - start > max_chars:
         window = text[start:start + max_chars + 1]
-        cut = window.rfind("\n")
-        if cut < max_chars // 2:
-            cut = max(window.rfind(" "), window.rfind("\t"), window.rfind("\n"))
+        cut = max(window.rfind(" "), window.rfind("\t"))
         if cut <= 0:
             cut = max_chars
         span = _trim(text, start, start + cut)
@@ -183,24 +185,29 @@ def _hard_split(text: str, start: int, end: int, max_chars: int) -> list[tuple[i
     return spans
 
 
+def _units(text: str, start: int, end: int, max_chars: int, level: int = 0) -> list[tuple[int, int]]:
+    """Chia [start, end) thành các khúc ≤ max_chars, chỉ đi xuống cấp ranh giới nhỏ hơn khi khúc còn quá dài."""
+    if end - start <= max_chars:
+        return [(start, end)]
+    if level == len(_BOUNDARIES):
+        return _hard_split(text, start, end, max_chars)
+    spans: list[tuple[int, int]] = []
+    for s, e in _split_at(text, start, end, _BOUNDARIES[level]):
+        spans.extend(_units(text, s, e, max_chars, level + 1))
+    return spans
+
+
 def chunk_source(text: str, max_chars: int) -> list[str]:
     """Cắt bài thành các đoạn dài tối đa `max_chars` ký tự, theo ranh giới đoạn văn.
 
-    Đoạn văn vừa cỡ không bao giờ bị cắt; đoạn văn dài hơn `max_chars` thì cắt theo câu, câu dài hơn nữa thì cắt
-    ở khoảng trắng. Các khúc được xếp lần lượt vào đoạn hiện tại cho tới khi đầy."""
+    Đoạn văn (ngăn bằng dòng trống) vừa cỡ thì không bị cắt. Đoạn văn dài hơn `max_chars` thì cắt ở chỗ xuống
+    dòng (bài dán từ web tách đoạn văn bằng một lần xuống dòng), rồi mới theo câu, câu dài hơn nữa thì cắt ở
+    khoảng trắng. Các khúc được xếp lần lượt vào đoạn hiện tại cho tới khi đầy."""
     if max_chars < 1:
         raise ValueError("max_chars phải lớn hơn 0")
     text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
-    units: list[tuple[int, int]] = []
-    for p_start, p_end in _split_at(text, 0, len(text), _PARAGRAPH_BREAK):
-        if p_end - p_start <= max_chars:
-            units.append((p_start, p_end))
-            continue
-        for s_start, s_end in _split_at(text, p_start, p_end, _SENTENCE_END):
-            if s_end - s_start <= max_chars:
-                units.append((s_start, s_end))
-            else:
-                units.extend(_hard_split(text, s_start, s_end, max_chars))
+    trimmed = _trim(text, 0, len(text))
+    units = _units(text, *trimmed, max_chars) if trimmed else []
 
     chunks: list[str] = []
     current: Optional[tuple[int, int]] = None
@@ -239,14 +246,27 @@ def _fold_key(name: str) -> str:
     return " ".join(fold(str(name)).split())
 
 
+def _has_capital(token: str) -> bool:
+    """Có chữ hoa, chữ số, hoặc chữ không phân biệt hoa thường (chữ Hán)."""
+    return any(c.isdigit() or (c.isalpha() and not c.islower()) for c in token)
+
+
 def _looks_proper(name: str) -> bool:
-    """Tên riêng có chữ hoa, chữ số, hoặc chữ không phân biệt hoa thường (chữ Hán). "cơ quan điều tra" thì không."""
-    return any(c.isdigit() or (c.isalpha() and not c.islower()) for c in name)
+    """Trông như tên riêng hay mã số. Không phải tên riêng:
+    - không có chữ hoa hay chữ số nào ("cơ quan điều tra");
+    - nhiều chữ mà chỉ chữ đầu viết hoa ("Cơ quan điều tra", "Lực lượng chức năng"): đó là chữ hoa đầu câu.
+    Tên riêng nhiều chữ luôn viết hoa cả chữ sau ("ông Hùng", "Cảng Tân Hải", "TP Hải Phòng")."""
+    tokens = name.split()
+    if not tokens or not any(_has_capital(t) for t in tokens):
+        return False
+    return len(tokens) == 1 or any(_has_capital(t) for t in tokens[1:])
 
 
-def _is_kept_term(name: str) -> bool:
-    """Tên quốc gia, tên chung của cơ quan: giữ nguyên trong lời kể (spec mục 6), không cần tên hư cấu."""
-    return _fold_key(name) in _KEPT_TERMS
+def _skip_name(name: str, kind: Optional[str] = None) -> bool:
+    """Tên không cần tên hư cấu: không trông như tên riêng, hoặc là tên giữ nguyên (tên nước, danh từ chung chỉ
+    cơ quan/vai trò; xem case_adaptation_checks.is_kept_term). Dùng chung cho danh sách tên và phần kiểm tên thiếu,
+    để khớp đúng điều prompt đọc bài dặn model không liệt kê."""
+    return not _looks_proper(name) or is_kept_term(name, kind)
 
 
 class _NameIndex:
@@ -381,9 +401,7 @@ def _validate_extract(raw: Any, chunk: str, known_names: list[str]) -> dict:
     seen: set[str] = set()
     for item in parsed.names:
         name = " ".join(item.name.split())
-        if not name or not _looks_proper(name) or _exact_key(name) in seen:
-            continue
-        if item.kind in ("place", "organization") and _is_kept_term(name):
+        if not name or _skip_name(name, item.kind) or _exact_key(name) in seen:
             continue
         seen.add(_exact_key(name))
         names.append({"name": name, "kind": item.kind, "role": _norm_role(item.role), "context": item.context})
@@ -410,8 +428,7 @@ def _validate_extract(raw: Any, chunk: str, known_names: list[str]) -> dict:
     referenced = [n for ev in parsed.events for n in ev.names]
     referenced += [n for ev in parsed.evidence for n in ev.names]
     referenced += [n for rel in parsed.relations for n in (rel.source_name, rel.target_name)]
-    missing = [n for n in _clean_names(referenced)
-               if _looks_proper(n) and not _is_kept_term(n) and index.get(n) is None]
+    missing = [n for n in _clean_names(referenced) if not _skip_name(n) and index.get(n) is None]
     if missing:
         problems.append(f"Các tên sau có trong events/evidence/relations nhưng thiếu trong names: {_quoted_list(missing)}. "
                         "Hãy thêm từng tên vào names (kèm kind, role, context)")
@@ -709,7 +726,7 @@ def _build_bible(parsed: _AliasOutput, groups: list[dict], extracts: list[tuple[
 
     timeline: list[TimelineEvent] = []
     evidence: list[CaseEvidence] = []
-    evidence_by_label: dict[str, CaseEvidence] = {}
+    evidence_by_key: dict[tuple[str, str], CaseEvidence] = {}
     relations: list[CaseRelation] = []
     relation_keys: set[tuple[str, str, str]] = set()
     for chunk_index, data in extracts:
@@ -719,9 +736,12 @@ def _build_bible(parsed: _AliasOutput, groups: list[dict], extracts: list[tuple[
                 time_label=ev.get("time_label", ""), summary=ev["summary"], entity_ids=ids_of(ev.get("names", [])),
             ))
         for item in data.get("evidence", []):
-            label_key = _fold_key(item.get("label_vi") or item.get("label_en", ""))
-            same = evidence_by_label.get(label_key)
-            if same is not None:                     # cùng bằng chứng nhắc lại ở đoạn sau: gộp entity
+            # Chỉ gộp khi trùng cả nhãn lẫn mô tả (so bỏ dấu): nhãn ngắn kiểu "Lời khai nhân chứng" hay
+            # "Camera an ninh" lặp lại cho nhiều bằng chứng khác nhau, gộp theo nhãn sẽ làm mất sự thật.
+            key = (_fold_key(item.get("label_vi") or item.get("label_en", "")),
+                   _fold_key(item.get("description_vi") or item.get("description_en", "")))
+            same = evidence_by_key.get(key)
+            if same is not None:                     # đúng bằng chứng đó nhắc lại: chỉ gộp entity
                 same.entity_ids = list(dict.fromkeys([*same.entity_ids, *ids_of(item.get("names", []))]))
                 continue
             record = CaseEvidence(
@@ -730,7 +750,7 @@ def _build_bible(parsed: _AliasOutput, groups: list[dict], extracts: list[tuple[
                 entity_ids=ids_of(item.get("names", [])),
             )
             evidence.append(record)
-            evidence_by_label[label_key] = record
+            evidence_by_key[key] = record
         for item in data.get("relations", []):
             source_id, target_id = names.get(item.get("source_name", "")), names.get(item.get("target_name", ""))
             relation_type = item.get("relation_type", "suspect_link")

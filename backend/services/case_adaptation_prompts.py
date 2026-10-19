@@ -9,6 +9,8 @@ Prompt LLM cho luồng chuyển thể vụ án thật thành truyện song ngữ
 import math
 from typing import Iterable
 
+from services.case_adaptation_checks import GENERIC_TERMS
+
 # Ngưỡng kiểm của bước đọc đoạn (spec 7.2). case_adaptation_steps dùng lại đúng các số này.
 EVENT_RULE_MIN_WORDS = 150   # đoạn từ 150 từ trở lên mới bị kiểm số sự việc
 WORDS_PER_EVENT = 250        # ít nhất 1 sự việc cho mỗi 250 từ
@@ -75,6 +77,7 @@ def extract_prompt(chunk: str, index: int, total: int, known_names: list[str]) -
                      "đoạn chỉ là tiêu đề hay lời dẫn thì để mảng rỗng.")
     roles = " | ".join(ROLES)
     relation_types = " | ".join(RELATION_TYPES)
+    generic_terms = ", ".join(_quote(t) for t in GENERIC_TERMS)
     return f"""TASK: EXTRACT {index}
 Việc: đọc kỹ ĐOẠN {index + 1}/{total} của một bài viết về vụ án có thật và ghi chép đầy đủ mọi thứ có trong đoạn: tên riêng, sự việc, bằng chứng, quan hệ. Đây là bước ghi chép hồ sơ: chép tên thật, ngày giờ và con số đúng nguyên văn như trong bài, chưa đổi tên.
 
@@ -86,7 +89,7 @@ YÊU CẦU
    - "kind": "person" (người), "place" (địa danh: thành phố, huyện, xã, đường, núi, sông, cảng, toà nhà...), "organization" (công ty, trường, bệnh viện hay đơn vị có tên cụ thể), "identifier" (biển số xe, số điện thoại, số giấy tờ, số tài khoản...).
    - "role" (người): {roles}. Nơi chốn, tổ chức, mã số ghi "other".
    - "context": một câu ngắn nói người/nơi đó là ai, ở đâu, liên quan thế nào trong đoạn.
-   - KHÔNG liệt kê: tên quốc gia; tên chung của cơ quan ("cảnh sát", "công an", "toà án", "viện kiểm sát", "bệnh viện", "cơ quan điều tra"); danh từ chung ("nạn nhân", "nghi phạm", "pháp y"); tên hãng, mẫu xe.
+   - KHÔNG đưa vào "names" (và không cần ghi vào "names" của sự việc, bằng chứng, quan hệ): tên quốc gia; tên hãng, mẫu xe; danh từ chung chỉ cơ quan, vai trò, nghề nghiệp, ví dụ {generic_terms}.
 2. "events": mỗi sự việc riêng biệt là một mục, theo đúng thứ tự trong đoạn. Mỗi hành động, phát hiện, lời khai, kết quả giám định, bước điều tra, lần bắt giữ, phiên toà là một sự việc riêng. KHÔNG gộp nhiều sự việc làm một.
    {size_rule}
    - "summary": viết bằng tiếng Việt, 1–2 câu đầy đủ, ít nhất {MIN_EVENT_WORDS} từ: ai làm gì, ở đâu, bằng cách nào, kết quả ra sao. Giữ tên thật và chi tiết đúng như bài.

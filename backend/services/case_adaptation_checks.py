@@ -66,6 +66,29 @@ _KEPT_TERMS = frozenset(_key(t) for t in [
     "police", "the police", "court", "the court", "prosecutor", "prosecutors", "hospital",
 ])
 
+# Danh từ chung chỉ cơ quan, vai trò, nghề nghiệp trong vụ án: không phải tên riêng, không cần tên hư cấu.
+# Prompt đọc bài (case_adaptation_prompts.extract_prompt) liệt kê đúng danh sách này, và bước đọc bài bỏ các mục
+# này khỏi danh sách tên, nên prompt và code luôn khớp nhau.
+GENERIC_TERMS: tuple[str, ...] = (
+    "cảnh sát", "công an", "toà án", "viện kiểm sát", "bệnh viện", "cơ quan điều tra", "cơ quan công an",
+    "cơ quan cảnh sát điều tra", "trực ban hình sự", "pháp y", "nạn nhân", "nghi phạm", "nghi can", "hung thủ",
+    "nhân chứng", "điều tra viên", "kiểm sát viên", "thẩm phán", "luật sư",
+    "police", "court", "prosecutor", "hospital", "investigators", "detective", "coroner", "medical examiner",
+    "victim", "suspect", "witness", "killer",
+)
+_GENERIC_KEYS = frozenset(_key(t) for t in GENERIC_TERMS)
+
+
+def is_kept_term(name: str, kind: Optional[str] = None) -> bool:
+    """Tên được giữ nguyên trong lời kể, không cần tên hư cấu (spec mục 6):
+    - danh từ chung trong GENERIC_TERMS, với mọi loại;
+    - tên quốc gia và tên chung của cơ quan (_KEPT_TERMS), trừ khi là người (`kind == "person"`),
+      vì "Đức", "Nga", "Mỹ" cũng là tên người. `kind` không rõ (None) thì coi như không phải người."""
+    key = _key(name)
+    if key in _GENERIC_KEYS:
+        return True
+    return kind != "person" and key in _KEPT_TERMS
+
 
 # ---------------------------------------------------------------- tên cấm
 

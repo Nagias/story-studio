@@ -21,7 +21,9 @@ if str(BACKEND_DIR) not in sys.path:
 
 from models.case_adaptation_schemas import MAX_ATTEMPTS, CaseBible, CasePipeline
 from services import case_adaptation_llm, case_store
+from services.case_adaptation_checks import GENERIC_TERMS, fold, is_kept_term
 from services.case_adaptation_llm import LLMError
+from services.case_adaptation_prompts import extract_prompt
 from services.case_adaptation_steps import (
     StepFailed,
     StepRejected,
@@ -99,6 +101,23 @@ def test_chunk_source_respects_paragraphs():
     assert any(short_a in c for c in chunks)         # đoạn văn vừa cỡ không bị cắt
     assert any(short_c in c for c in chunks)
     assert " ".join(chunks).split() == text.split()  # nối lại thì đủ chữ, đúng thứ tự
+
+
+def test_chunk_source_single_newline_paragraphs():
+    # Bài dán từ web: đoạn văn chỉ ngăn bằng một lần xuống dòng, không có dòng trống.
+    paragraphs = [" ".join(f"Đoạn {p} câu {s} kể thêm một chi tiết của vụ án." for s in range(1, 3 + p % 4))
+                  for p in range(1, 16)]
+    text = "\n".join(paragraphs)
+    max_chars = 400
+    assert len(text) > 3 * max_chars and all(len(p) <= max_chars for p in paragraphs)
+
+    chunks = chunk_source(text, max_chars)
+
+    assert len(chunks) > 3
+    for chunk in chunks:
+        assert len(chunk) <= max_chars
+        assert all(line in paragraphs for line in chunk.split("\n")), chunk   # chỉ cắt ở chỗ hết đoạn văn
+    assert " ".join(chunks).split() == text.split()
 
 
 def test_chunk_source_splits_overlong_sentence_without_losing_words():
@@ -223,6 +242,52 @@ def test_extract_name_missing_from_names_rejected(isolated_projects_dir):
     assert RETRY_MARK in llm.prompts[1] and "Lê Thị Mai" in llm.prompts[1].split(RETRY_MARK, 1)[1]
 
 
+def test_extract_prompt_lists_the_same_generic_terms_code_skips():
+    prompt = extract_prompt("Một đoạn ngắn.", 0, 1, [])
+    for term in GENERIC_TERMS:
+        assert f'"{term}"' in prompt, term
+        assert is_kept_term(term) and is_kept_term(term.capitalize()) and is_kept_term(term, "person")
+    assert is_kept_term("Việt Nam", "place") and not is_kept_term("Nga", "person")   # "Nga" cũng là tên người
+
+
+def test_extract_generic_term_only_in_event_names_is_accepted(isolated_projects_dir):
+    # Model làm đúng lời dặn: không đưa "Cơ quan điều tra" vào names, chỉ nhắc trong events → không bị loại.
+    pipeline = _new_pipeline()
+    second = copy.deepcopy(load_fixture("EXTRACT 1"))
+    second["events"][0]["names"].append("Cơ quan điều tra")
+    second["events"][3]["names"].append("Lực lượng chức năng")   # chữ hoa đầu câu, không có trong danh sách
+    second["evidence"][0]["names"].append("Pháp y")
+    llm, calls = make_fake_llm({"EXTRACT 1": second})
+    _run(pipeline, "extract_00", llm)
+    result = _run(pipeline, "extract_01", llm)
+    assert calls == ["EXTRACT 0", "EXTRACT 1"]
+    assert len(result.output["events"]) == 6
+
+
+def test_extract_generic_terms_listed_in_names_are_dropped(isolated_projects_dir):
+    # Model vẫn đưa danh từ chung vào names: code bỏ, để chúng không bị đặt tên hư cấu (spec mục 6).
+    pipeline = _new_pipeline()
+    first = copy.deepcopy(load_fixture("EXTRACT 0"))
+    first["names"] += [
+        {"name": "Cơ quan điều tra", "kind": "organization", "role": "other", "context": "Cơ quan thụ lý vụ án."},
+        {"name": "Pháp y", "kind": "person", "role": "investigator", "context": "Người khám nghiệm tử thi."},
+        {"name": "Nạn nhân", "kind": "person", "role": "victim", "context": "Người bị sát hại."},
+        {"name": "Lực lượng chức năng", "kind": "organization", "role": "other", "context": "Lực lượng có mặt."},
+        {"name": "Việt Nam", "kind": "place", "role": "other", "context": "Quốc gia nơi xảy ra vụ án."},
+        {"name": "Nga", "kind": "person", "role": "witness", "context": "Hàng xóm tên Nga."},
+    ]
+    first["events"][0]["names"] += ["Cơ quan điều tra", "Việt Nam", "Nga"]
+    llm, calls = make_fake_llm({"EXTRACT 0": first})
+
+    result = _run(pipeline, "extract_00", llm)
+
+    assert calls == ["EXTRACT 0"]
+    names = [n["name"] for n in result.output["names"]]
+    assert not {"Cơ quan điều tra", "Pháp y", "Nạn nhân", "Lực lượng chức năng", "Việt Nam"} & set(names)
+    assert "Nga" in names                                  # người tên "Nga" vẫn được giữ để đặt tên hư cấu
+    assert "Nguyễn Văn Hùng" in names and "bà Mai" in names
+
+
 def test_extract_second_chunk_gets_known_names(isolated_projects_dir):
     pipeline = _new_pipeline()
     llm, calls = make_fake_llm()
@@ -338,6 +403,31 @@ def test_aliases_builds_bible(isolated_projects_dir):
     assert hung.real_names == ["Nguyễn Văn Hùng", "ông Hùng"]
     assert hung.alias_vi == "Trịnh Quang Vũ" and hung.alias_en == "Trinh Quang Vu"
     assert hung.role == "victim" and hung.appearance_en
+
+
+def test_evidence_merged_only_when_label_and_description_match(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    first = load_fixture("EXTRACT 0")
+    wound, call = first["evidence"][0], first["evidence"][1]
+    other_call = "Cuộc gọi thứ hai, từ một số lạ, báo tin có người lạ ở cổng cảng trước khi án mạng xảy ra."
+    second = copy.deepcopy(load_fixture("EXTRACT 1"))
+    second["evidence"] += [
+        {**call, "description_vi": other_call, "description_en": "A second call from an unknown number.",
+         "names": ["ông Trọng"]},                                    # cùng nhãn, khác mô tả: bằng chứng khác
+        {**wound, "label_vi": wound["label_vi"].upper(), "names": ["ông Hùng", "bà Mai"]},   # trùng hẳn: gộp
+    ]
+    llm, _calls = make_fake_llm({"EXTRACT 1": second})
+
+    bible = CaseBible.model_validate(_run_until(pipeline, "aliases", llm).output)
+
+    assert len(bible.evidence) == 9                          # 4 + 4 + 1 cuộc gọi khác; vết thương trùng được gộp
+    calls_found = [e for e in bible.evidence if e.label_vi == call["label_vi"]]
+    assert len(calls_found) == 2 and calls_found[0].id != calls_found[1].id
+    assert {e.description_vi for e in calls_found} == {call["description_vi"], other_call}
+    assert calls_found[1].entity_ids == ["person_3"]
+    wounds = [e for e in bible.evidence if fold(e.label_vi) == fold(wound["label_vi"])]
+    assert len(wounds) == 1 and wounds[0].entity_ids == ["person_1", "person_2"]
+    assert len({e.id for e in bible.evidence}) == len(bible.evidence)
 
 
 @pytest.mark.parametrize("entity_id", ["person_2", "person_1"])   # alias trùng tên thật của chính nó / của người khác
