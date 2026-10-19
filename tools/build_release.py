@@ -34,6 +34,7 @@ REQUIRED_FILES = [
     "backend/requirements.txt",
     "backend/static/index.html",
     "backend/static/app.js",
+    "backend/static/tailwind.css",  # CSS Tailwind build sẵn (index.html không còn dùng CDN)
     "run.py",
     "run.bat",
     "setup_muse_accounts.bat",
@@ -66,6 +67,9 @@ FORBIDDEN_CONTENT = [
     ("đường dẫn C:/Users/pc", re.compile(rb"(?i)c:[\\/]+users[\\/]+pc(?![a-z0-9])")),
     ("đường dẫn D:/25. OPC", re.compile(rb"(?i)d:[\\/]+25\. ?opc")),
 ]
+
+# Đường dẫn tĩnh viết cố định trong giao diện (bỏ qua đường dẫn ghép động có ${...})
+STATIC_REF_RE = re.compile(r"/static/([A-Za-z0-9_./-]+\.(?:css|js|jpe?g|png|webp|svg|mp3|mp4|json))")
 
 
 def fleet_accounts_template() -> dict:
@@ -139,6 +143,8 @@ def name_problem(arcname: str) -> str | None:
         return "file .env"
     if "chrome_profiles" in parts:
         return "thư mục chrome_profiles"
+    if ".cache" in parts:
+        return "thư mục .cache (uv/Python/model VieNeu)"
     if "__pycache__" in parts:
         return "__pycache__"
     if base.endswith((".pyc", ".pyo")):
@@ -173,6 +179,14 @@ def verify_zip(zip_path: Path) -> list[str]:
         for f in REQUIRED_FILES + [FLEET_CONFIG_ARCNAME]:
             if f"{TOP}/{f}" not in names:
                 problems.append(f"thiếu file {f}")
+        # Mọi file /static/... mà giao diện gọi cố định phải có trong gói (tránh gửi bản thiếu CSS/ảnh)
+        for ui_file in ("backend/static/index.html", "backend/static/app.js"):
+            arc = f"{TOP}/{ui_file}"
+            if arc not in names:
+                continue
+            for ref in sorted(set(STATIC_REF_RE.findall(zf.read(arc).decode("utf-8", "replace")))):
+                if f"{TOP}/backend/static/{ref}" not in names:
+                    problems.append(f"{ui_file} gọi /static/{ref} nhưng file này không có trong gói")
     return problems
 
 
