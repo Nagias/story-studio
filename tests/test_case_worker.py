@@ -51,14 +51,25 @@ ALL_LABELS = [
 
 # ---------------------------------------------------------------- helpers
 
-def _start(created_at: str = "") -> str:
-    """Vụ án mẫu (2 đoạn với chunk_chars=900). `created_at` đặt tay để thứ tự vụ cũ/mới không phụ thuộc đồng hồ."""
+def _start(created_at: str = "", *, case_id: str = "", monkeypatch=None) -> str:
+    """Vụ án mẫu (2 đoạn với chunk_chars=900). `created_at` đặt tay để thứ tự vụ cũ/mới không phụ thuộc đồng hồ;
+    `case_id` (cần `monkeypatch`) cố định id để thứ tự theo id cũng không trùng thứ tự theo created_at do may rủi."""
+    if case_id:
+        monkeypatch.setattr(case_store, "new_case_id", lambda: case_id)
     case_id = start_analysis(DOSSIER, 8, STYLE, chunk_chars=900)
     if created_at:
         pipeline = case_store.load_pipeline(case_id)
         pipeline.created_at = created_at
         case_store.save_pipeline(pipeline)
     return case_id
+
+
+def _older_and_newer(monkeypatch) -> tuple[str, str]:
+    """Hai vụ: vụ MỚI được tạo trước và có id nhỏ hơn, vụ CŨ tạo sau và có id lớn hơn. Chỉ `created_at` cho biết vụ
+    nào cũ, nên code xếp theo thứ tự tạo, theo id hay theo thứ tự thư mục đều làm test fail."""
+    newer = _start("2026-10-19T10:00:05+00:00", case_id="case_00000001", monkeypatch=monkeypatch)
+    older = _start("2026-10-19T10:00:00+00:00", case_id="case_ffffffff", monkeypatch=monkeypatch)
+    return older, newer
 
 
 def _pipeline(case_id: str):
@@ -350,9 +361,8 @@ def test_resume_unknown_case_raises(isolated_projects_dir):
     assert issubclass(CaseNotFoundError, LookupError)
 
 
-def test_failed_case_does_not_block_newer_case(isolated_projects_dir):
-    old = _start("2026-10-19T10:00:00+00:00")
-    new = _start("2026-10-19T10:00:01+00:00")
+def test_failed_case_does_not_block_newer_case(isolated_projects_dir, monkeypatch):
+    old, new = _older_and_newer(monkeypatch)
     llm, _calls = make_fake_llm({"WRITE_VI p1": _thin_write_vi()})
     _drain(llm)
     assert _pipeline(old).status == "failed"
@@ -388,8 +398,7 @@ def test_unexpected_error_in_step_fails_pipeline(isolated_projects_dir, monkeypa
 
 
 def test_unexpected_error_does_not_stop_worker_loop(isolated_projects_dir, monkeypatch):
-    first = _start("2026-10-19T10:00:00+00:00")
-    second = _start("2026-10-19T10:00:01+00:00")
+    first, second = _older_and_newer(monkeypatch)
     real_run_step = case_adaptation_steps.run_step
 
     async def flaky(pipeline, step, *, llm=None):
@@ -436,8 +445,8 @@ def test_worker_loop_survives_error_outside_steps(isolated_projects_dir, monkeyp
 # ---------------------------------------------------------------- một lần gọi LLM mỗi lúc
 
 def test_one_llm_call_at_a_time(isolated_projects_dir, monkeypatch):
-    older = _start("2026-10-19T10:00:00+00:00")
-    newer = _start("2026-10-19T10:00:01+00:00")
+    older, newer = _older_and_newer(monkeypatch)
+    assert [p.case_id for p in case_store.list_pipelines()] == [older, newer]
     base, calls = make_fake_llm()
     state = {"active": 0, "peak": 0}
     owners: list[str] = []
@@ -465,6 +474,32 @@ def test_one_llm_call_at_a_time(isolated_projects_dir, monkeypatch):
     for case_id in (older, newer):
         assert _pipeline(case_id).status == "done"
         assert len(case_store.load_plan(case_id).scenes) == 7
+
+
+def test_overlapping_run_next_step_returns_false_without_touching_state(isolated_projects_dir):
+    case_id = _start()
+    base, calls = make_fake_llm()
+    release = asyncio.Event()
+
+    async def held_llm(system, user, **kwargs):
+        await release.wait()
+        return await base(system, user, **kwargs)
+
+    async def main():
+        first = asyncio.create_task(run_next_step(llm=held_llm))
+        await _wait_until(lambda: calls == [] and _pipeline(case_id).steps[0].status == "running", 5)
+        before = _pipeline(case_id)
+        assert await run_next_step(llm=base) is False            # gọi chồng: không làm gì
+        assert _pipeline(case_id) == before                      # việc đang chạy giữ nguyên, attempts vẫn 1
+        assert calls == []
+        release.set()
+        assert await first is True
+
+    asyncio.run(main())
+    pipeline = _pipeline(case_id)
+    assert (pipeline.steps[0].status, pipeline.steps[0].attempts) == ("done", 1)
+    assert pipeline.steps[1].status == "pending"
+    assert calls == ["EXTRACT 0"]
 
 
 def test_worker_loop_idles_and_stops(isolated_projects_dir):

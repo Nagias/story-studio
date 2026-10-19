@@ -10,6 +10,8 @@ import asyncio
 import copy
 import re
 import sys
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -189,13 +191,20 @@ def _busy(seconds=None) -> LLMError:
     return LLMError("busy", "9router đang bận hoặc tạm thời không dùng được (HTTP 503).", retry_after_s=seconds)
 
 
-def _scripted_llm(replies: list):
-    """LLM giả trả lần lượt `replies` (phần tử là Exception thì raise); `seen` ghi user prompt từng lần gọi."""
+def _scripted_llm(replies: list, *, clock: dict = None, took: float = 0.0):
+    """LLM giả trả lần lượt `replies` (phần tử là Exception thì raise); `seen` ghi user prompt từng lần gọi.
+    Có `clock` (đồng hồ giả) thì mỗi lần gọi làm đồng hồ chạy thêm `took` giây (phần tử là (giây, reply) thì dùng
+    số giây riêng của lần đó)."""
     seen: list[str] = []
 
     async def llm(system, user, *, temperature=0.4, timeout=240.0, client=None):
         seen.append(user)
         reply = replies[len(seen) - 1]
+        seconds = took
+        if isinstance(reply, tuple):
+            seconds, reply = reply
+        if clock is not None:
+            clock["now"] += seconds
         if isinstance(reply, BaseException):
             raise reply
         return reply
@@ -204,12 +213,21 @@ def _scripted_llm(replies: list):
 
 
 @pytest.fixture
-def busy_sleeps(monkeypatch):
-    """Thay hàm chờ khi 9router bận bằng hàm ghi lại số giây, để test không phải chờ thật."""
+def fake_clock(monkeypatch):
+    """Đồng hồ giả cho phần đếm thời gian bận (busy_clock); chỉ chạy khi test cho nó chạy."""
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(case_adaptation_steps, "busy_clock", lambda: clock["now"])
+    return clock
+
+
+@pytest.fixture
+def busy_sleeps(monkeypatch, fake_clock):
+    """Thay hàm chờ khi 9router bận bằng hàm ghi lại số giây và cho đồng hồ giả chạy tới, để test không chờ thật."""
     waited: list[float] = []
 
     async def fake_sleep(seconds):
         waited.append(seconds)
+        fake_clock["now"] += seconds
 
     monkeypatch.setattr(case_adaptation_steps, "busy_sleep", fake_sleep)
     return waited
@@ -217,6 +235,38 @@ def busy_sleeps(monkeypatch):
 
 def test_busy_sleep_defaults_to_asyncio_sleep():
     assert case_adaptation_steps.busy_sleep is asyncio.sleep
+    assert case_adaptation_steps.busy_clock is time.monotonic
+
+
+def test_busy_cap_counts_time_of_busy_calls(busy_sleeps, fake_clock):
+    """9router giữ mỗi request 174 s rồi mới trả 503 (đã thấy khi chạy thật), gợi ý chờ 0 s: tổng thời gian mất vì
+    bận vẫn phải dừng quanh 15 phút, không phải sau hàng trăm lần gọi."""
+    start = fake_clock["now"]
+    llm, seen = _scripted_llm([_busy(0)] * 200, clock=fake_clock, took=174)
+    with pytest.raises(StepFailed) as info:
+        asyncio.run(ask_validated("TASK: X", lambda raw: raw, llm=llm, step_label="lên dàn ý"))
+
+    elapsed = fake_clock["now"] - start
+    assert len(seen) == 6                       # 174 + 5 mỗi vòng: tới lần gọi thứ 6 thì vượt 900 s
+    assert busy_sleeps[:-1] == [5] * 4 and busy_sleeps[-1] <= 5
+    assert case_adaptation_steps.BUSY_WAIT_CAP_S <= elapsed <= case_adaptation_steps.BUSY_WAIT_CAP_S + 174
+    message = info.value.user_message
+    assert "lên dàn ý" in message and f"{int(elapsed // 60)} phút" in message   # số phút thật, không ghi cứng 15
+
+
+def test_busy_cap_ignores_time_of_normal_calls(busy_sleeps, fake_clock):
+    """Chỉ thời gian mất vì bận mới tính vào trần: một lần bận ngắn, rồi một lần gọi thường dài, rồi lại bận một lúc,
+    thì vẫn chờ tiếp chứ không dừng ngay."""
+    def validate(raw):
+        if raw.get("ok"):
+            return raw
+        raise StepRejected("chưa đủ")
+
+    llm, seen = _scripted_llm([(0, _busy(10)), (1000, {"n": 1}), (0, _busy(60)), (30, {"ok": True})],
+                              clock=fake_clock)
+    assert asyncio.run(ask_validated("TASK: X", validate, llm=llm, step_label="thử")) == {"ok": True}
+    assert busy_sleeps == [10, 60]
+    assert len(seen) == 4
 
 
 def test_busy_waits_then_retries_without_using_an_attempt(busy_sleeps):
@@ -282,6 +332,85 @@ def test_busy_inside_pipeline_step(isolated_projects_dir, busy_sleeps):
     assert calls == ["EXTRACT 0", "EXTRACT 0"]
     assert busy_sleeps == [30]
     assert len(result.output["events"]) == 6
+
+
+# ---------------------------------------------------------------- mỗi lúc một lần gọi LLM trong cả tiến trình
+
+def _overlap_counting_llm(state: dict, guard: threading.Lock):
+    async def llm(system, user, *, temperature=0.4, timeout=240.0, client=None):
+        with guard:
+            state["active"] += 1
+            state["peak"] = max(state["peak"], state["active"])
+        try:
+            await asyncio.sleep(0.03)
+            return {"user": user}
+        finally:
+            with guard:
+                state["active"] -= 1
+
+    return llm
+
+
+def test_concurrent_ask_validated_calls_never_overlap():
+    state, guard = {"active": 0, "peak": 0}, threading.Lock()
+    llm = _overlap_counting_llm(state, guard)
+
+    async def main():
+        return await asyncio.gather(*[ask_validated(f"TASK: {k}", lambda raw: raw, llm=llm, step_label=str(k))
+                                      for k in range(4)])
+
+    results = asyncio.run(main())
+    assert [r["user"] for r in results] == [f"TASK: {k}" for k in range(4)]
+    assert state["peak"] == 1
+
+
+def test_ask_validated_calls_from_another_thread_do_not_overlap():
+    """Route đồng bộ có thể gọi asyncio.run(rewrite_english(...)) trong luồng riêng, cùng lúc với worker."""
+    state, guard = {"active": 0, "peak": 0}, threading.Lock()
+    llm = _overlap_counting_llm(state, guard)
+
+    def run_in_thread(results: list):
+        results.append(asyncio.run(ask_validated("TASK: T", lambda raw: raw, llm=llm, step_label="luồng")))
+
+    async def main():
+        results: list = []
+        thread = threading.Thread(target=run_in_thread, args=(results,))
+        thread.start()
+        mine = await asyncio.gather(*[ask_validated(f"TASK: {k}", lambda raw: raw, llm=llm, step_label=str(k))
+                                      for k in range(3)])
+        await asyncio.to_thread(thread.join, 10)
+        return mine, results
+
+    mine, theirs = asyncio.run(main())
+    assert len(mine) == 3 and theirs == [{"user": "TASK: T"}]
+    assert state["peak"] == 1
+
+
+def test_llm_gate_released_when_tasks_are_cancelled():
+    async def main():
+        hold = asyncio.Event()
+
+        async def slow(system, user, **kwargs):
+            await hold.wait()
+            return {"ok": user}
+
+        async def fast(system, user, **kwargs):
+            return {"ok": user}
+
+        holder = asyncio.create_task(ask_validated("TASK: A", lambda raw: raw, llm=slow, step_label="a"))
+        await asyncio.sleep(0.05)                                    # A đang giữ cổng
+        waiter = asyncio.create_task(ask_validated("TASK: B", lambda raw: raw, llm=fast, step_label="b"))
+        await asyncio.sleep(0.15)
+        assert not waiter.done()                                     # B phải chờ A
+        waiter.cancel()                                              # huỷ lúc đang chờ cổng: không được giữ cổng
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        holder.cancel()                                              # huỷ lúc đang giữ cổng: phải nhả cổng
+        with pytest.raises(asyncio.CancelledError):
+            await holder
+        return await asyncio.wait_for(ask_validated("TASK: C", lambda raw: raw, llm=fast, step_label="c"), 2)
+
+    assert asyncio.run(main()) == {"ok": "TASK: C"}
 
 
 # ---------------------------------------------------------------- G2: đọc đoạn

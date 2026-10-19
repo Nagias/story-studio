@@ -5,8 +5,11 @@ Bộ chạy một việc nhỏ của hàng việc phân tích vụ án, cùng c�
   vào cuối prompt; tối đa MAX_ATTEMPTS lần. Lỗi 9router không đáng thử lại (auth, no_credentials, http) thì
   dừng ngay. Hỏng thì raise StepFailed với thông báo tiếng Việt nêu đúng tên việc.
   9router bận (lỗi "busy": HTTP 429/502/503/504) thì chờ rồi gọi lại, không tính lượt thử: chờ theo số giây
-  9router báo, không có thì 60 s rồi gấp đôi; tổng thời gian chờ của một việc tối đa BUSY_WAIT_CAP_S (15 phút).
-  Hàm chờ là `busy_sleep` của module (mặc định asyncio.sleep) để test thay được.
+  9router báo, không có thì 60 s rồi gấp đôi. Thời gian một việc mất vì bận (thời gian các lần gọi bị trả "busy"
+  cộng thời gian chờ, đo bằng `busy_clock`) tối đa BUSY_WAIT_CAP_S (15 phút), rồi StepFailed.
+  Hàm chờ `busy_sleep` (mặc định asyncio.sleep) và đồng hồ `busy_clock` (time.monotonic) lấy lúc gọi để test thay.
+  Mỗi tiến trình chỉ có một lần gọi LLM tại một thời điểm (cổng _LLM_GATE quanh mọi lần gọi qua ask_validated:
+  việc của worker lẫn rewrite_english, ở bất kỳ event loop hay luồng nào).
   Lỗi nhẹ (SoftRejected: tên thật, ngày tháng, tên trong prompt hình) cũng được gọi lại, nhưng hết lượt thì nhận
   kết quả đó; check_plan ở G7 tự thay tên đã có tên hư cấu và đánh dấu phần còn lại.
 - chunk_source (G1): cắt bài theo đoạn văn (dòng trống, rồi tới xuống dòng); đoạn văn dài quá thì cắt theo câu,
@@ -24,9 +27,12 @@ Bộ chạy một việc nhỏ của hàng việc phân tích vụ án, cùng c�
 - Hàm LLM mặc định lấy `case_adaptation_llm.call_llm_json` lúc gọi, để test và các task sau monkeypatch được.
 """
 import asyncio
+import contextlib
 import logging
 import math
 import re
+import threading
+import time
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -99,10 +105,19 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 # 9router bận: chờ rồi gọi lại, không tính lượt thử (xem ask_validated).
-BUSY_WAIT_CAP_S = 15 * 60.0      # tổng thời gian chờ tối đa cho một việc
+BUSY_WAIT_CAP_S = 15 * 60.0      # thời gian tối đa một việc được mất vì 9router bận (gọi bị trả "busy" + chờ)
 BUSY_FIRST_BACKOFF_S = 60.0      # lần chờ đầu khi 9router không báo phải chờ bao lâu; các lần sau gấp đôi
 BUSY_MIN_WAIT_S = 5.0            # chờ ít nhất chừng này, kể cả khi 9router báo 0 giây
 busy_sleep = asyncio.sleep       # lấy lúc gọi; test thay bằng hàm không chờ thật
+busy_clock = time.monotonic      # đồng hồ đo thời gian mất vì bận; test thay bằng đồng hồ giả
+
+# Cổng "mỗi lúc một lần gọi LLM" cho cả tiến trình. Dùng threading.Lock chứ không dùng asyncio.Lock: asyncio.Lock gắn
+# với một event loop, còn lời gọi có thể đến từ loop khác (route đồng bộ chạy asyncio.run trong luồng riêng, hoặc mỗi
+# test một asyncio.run). Lấy khoá kiểu không chặn và chờ bằng asyncio.sleep, nên event loop không bị chặn và task bị
+# huỷ lúc đang chờ không bao giờ giữ khoá (khác với await asyncio.to_thread(lock.acquire): luồng vẫn lấy được khoá
+# sau khi task đã bị huỷ, rồi không ai nhả).
+_LLM_GATE = threading.Lock()
+_GATE_POLL_S = 0.05
 
 RETRY_NOTE = "\n\nLẦN TRƯỚC BỊ LOẠI VÌ: {reason}. Hãy làm lại đầy đủ, không tóm gọn."
 OPENING_EXCERPT_CHARS = 1500
@@ -182,29 +197,56 @@ def _schema_reason(exc: ValidationError) -> str:
     return "JSON sai cấu trúc so với mẫu (" + "; ".join(parts) + ")"
 
 
+@contextlib.asynccontextmanager
+async def _one_llm_call():
+    """Giữ cổng _LLM_GATE trong lúc một lần gọi LLM đang chạy (xem chú thích ở _LLM_GATE)."""
+    while not _LLM_GATE.acquire(blocking=False):
+        await asyncio.sleep(_GATE_POLL_S)
+    try:
+        yield
+    finally:
+        _LLM_GATE.release()
+
+
+@dataclass
+class _BusyBudget:
+    """Thời gian một việc đã mất vì 9router bận, dùng chung cho mọi lượt thử của việc đó."""
+    spent: float = 0.0   # giây (theo busy_clock): thời gian các lần gọi bị trả "busy" + thời gian chờ
+    waits: int = 0       # số lần đã chờ (để tính chờ gấp đôi)
+
+
 async def _call_llm(llm: LLMCall, prompt: str, *, temperature: float, timeout: float, step_label: str,
-                    busy_waits: list[float]) -> Any:
-    """Gọi LLM một lần. 9router bận thì chờ rồi gọi lại cùng prompt; `busy_waits` ghi số giây đã chờ, dùng chung cho
-    mọi lượt thử của một việc. Tổng thời gian chờ chạm BUSY_WAIT_CAP_S mà vẫn bận thì StepFailed."""
+                    busy: _BusyBudget) -> Any:
+    """Gọi LLM một lần, qua cổng một-lần-gọi của tiến trình. 9router bận thì nhả cổng, chờ rồi gọi lại cùng prompt.
+
+    Thời gian tính vào trần BUSY_WAIT_CAP_S gồm cả thời gian của chính lần gọi bị trả "busy" (9router có thể giữ
+    request vài phút rồi mới trả 503), không gồm thời gian chờ cổng hay các lần gọi có kết quả. Chạm trần mà vẫn bận
+    thì StepFailed; vì lần gọi cuối có thể dài, tổng thực tế tối đa là trần cộng một lần gọi."""
     while True:
-        try:
-            return await llm(SYSTEM_PROMPT, prompt, temperature=temperature, timeout=timeout)
-        except LLMError as exc:
-            if exc.kind != BUSY_KIND:
-                raise
-            waited = sum(busy_waits)
-            remaining = BUSY_WAIT_CAP_S - waited
-            if remaining <= 0:
-                raise StepFailed(
-                    f"Bước {step_label} thất bại: 9router vẫn bận sau {BUSY_WAIT_CAP_S / 60:g} phút chờ. "
-                    f"Lỗi gần nhất: {exc.user_message} Kiểm tra 9router (tài khoản Gemini, hạn mức) rồi bấm Thử lại."
-                ) from exc
-            hint = exc.retry_after_s
-            wait = hint if hint is not None else BUSY_FIRST_BACKOFF_S * 2 ** len(busy_waits)
-            wait = min(max(wait, BUSY_MIN_WAIT_S), remaining)
-            logger.warning("9router bận ở bước %s: chờ %.0f s rồi gọi lại (đã chờ %.0f s)", step_label, wait, waited)
-            await busy_sleep(wait)
-            busy_waits.append(wait)
+        async with _one_llm_call():
+            started = busy_clock()
+            try:
+                return await llm(SYSTEM_PROMPT, prompt, temperature=temperature, timeout=timeout)
+            except LLMError as exc:
+                if exc.kind != BUSY_KIND:
+                    raise
+                busy.spent += busy_clock() - started
+                error = exc
+        remaining = BUSY_WAIT_CAP_S - busy.spent
+        if remaining <= 0:
+            raise StepFailed(
+                f"Bước {step_label} thất bại: 9router vẫn bận sau {math.floor(busy.spent / 60)} phút chờ. "
+                f"Lỗi gần nhất: {error.user_message} Kiểm tra 9router (tài khoản Gemini, hạn mức) rồi bấm Thử lại."
+            ) from error
+        hint = error.retry_after_s
+        wait = hint if hint is not None else BUSY_FIRST_BACKOFF_S * 2 ** min(busy.waits, 16)
+        wait = min(max(wait, BUSY_MIN_WAIT_S), remaining)
+        logger.warning("9router bận ở bước %s: chờ %.0f s rồi gọi lại (đã mất %.0f s vì bận)",
+                       step_label, wait, busy.spent)
+        slept_from = busy_clock()
+        await busy_sleep(wait)
+        busy.spent += busy_clock() - slept_from
+        busy.waits += 1
 
 
 async def ask_validated(
@@ -228,12 +270,12 @@ async def ask_validated(
     reason: Optional[str] = None   # lý do gửi lại cho LLM
     problem = ""                   # lý do báo người dùng nếu hỏng cả MAX_ATTEMPTS lần
     fallback: Any = _NO_VALUE      # kết quả dùng được (chỉ có lỗi nhẹ) của lần gần nhất
-    busy_waits: list[float] = []   # số giây đã chờ vì 9router bận, cộng dồn qua các lượt
+    busy = _BusyBudget()           # thời gian mất vì 9router bận, cộng dồn qua các lượt
     for _attempt in range(MAX_ATTEMPTS):
         prompt = user if reason is None else user + RETRY_NOTE.format(reason=reason.rstrip(" ."))
         try:
             raw = await _call_llm(llm, prompt, temperature=temperature, timeout=timeout, step_label=step_label,
-                                  busy_waits=busy_waits)
+                                  busy=busy)
         except LLMError as exc:
             if exc.kind not in RETRYABLE_KINDS:
                 raise StepFailed(f"Bước {step_label} thất bại: {exc.user_message}") from exc

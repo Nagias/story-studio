@@ -34,6 +34,9 @@ from services.case_adaptation_steps import StepFailed, StepResult, chunk_source,
 logger = logging.getLogger(__name__)
 
 _lock = threading.RLock()
+# Chỉ một run_next_step chạy tại một thời điểm trong tiến trình (mọi event loop, mọi luồng). Lấy kiểu không chặn:
+# lần gọi chồng trả False ngay. Nhả trong finally, kể cả khi task bị huỷ.
+_RUN_GATE = threading.Lock()
 _ERROR_DETAIL_CHARS = 300
 _MAX_ERROR_SLEEP = 60.0       # nghỉ tối đa giữa hai vòng khi vòng lặp gặp lỗi liên tiếp
 _INTERRUPTED = ("Việc này bị gián đoạn khi đang chạy (không lưu được kết quả lần trước). "
@@ -184,7 +187,19 @@ _REPORT_HINT = "Bấm Thử lại; nếu lặp lại, gửi thông báo này cho
 
 
 async def run_next_step(*, llm: Optional[LLMCall] = None) -> bool:
-    """Chạy một việc. Trả False khi không còn việc nào để chạy (mọi vụ đã xong, hỏng hoặc không có vụ nào)."""
+    """Chạy một việc. Trả False khi không còn việc nào để chạy (mọi vụ đã xong, hỏng hoặc không có vụ nào), hoặc khi
+    một run_next_step khác trong tiến trình đang chạy: lần gọi chồng đó không đọc, không ghi gì (nếu không, nó sẽ thấy
+    việc đang `running` và tưởng là việc bị gián đoạn)."""
+    if not _RUN_GATE.acquire(blocking=False):
+        logger.warning("run_next_step đang chạy ở nơi khác trong tiến trình; bỏ qua lần gọi chồng")
+        return False
+    try:
+        return await _run_one(llm)
+    finally:
+        _RUN_GATE.release()
+
+
+async def _run_one(llm: Optional[LLMCall]) -> bool:
     claimed = await asyncio.to_thread(_claim_next)
     if claimed is None:
         return False
