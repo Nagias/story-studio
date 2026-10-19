@@ -59,6 +59,18 @@ NODE_TYPE_PALETTE = {
     "timeline_event": {"bg": (75, 85, 99), "text": (243, 244, 246), "label": "DÒNG THỜI GIAN"},
 }
 
+# Nhãn huy hiệu tiếng Anh (bảng ghim bản tiếng Anh): thẻ đặt metadata["badge_label"] thì dùng nhãn đó
+# thay cho NODE_TYPE_PALETTE[...]["label"] tiếng Việt.
+NODE_TYPE_LABELS_EN = {
+    "victim": "VICTIM",
+    "suspect": "SUSPECT",
+    "weapon": "WEAPON",
+    "clue": "CLUE",
+    "forensic_report": "FORENSICS",
+    "location": "SCENE",
+    "timeline_event": "TIMELINE",
+}
+
 PIN_COLORS = {
     "red": {"base": (220, 38, 38), "shadow": (127, 29, 29)},
     "yellow": {"base": (234, 179, 8), "shadow": (161, 98, 7)},
@@ -478,7 +490,7 @@ def render_polaroid_card(node: EvidenceNode) -> Image.Image:
 
     # 3. Node Type Badge (Pill)
     palette = NODE_TYPE_PALETTE.get(node.node_type, NODE_TYPE_PALETTE["clue"])
-    badge_text = palette["label"]
+    badge_text = str((node.metadata or {}).get("badge_label") or palette["label"])
     badge_font = get_font(size=12, bold=True)
     badge_w = int(draw.textlength(badge_text, font=badge_font)) + 14
     badge_h = 20
