@@ -207,7 +207,7 @@
     <!-- Right Action Buttons -->
     <div class="flex items-center gap-1.5 shrink-0">
       <!-- True Crime Studio Navigation Button -->
-      <button id="btn-open-true-crime-modal" class="px-2.5 py-1.5 bg-gradient-to-r from-red-950 via-slate-900 to-red-900 hover:from-red-900 hover:to-slate-800 text-red-200 hover:text-white rounded-lg text-xs font-bold border border-red-700/60 shadow-xs flex items-center gap-1.5 transition transform active:scale-95 cursor-pointer" title="🕵️ Hồ Sơ Kỳ Án (True Crime Studio) - Bảng Ghim Điều Tra & Chuyển Thể 70/30">
+      <button id="btn-open-true-crime-modal" class="px-2.5 py-1.5 bg-gradient-to-r from-red-950 via-slate-900 to-red-900 hover:from-red-900 hover:to-slate-800 text-red-200 hover:text-white rounded-lg text-xs font-bold border border-red-700/60 shadow-xs flex items-center gap-1.5 transition transform active:scale-95 cursor-pointer" title="🕵️ Hồ Sơ Kỳ Án (True Crime Studio) - Chuyển thể vụ án có thật thành truyện song ngữ Việt/Anh">
         <span class="relative flex h-2 w-2">
           <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
           <span class="relative inline-flex rounded-full h-2 w-2 bg-red-600"></span>
@@ -291,16 +291,16 @@
             <div>
               <div class="flex flex-wrap items-center gap-2">
                 <h3 class="text-base sm:text-lg font-extrabold tracking-tight text-white">Chế Độ Chuyên Sâu: 🕵️ Hồ Sơ Kỳ Án (True Crime Studio)</h3>
-                <span class="text-[10px] bg-red-600 text-white font-extrabold px-2 py-0.5 rounded-full border border-red-400 shadow-xs">CÔNG THỨC 70/30</span>
+                <span class="text-[10px] bg-red-600 text-white font-extrabold px-2 py-0.5 rounded-full border border-red-400 shadow-xs">SONG NGỮ VIỆT/ANH</span>
                 <span class="text-[10px] bg-amber-500/20 text-amber-300 font-bold px-2 py-0.5 rounded-full border border-amber-500/30">BẢNG GHIM CORKBOARD</span>
-                <span class="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">ẨN DANH 100% PII</span>
+                <span class="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">ĐỔI TÊN NGƯỜI &amp; ĐỊA DANH</span>
               </div>
               <p class="text-xs text-slate-300 mt-1.5 leading-relaxed">
-                Tự động ẩn danh hóa PII bảo mật pháp lý • 70% sự thật pháp y + 30% hư cấu/Red Herring gay cấn • Bảng ghim điều tra dây chỉ đỏ trực quan (Fixed-Anchor DAG) • Dựng video Neo-Noir hành động 5s với Meta Muse Cloud.
+                Dán bài về một vụ án có thật • LLM đọc từng đoạn, giữ nguyên diễn biến, chỉ thay tên người và địa danh riêng • Lời kể tiếng Việt và tiếng Anh cho từng cảnh • Xem lại bảng tên và lời kể trước khi tạo dự án • Hình bằng Meta Muse Cloud.
               </p>
             </div>
           </div>
-          <button type="button" id="btn-step1-open-true-crime" onclick="openTrueCrimeModal()" class="relative z-10 px-5 py-3 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-rose-500 text-white rounded-xl text-xs sm:text-sm font-extrabold shadow-lg shadow-red-600/30 flex items-center gap-2.5 shrink-0 transition transform active:scale-95 cursor-pointer whitespace-nowrap">
+          <button type="button" id="btn-step1-open-true-crime" class="relative z-10 px-5 py-3 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-rose-500 text-white rounded-xl text-xs sm:text-sm font-extrabold shadow-lg shadow-red-600/30 flex items-center gap-2.5 shrink-0 transition transform active:scale-95 cursor-pointer whitespace-nowrap">
             <i class="fa-solid fa-magnifying-glass-arrow-right text-sm"></i>
             <span>Mở Bảng Ghim Kỳ Án</span>
             <i class="fa-solid fa-bolt text-amber-300"></i>
@@ -1946,10 +1946,11 @@
     </div>
   </div>
 
-  <!-- ================= MODAL: TRUE CRIME STUDIO (HỒ SƠ KỲ ÁN & BẢNG GHIM ĐIỀU TRA) ================= -->
+  <!-- ================= MODAL: TRUE CRIME STUDIO (HỒ SƠ KỲ ÁN: CHUYỂN THỂ VỤ ÁN THẬT, SONG NGỮ VIỆT/ANH) ================= -->
+  <!-- Toàn bộ xử lý nằm trong /static/true_crime.js (không gắn onclick trong HTML: mỗi nút chỉ có một trình xử lý). -->
   <div id="modal-true-crime" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-2 sm:p-4 hidden">
     <div class="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-7xl max-h-[96vh] flex flex-col shadow-2xl overflow-hidden text-slate-100">
-      
+
       <!-- Modal Header -->
       <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between bg-gradient-to-r from-slate-950 via-red-950/40 to-slate-950 shrink-0">
         <div class="flex items-center gap-3">
@@ -1959,226 +1960,270 @@
           <div>
             <div class="flex items-center gap-2">
               <h3 class="text-sm sm:text-base font-extrabold text-white tracking-tight">Hồ Sơ Kỳ Án (True Crime Studio)</h3>
-              <span class="text-[10px] bg-red-500/20 text-red-300 font-mono font-bold px-2 py-0.5 rounded-full border border-red-500/30">70/30 Formula</span>
-              <span class="text-[10px] bg-amber-500/20 text-amber-300 font-mono font-bold px-2 py-0.5 rounded-full border border-amber-500/30 hidden sm:inline">Fixed-Anchor DAG</span>
-              <span class="text-[10px] bg-emerald-500/20 text-emerald-300 font-mono font-bold px-2 py-0.5 rounded-full border border-emerald-500/30 hidden md:inline">Anonymizer Shield Active</span>
+              <span class="text-[10px] bg-amber-500/20 text-amber-300 font-mono font-bold px-2 py-0.5 rounded-full border border-amber-500/30">Song ngữ Việt/Anh</span>
+              <span class="text-[10px] bg-emerald-500/20 text-emerald-300 font-mono font-bold px-2 py-0.5 rounded-full border border-emerald-500/30 hidden md:inline">Đổi tên người &amp; địa danh</span>
             </div>
-            <p class="text-xs text-slate-400 mt-0.5">Bảng ghim điều tra dây chỉ đỏ • Ẩn danh hóa PII 100% • Jubensha Matrix & Muse AI Video Noir</p>
+            <p class="text-xs text-slate-400 mt-0.5">Chuyển thể một vụ án có thật thành truyện: giữ diễn biến, chỉ thay tên người và địa danh riêng • Xem lại từng cảnh trước khi tạo dự án</p>
           </div>
         </div>
         <div class="flex items-center gap-2">
-          <button id="btn-close-true-crime-modal" class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer">
+          <button type="button" id="btn-close-true-crime-modal" class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer" title="Đóng (phân tích vẫn chạy nền)">
             <i class="fa-solid fa-xmark text-lg"></i>
           </button>
         </div>
       </div>
 
-      <!-- Quick Sample Cases Bar -->
+      <!-- Hồ sơ mẫu: chỉ nạp chữ vào ô nhập -->
       <div class="px-5 py-2.5 bg-slate-950/60 border-b border-slate-800/80 flex flex-wrap items-center gap-2 text-xs shrink-0">
         <span class="text-slate-400 font-bold flex items-center gap-1.5 text-[11px]">
-          <i class="fa-solid fa-folder-open text-red-400"></i> Hồ sơ mẫu kiểm thử:
+          <i class="fa-solid fa-folder-open text-red-400"></i> Nạp hồ sơ mẫu vào ô nhập:
         </span>
-        <button type="button" id="btn-tc-sample-1" class="px-2.5 py-1 bg-red-950/60 hover:bg-red-900/80 text-red-200 hover:text-white rounded-lg border border-red-800/50 text-[11px] font-semibold transition cursor-pointer">
-          🩸 Vụ Án Biệt Thự Cảng Tân Hải (Cổ Vật Mất Tích)
+        <button type="button" id="btn-tc-sample-1" data-tc-sample="sample1" class="px-2.5 py-1 bg-red-950/60 hover:bg-red-900/80 text-red-200 hover:text-white rounded-lg border border-red-800/50 text-[11px] font-semibold transition cursor-pointer">
+          Biệt Thự Cảng Tân Hải
         </button>
-        <button type="button" id="btn-tc-sample-2" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg border border-slate-700 text-[11px] font-semibold transition cursor-pointer">
-          🏢 Kỳ Án Tầng 13 Tháp Đôi (Mật Mã Sổ Sách)
+        <button type="button" id="btn-tc-sample-2" data-tc-sample="sample2" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg border border-slate-700 text-[11px] font-semibold transition cursor-pointer">
+          Tầng 13 Tháp Đôi
         </button>
-        <button type="button" id="btn-tc-sample-3" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg border border-slate-700 text-[11px] font-semibold transition cursor-pointer">
-          🌫️ Dấu Vết Đêm Mưa Ven Rừng Cao Su (Áo Mưa Vàng)
+        <button type="button" id="btn-tc-sample-3" data-tc-sample="sample3" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg border border-slate-700 text-[11px] font-semibold transition cursor-pointer">
+          Đêm Mưa Ven Rừng Cao Su
         </button>
       </div>
 
       <!-- Modal Body (Two-Column Layout) -->
       <div class="flex-1 overflow-y-auto p-4 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 min-h-0">
-        
-        <!-- LEFT COLUMN: Form Nhập Án & Cấu Hình (lg:col-span-5) -->
+
+        <!-- LEFT COLUMN: nhập vụ án, cấu hình, tiến độ -->
         <div class="lg:col-span-5 flex flex-col space-y-4">
-          
+
           <!-- Textarea nhập vụ án -->
           <div class="space-y-1.5">
             <div class="flex items-center justify-between">
               <label for="tc-case-text" class="text-xs font-bold text-slate-200 flex items-center gap-1.5">
                 <i class="fa-solid fa-file-shield text-red-400"></i>
-                <span>Hồ Sơ Vụ Án Thật / Trích Lục Bài Báo:</span>
+                <span>Bài viết về vụ án có thật:</span>
               </label>
               <span id="tc-case-word-count" class="text-[11px] text-slate-400 font-mono">0 từ • 0 ký tự</span>
             </div>
-            <textarea id="tc-case-text" rows="5" class="w-full bg-slate-950/90 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 placeholder-slate-500 focus:border-red-500 focus:ring-1 focus:ring-red-500 focus:outline-none leading-relaxed transition font-mono resize-y" placeholder="Dán nội dung hồ sơ hoặc bài báo vụ án thật vào đây. Toàn bộ tên thật nạn nhân, nghi phạm, địa danh, biển số xe sẽ tự động được mã hóa 100% sang bí danh hư cấu (Anonymizer Vault)..."></textarea>
-            <div class="text-[10px] text-emerald-400 flex items-center gap-1 font-medium">
-              <i class="fa-solid fa-shield-check"></i>
-              <span>Anonymizer Vault: Khóa PII 1-1 cố định, loại bỏ rủi ro pháp lý & vi phạm chính sách nền tảng.</span>
+            <textarea id="tc-case-text" rows="8" class="w-full bg-slate-950/90 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 placeholder-slate-500 focus:border-red-500 focus:ring-1 focus:ring-red-500 focus:outline-none leading-relaxed transition font-mono resize-y" placeholder="Dán toàn bộ bài viết về vụ án vào đây (tối đa 200.000 ký tự). LLM đọc từng đoạn, rồi đặt tên hư cấu cho người và địa danh riêng; bạn duyệt lại bảng tên trước khi tạo dự án."></textarea>
+            <div class="text-[10px] text-slate-400 flex items-center gap-1 font-medium">
+              <i class="fa-solid fa-shield-halved text-emerald-400"></i>
+              <span>Bài gốc chỉ lưu trên máy này. Tên thật chỉ hiện ở màn xem lại để bạn đối chiếu, không đưa vào dự án.</span>
             </div>
           </div>
 
-          <!-- Tùy chọn thời lượng & Bộ chọn giọng đọc trinh thám -->
+          <!-- Thời lượng & phong cách hình -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-            <!-- Thời lượng -->
             <div>
               <label for="tc-duration-select" class="block font-bold text-slate-300 mb-1">
-                ⏱️ Thời Lượng Video:
+                ⏱️ Thời lượng video:
               </label>
               <select id="tc-duration-select" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:border-red-500 font-medium">
-                <option value="8">⚡ 8 Phút (~35-40 cảnh - Phóng sự nhanh)</option>
-                <option value="15">📖 15 Phút (~50-60 cảnh - Chuyên sâu)</option>
-                <option value="20" selected>🔥 20 Phút (~70-80 cảnh - Đại kỳ án kể chuyện chi tiết) ★</option>
-                <option value="30">🏆 30 Phút (~100-120 cảnh - Trường thiên kỳ án không tóm tắt)</option>
+                <option value="8">8 phút (~35-40 cảnh)</option>
+                <option value="15">15 phút (~50-60 cảnh)</option>
+                <option value="20" selected>20 phút (~70-80 cảnh)</option>
+                <option value="30">30 phút (~100-120 cảnh)</option>
               </select>
             </div>
-
-            <!-- Giọng đọc thuyết minh trinh thám -->
-            <div>
-              <label for="tc-voice-select" class="block font-bold text-slate-300 mb-1">
-                🎙️ Giọng Đọc Trinh Thám:
-              </label>
-              <select id="tc-voice-select" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:border-red-500 font-medium">
-                <option value="vi-VN-NamMinhNeural" selected>🇻🇳 Nam Minh (Trầm ấm, uy nghiêm) ★</option>
-                <option value="vi-VN-HoaiMyNeural">🇻🇳 Hoài My (Nữ sắc sảo, bí ẩn)</option>
-                <option value="vieneu-MaiAnh">🇻🇳 VieNeu Mai Anh (VieNeu Local Engine)</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Thanh trượt tỷ lệ hư cấu 70/30 -->
-          <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-2">
-            <div class="flex items-center justify-between">
-              <label for="tc-fiction-ratio-slider" class="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                <i class="fa-solid fa-scale-balanced text-amber-400"></i>
-                <span>Tỷ lệ Hư cấu / Sự thật:</span>
-              </label>
-              <span id="tc-fiction-ratio-display" class="text-xs font-extrabold text-amber-400 font-mono">70% Thật / 30% Hư Cấu</span>
-            </div>
-            <input type="range" id="tc-fiction-ratio-slider" min="10" max="60" value="30" step="5" class="w-full accent-red-500 bg-slate-800 h-2 rounded-lg cursor-pointer">
-            <div class="flex justify-between text-[10px] text-slate-500 font-mono">
-              <span>90/10 (Gần như hồ sơ gốc)</span>
-              <span class="text-amber-400 font-bold">70/30 (Chuẩn Hollywood)</span>
-              <span>40/60 (Hư cấu cao)</span>
-            </div>
-            <p class="text-[10px] text-slate-400 leading-normal">
-              • <strong class="text-slate-200">70% Sự Thật:</strong> Dữ liệu pháp y, hiện trường, cơ chế gây án, thời điểm tử vong.<br>
-              • <strong class="text-amber-300">30% Hư Cấu:</strong> Thêm Red Herring nghi phạm giả, phục bút gián điệp, động cơ tâm lý kịch tính.
-            </p>
-          </div>
-
-          <!-- Visual Style & Motion Engine -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
             <div>
               <label for="tc-visual-style" class="block font-bold text-slate-300 mb-1">
-                🎨 Visual DNA:
+                🎨 Phong cách hình:
               </label>
               <select id="tc-visual-style" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:border-red-500">
-                <option value="neo_noir_silhouette" selected>🌑 Neo-Noir Silhouette (Bóng đen trinh thám)</option>
-                <option value="realistic_crime_35mm">📷 Phóng Sự 35mm (Tư liệu thực tế)</option>
-                <option value="cinematic_investigation">🎬 Spotlight Điều Tra Hiện Trường</option>
-              </select>
-            </div>
-            <div>
-              <label for="tc-vision-engine" class="block font-bold text-slate-300 mb-1">
-                ⚡ Vision Engine:
-              </label>
-              <select id="tc-vision-engine" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:border-red-500 font-medium">
-                <option value="meta_muse_cloud" selected>💎 Meta Muse Cloud (Mặc định) ★</option>
-                <option value="gemini_flash">⚡ Gemini 3.1 Flash (Dự phòng)</option>
+                <option value="neo_noir_silhouette" selected>Neo-Noir Silhouette (bóng đen trinh thám)</option>
+                <option value="cinematic_realistic">Điện ảnh chân thực</option>
+                <option value="intricate_ink_crosshatch">Tranh mực đan nét (graphic novel)</option>
               </select>
             </div>
           </div>
 
-          <!-- Action Button: Unified Transition to Step 2 (Bảng Đạo Diễn) -->
-          <div class="pt-2">
-            <button type="button" id="btn-tc-analyze-and-goto-board" onclick="handleAnalyzeAndGoToBoard()" class="w-full py-3.5 bg-gradient-to-r from-red-600 via-rose-600 to-indigo-600 hover:from-red-500 hover:to-indigo-500 text-white rounded-xl text-xs sm:text-sm font-extrabold shadow-lg shadow-red-600/30 flex items-center justify-center gap-2.5 transition transform active:scale-98 cursor-pointer">
-              <i class="fa-solid fa-clipboard-list text-amber-300 text-base"></i>
-              <span>📋 Phân Tích & Chuyển Sang Bảng Đạo Diễn (Bước 2)</span>
-              <i class="fa-solid fa-arrow-right text-xs"></i>
+          <!-- Giọng đọc cho từng ngôn ngữ (nạp từ /api/voices) -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div>
+              <label for="tc-voice-vi" class="block font-bold text-slate-300 mb-1">
+                🎙️ Giọng bản Việt:
+              </label>
+              <select id="tc-voice-vi" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:border-red-500 font-medium">
+                <option value="">Đang tải danh sách giọng...</option>
+              </select>
+            </div>
+            <div>
+              <label for="tc-voice-en" class="block font-bold text-slate-300 mb-1">
+                🎙️ Giọng bản Anh:
+              </label>
+              <select id="tc-voice-en" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:border-red-500 font-medium">
+                <option value="">Đang tải danh sách giọng...</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Engine hình -->
+          <div class="text-xs">
+            <label for="tc-vision-engine" class="block font-bold text-slate-300 mb-1">
+              ⚡ Engine tạo hình:
+            </label>
+            <select id="tc-vision-engine" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:border-red-500 font-medium">
+              <option value="meta_muse_cloud" selected>Meta Muse Cloud (mặc định)</option>
+              <option value="9router_gemini">9router: Gemini Flash Image (dự phòng)</option>
+            </select>
+          </div>
+
+          <!-- Nút phân tích + ước lượng thời gian -->
+          <div class="space-y-2">
+            <button type="button" id="btn-tc-analyze" class="w-full py-3.5 bg-gradient-to-r from-red-600 via-rose-600 to-indigo-600 hover:from-red-500 hover:to-indigo-500 text-white rounded-xl text-xs sm:text-sm font-extrabold shadow-lg shadow-red-600/30 flex items-center justify-center gap-2.5 transition cursor-pointer disabled:opacity-50">
+              <i class="fa-solid fa-magnifying-glass text-amber-300 text-base"></i>
+              <span>Phân tích hồ sơ</span>
             </button>
+            <p id="tc-time-estimate" class="text-[11px] text-slate-400 leading-relaxed flex items-start gap-1.5">
+              <i class="fa-solid fa-hourglass-half text-amber-400 mt-0.5"></i>
+              <span>Phân tích chạy từng bước nhỏ, có thể mất 10–30 phút; bạn có thể đóng modal, mở lại sẽ thấy tiến độ.</span>
+            </p>
+            <p id="tc-input-error" class="hidden text-[11px] text-rose-200 bg-[#2d161a] border border-rose-500/50 rounded-lg px-2.5 py-1.5"></p>
+          </div>
+
+          <!-- Tiến độ phân tích -->
+          <div id="tc-progress" class="hidden bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-2 text-xs">
+            <div class="flex items-center justify-between gap-2">
+              <span class="font-bold text-slate-200 flex items-center gap-1.5">
+                <i id="tc-progress-icon" class="fa-solid fa-spinner fa-spin text-amber-400"></i>
+                <span id="tc-progress-label">Đang chờ máy chủ...</span>
+              </span>
+              <span id="tc-progress-count" class="text-[11px] text-slate-400 font-mono shrink-0">0/0</span>
+            </div>
+            <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div id="tc-progress-bar" class="h-full bg-red-500 rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+            <p id="tc-progress-error" class="hidden text-[11px] text-rose-200 bg-[#2d161a] border border-rose-500/50 rounded-lg px-2.5 py-1.5 leading-relaxed"></p>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span id="tc-progress-case" class="text-[10px] text-slate-500 font-mono"></span>
+              <div class="flex items-center gap-2">
+                <button type="button" id="btn-tc-resume" class="hidden px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-[11px] font-bold transition cursor-pointer disabled:opacity-50">
+                  <i class="fa-solid fa-rotate-right mr-1"></i> Thử lại
+                </button>
+                <button type="button" id="btn-tc-new-case" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 text-[11px] font-semibold transition cursor-pointer">
+                  Phân tích vụ khác
+                </button>
+              </div>
+            </div>
           </div>
 
         </div>
 
-        <!-- RIGHT COLUMN: Interactive Evidence Board Preview (lg:col-span-7) -->
+        <!-- RIGHT COLUMN: màn xem lại kế hoạch -->
         <div class="lg:col-span-7 flex flex-col space-y-3">
-          
-          <!-- Evidence Board Header & Control Bar -->
-          <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
-            <div class="flex items-center gap-2">
-              <span class="font-bold text-white flex items-center gap-1.5">
-                <i class="fa-solid fa-thumbtack text-red-500"></i>
-                <span>Bảng Ghim Điều Tra Tương Tác (Interactive Corkboard)</span>
-              </span>
-              <span id="tc-board-stats" class="text-[11px] text-amber-400 font-mono bg-slate-900 px-2 py-0.5 rounded border border-slate-700">6 chứng cứ • 5 dây chỉ đỏ</span>
-            </div>
 
-            <!-- Scene Timeline Scrubber & Reset -->
-            <div class="flex items-center gap-2">
-              <span class="text-[11px] text-slate-400">Tích luỹ:</span>
-              <select id="tc-scene-scrubber" class="bg-slate-900 border border-slate-700 text-slate-200 text-[11px] rounded-lg px-2 py-1 font-mono focus:border-red-500">
-                <option value="all" selected>Toàn bộ kỳ án (Full DAG)</option>
-                <option value="1">Cảnh 1: Phát hiện tử thi</option>
-                <option value="2">Cảnh 2: Khám nghiệm hiện trường</option>
-                <option value="3">Cảnh 3: Thẩm vấn nghi phạm</option>
-                <option value="4">Cảnh 4: Phục bút & Ngoại phạm giả</option>
-                <option value="5">Cảnh 5: Phá án & Vạch trần</option>
-              </select>
-              <button type="button" id="btn-tc-reset-board" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 text-[11px] transition" title="Đặt lại vị trí ghim mặc định">
-                <i class="fa-solid fa-rotate-left"></i>
-              </button>
-            </div>
+          <div id="tc-review-empty" class="bg-slate-950/60 border border-dashed border-slate-700 rounded-xl p-6 text-center text-xs text-slate-400 leading-relaxed">
+            <i class="fa-solid fa-clipboard-list text-2xl text-slate-600 mb-2 block"></i>
+            Kế hoạch chuyển thể sẽ hiện ở đây sau khi phân tích xong: bảng tên thật → tên Việt → tên Anh, cảnh báo, dàn ý và lời kể từng cảnh bằng hai thứ tiếng.
           </div>
 
-          <!-- HTML5 Corkboard Canvas Frame (Fixed-Anchor Timeline View) -->
-          <div class="relative w-full h-[320px] sm:h-[350px] lg:h-[380px] rounded-2xl overflow-hidden border-4 border-[#3c2514] shadow-2xl bg-[#a07449] select-none group flex items-center justify-center">
-            <canvas id="tc-evidence-canvas" width="1280" height="720" class="w-full h-full object-cover block cursor-default"></canvas>
-            
-            <!-- Corkboard Canvas Floating Overlay Badge -->
-            <div class="absolute top-3 left-3 pointer-events-none bg-slate-950/80 backdrop-blur-xs border border-amber-600/40 rounded-lg px-2.5 py-1 text-[10px] text-amber-200 font-mono flex items-center gap-1.5 shadow-md">
-              <span class="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-              <span>LIVE EVIDENCE DAG: Tiến trình điều tra chuẩn Fixed-Anchor • Rê chuột để soi chứng cứ & dây nối</span>
+          <div id="tc-review" class="hidden flex flex-col space-y-3">
+
+            <!-- Tên tập & thống kê -->
+            <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-xs space-y-1">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span id="tc-plan-title-vi" class="font-extrabold text-white text-sm"></span>
+                <span id="tc-plan-stats" class="text-[11px] text-amber-400 font-mono bg-slate-900 px-2 py-0.5 rounded border border-slate-700"></span>
+              </div>
+              <div id="tc-plan-title-en" class="text-slate-400"></div>
             </div>
 
-            <!-- Canvas Tooltip for Details -->
-            <div id="tc-canvas-tooltip" class="absolute pointer-events-none hidden bg-slate-950/95 border border-red-500/70 text-slate-100 text-[11px] p-2.5 rounded-xl shadow-2xl max-w-xs z-30 transition-opacity duration-150">
-              <div id="tc-tooltip-title" class="font-bold text-amber-300 border-b border-slate-800 pb-1 mb-1">Nạn nhân: Chu Doãn</div>
-              <div id="tc-tooltip-body" class="text-slate-300 text-[10px] leading-relaxed">Tử vong lúc 22h00 tại phòng đọc sách tầng 2.</div>
-            </div>
-          </div>
+            <!-- Cảnh báo -->
+            <div id="tc-warnings" class="space-y-1.5 text-xs"></div>
 
-          <!-- Tabbed Inspector & Analysis Panels -->
-          <div class="bg-slate-950/80 border border-slate-800 rounded-xl overflow-hidden flex flex-col flex-1 min-h-[160px]">
-            <!-- Inspector Tabs -->
-            <div class="flex border-b border-slate-800 bg-slate-900/90 text-xs font-semibold">
-              <button type="button" class="tc-tab-btn px-3 py-2 text-red-400 border-b-2 border-red-500 bg-slate-800/50" data-tc-tab="anonymizer">
-                <i class="fa-solid fa-user-shield mr-1"></i> Anonymizer Vault (<span id="tc-alias-count">4</span>)
-              </button>
-              <button type="button" class="tc-tab-btn px-3 py-2 text-slate-400 hover:text-slate-200" data-tc-tab="matrix">
-                <i class="fa-solid fa-diagram-project mr-1"></i> Jubensha Matrix (<span id="tc-matrix-count">3</span>)
-              </button>
-              <button type="button" class="tc-tab-btn px-3 py-2 text-slate-400 hover:text-slate-200" data-tc-tab="foreshadowing">
-                <i class="fa-solid fa-feather mr-1"></i> Phục Bút Ledger (<span id="tc-foreshadow-count">2</span>)
-              </button>
-            </div>
-
-            <!-- Tab 1: Anonymizer Vault Content -->
-            <div id="tc-tab-pane-anonymizer" class="tc-tab-pane p-3 text-xs overflow-y-auto max-h-40 space-y-1.5">
-              <div class="grid grid-cols-2 gap-2" id="tc-anonymizer-list">
-                <!-- Dynamically populated -->
+            <!-- Bảng tên thật -> tên Việt -> tên Anh -->
+            <div class="bg-slate-950/80 border border-slate-800 rounded-xl overflow-hidden text-xs">
+              <div class="px-3 py-2 border-b border-slate-800 bg-slate-900/90 flex flex-wrap items-center justify-between gap-2">
+                <span class="font-bold text-white flex items-center gap-1.5">
+                  <i class="fa-solid fa-user-shield text-emerald-400"></i>
+                  <span>Bảng tên: tên thật → tên Việt → tên Anh</span>
+                </span>
+                <button type="button" id="btn-tc-save-entities" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold transition cursor-pointer disabled:opacity-50">
+                  <i class="fa-solid fa-floppy-disk mr-1"></i> Lưu tên đã sửa
+                </button>
+              </div>
+              <div class="max-h-60 overflow-y-auto">
+                <table class="w-full text-left">
+                  <thead class="bg-slate-900 text-[10px] uppercase text-slate-400">
+                    <tr>
+                      <th class="px-2 py-1.5 font-semibold">Loại</th>
+                      <th class="px-2 py-1.5 font-semibold">Tên thật (chỉ để đối chiếu)</th>
+                      <th class="px-2 py-1.5 font-semibold">Tên Việt</th>
+                      <th class="px-2 py-1.5 font-semibold">Tên Anh</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tc-entity-table"></tbody>
+                </table>
+              </div>
+              <!-- Thêm tên mới (thường là tên mà phần kiểm tra bắt được trên bài gốc) -->
+              <div class="p-3 border-t border-slate-800 bg-slate-900/60 space-y-2">
+                <div class="text-[11px] font-bold text-slate-300">Thêm tên mới:</div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <select id="tc-add-kind" class="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:border-red-500">
+                    <option value="person" selected>Người</option>
+                    <option value="place">Địa danh</option>
+                    <option value="organization">Tổ chức</option>
+                    <option value="identifier">Định danh (biển số, số hiệu...)</option>
+                  </select>
+                  <input type="text" id="tc-add-real" maxlength="500" class="bg-slate-950/90 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:border-red-500 focus:outline-none" placeholder="Tên thật (nhiều cách viết thì ngăn bằng dấu ;)">
+                  <input type="text" id="tc-add-alias-vi" maxlength="120" class="bg-slate-950/90 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:border-red-500 focus:outline-none" placeholder="Tên Việt thay thế">
+                  <input type="text" id="tc-add-alias-en" maxlength="120" class="bg-slate-950/90 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:border-red-500 focus:outline-none" placeholder="Tên Anh thay thế">
+                </div>
+                <button type="button" id="btn-tc-add-entity" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 text-[11px] font-semibold transition cursor-pointer disabled:opacity-50">
+                  <i class="fa-solid fa-plus mr-1"></i> Thêm tên
+                </button>
               </div>
             </div>
 
-            <!-- Tab 2: Jubensha Matrix Content -->
-            <div id="tc-tab-pane-matrix" class="tc-tab-pane p-3 text-xs overflow-y-auto max-h-40 space-y-1.5 hidden">
-              <div id="tc-matrix-list" class="space-y-1.5">
-                <!-- Dynamically populated -->
+            <!-- Bảng ghim (vẽ từ bản sao evidence/relations của kế hoạch) -->
+            <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div class="flex items-center gap-2">
+                <span class="font-bold text-white flex items-center gap-1.5">
+                  <i class="fa-solid fa-thumbtack text-red-500"></i>
+                  <span>Bảng ghim điều tra</span>
+                </span>
+                <span id="tc-board-stats" class="text-[11px] text-amber-400 font-mono bg-slate-900 px-2 py-0.5 rounded border border-slate-700">0 thẻ • 0 dây</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] text-slate-400">Tích luỹ tới:</span>
+                <select id="tc-scene-scrubber" class="bg-slate-900 border border-slate-700 text-slate-200 text-[11px] rounded-lg px-2 py-1 font-mono focus:border-red-500">
+                  <option value="all" selected>Toàn bộ</option>
+                </select>
+                <select id="tc-board-lang" class="bg-slate-900 border border-slate-700 text-slate-200 text-[11px] rounded-lg px-2 py-1 font-mono focus:border-red-500">
+                  <option value="vi" selected>Nhãn Việt</option>
+                  <option value="en">Nhãn Anh</option>
+                </select>
+              </div>
+            </div>
+            <div class="relative w-full h-[320px] sm:h-[350px] lg:h-[380px] rounded-2xl overflow-hidden border-4 border-[#3c2514] shadow-2xl bg-[#a07449] select-none flex items-center justify-center">
+              <canvas id="tc-evidence-canvas" width="1280" height="720" class="w-full h-full object-cover block cursor-default"></canvas>
+              <div id="tc-canvas-tooltip" class="absolute pointer-events-none hidden bg-slate-950/95 border border-red-500/70 text-slate-100 text-[11px] p-2.5 rounded-xl shadow-2xl max-w-xs z-30 transition-opacity duration-150">
+                <div id="tc-tooltip-title" class="font-bold text-amber-300 border-b border-slate-800 pb-1 mb-1"></div>
+                <div id="tc-tooltip-body" class="text-slate-300 text-[10px] leading-relaxed"></div>
               </div>
             </div>
 
-            <!-- Tab 3: Foreshadowing Ledger Content -->
-            <div id="tc-tab-pane-foreshadowing" class="tc-tab-pane p-3 text-xs overflow-y-auto max-h-40 space-y-1.5 hidden">
-              <div id="tc-foreshadowing-list" class="space-y-1.5">
-                <!-- Dynamically populated -->
+            <!-- Dàn ý -->
+            <div class="bg-slate-950/80 border border-slate-800 rounded-xl overflow-hidden text-xs">
+              <div class="px-3 py-2 border-b border-slate-800 bg-slate-900/90 font-bold text-white flex items-center gap-1.5">
+                <i class="fa-solid fa-diagram-project text-amber-400"></i>
+                <span>Dàn ý</span>
               </div>
+              <ol id="tc-outline" class="p-3 space-y-1.5"></ol>
+            </div>
+
+            <!-- Danh sách cảnh: lời Việt và lời Anh song song, sửa trực tiếp (lưu khi rời ô) -->
+            <div class="bg-slate-950/80 border border-slate-800 rounded-xl overflow-hidden text-xs">
+              <div class="px-3 py-2 border-b border-slate-800 bg-slate-900/90 flex flex-wrap items-center justify-between gap-2">
+                <span class="font-bold text-white flex items-center gap-1.5">
+                  <i class="fa-solid fa-film text-indigo-400"></i>
+                  <span>Lời kể từng cảnh</span>
+                </span>
+                <span class="text-[10px] text-slate-400">Sửa trực tiếp; rời ô là lưu. Cảnh viền đỏ đang bị đánh dấu.</span>
+              </div>
+              <div id="tc-scene-review" class="p-3 space-y-2.5"></div>
             </div>
 
           </div>
-
         </div>
 
       </div>
@@ -2186,16 +2231,16 @@
       <!-- Modal Footer -->
       <div class="px-5 py-3 bg-slate-950 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
         <div class="flex items-center gap-2 text-slate-400">
-          <i class="fa-solid fa-circle-check text-emerald-400"></i>
-          <span>Bảng ghim được đồng bộ tự động thành cảnh B-Roll trực quan kết hợp video Muse AI chuyển động 5s.</span>
+          <i id="tc-create-hint-icon" class="fa-solid fa-circle-info text-slate-500"></i>
+          <span id="tc-create-hint">Phân tích xong và không còn cảnh bị đánh dấu thì tạo được dự án bản Việt.</span>
         </div>
         <div class="flex items-center gap-2.5">
           <button type="button" id="btn-cancel-true-crime-modal" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 transition cursor-pointer">
             Đóng
           </button>
-          <button type="button" id="btn-tc-footer-goto-board" onclick="handleAnalyzeAndGoToBoard()" class="px-5 py-2.5 bg-gradient-to-r from-red-600 via-rose-600 to-indigo-600 hover:from-red-500 hover:to-indigo-500 text-white rounded-xl text-xs font-extrabold shadow-md shadow-red-600/30 flex items-center gap-2 transition cursor-pointer">
-            <i class="fa-solid fa-clipboard-list text-amber-300"></i>
-            <span>📋 Phân Tích & Chuyển Sang Bảng Đạo Diễn (Bước 2)</span>
+          <button type="button" id="btn-tc-create-vi" disabled class="px-5 py-2.5 bg-gradient-to-r from-red-600 via-rose-600 to-indigo-600 hover:from-red-500 hover:to-indigo-500 text-white rounded-xl text-xs font-extrabold shadow-md shadow-red-600/30 flex items-center gap-2 transition cursor-pointer disabled:opacity-50">
+            <i class="fa-solid fa-clapperboard text-amber-300"></i>
+            <span>Tạo dự án bản Việt</span>
           </button>
         </div>
       </div>
@@ -2208,7 +2253,8 @@
     <!-- Dynamic toasts -->
   </div>
 
-  <!-- Main JavaScript Logic (v2.8.2 Cache Buster) -->
-  <script src="/static/app.js?v=2.8.2"></script>
+  <!-- Main JavaScript Logic (v2.9.0 Cache Buster: app.js không còn code true-crime, đã tách ra true_crime.js) -->
+  <script src="/static/app.js?v=2.9.0"></script>
+  <script src="/static/true_crime.js?v=1.0.0"></script>
 </body>
 </html>
