@@ -70,3 +70,25 @@ File rác chuyển vào `_archive_2026-10-19/` (giữ cấu trúc, xem `MANIFEST
 - [x] Dọn (vào Thùng rác): 61 dự án test (94 MB) + 11 bảng ghim không dùng (33 MB), cache Chrome 3 profile (~120 MB, kiểm tra cả 3 vẫn đăng nhập Muse), `__pycache__`, cache npm
 - [x] Chạy lại test: 128 pass / 0 fail (17 file offline); git init + commit `ffa1c3b`
 - [x] Sau commit: `_archive_2026-10-19/` (19 MB), `.backup/` vào Thùng rác
+
+# TASKS — Chuyển thể vụ án song ngữ (2026-10-19, nhánh worktree-true-crime-adaptation)
+
+Thiết kế: `docs/superpowers/specs/2026-10-19-true-crime-adaptation-design.md`. Kế hoạch: `docs/superpowers/plans/2026-10-19-true-crime-adaptation.md`.
+
+- [x] Task 1: Schema, lưu trữ, hàng việc, fixture test, baseline
+- [ ] Task 2: Client LLM qua 9router
+- [ ] Task 3: Kiểm lọt tên, ngày tháng, áp tên hư cấu
+- [ ] Task 4: Bộ chạy một việc, cùng các việc G1–G4 (từ bài gốc tới hồ sơ)
+- [ ] Task 5: Các việc G5–G7 (dàn ý, viết cảnh theo nhịp, ráp kế hoạch)
+- [ ] Task 6: Worker chạy hàng việc tuần tự
+- [ ] Task 7: Bảng ghim theo ngôn ngữ, tạo dự án, tạo bản ngôn ngữ khác
+- [ ] Task 8: API, bỏ luồng cũ
+- [ ] Task 9: Giao diện modal Hồ Sơ Kỳ Án
+- [ ] Task 10: Nút "Tạo bản tiếng Anh"
+- [ ] Task 11: Hồi quy toàn bộ và chạy thật cả chuỗi
+
+## Baseline trước khi sửa (Task 1, bước 1)
+- Bộ offline 18 file (lệnh trong kế hoạch, Task 1): **158 pass / 1 fail**, 332 s. Worktree không có `backend/config/muse_fleet_accounts.json` và `backend/chrome_profiles/`.
+- Fail sẵn: `tests/test_gate_gout_regressions.py::test_sec_04_block_arbitrary_file_overwrite_in_muse_complete` (test chờ 200, nhưng `/api/muse-bridge/tasks/create` giờ trả 400 khi `output_path` nằm ngoài projects/muse_outputs). Test cũ lệch với code đã siết, không thuộc nhiệm vụ này.
+- Lần chạy sinh ra (đều bị `.gitignore` bỏ qua): `projects/proj_crime_e9e94024`, `projects/proj_crime_fa8cad63`, `backend/static/comic_slices/` (3 thư mục), `backend/static/evidence_boards/` (2 thư mục `case_*`), `backend/config/muse_fleet_accounts.json`, `backend/muse_fleet_runner.log` (rỗng). Trước khi chạy thì chưa có `projects/`, `comic_slices/`, `backend/static/comic_slices/`.
+- [ ] Dọn các thư mục trên (chuyển vào Thùng rác): lệnh xoá bị chặn nên chưa dọn
