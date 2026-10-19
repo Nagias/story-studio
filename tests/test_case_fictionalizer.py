@@ -1,11 +1,12 @@
 """
-Unit tests for Case Fictionalizer & Suspense Engine
-(Anonymizer Shield, Deterministic Alias Vault, Jubensha Matrix, Foreshadowing Ledger, YouTube Reviewer Script)
+Unit tests cho AnonymizerShield (case_fictionalizer.py).
+
+Từ đợt chuyển thể vụ án bằng LLM, file này chỉ còn lớp AnonymizerShield cùng các regex và danh sách tên mẫu: kiểm lọt
+tên thật (case_adaptation_checks) dùng regex để bắt thêm những tên mà bảng tên chưa có. Ma trận 70/30, sổ phục bút và
+bộ sinh kịch bản mẫu đã bỏ.
 """
 
 import sys
-import os
-import asyncio
 from pathlib import Path
 
 # Fix Windows console UTF-8 output
@@ -19,14 +20,7 @@ BACKEND_DIR = PROJECT_DIR / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from services.case_fictionalizer import (
-    AnonymizerShield,
-    JubenshaMatrix,
-    ForeshadowingLedgerManager,
-    YouTubeReviewerScriptGenerator,
-    CaseFictionalizerEngine,
-)
-from models.evidence_schemas import ForeshadowingItem
+from services.case_fictionalizer import AnonymizerShield
 
 
 SAMPLE_RAW_REPORT = """
@@ -61,109 +55,27 @@ def test_anonymizer_shield():
     print("✓ test_anonymizer_shield passed (100% PII sanitized & Deterministic Vault confirmed)")
 
 
-def test_jubensha_matrix():
+def test_extract_pii_candidates_finds_names_plates_and_places():
+    found = AnonymizerShield().extract_pii_candidates(SAMPLE_RAW_REPORT)
+
+    assert {"Nguyễn Văn Hải", "Trần Đình Long", "Vũ Mạnh Hùng"} <= set(found["persons"])
+    assert "15B-678.90" in found["plates"]
+    assert any("Hải Phòng" in place for place in found["locations"])
+    assert any("14 tháng 10" in date for date in found["dates"])
+
+
+def test_vault_gives_every_person_a_distinct_alias_that_is_not_a_real_name():
     shield = AnonymizerShield()
     vault = shield.build_deterministic_vault(SAMPLE_RAW_REPORT)
-    sanitized = shield.anonymize(SAMPLE_RAW_REPORT, vault)
+    persons = shield.extract_pii_candidates(SAMPLE_RAW_REPORT)["persons"]
 
-    matrix = JubenshaMatrix.generate_matrix("Vụ Án Cảng Tân Hải", sanitized, vault)
-    assert matrix["truth_ratio"] == 0.70
-    assert matrix["fiction_ratio"] == 0.30
-
-    nodes = matrix["nodes"]
-    edges = matrix["edges"]
-
-    # Check key roles exist
-    types = [n.node_type for n in nodes]
-    assert "victim" in types
-    assert "suspect" in types
-    assert "weapon" in types
-    assert "forensic_report" in types
-
-    # Check fixed-anchor coordinates are assigned
-    for n in nodes:
-        assert n.pinned is True
-        assert n.x > 0 and n.y > 0
-
-    print("✓ test_jubensha_matrix passed (70/30 Formula & Clue DAG verified)")
-
-
-def test_foreshadowing_ledger():
-    ledger = ForeshadowingLedgerManager.build_default_ledger()
-    # Test valid ledger with 6 scenes
-    is_valid, errors = ForeshadowingLedgerManager.validate_ledger(ledger, total_scenes=6)
-    assert is_valid, f"Expected valid ledger, got errors: {errors}"
-
-    # Test orphan detection
-    orphan = ForeshadowingItem(
-        id="clue_orphan",
-        clue_name="Vết chân lạ",
-        planted_scene_order=1,
-        status="planted",  # Never resolved!
-        description="Vết chân số 42",
-    )
-    bad_ledger = [orphan]
-    is_valid_bad, errors_bad = ForeshadowingLedgerManager.validate_ledger(bad_ledger, total_scenes=6)
-    assert not is_valid_bad, "Orphaned clue should have failed validation!"
-    assert any("Orphaned clue detected" in e for e in errors_bad)
-
-    print("✓ test_foreshadowing_ledger passed (Zero-orphaned clue validation confirmed)")
-
-
-def test_youtube_reviewer_script():
-    shield = AnonymizerShield()
-    vault = shield.build_deterministic_vault(SAMPLE_RAW_REPORT)
-    matrix = JubenshaMatrix.generate_matrix("Vụ Án Cảng Tân Hải", "", vault)
-
-    scenes = YouTubeReviewerScriptGenerator.generate_offline_script(
-        case_title="Vụ Án Cảng Tân Hải",
-        vault=vault,
-        nodes=matrix["nodes"],
-        edges=matrix["edges"],
-    )
-
-    assert len(scenes) == 6
-
-    # Verify 3rd person narration
-    for sc in scenes:
-        assert sc["estimated_duration"] == 5.0
-        assert sc["shot_type"] in ("A_ROLL_NOIR", "B_ROLL_BOARD")
-        # Ensure reviewer voice
-        text = sc["text"]
-        assert len(text.split()) >= 8, f"Scene text too short: '{text}'"
-
-    # Verify rhythmic alternation between A_ROLL and B_ROLL
-    shot_types = [sc["shot_type"] for sc in scenes]
-    assert "A_ROLL_NOIR" in shot_types
-    assert "B_ROLL_BOARD" in shot_types
-    assert shot_types != ["A_ROLL_NOIR"] * len(shot_types), "Expected alternation between A-Roll and B-Roll"
-
-    print("✓ test_youtube_reviewer_script passed (3rd-person Reviewer voice & A/B Roll pacing verified)")
-
-
-def test_full_fictionalizer_pipeline():
-    engine = CaseFictionalizerEngine()
-
-    async def _run():
-        plan = await engine.fictionalize_case(SAMPLE_RAW_REPORT)
-        assert plan.case_id.startswith("case_")
-        assert len(plan.nodes) >= 5
-        assert len(plan.edges) >= 4
-        assert len(plan.scenes_script) >= 4
-        assert len(plan.board_states) >= 3
-        # Check cumulative board states
-        first_state = plan.board_states[0]
-        last_state = plan.board_states[-1]
-        assert len(last_state.cumulative_nodes) >= len(first_state.cumulative_nodes)
-        print(f"✓ test_full_fictionalizer_pipeline passed: Created plan '{plan.title}' with {len(plan.scenes_script)} scenes and {len(plan.board_states)} board states.")
-
-    asyncio.run(_run())
+    aliases = [vault[name] for name in persons]
+    assert len(set(aliases)) == len(aliases)
+    assert not set(aliases) & set(persons)
 
 
 if __name__ == "__main__":
     test_anonymizer_shield()
-    test_jubensha_matrix()
-    test_foreshadowing_ledger()
-    test_youtube_reviewer_script()
-    test_full_fictionalizer_pipeline()
-    print("\n🎉 ALL CASE FICTIONALIZER TESTS PASSED 100%!")
+    test_extract_pii_candidates_finds_names_plates_and_places()
+    test_vault_gives_every_person_a_distinct_alias_that_is_not_a_real_name()
+    print("\n🎉 ALL ANONYMIZER SHIELD TESTS PASSED 100%!")

@@ -1,30 +1,24 @@
 """
-Comprehensive End-to-End (E2E) Integration Tests for Story Studio True Crime Pipeline
-======================================================================================
-Tests covered:
-1. Endpoint POST /api/true-crime/fictionalize:
-   - Ingests real criminal dossier (e.g. Kỳ án Cảng Tân Hải with real entities:
-     'Nguyễn Văn Hùng', 'Lê Thị Mai', 'Đường Lê Lợi, TP Hải Phòng', '15B1-987.65', '0912345678').
-   - Confirms 100% PII anonymization via Deterministic Alias Vault: Zero leakage in script, prompts, or board nodes.
-   - Jubensha 3-Act structure with 70% Forensic Truth / 30% Suspense Red Herring and Foreshadowing Ledger.
-   - Evidence Corkboard Cumulative DAG: Fixed-anchor coordinates (pinned=True, no coordinate jumps),
-     monotonic accumulation of nodes and Bezier gravitational sagging red threads.
-2. Endpoint POST /api/true-crime/render-board-scene/{scene_id}:
-   - Renders 1080p static board image (JPG/PNG) successfully.
-   - Renders 2-3s animated dynamic video clip (MP4) with Bezier yarn stretching successfully.
-3. Endpoint POST /api/true-crime/create-project:
-   - Creates full Story Studio project with narrator voice 'vi-VN-NamMinhNeural' and style 'neo_noir_silhouette'.
-   - Pre-renders B-Roll corkboard evidence scenes and validates scene alternation.
+End-to-end qua HTTP cho luồng chuyển thể vụ án thật thành truyện song ngữ (spec 7.8, 7.11)
+==========================================================================================
+Phân tích (hàng việc, LLM giả) -> xem lại/sửa -> tạo dự án bản Việt -> bảng ghim -> tạo bản Anh:
+
+1. Không lọt tên thật (người, địa danh, biển số, số điện thoại của bài mẫu "Kỳ án Cảng Tân Hải") vào kế hoạch gửi ra,
+   file dự án bản Việt và dự án bản Anh.
+2. Dự án bản Việt: cảnh miễn trừ đứng đầu, cảnh bảng ghim và miễn trừ được vẽ thẳng vào thư mục dự án, các cảnh còn lại
+   chờ Muse; không ghi gì vào backend/static (thư mục công khai).
+3. Bảng ghim tích luỹ: thẻ giữ nguyên vị trí qua các cảnh và qua hai ngôn ngữ, chỉ khác chữ.
+4. Sửa lời kể làm lọt tên thật thì bị chặn (409), thêm tên vào bảng tên thì gỡ được.
+5. Bản Anh dùng lại ảnh và clip của bản Việt, chỉ đổi lời kể, giọng, ảnh có chữ; hai dự án liên kết hai chiều.
+6. Các route mới nằm sau LocalAccessMiddleware (máy khác và trang web lạ bị chặn).
 """
-
 import sys
-import os
 from pathlib import Path
-from PIL import Image
+from types import SimpleNamespace
 
-# Ensure UTF-8 console output on Windows
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
+import pytest
+from fastapi.testclient import TestClient
+from PIL import Image, ImageChops
 
 # Setup project and backend paths
 TEST_DIR = Path(__file__).resolve().parent
@@ -33,449 +27,252 @@ BACKEND_DIR = PROJECT_DIR / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-import pytest
-from fastapi.testclient import TestClient
-
 from main import app
+from models.case_adaptation_schemas import DISCLAIMER, CaseAdaptationPlan
+from services import case_store, project_service
+from services.case_adaptation_checks import fold
+from services.case_project_builder import plan_board_items
+from services.investigation_board_engine import CANVAS_HEIGHT, CANVAS_WIDTH, get_cumulative_board_state
 from services.project_service import get_project
-from services.case_fictionalizer import (
-    AnonymizerShield,
-    JubenshaMatrix,
-    ForeshadowingLedgerManager,
-    YouTubeReviewerScriptGenerator,
+from tests.test_case_project_builder import prepare_source_media, scene_by_order
+from tests.test_case_worker import DOSSIER
+from tests.test_true_crime_router import (  # noqa: F401  (client, small_chunks là fixture dùng lại)
+    BASE,
+    EN_VOICE,
+    REGEX_ONLY_NAME,
+    VI_VOICE,
+    client,
+    create_vi_project,
+    finished_case,
+    get_plan,
+    scene_of,
+    small_chunks,
+    wait_job,
 )
-from services.investigation_board_engine import (
-    assign_fixed_anchor_layout,
-    compute_bezier_points,
-    get_cumulative_board_state,
-    CANVAS_WIDTH,
-    CANVAS_HEIGHT,
-)
-from models.evidence_schemas import FictionalCasePlan, EvidenceNode, RelationEdge
 
-
-# Realistic true crime sample dossier with prominent real PII entities
-SAMPLE_REAL_CRIME_DOSSIER = """
-HỒ SƠ VỤ ÁN HÌNH SỰ: KỲ ÁN CẢNG TÂN HẢI (HẢI PHÒNG)
-
-Thời gian: Vào đêm ngày 15 tháng 10 năm 2021, vào khoảng 23 giờ 30 phút.
-Địa điểm: Kho bãi bốc dỡ Cảng Tân Hải, số 88 Đường Lê Lợi, TP Hải Phòng.
-
-Nội dung sự việc:
-Nạn nhân là ông Nguyễn Văn Hùng (48 tuổi, trú tại TP Hải Phòng), Giám đốc Công ty Vận tải Biển Đông,
-được phát hiện tử vong tại khu vực container số 14 với vết thương chí mạng ở vùng gáy do vật sắc nhọn tác động.
-
-Nhân chứng và người báo án:
-Bà Lê Thị Mai (36 tuổi, Kế toán trưởng công ty, điều khiển xe máy Air Blade biển số 15B1-987.65)
-đã gọi điện đến trực ban hình sự qua số điện thoại 0912345678 để trình báo.
-Bà Mai khai nhận quay lại văn phòng lấy sổ sách tài chính thì phát hiện hiện trường,
-đồng thời thấy một bóng người mặc áo khoác sẫm màu chạy vụt qua cổng cảng trong cơn mưa tầm tã.
-
-Nghi phạm ban đầu (Hướng điều tra số 1):
-Cơ quan điều tra tình nghi ông Vũ Đình Trọng (đối tác kinh doanh có khoản nợ tranh chấp hơn 2 tỷ đồng).
-Ông Trọng có mặt gần hiện trường vào buổi chiều cùng ngày và từng có lời đe dọa ông Hùng.
-
-Diễn biến khám nghiệm pháp y & manh mối:
-1. Pháp y xác định nạn nhân tử vong vào khoảng 22 giờ 15 phút (chênh lệch hơn 1 giờ so với thời điểm bà Mai báo án).
-2. Phát hiện một chiếc bật lửa kim loại khắc chữ rơi dưới gầm tủ tài liệu bị lục soát.
-3. Dấu vết bùn đất đỏ đặc trưng tại hiện trường không trùng khớp với tuyến đường của ông Trọng,
-   ngược lại ông Trọng có chứng cứ ngoại phạm vững chắc qua camera giao thông lúc 22h15.
-"""
-
-REAL_PII_ENTITIES = [
-    "Nguyễn Văn Hùng",
-    "Lê Thị Mai",
-    "Đường Lê Lợi",
-    "TP Hải Phòng",
-    "15B1-987.65",
-    "0912345678",
+# Tên thật trong bài mẫu (tests/fixtures/case_adaptation/dossier.txt): không được lọt vào bất kỳ đầu ra nào.
+# Không đưa các cách gọi tắt như "ông Trọng" vào đây: bỏ dấu thì "ong trong" trùng chữ thường gặp ("ông trong căn phòng").
+REAL_TERMS = [
+    "Nguyễn Văn Hùng", "Lê Thị Mai", "Vũ Đình Trọng", "Cảng Tân Hải", "Đường Lê Lợi", "TP Hải Phòng", "Hải Phòng",
+    "Công ty Vận tải Biển Đông", "15B1-987.65", "0912345678",
 ]
 
 
-@pytest.fixture(scope="module")
-def api_client():
-    return TestClient(app, base_url="http://127.0.0.1:8000", client=("127.0.0.1", 50000))
+@pytest.fixture
+def flow(client, small_chunks, monkeypatch):
+    """Một vụ án đã phân tích xong và dự án bản Việt đã tạo qua API."""
+    case_id = finished_case(client, monkeypatch)
+    project_id = create_vi_project(client, case_id)
+    return SimpleNamespace(client=client, case_id=case_id, project_id=project_id, plan=get_plan(client, case_id))
 
 
-@pytest.fixture(scope="module")
-def case_plan(api_client):
-    """
-    Executes POST /api/true-crime/fictionalize once for the E2E module.
-    Returns the complete FictionalCasePlan JSON dictionary.
-    """
-    response = api_client.post(
-        "/api/true-crime/fictionalize",
-        json={
-            "raw_report": SAMPLE_REAL_CRIME_DOSSIER,
-            "duration_minutes": 1,
-            "truth_ratio": 0.70,
-            "fiction_ratio": 0.30,
-        },
-    )
-    assert response.status_code == 200, f"Fictionalize request failed: {response.text}"
-    return response.json()
+def assert_no_real_names(text: str, where: str) -> None:
+    folded = fold(text)
+    for term in REAL_TERMS:
+        assert fold(term) not in folded, f"Lọt tên thật '{term}' vào {where}"
 
 
-# ==============================================================================
-# TEST 1: POST /api/true-crime/fictionalize & ANONYMIZER VAULT ANTI-LEAK
-# ==============================================================================
-def test_fictionalize_anonymizer_vault_anti_leak(case_plan):
-    """
-    Validates:
-    - POST /api/true-crime/fictionalize successfully generates FictionalCasePlan.
-    - 100% of real names, locations, license plates, and phone numbers are mapped into alias_vault.
-    - Absolute anti-leak: NONE of the real PII terms appear in script texts, image prompts,
-      node labels, node descriptions, or edge labels.
-    """
-    plan = case_plan
-    assert "case_id" in plan and plan["case_id"]
-    assert "alias_vault" in plan and isinstance(plan["alias_vault"], dict)
-    vault = plan["alias_vault"]
+def project_text(project_id: str) -> str:
+    """Toàn bộ file văn bản của dự án (project.json...)."""
+    root = project_service._get_project_dir(project_id)
+    return "\n".join(p.read_text(encoding="utf-8") for p in sorted(root.rglob("*.json")))
 
-    # 1. Verify all primary real PII entities were captured in vault keys
-    assert "Nguyễn Văn Hùng" in vault, "Nạn nhân Nguyễn Văn Hùng must be captured in alias vault"
-    assert "Lê Thị Mai" in vault, "Nhân chứng Lê Thị Mai must be captured in alias vault"
-    assert "15B1-987.65" in vault, "Biển số xe 15B1-987.65 must be captured in alias vault"
-    assert "0912345678" in vault, "Số điện thoại 0912345678 must be captured in alias vault"
-    assert any("Lê Lợi" in k for k in vault.keys()), "Đường Lê Lợi must be captured in alias vault"
-    assert any("Hải Phòng" in k for k in vault.keys()), "TP Hải Phòng must be captured in alias vault"
 
-    # 2. Verify fictional aliases are non-empty and differ from real names
-    for real_key, alias_val in vault.items():
-        assert real_key != alias_val, f"Alias identical to real entity: {real_key} -> {alias_val}"
-        assert len(alias_val.strip()) > 0
-
-    # 3. Comprehensive Anti-Leak Assertion across all generated plan artifacts
-    scenes = plan.get("scenes_script", [])
-    assert len(scenes) >= 4, f"Expected at least 4 scenes, got {len(scenes)}"
-
-    nodes = plan.get("nodes", [])
-    assert len(nodes) >= 5, f"Expected at least 5 evidence nodes, got {len(nodes)}"
-
-    edges = plan.get("edges", [])
-    assert len(edges) >= 4, f"Expected at least 4 relation edges, got {len(edges)}"
-
-    for real_term in REAL_PII_ENTITIES:
-        # Check scene narration texts
-        for sc in scenes:
-            scene_order = sc.get("order", 0)
-            text = sc.get("text", "")
-            prompt = sc.get("image_prompt", "")
-            assert real_term not in text, (
-                f"PII LEAK in Scene {scene_order} text! Found real term '{real_term}': {text}"
-            )
-            assert real_term not in prompt, (
-                f"PII LEAK in Scene {scene_order} image_prompt! Found real term '{real_term}': {prompt}"
-            )
-
-        # Check evidence board nodes
-        for node in nodes:
-            nid = node.get("id", "")
-            label = node.get("label", "")
-            desc = node.get("description", "")
-            assert real_term not in label, (
-                f"PII LEAK in EvidenceNode [{nid}] label! Found real term '{real_term}': {label}"
-            )
-            assert real_term not in desc, (
-                f"PII LEAK in EvidenceNode [{nid}] description! Found real term '{real_term}': {desc}"
-            )
-
-        # Check relation edges
-        for edge in edges:
-            eid = edge.get("id", "")
-            elabel = edge.get("label", "") or ""
-            assert real_term not in elabel, (
-                f"PII LEAK in RelationEdge [{eid}] label! Found real term '{real_term}': {elabel}"
-            )
-
-        # Check plan title
-        assert real_term not in plan.get("title", ""), (
-            f"PII LEAK in Plan Title! Found real term '{real_term}'"
-        )
+def plan_output_texts(plan: dict) -> str:
+    """Mọi chữ của kế hoạch sẽ đi vào video: tên tập, lời kể vi/en, prompt, nhãn bảng ghim."""
+    bible = plan["bible"]
+    texts = [bible[k] for k in ("title_vi", "title_en", "logline_vi", "logline_en", "setting_notes_en")]
+    for scene in plan["scenes"]:
+        texts += [scene[k] for k in ("narration_vi", "narration_en", "image_prompt", "video_prompt")]
+    for item in bible["evidence"] + bible["relations"]:
+        texts += [item["label_vi"], item["label_en"]]
+    return "\n".join(texts)
 
 
 # ==============================================================================
-# TEST 2: JUBENSHA 3-ACT STRUCTURE, RED HERRING & FORESHADOWING LEDGER
+# 1. KHÔNG LỌT TÊN THẬT
 # ==============================================================================
-def test_jubensha_three_act_structure_and_red_herring(case_plan):
-    """
-    Validates:
-    - Jubensha 3-act narrative rhythm (Hook/Setting -> Red Herring Escalation -> Climax/Resolution).
-    - Presence of plausible Red Herring suspect with false suspicion & verified alibi.
-    - Foreshadowing Ledger: Clues planted early and resolved late with zero orphaned clues.
-    - 5-second pacing per scene with YouTube 3rd-person Reviewer voice.
-    """
-    plan = case_plan
-    scenes = plan["scenes_script"]
-    nodes = plan["nodes"]
-    edges = plan["edges"]
-    ledger = plan["foreshadowing_ledger"]
+def test_no_real_names_in_plan_or_either_project(flow):
+    # Tiền đề: bài mẫu có đủ các tên thật này, và bảng tên của kế hoạch ghi nhận chúng.
+    assert all(term in DOSSIER for term in ("Nguyễn Văn Hùng", "Lê Thị Mai", "Hải Phòng", "15B1-987.65", "0912345678"))
+    known = {n for e in flow.plan["bible"]["entities"] for n in e["real_names"]}
+    assert {"Nguyễn Văn Hùng", "Lê Thị Mai", "15B1-987.65", "0912345678"} <= known
 
-    # 1. Jubensha 70/30 Formula ratios
-    assert plan["truth_ratio"] == 0.70
-    assert plan["fiction_ratio"] == 0.30
+    assert_no_real_names(plan_output_texts(flow.plan), "kế hoạch")
+    assert_no_real_names(project_text(flow.project_id), "dự án bản Việt")
 
-    # 2. Pacing & 3rd-person Reviewer Voice verification
-    for sc in scenes:
-        assert sc["estimated_duration"] == 5.0, "Each scene must be exactly 5.0s pacing"
-        assert sc["shot_type"] in ("A_ROLL_NOIR", "B_ROLL_BOARD"), (
-            f"Invalid shot type: {sc['shot_type']}"
-        )
-        assert len(sc["text"].split()) >= 6, f"Scene text too brief: {sc['text']}"
-
-    # Visual Alternation: must have both A_ROLL_NOIR and B_ROLL_BOARD
-    shot_types = [sc["shot_type"] for sc in scenes]
-    assert "A_ROLL_NOIR" in shot_types, "Must contain A-Roll Neo-Noir scenes"
-    assert "B_ROLL_BOARD" in shot_types, "Must contain B-Roll Evidence Board scenes"
-
-    # 3. Red Herring suspect presence & alibi shift
-    suspect_nodes = [n for n in nodes if n["node_type"] == "suspect"]
-    assert len(suspect_nodes) >= 2, "Must contain at least 2 suspects (Culprit + Red Herring)"
-
-    red_herring_node = next(
-        (n for n in suspect_nodes if "red_herring" in n["id"].lower() or n.get("stamp") == "ALIBI" or "alibi" in n.get("description", "").lower() or "đối tác" in n.get("description", "").lower() or "đồng nghiệp" in n.get("description", "").lower()),
-        None
-    )
-    assert red_herring_node is not None, "Red Herring suspect node must be defined in the Jubensha DAG"
-
-    # Culprit suspect presence
-    culprit_node = next(
-        (n for n in suspect_nodes if "culprit" in n["id"].lower() or "hung thủ" in n.get("label", "").lower() or "thực sự" in n.get("label", "").lower()),
-        None
-    )
-    assert culprit_node is not None, "True Culprit suspect node must be defined in the Jubensha DAG"
-
-    # Edge contradicting alibi or linking motive
-    has_contradiction_or_motive_edge = any(
-        e.get("relation_type") in ("alibi_contradiction", "motive", "causal")
-        for e in edges
-    )
-    assert has_contradiction_or_motive_edge, "Must contain causal relation edges (motive / alibi contradiction)"
-
-    # 4. Foreshadowing Ledger verification
-    assert len(ledger) >= 1, "Foreshadowing ledger must track planted clues"
-    total_scenes = len(scenes)
-
-    for clue in ledger:
-        assert clue["planted_scene_order"] >= 1, "Clue planted scene order must be >= 1"
-        assert clue["status"] == "resolved", f"Clue '{clue['id']}' must be resolved by the end of episode"
-        assert clue["resolved_scene_order"] is not None
-        assert clue["resolved_scene_order"] <= total_scenes, (
-            f"Clue resolved at {clue['resolved_scene_order']} > total scenes {total_scenes}"
-        )
-        assert clue["resolved_scene_order"] > clue["planted_scene_order"], (
-            f"Clue resolved order ({clue['resolved_scene_order']}) must be > planted ({clue['planted_scene_order']})"
-        )
-        assert len(clue.get("payout_explanation", "").strip()) > 0, "Payout explanation must not be empty"
+    job = wait_job(flow.client, flow.client.post(f"/api/projects/{flow.project_id}/create-language-version",
+                                                 json={"language": "en"}).json()["job_id"])
+    assert job["status"] == "done", job
+    assert_no_real_names(project_text(job["result"]["project_id"]), "dự án bản Anh")
 
 
 # ==============================================================================
-# TEST 3: EVIDENCE BOARD CUMULATIVE DAG & FIXED-ANCHOR COORDINATES
+# 2. DỰ ÁN BẢN VIỆT
 # ==============================================================================
-def test_evidence_board_cumulative_dag_and_fixed_anchors(case_plan):
-    """
-    Validates:
-    - Fixed-Anchor Grid: Coordinates (x, y) are permanent (pinned=True) and never shift or jump.
-    - Cumulative DAG: Consecutive BoardStates monotonically accumulate visible nodes and edges.
-    - Gravitational Bezier Red Threads: Downward gravity sag is mathematically proven.
-    """
-    plan = case_plan
-    nodes = plan["nodes"]
-    board_states = plan["board_states"]
-    assert len(board_states) >= 3, "Expected at least 3 cumulative board states"
+def test_vi_project_structure_and_images_stay_in_the_project_folder(flow):
+    project = get_project(flow.project_id)
+    plan = flow.plan
 
-    # 1. Verify all nodes are permanently pinned within 1920x1080 canvas bounds
-    for n in nodes:
-        assert n["pinned"] is True, f"Node {n['id']} must have pinned=True"
-        assert 150 <= n["x"] <= CANVAS_WIDTH - 150, f"Node {n['id']} X {n['x']} outside safe area"
-        assert 150 <= n["y"] <= CANVAS_HEIGHT - 150, f"Node {n['id']} Y {n['y']} outside safe area"
-
-    # 2. Fixed-Anchor Invariance test: Re-running layout preserves exact coordinates
-    pydantic_nodes = [EvidenceNode(**n) for n in nodes]
-    original_coords = {n.id: (n.x, n.y) for n in pydantic_nodes}
-    recalculated = assign_fixed_anchor_layout(pydantic_nodes)
-    new_coords = {n.id: (n.x, n.y) for n in recalculated}
-
-    assert original_coords == new_coords, "Fixed-Anchor violated! Node positions drifted across layout runs."
-
-    # 3. Monotonic Cumulative progression test
-    prev_nodes_count = 0
-    prev_edges_count = 0
-    seen_node_coords = {}
-
-    for idx, bs in enumerate(board_states):
-        cum_nodes = bs["cumulative_nodes"]
-        cum_edges = bs["cumulative_edges"]
-
-        # Counts must be non-decreasing
-        assert len(cum_nodes) >= prev_nodes_count, (
-            f"Board state {idx+1} nodes decreased: {len(cum_nodes)} < {prev_nodes_count}"
-        )
-        assert len(cum_edges) >= prev_edges_count, (
-            f"Board state {idx+1} edges decreased: {len(cum_edges)} < {prev_edges_count}"
-        )
-
-        # Invariance across scenes: previously seen node coordinates must NEVER shift
-        for n in cum_nodes:
-            nid = n["id"]
-            pos = (n["x"], n["y"])
-            if nid in seen_node_coords:
-                assert seen_node_coords[nid] == pos, (
-                    f"Node {nid} jumped position in scene {idx+1}! Previous: {seen_node_coords[nid]}, Current: {pos}"
-                )
-            else:
-                seen_node_coords[nid] = pos
-
-        prev_nodes_count = len(cum_nodes)
-        prev_edges_count = len(cum_edges)
-
-    # 4. Bezier Gravitational Sagging verification
-    p0 = (400.0, 300.0)
-    p2 = (1200.0, 300.0)
-    curve_points = compute_bezier_points(p0, p2, steps=30, sag_factor=0.15)
-    assert len(curve_points) == 31
-
-    # Endpoints match
-    assert abs(curve_points[0][0] - 400.0) < 1e-4 and abs(curve_points[0][1] - 300.0) < 1e-4
-    assert abs(curve_points[-1][0] - 1200.0) < 1e-4 and abs(curve_points[-1][1] - 300.0) < 1e-4
-
-    # Midpoint must sag downward (greater Y coordinate in screen space)
-    mid_idx = len(curve_points) // 2
-    mid_point = curve_points[mid_idx]
-    assert mid_point[1] > 300.0 + 20.0, (
-        f"Gravity sag failed! Expected Y > 320.0, got {mid_point[1]}"
-    )
-
-
-# ==============================================================================
-# TEST 4: POST /api/true-crime/render-board-scene/{scene_id} (IMAGE & VIDEO)
-# ==============================================================================
-def test_render_board_scene_image_and_video(api_client, case_plan):
-    """
-    Validates:
-    - POST /api/true-crime/render-board-scene/1 renders 1080p static PNG/JPG frame (> 50KB).
-    - POST /api/true-crime/render-board-scene/2 renders 2.0s animated video MP4 clip (> 10KB).
-    - Verifies valid HTTP responses, file paths, and media accessibility.
-    """
-    plan = case_plan
-    case_id = plan["case_id"]
-
-    # 1. Render Scene 1 (Static Image)
-    resp_img = api_client.post(
-        f"/api/true-crime/render-board-scene/1",
-        json={"case_id": case_id, "plan": plan, "render_video": False},
-    )
-    assert resp_img.status_code == 200, f"Render board image failed: {resp_img.text}"
-    data_img = resp_img.json()
-
-    assert data_img["success"] is True
-    assert data_img["case_id"] == case_id
-    assert data_img["scene_id"] == 1
-    assert data_img["image_url"].startswith(f"/static/evidence_boards/{case_id}/")
-
-    img_file = Path(data_img["image_path"])
-    assert img_file.exists(), f"Rendered image file does not exist at {img_file}"
-    assert img_file.stat().st_size > 30000, f"Image file too small ({img_file.stat().st_size} bytes)"
-
-    # Verify image dimensions with Pillow
-    with Image.open(img_file) as im:
-        assert im.size == (CANVAS_WIDTH, CANVAS_HEIGHT), (
-            f"Expected image resolution {CANVAS_WIDTH}x{CANVAS_HEIGHT}, got {im.size}"
-        )
-
-    # 2. Render Scene 2 (Dynamic 2-Second Animated Video Clip)
-    resp_vid = api_client.post(
-        f"/api/true-crime/render-board-scene/2",
-        json={
-            "case_id": case_id,
-            "plan": plan,
-            "render_video": True,
-            "duration_sec": 2.0,
-            "fps": 15,
-        },
-    )
-    assert resp_vid.status_code == 200, f"Render board video failed: {resp_vid.text}"
-    data_vid = resp_vid.json()
-
-    assert data_vid["success"] is True
-    assert data_vid["video_url"] is not None
-    assert data_vid["video_url"].endswith(".mp4")
-
-    vid_file = Path(data_vid["video_path"])
-    assert vid_file.exists(), f"Rendered video file does not exist at {vid_file}"
-    assert vid_file.stat().st_size > 5000, f"Video file too small ({vid_file.stat().st_size} bytes)"
-    assert data_vid["cumulative_nodes_count"] >= data_img["cumulative_nodes_count"]
-
-
-# ==============================================================================
-# TEST 5: POST /api/true-crime/create-project (PROJECT INTEGRATION)
-# ==============================================================================
-def test_create_true_crime_project_integration(api_client, case_plan):
-    """
-    Validates:
-    - POST /api/true-crime/create-project builds a complete Story Studio Project.
-    - Style preset assigned to 'neo_noir_silhouette'.
-    - Narrator voice assigned to 'vi-VN-NamMinhNeural'.
-    - Pre-rendered corkboard images attached to B-Roll scenes.
-    - Scenes alternating between A_ROLL_NOIR and B_ROLL_BOARD with proper camera motions.
-    """
-    plan = case_plan
-    custom_title = "Kỳ Án Cảng Hải Phòng: Vết Mực Sau Mưa Bão"
-
-    # Call Create Project
-    resp_proj = api_client.post(
-        "/api/true-crime/create-project",
-        json={
-            "plan": plan,
-            "case_title": custom_title,
-            "voice": "vi-VN-NamMinhNeural",
-            "pre_render_boards": True,
-        },
-    )
-    assert resp_proj.status_code == 200, f"Create project failed: {resp_proj.text}"
-    proj_data = resp_proj.json()
-
-    assert proj_data["success"] is True
-    project_id = proj_data["project_id"]
-    assert project_id.startswith("proj_crime_")
-    assert proj_data["title"] == custom_title
-
-    # Retrieve and inspect saved project
-    project = get_project(project_id)
-    assert project is not None, f"Failed to retrieve project {project_id} from storage"
-    assert project.name == custom_title
-    assert project.voice == "vi-VN-NamMinhNeural"
+    assert project.voice == VI_VOICE
     assert project.style_preset == "neo_noir_silhouette"
     assert project.bgm_overall_genre == "mysterious_dark"
     assert project.target_aspect_ratio == "16:9"
+    assert project.name == plan["bible"]["title_vi"]
+    assert [s.id for s in project.scenes] == [f"scene_{n:03d}" for n in range(1, len(plan["scenes"]) + 1)]
+    assert project.scenes[0].text == DISCLAIMER["vi"]
 
-    # Check scenes configuration
-    assert len(project.scenes) >= 4, f"Project scenes count too low: {len(project.scenes)}"
+    shot_types = {s.shot_type for s in project.scenes}
+    assert shot_types == {"A_ROLL_NOIR", "B_ROLL_BOARD"}                  # xen kẽ cảnh ảnh/video và cảnh bảng ghim
+    for scene, adapted in zip(project.scenes, plan["scenes"]):
+        assert scene.text == adapted["narration_vi"]
+        assert scene.metadata["narration"] == {"vi": adapted["narration_vi"], "en": adapted["narration_en"]}
+        assert scene.metadata["case_id"] == flow.case_id
+        assert scene.image_prompt == adapted["image_prompt"] and scene.video_prompt == adapted["video_prompt"]
 
-    b_roll_scenes = [s for s in project.scenes if s.shot_type == "B_ROLL_BOARD"]
-    a_roll_scenes = [s for s in project.scenes if s.shot_type == "A_ROLL_NOIR"]
+    root = project_service._get_project_dir(flow.project_id)
+    for scene in project.scenes:
+        drawn = scene.metadata["visual_kind"] in ("board", "disclaimer")
+        assert (scene.status_image == "ready") == drawn                      # chỉ ảnh có chữ được vẽ sẵn, còn lại chờ Muse
+        if drawn:
+            image = Path(scene.image_path)
+            assert image.parent == root / "images" and image.stat().st_size > 30000
+            assert scene.image_url == f"/api/projects/{flow.project_id}/media/images/{image.name}"
+            with Image.open(image) as img:
+                assert img.size == (CANVAS_WIDTH, CANVAS_HEIGHT)
+    assert any(s.shot_type == "B_ROLL_BOARD" and s.image_path for s in project.scenes)
 
-    assert len(b_roll_scenes) > 0, "Must contain B-Roll evidence board scenes"
-    assert len(a_roll_scenes) > 0, "Must contain A-Roll neo-noir scenes"
+    static_boards = BACKEND_DIR / "static" / "evidence_boards" / flow.case_id
+    assert not static_boards.exists()                                        # bảng ghim không ghi vào thư mục công khai
 
-    # Verify B-Roll pre-rendered board images exist
-    for b_scene in b_roll_scenes:
-        assert b_scene.image_url is not None
-        assert b_scene.image_url.startswith("/api/projects/") or b_scene.image_url.startswith("/static/evidence_boards/")
-        assert b_scene.image_path is not None
-        b_img_path = Path(b_scene.image_path)
-        assert b_img_path.exists(), f"Board image file missing: {b_img_path}"
-        assert b_img_path.stat().st_size > 30000
 
-    # Verify A-Roll camera motion and prompts
-    for a_scene in a_roll_scenes:
-        assert a_scene.camera_motion in (
-            "neo_noir_dutch_tilt", "neo_noir_rain_motion", "zoom_in", "pan_left", "action_camera_shake"
-        )
-        assert len(a_scene.image_prompt) > 20
-        assert a_scene.voice_emotion == "tense"
+# ==============================================================================
+# 3. BẢNG GHIM TÍCH LUỸ
+# ==============================================================================
+def test_cumulative_board_keeps_cards_in_place_across_scenes_and_languages(flow):
+    plan = CaseAdaptationPlan.model_validate(flow.plan)
+    nodes_vi, edges_vi = plan_board_items(plan, "vi")
+    nodes_en, edges_en = plan_board_items(plan, "en")
 
-    print(f"\n✓ Successfully verified True Crime Project {project_id} with {len(project.scenes)} scenes.")
+    for node in nodes_vi:                                                    # toạ độ cố định, nằm trong vùng an toàn
+        assert node.pinned is True
+        assert 100 <= node.x <= CANVAS_WIDTH - 100 and 150 <= node.y <= CANVAS_HEIGHT - 150
+    assert {n.id: (n.x, n.y) for n in nodes_vi} == {n.id: (n.x, n.y) for n in nodes_en}
+    assert [n.label for n in nodes_vi] != [n.label for n in nodes_en]         # cùng bảng, khác chữ
+
+    seen: dict[str, tuple[int, int]] = {}
+    previous = (0, 0)
+    for order in range(1, len(plan.scenes) + 1):
+        state = get_cumulative_board_state(SimpleNamespace(nodes=nodes_vi, edges=edges_vi), order)
+        counts = (len(state.cumulative_nodes), len(state.cumulative_edges))
+        assert counts[0] >= previous[0] and counts[1] >= previous[1]         # chỉ tăng, không bao giờ mất thẻ
+        previous = counts
+        for node in state.cumulative_nodes:                                  # đã hiện thì không nhảy chỗ
+            assert seen.setdefault(node.id, (node.x, node.y)) == (node.x, node.y)
+    assert previous[0] >= 1
+
+
+def test_render_board_scene_images_follow_language(flow):
+    paths = {}
+    for language in ("vi", "en"):
+        response = flow.client.post(f"{BASE}/render-board-scene/6", json={"case_id": flow.case_id, "language": language})
+        assert response.status_code == 200, response.text
+        paths[language] = Path(response.json()["image_path"])
+        assert paths[language].is_file() and paths[language].stat().st_size > 30000
+    with Image.open(paths["vi"]) as a, Image.open(paths["en"]) as b:
+        assert a.size == b.size == (CANVAS_WIDTH, CANVAS_HEIGHT)
+        assert ImageChops.difference(a.convert("RGB"), b.convert("RGB")).getbbox() is not None
+
+
+# ==============================================================================
+# 4. SỬA LỜI KỂ LÀM LỌT TÊN THẬT -> BỊ CHẶN -> THÊM TÊN VÀO BẢNG TÊN
+# ==============================================================================
+def test_leaked_name_blocks_until_it_is_added_to_the_name_table(flow):
+    client, case_id = flow.client, flow.case_id
+    case_store.save_source(case_id, case_store.load_source(case_id) + f"\nÔng {REGEX_ONLY_NAME} là tài xế xe tải.")
+    leak = f"Trong màn mưa, {REGEX_ONLY_NAME} lặng lẽ đứng canh bên chiếc xe tải ở cuối bãi, không ai để ý tới ông cả."
+    assert client.put(f"{BASE}/cases/{case_id}/scenes/3", json={"narration_vi": leak}).status_code == 200
+
+    body = {"language": "vi", "voice": VI_VOICE}
+    blocked = client.post(f"{BASE}/cases/{case_id}/create-project", json=body)
+    assert blocked.status_code == 409
+    assert "3" in blocked.json()["detail"] and "Tuấn" not in blocked.json()["detail"]
+
+    added = client.put(f"{BASE}/cases/{case_id}/entities", json={"additions": [
+        {"kind": "person", "real_names": [REGEX_ONLY_NAME], "alias_vi": "Lục Gia Bảo", "alias_en": "Luc Gia Bao"}]})
+    assert added.status_code == 200
+    assert "Lục Gia Bảo" in scene_of(added.json(), 3)["narration_vi"]
+    assert "Luc Gia Bao" not in scene_of(added.json(), 3)["narration_vi"]
+
+    created = client.post(f"{BASE}/cases/{case_id}/create-project", json=body)
+    assert created.status_code == 200, created.text
+    project = get_project(created.json()["project_id"])
+    assert "Lục Gia Bảo" in scene_by_order(project, 3).text
+    assert REGEX_ONLY_NAME not in project_text(project.id)
+
+    # Bản Anh của dự án này: lời Anh của cảnh 3 chưa bị sửa nên dùng lại lời kế hoạch, cũng không có tên thật.
+    job = wait_job(client, client.post(f"/api/projects/{project.id}/create-language-version",
+                                       json={"language": "en"}).json()["job_id"])
+    assert job["status"] == "done", job
+    assert REGEX_ONLY_NAME not in project_text(job["result"]["project_id"])
+
+
+# ==============================================================================
+# 5. BẢN TIẾNG ANH
+# ==============================================================================
+def test_english_version_reuses_media_and_swaps_text_voice_and_board_labels(flow):
+    source = prepare_source_media(get_project(flow.project_id))
+    plan = flow.plan
+
+    response = flow.client.post(f"/api/projects/{source.id}/create-language-version",
+                                json={"language": "en", "voice": EN_VOICE})
+    assert response.status_code == 200
+    job = wait_job(flow.client, response.json()["job_id"])
+    assert job["status"] == "done", job
+    assert job["result"]["rewritten_orders"] == []
+    new = get_project(job["result"]["project_id"])
+
+    assert new.id != source.id
+    assert new.voice == EN_VOICE and new.name == plan["bible"]["title_en"]
+    assert new.metadata["language"] == "en" and new.metadata["case_id"] == flow.case_id
+    assert [s.text for s in new.scenes] == [s["narration_en"] for s in plan["scenes"]]
+    assert new.scenes[0].text == DISCLAIMER["en"]
+    assert new.metadata["voices"] == {"vi": VI_VOICE, "en": EN_VOICE}
+
+    # Ảnh và clip Muse của bản Việt được chép sang; giọng, phụ đề, video cuối thì không.
+    new_root = project_service._get_project_dir(new.id)
+    with Image.open(new_root / "images" / "scene_002.jpg") as copied:
+        assert copied.size == (64, 36)
+    assert (new_root / "videos" / "scene_003_muse.mp4").read_bytes() == b"fake-muse-clip"
+    assert not list((new_root / "audio").iterdir()) and not list((new_root / "renders").iterdir())
+    assert new.final_video_path is None and scene_by_order(new, 2).voice_audio_path is None
+
+    # Ảnh có chữ vẽ lại bằng tiếng Anh; cùng kích thước, khác nội dung.
+    for order in (1, 6):
+        name = f"scene_{order:03d}.jpg"
+        with Image.open(project_service._get_project_dir(source.id) / "images" / name) as a, \
+                Image.open(new_root / "images" / name) as b:
+            assert a.size == b.size == (CANVAS_WIDTH, CANVAS_HEIGHT)
+            assert ImageChops.difference(a.convert("RGB"), b.convert("RGB")).getbbox() is not None
+
+    # Liên kết hai chiều
+    assert get_project(new.id).metadata["sibling_project_ids"] == [source.id]
+    assert get_project(source.id).metadata["sibling_project_ids"] == [new.id]
+
+
+# ==============================================================================
+# 6. TRUY CẬP
+# ==============================================================================
+def test_new_routes_are_behind_local_access_middleware(flow):
+    remote = TestClient(app, base_url="http://127.0.0.1:8000", client=("10.0.0.5", 50000))
+    cross_site = TestClient(app, base_url="http://127.0.0.1:8000", client=("127.0.0.1", 50000),
+                            headers={"origin": "http://evil.example"})
+    for denied in (remote, cross_site):
+        assert denied.get(f"{BASE}/cases/{flow.case_id}").status_code == 403
+        assert denied.post(f"{BASE}/analyze", json={"raw_report": DOSSIER}).status_code == 403
+        assert denied.post(f"/api/projects/{flow.project_id}/create-language-version",
+                           json={"language": "en"}).status_code == 403
+        assert denied.get(f"{BASE}/jobs/job_00000000").status_code == 403
 
 
 if __name__ == "__main__":

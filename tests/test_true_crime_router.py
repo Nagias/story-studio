@@ -1,16 +1,21 @@
 """
-Integration and End-to-End tests for True Crime API Router and Pipelines
-(Endpoints: /fictionalize, /render-board-scene/{scene_id}, /create-project,
- Neo-Noir Style Preset, Procedural Noir Motion FX)
-"""
+API chuyển thể vụ án (spec 7.8): phân tích -> tiến độ -> xem lại/sửa -> tạo dự án -> bản ngôn ngữ khác.
 
+- TestClient(app) với thư mục projects tạm (isolated_projects_dir) và LLM giả (tests/case_adaptation_fakes.py);
+  worker nền bị tắt trong test nên test tự chạy hàng việc bằng asyncio.run(case_worker.run_next_step()).
+- Không gọi 9router hay Muse thật.
+- Luồng 70/30 cũ (/fictionalize, /create-project, _CASE_PLAN_CACHE) đã bỏ.
+"""
+import asyncio
+import copy
+import json
+import re
 import sys
-import os
 from pathlib import Path
 
-# Fix Windows console UTF-8 output
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
+import pytest
+from fastapi.testclient import TestClient
+from PIL import Image
 
 # Setup paths
 TEST_DIR = Path(__file__).resolve().parent
@@ -19,20 +24,94 @@ BACKEND_DIR = PROJECT_DIR / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from fastapi.testclient import TestClient
 from main import app
+from models.case_adaptation_schemas import DISCLAIMER, MAX_SOURCE_CHARS
+from models.schemas import ProjectCreateRequest
+from routers import true_crime
+from services import case_adaptation_llm, case_jobs, case_redact, case_store, case_worker, project_service
 from services.image_service import STYLE_PRESETS, build_character_anchored_prompt
-from services.video_service import build_zoompan_filter, CAMERA_MOTIONS
 from services.project_service import get_project
+from services.video_service import CAMERA_MOTIONS, build_zoompan_filter
+from tests.case_adaptation_fakes import load_fixture, make_fake_llm
+from tests.test_case_project_builder import REWRITE_3
+from tests.test_case_worker import DOSSIER, _thin_write_vi
+
+BASE = "/api/true-crime"
+VI_VOICE = "vieneu-test-voice"
+EN_VOICE = "en-US-AndrewMultilingualNeural"
+REAL_VICTIM = "Nguyễn Văn Hùng"               # tên thật của nạn nhân trong dossier.txt
+REGEX_ONLY_NAME = "Hoàng Minh Tuấn"           # tên chỉ regex trên bài gốc bắt được (không có trong bảng tên)
+NOT_READY = "Đang phân tích, chưa có kế hoạch."
 
 
-SAMPLE_DOSSIER = """
-Vào đêm 14 tháng 10 năm 2021 tại Cảng Tân Hải, ông Nguyễn Văn Hải bị sát hại cạnh công-ten-nơ.
-Lời khai ban đầu của Trần Đình Long cho biết phát hiện thi thể lúc 23h.
-Nghi phạm Vũ Mạnh Hùng có động cơ tranh chấp hợp đồng.
-Khám nghiệm pháp y kết luận nạn nhân tử vong lúc 22h15 do vật sắc nhọn tác động.
-"""
+# ---------------------------------------------------------------- helpers (dùng lại ở test_true_crime_e2e.py)
 
+@pytest.fixture
+def client(isolated_projects_dir):
+    return TestClient(app, base_url="http://127.0.0.1:8000", client=("127.0.0.1", 50000))
+
+
+@pytest.fixture
+def small_chunks(monkeypatch):
+    """Bài mẫu chỉ ~2 KB: cắt đoạn 900 ký tự (như test_case_worker) để ra 2 đoạn khớp fixture EXTRACT_0/1."""
+    real = case_worker.start_analysis
+    monkeypatch.setattr(case_worker, "start_analysis",
+                        lambda raw, minutes, style, **kw: real(raw, minutes, style, chunk_chars=900))
+
+
+def use_llm(monkeypatch, overrides=None):
+    """Thay hàm gọi LLM thật bằng LLM giả; trả (llm, danh sách marker đã gọi)."""
+    llm, calls = make_fake_llm(overrides)
+    monkeypatch.setattr(case_adaptation_llm, "call_llm_json", llm)
+    return llm, calls
+
+
+def drain(limit: int = 100) -> int:
+    """Chạy hàng việc như worker nền (một việc mỗi lần) tới khi hết việc."""
+    ran = 0
+    while asyncio.run(case_worker.run_next_step()):
+        ran += 1
+        assert ran < limit, "hàng việc không dừng"
+    return ran
+
+
+def analyze(client, **body) -> str:
+    response = client.post(f"{BASE}/analyze", json={"raw_report": DOSSIER, **body})
+    assert response.status_code == 200, response.text
+    return response.json()["case_id"]
+
+
+def finished_case(client, monkeypatch, overrides=None) -> str:
+    use_llm(monkeypatch, overrides)
+    case_id = analyze(client)
+    drain()
+    return case_id
+
+
+def get_plan(client, case_id) -> dict:
+    response = client.get(f"{BASE}/cases/{case_id}")
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def create_vi_project(client, case_id, **extra) -> str:
+    response = client.post(f"{BASE}/cases/{case_id}/create-project",
+                           json={"language": "vi", "voice": VI_VOICE, **extra})
+    assert response.status_code == 200, response.text
+    return response.json()["project_id"]
+
+
+def scene_of(plan: dict, order: int) -> dict:
+    return next(s for s in plan["scenes"] if s["order"] == order)
+
+
+def wait_job(client, job_id: str) -> dict:
+    response = client.get(f"{BASE}/jobs/{job_id}")
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+# ---------------------------------------------------------------- kiểu hình và chuyển động (giữ từ bản cũ)
 
 def test_neo_noir_style_and_camera_motion():
     # 1. Verify STYLE_PRESETS contains neo_noir_silhouette
@@ -64,87 +143,585 @@ def test_neo_noir_style_and_camera_motion():
     print("✓ test_neo_noir_style_and_camera_motion passed")
 
 
-def test_true_crime_api_endpoints():
-    client = TestClient(app, base_url="http://127.0.0.1:8000", client=("127.0.0.1", 50000))
+# ---------------------------------------------------------------- job trong bộ nhớ
 
-    # 1. Test POST /api/true-crime/fictionalize
-    resp_fict = client.post(
-        "/api/true-crime/fictionalize",
-        json={"raw_report": SAMPLE_DOSSIER, "duration_minutes": 1},
-    )
-    assert resp_fict.status_code == 200, f"Fictionalize failed: {resp_fict.text}"
-    plan_data = resp_fict.json()
+def test_case_jobs_lifecycle_and_limits():
+    job_id = case_jobs.create_job("language_version")
+    assert re.fullmatch(r"job_[0-9a-f]{8}", job_id)
+    job = case_jobs.get_job(job_id)
+    assert (job["job_id"], job["kind"], job["status"], job["result"], job["error"]) == \
+           (job_id, "language_version", "running", None, "")
 
-    assert "case_id" in plan_data
-    assert "alias_vault" in plan_data
-    assert len(plan_data["nodes"]) >= 5
-    assert len(plan_data["edges"]) >= 4
-    assert len(plan_data["scenes_script"]) >= 4
-    case_id = plan_data["case_id"]
+    case_jobs.update_job(job_id, status="done", result={"project_id": "proj_x", "rewritten_orders": [3]})
+    job = case_jobs.get_job(job_id)
+    assert job["status"] == "done" and job["result"] == {"project_id": "proj_x", "rewritten_orders": [3]}
 
-    # Ensure no real PII leaked in response
-    assert "Nguyễn Văn Hải" not in str(plan_data["alias_vault"].values())
-    print(f"✓ POST /api/true-crime/fictionalize passed: Created case {case_id}")
+    job["status"] = "failed"                                     # get_job trả bản sao
+    assert case_jobs.get_job(job_id)["status"] == "done"
 
-    # 2. Test POST /api/true-crime/render-board-scene/1 (Image only)
-    resp_render_img = client.post(
-        f"/api/true-crime/render-board-scene/1",
-        json={"case_id": case_id, "plan": plan_data, "render_video": False},
-    )
-    assert resp_render_img.status_code == 200, f"Render board scene failed: {resp_render_img.text}"
-    render_data = resp_render_img.json()
-    assert render_data["success"] is True
-    assert render_data["image_url"].startswith("/static/evidence_boards/")
-    img_disk_path = Path(render_data["image_path"])
-    assert img_disk_path.exists()
-    assert img_disk_path.stat().st_size > 50000
-    print(f"✓ POST /api/true-crime/render-board-scene/1 (Image) passed: {img_disk_path} ({img_disk_path.stat().st_size} bytes)")
+    assert case_jobs.get_job("job_00000000") is None
+    with pytest.raises(KeyError):
+        case_jobs.update_job("job_00000000", status="done")
+    with pytest.raises(ValueError):
+        case_jobs.update_job(job_id, status="khong-ro")
+    with pytest.raises(ValueError):
+        case_jobs.update_job(job_id, kind="khac")                # không đổi được loại job
 
-    # 3. Test POST /api/true-crime/render-board-scene/1 with render_video=True (2s fast test)
-    resp_render_vid = client.post(
-        f"/api/true-crime/render-board-scene/1",
-        json={"case_id": case_id, "plan": plan_data, "render_video": True, "duration_sec": 2.0, "fps": 15},
-    )
-    assert resp_render_vid.status_code == 200, f"Render board video failed: {resp_render_vid.text}"
-    vid_data = resp_render_vid.json()
-    assert vid_data["video_url"] is not None
-    vid_disk_path = Path(vid_data["video_path"])
-    assert vid_disk_path.exists()
-    assert vid_disk_path.stat().st_size > 10000
-    print(f"✓ POST /api/true-crime/render-board-scene/1 (Video Clip) passed: {vid_disk_path} ({vid_disk_path.stat().st_size} bytes)")
 
-    # 4. Test POST /api/true-crime/create-project
-    resp_create_proj = client.post(
-        "/api/true-crime/create-project",
-        json={"plan": plan_data, "voice": "vi-VN-NamMinhNeural", "pre_render_boards": True},
-    )
-    assert resp_create_proj.status_code == 200, f"Create project failed: {resp_create_proj.text}"
-    proj_resp = resp_create_proj.json()
-    assert proj_resp["success"] is True
-    proj_id = proj_resp["project_id"]
-    assert proj_id.startswith("proj_crime_")
+def test_case_jobs_evicts_old_finished_jobs_but_never_a_running_one(monkeypatch):
+    monkeypatch.setattr(case_jobs, "MAX_JOBS", 3)
+    running = case_jobs.create_job("language_version")
+    finished = []
+    for _ in range(5):
+        job_id = case_jobs.create_job("language_version")
+        case_jobs.update_job(job_id, status="done")
+        finished.append(job_id)
 
-    # Verify project saved on disk and loadable by project_service
-    saved_project = get_project(proj_id)
-    assert saved_project is not None
-    assert saved_project.style_preset == "neo_noir_silhouette"
-    assert saved_project.voice == "vi-VN-NamMinhNeural"
-    assert len(saved_project.scenes) >= 4
+    assert case_jobs.get_job(running)["status"] == "running"     # việc đang chạy không bị bỏ
+    assert case_jobs.get_job(finished[0]) is None                # việc xong cũ nhất bị bỏ trước
+    assert case_jobs.get_job(finished[-1]) is not None
 
-    # Verify scene properties
-    b_roll_scenes = [s for s in saved_project.scenes if s.shot_type == "B_ROLL_BOARD"]
-    assert len(b_roll_scenes) > 0
-    for bs in b_roll_scenes:
-        assert bs.image_url is not None
-        assert bs.image_url.startswith(f"/api/projects/{proj_id}/media/images/") or bs.image_url.startswith(f"/projects/{proj_id}/images/")
-        assert bs.image_path is not None
-        assert os.path.exists(bs.image_path), f"Scene B-Roll image not found at {bs.image_path}"
-        assert os.path.getsize(bs.image_path) > 10000
 
-    print(f"✓ POST /api/true-crime/create-project passed: Successfully created project {proj_id} with {len(saved_project.scenes)} scenes.")
+# ---------------------------------------------------------------- phân tích -> tiến độ -> kế hoạch
+
+def test_analyze_then_progress_then_case(client, small_chunks, monkeypatch):
+    use_llm(monkeypatch)
+
+    response = client.post(f"{BASE}/analyze", json={"raw_report": DOSSIER})
+    assert response.status_code == 200, response.text
+    assert set(response.json()) == {"case_id"}
+    case_id = response.json()["case_id"]
+    assert re.fullmatch(r"case_[0-9a-f]{8}", case_id)
+
+    pipeline = case_store.load_pipeline(case_id)                  # mặc định 8 phút, phong cách neo-noir
+    assert (pipeline.target_minutes, pipeline.visual_style) == (8, "neo_noir_silhouette")
+    assert case_store.load_source(case_id) == DOSSIER
+
+    progress = client.get(f"{BASE}/cases/{case_id}/progress")
+    assert progress.status_code == 200
+    assert progress.json() == {"status": "running", "step_label": "Đang đọc đoạn 1/2", "steps_done": 0,
+                               "steps_total": 5, "error": ""}
+
+    drain()
+
+    progress = client.get(f"{BASE}/cases/{case_id}/progress").json()
+    assert progress["status"] == "done" and progress["error"] == ""
+    assert progress["steps_done"] == progress["steps_total"] == 12
+
+    plan = get_plan(client, case_id)
+    assert plan["case_id"] == case_id
+    assert len(plan["scenes"]) == 7
+    assert plan["scenes"][0]["visual_kind"] == "disclaimer"
+    assert plan["scenes"][0]["narration_vi"] == DISCLAIMER["vi"]
+    assert not any(s["flags"] for s in plan["scenes"])
+
+
+def test_analyze_takes_minutes_and_style(client, small_chunks, monkeypatch):
+    case_id = analyze(client, target_minutes=15, visual_style="cinematic_realistic")
+    pipeline = case_store.load_pipeline(case_id)
+    assert (pipeline.target_minutes, pipeline.visual_style) == (15, "cinematic_realistic")
+
+    for bad in ({"target_minutes": 0}, {"target_minutes": 500}, {"target_minutes": "tám"}):
+        assert client.post(f"{BASE}/analyze", json={"raw_report": DOSSIER, **bad}).status_code == 422
+    unknown_style = client.post(f"{BASE}/analyze", json={"raw_report": DOSSIER, "visual_style": "khong-co-kieu-nay"})
+    assert unknown_style.status_code == 400
+    assert len(case_store.list_pipelines()) == 1                  # yêu cầu bị từ chối thì không tạo vụ nào
+
+
+def test_case_not_ready_409(client, small_chunks, monkeypatch):
+    use_llm(monkeypatch)
+    case_id = analyze(client)
+
+    response = client.get(f"{BASE}/cases/{case_id}")
+    assert response.status_code == 409
+    assert response.json()["detail"] == NOT_READY
+
+    assert client.get(f"{BASE}/cases/case_00000000").status_code == 404          # không có vụ này
+    assert client.get(f"{BASE}/cases/case_00000000/progress").status_code == 404
+    assert client.put(f"{BASE}/cases/{case_id}/scenes/3", json={"narration_vi": "Lời mới"}).status_code == 409
+    assert client.put(f"{BASE}/cases/{case_id}/entities",
+                      json={"updates": [{"id": "person_1", "alias_vi": "A", "alias_en": "B"}]}).status_code == 409
+    create = client.post(f"{BASE}/cases/{case_id}/create-project", json={"language": "vi", "voice": VI_VOICE})
+    assert create.status_code == 409 and create.json()["detail"] == NOT_READY
+    render = client.post(f"{BASE}/render-board-scene/6", json={"case_id": case_id, "language": "vi"})
+    assert render.status_code == 409
+
+
+def test_failed_pipeline_and_resume_route(client, small_chunks, monkeypatch):
+    use_llm(monkeypatch, {"WRITE_VI p1": _thin_write_vi()})       # lời Việt mỏng cả 3 lần
+    case_id = analyze(client)
+    drain()
+
+    progress = client.get(f"{BASE}/cases/{case_id}/progress").json()
+    assert progress["status"] == "failed"
+    assert progress["step_label"] == "Dừng ở bước viết lời Việt, nhịp 1/2"
+    assert "lời Việt" in progress["error"]
+    stored = next(s.error for s in case_store.load_pipeline(case_id).steps if s.status == "failed")
+    assert progress["error"] == stored                            # thông báo không có tên thật thì giữ nguyên chữ
+    not_ready = client.get(f"{BASE}/cases/{case_id}")
+    assert not_ready.status_code == 409 and "Thử lại" in not_ready.json()["detail"]
+
+    resumed = client.post(f"{BASE}/cases/{case_id}/resume")
+    assert resumed.status_code == 200
+    assert resumed.json()["status"] == "running" and resumed.json()["error"] == ""
+    assert client.get(f"{BASE}/cases/{case_id}/progress").json()["status"] == "running"
+
+    use_llm(monkeypatch)                                          # LLM hết lỗi
+    drain()
+    assert client.get(f"{BASE}/cases/{case_id}/progress").json()["status"] == "done"
+    assert len(get_plan(client, case_id)["scenes"]) == 7
+
+    assert client.post(f"{BASE}/cases/case_00000000/resume").status_code == 404
+
+
+def test_progress_error_never_contains_real_names(client, small_chunks, monkeypatch):
+    # Alias trùng đúng tên thật: việc đặt tên hỏng, và thông báo của việc đó trích dẫn tên thật.
+    bad = copy.deepcopy(load_fixture("ALIASES"))
+    bad["entities"][0]["alias_vi"] = REAL_VICTIM
+    use_llm(monkeypatch, {"ALIASES": bad})
+    case_id = analyze(client)
+    drain()
+
+    stored = case_store.load_pipeline(case_id).steps[3].error
+    assert REAL_VICTIM in stored                                  # tiền đề: thông báo gốc có tên thật
+    progress = client.get(f"{BASE}/cases/{case_id}/progress").json()
+    assert progress["status"] == "failed"
+    assert "Hùng" not in progress["error"] and REAL_VICTIM not in progress["error"]
+    assert case_redact.MASK in progress["error"]
+
+
+def test_empty_and_too_long_report(client, isolated_projects_dir):
+    for text in ("", "   \n\t  "):
+        response = client.post(f"{BASE}/analyze", json={"raw_report": text})
+        assert response.status_code == 400
+        assert "trống" in response.json()["detail"]
+
+    response = client.post(f"{BASE}/analyze", json={"raw_report": "x" * (MAX_SOURCE_CHARS + 1)})
+    assert response.status_code == 413
+    assert "ký tự" in response.json()["detail"]
+
+    assert client.post(f"{BASE}/analyze", json={}).status_code == 422
+    assert not (isolated_projects_dir / "_cases").exists()        # bị từ chối thì không lưu gì
+
+
+# ---------------------------------------------------------------- sửa bảng tên
+
+def scenes_mentioning(plan: dict, field: str, text: str) -> list[int]:
+    return [s["order"] for s in plan["scenes"] if text in s[field]]
+
+
+def test_entities_update_and_validation(client, small_chunks, monkeypatch):
+    case_id = finished_case(client, monkeypatch)
+    before = get_plan(client, case_id)
+    old_vi, old_en = "Trịnh Quang Vũ", "Trinh Quang Vu"
+    vi_scenes = scenes_mentioning(before, "narration_vi", old_vi)
+    en_scenes = scenes_mentioning(before, "narration_en", old_en)
+    assert vi_scenes and en_scenes
+
+    # Đổi tên thay thế của nạn nhân: lời kể chỉ còn tên mới.
+    response = client.put(f"{BASE}/cases/{case_id}/entities", json={
+        "updates": [{"id": "person_1", "alias_vi": "Triệu Văn Khôi", "alias_en": "Trieu Van Khoi"}]})
+    assert response.status_code == 200, response.text
+    after = response.json()
+    assert after == get_plan(client, case_id)                     # PUT trả kế hoạch đã lưu
+    assert scenes_mentioning(after, "narration_vi", old_vi) == []
+    assert scenes_mentioning(after, "narration_en", old_en) == []
+    assert scenes_mentioning(after, "narration_vi", "Triệu Văn Khôi") == vi_scenes
+    assert scenes_mentioning(after, "narration_en", "Trieu Van Khoi") == en_scenes
+    victim = next(e for e in after["bible"]["entities"] if e["id"] == "person_1")
+    assert (victim["alias_vi"], victim["alias_en"]) == ("Triệu Văn Khôi", "Trieu Van Khoi")
+    assert victim["real_names"] == next(e for e in before["bible"]["entities"] if e["id"] == "person_1")["real_names"]
+    assert not any(s["flags"] for s in after["scenes"])
+    assert old_vi not in json.dumps(after["scenes"], ensure_ascii=False)                    # cả prompt lẫn nhãn
+
+    def put(updates=(), additions=()):
+        return client.put(f"{BASE}/cases/{case_id}/entities", json={"updates": list(updates), "additions": list(additions)})
+
+    def update(entity_id="person_1", alias_vi="Một Cái Tên", alias_en="Mot Cai Ten"):
+        return put([{"id": entity_id, "alias_vi": alias_vi, "alias_en": alias_en}])
+
+    # Alias trùng tên thay thế của thực thể khác (kể cả khác hoa thường, bỏ dấu) -> 400.
+    for clash in ("Đặng Thu Hà", "ĐẶNG THU HÀ", "dang thu ha", "Dang Thu Ha"):
+        assert update(alias_vi=clash).status_code == 400, clash
+        assert update(alias_en=clash).status_code == 400, clash
+    # Alias là một tên thật (kể cả bỏ dấu, viết hoa) -> 400, và thông báo không nhắc lại tên thật.
+    for real in (REAL_VICTIM, "NGUYỄN VĂN HÙNG", "nguyen van hung", "Lê Thị Mai"):
+        response = update(alias_vi=real)
+        assert response.status_code == 400, real
+        assert "Hùng" not in response.text and "Mai" not in response.text
+        assert update(alias_en=real).status_code == 400, real
+    # Alias là tên chỉ regex bắt được trên bài gốc -> 400.
+    case_store.save_source(case_id, case_store.load_source(case_id) + f"\nÔng {REGEX_ONLY_NAME} là tài xế xe tải.")
+    assert update(alias_vi=REGEX_ONLY_NAME).status_code == 400
+    # Đầu vào sai khác -> 400.
+    assert update(entity_id="person_99").status_code == 400
+    assert update(alias_vi="   ").status_code == 400
+    assert put().status_code == 400                                                         # không có thay đổi nào
+    assert put([{"id": "person_1", "alias_vi": "A B", "alias_en": "A B"},
+                {"id": "person_1", "alias_vi": "C D", "alias_en": "C D"}]).status_code == 400
+
+    assert get_plan(client, case_id) == after                     # mọi yêu cầu bị từ chối đều không đổi kế hoạch
+
+
+def test_entity_update_swaps_two_names_without_chaining(client, small_chunks, monkeypatch):
+    case_id = finished_case(client, monkeypatch)
+    before = get_plan(client, case_id)
+    victim_scenes = scenes_mentioning(before, "narration_vi", "Trịnh Quang Vũ")
+    witness_scenes = scenes_mentioning(before, "narration_vi", "Đặng Thu Hà")
+    assert victim_scenes and witness_scenes
+
+    response = client.put(f"{BASE}/cases/{case_id}/entities", json={"updates": [
+        {"id": "person_1", "alias_vi": "Đặng Thu Hà", "alias_en": "Dang Thu Ha"},
+        {"id": "person_2", "alias_vi": "Trịnh Quang Vũ", "alias_en": "Trinh Quang Vu"},
+    ]})
+    assert response.status_code == 200, response.text
+    after = response.json()
+    assert scenes_mentioning(after, "narration_vi", "Đặng Thu Hà") == victim_scenes
+    assert scenes_mentioning(after, "narration_vi", "Trịnh Quang Vũ") == witness_scenes
+
+
+def test_entity_update_does_not_touch_a_longer_alias_that_contains_the_old_one(client, small_chunks, monkeypatch):
+    case_id = finished_case(client, monkeypatch)
+    added = client.put(f"{BASE}/cases/{case_id}/entities", json={"additions": [
+        {"kind": "place", "real_names": ["Bến Cũ"], "alias_vi": "Cảng Hải Yến Mới", "alias_en": "New Hai Yen Port"}]})
+    assert added.status_code == 200, added.text
+    both = ("Chiếc xe dừng ở Cảng Hải Yến Mới rồi quay đầu về Cảng Hải Yến, nơi mưa vẫn rơi trên những dãy container "
+            "im lìm, và không một ai ngoài người trực ban còn thức vào lúc ấy của đêm.")
+    assert client.put(f"{BASE}/cases/{case_id}/scenes/3", json={"narration_vi": both}).status_code == 200
+
+    response = client.put(f"{BASE}/cases/{case_id}/entities", json={"updates": [
+        {"id": "place_1", "alias_vi": "Cảng Long Hải", "alias_en": "Long Hai Port"}]})
+    assert response.status_code == 200, response.text
+    text = scene_of(response.json(), 3)["narration_vi"]
+    assert "Cảng Hải Yến Mới" in text                             # tên dài hơn của thực thể khác không bị thay giữa chừng
+    assert "về Cảng Long Hải," in text and "về Cảng Hải Yến," not in text
+
+
+def test_entities_additions_apply_new_names_everywhere(client, small_chunks, monkeypatch):
+    case_id = finished_case(client, monkeypatch)
+    case_store.save_source(case_id, case_store.load_source(case_id) + f"\nÔng {REGEX_ONLY_NAME} là tài xế xe tải.")
+    leak = f"Trong màn mưa, {REGEX_ONLY_NAME} lặng lẽ đứng canh bên chiếc xe tải ở cuối bãi, không ai để ý tới ông cả."
+    flagged = client.put(f"{BASE}/cases/{case_id}/scenes/3", json={"narration_vi": leak}).json()
+    assert [f["kind"] for f in scene_of(flagged, 3)["flags"]] == ["unknown_name"]
+
+    addition = {"kind": "person", "real_names": [REGEX_ONLY_NAME, "ông Tuấn"], "alias_vi": "Lục Gia Bảo",
+                "alias_en": "Luc Gia Bao"}
+    response = client.put(f"{BASE}/cases/{case_id}/entities", json={"additions": [addition]})
+    assert response.status_code == 200, response.text
+    plan = response.json()
+    scene = scene_of(plan, 3)
+    assert REGEX_ONLY_NAME not in scene["narration_vi"] and "Lục Gia Bảo" in scene["narration_vi"]
+    assert scene["flags"] == []
+    entity = plan["bible"]["entities"][-1]
+    assert (entity["kind"], entity["alias_vi"], entity["alias_en"]) == ("person", "Lục Gia Bảo", "Luc Gia Bao")
+    assert entity["real_names"] == [REGEX_ONLY_NAME, "ông Tuấn"]
+    assert entity["id"] not in [e["id"] for e in plan["bible"]["entities"][:-1]]
+    assert any("Lục Gia Bảo" in w for w in plan["warnings"])      # ghi lại lần tự thay tên
+
+    def add(**changes):
+        body = {**addition, "real_names": ["Phạm Văn Zed"], "alias_vi": "Mã Văn Khoa", "alias_en": "Ma Van Khoa", **changes}
+        return client.put(f"{BASE}/cases/{case_id}/entities", json={"additions": [body]})
+
+    assert add(alias_vi="Trịnh Quang Vũ").status_code == 400      # trùng tên thay thế có sẵn
+    assert add(alias_vi="Lê Thị Mai").status_code == 400          # trùng tên thật
+    assert add(real_names=["Lê Thị Mai"]).status_code == 400      # tên thật đã thuộc thực thể khác
+    assert add(real_names=["Trịnh Quang Vũ"]).status_code == 400  # tên thật trùng một tên thay thế
+    assert add(real_names=["  ", ""]).status_code == 400          # không có tên thật nào
+    assert add(alias_en="").status_code == 400
+    assert add(kind="khong-ro").status_code == 422
+    assert get_plan(client, case_id) == plan
+
+
+# ---------------------------------------------------------------- sửa lời từng cảnh, tạo dự án
+
+def test_scene_edit_validation_and_auto_alias(client, small_chunks, monkeypatch):
+    case_id = finished_case(client, monkeypatch)
+    plan = get_plan(client, case_id)
+    edited_vi = "Cảnh được người dùng viết lại bằng tay, kể rõ diễn biến và vẫn giữ nguyên nhịp của câu chuyện."
+
+    response = client.put(f"{BASE}/cases/{case_id}/scenes/3", json={"narration_vi": edited_vi})
+    assert response.status_code == 200, response.text
+    after = response.json()
+    assert scene_of(after, 3)["narration_vi"] == edited_vi
+    assert scene_of(after, 3)["narration_en"] == scene_of(plan, 3)["narration_en"]       # trường không gửi thì giữ nguyên
+    assert after == get_plan(client, case_id)
+
+    # Tên thật đã có tên hư cấu thì được tự thay.
+    leaky_en = "Nguyen Van Hung lay still between the containers while the rain kept falling on the silent yard."
+    response = client.put(f"{BASE}/cases/{case_id}/scenes/4", json={"narration_en": leaky_en})
+    assert response.status_code == 200
+    assert scene_of(response.json(), 4)["narration_en"].startswith("Trinh Quang Vu lay still")
+    assert scene_of(response.json(), 4)["flags"] == []
+
+    # Ngày cụ thể: không tự sửa được, bị đánh dấu.
+    response = client.put(f"{BASE}/cases/{case_id}/scenes/5",
+                          json={"narration_vi": "Vụ việc xảy ra vào đêm ngày 15 tháng 10 năm 2021 giữa cơn mưa lớn ở bãi cảng."})
+    assert [f["kind"] for f in scene_of(response.json(), 5)["flags"]] == ["date"]
+
+    unchanged = get_plan(client, case_id)
+    assert client.put(f"{BASE}/cases/{case_id}/scenes/99", json={"narration_vi": "x"}).status_code == 400      # order lạ
+    assert client.put(f"{BASE}/cases/{case_id}/scenes/0", json={"narration_vi": "x"}).status_code == 400
+    assert client.put(f"{BASE}/cases/{case_id}/scenes/1", json={"narration_vi": "x"}).status_code == 400       # cảnh miễn trừ
+    assert client.put(f"{BASE}/cases/{case_id}/scenes/3", json={}).status_code == 400                          # không có gì để sửa
+    assert client.put(f"{BASE}/cases/{case_id}/scenes/ba", json={"narration_vi": "x"}).status_code == 422
+    assert client.put(f"{BASE}/cases/{case_id}/scenes/3", json={"narration_vi": "x" * 6000}).status_code == 422
+    assert get_plan(client, case_id) == unchanged
+
+
+def test_scene_edit_then_create_project(client, small_chunks, monkeypatch):
+    case_id = finished_case(client, monkeypatch)
+    case_store.save_source(case_id, case_store.load_source(case_id) + f"\nÔng {REGEX_ONLY_NAME} là tài xế xe tải.")
+
+    # Ghi vào lời kể một tên thật mà chỉ regex bắt được -> cảnh bị đánh dấu -> không tạo được dự án.
+    leak = f"Trong màn mưa, {REGEX_ONLY_NAME} lặng lẽ đứng canh bên chiếc xe tải ở cuối bãi, không ai để ý tới ông cả."
+    response = client.put(f"{BASE}/cases/{case_id}/scenes/3", json={"narration_vi": leak})
+    assert response.status_code == 200
+    assert [f["kind"] for f in scene_of(response.json(), 3)["flags"]] == ["unknown_name"]
+
+    blocked = client.post(f"{BASE}/cases/{case_id}/create-project", json={"language": "vi", "voice": VI_VOICE})
+    assert blocked.status_code == 409
+    reason = blocked.json()["detail"]
+    assert "3" in reason                                                    # nêu order cảnh bị đánh dấu
+    assert "Hoàng" not in reason and "Tuấn" not in reason                   # nhưng không nêu tên thật
+    assert [p for p in project_service.list_projects()] == []               # không tạo gì
+
+    # Sửa sạch -> tạo được, dự án có đủ số cảnh.
+    clean = "Trong màn mưa, một người đàn ông lặng lẽ đứng canh bên chiếc xe tải ở cuối bãi, không ai để ý tới ông cả."
+    assert client.put(f"{BASE}/cases/{case_id}/scenes/3", json={"narration_vi": clean}).status_code == 200
+    created = client.post(f"{BASE}/cases/{case_id}/create-project", json={
+        "language": "vi", "voice": VI_VOICE, "voices": {"en": EN_VOICE}, "visual_style": "neo_noir_silhouette"})
+    assert created.status_code == 200, created.text
+    body = created.json()
+    assert set(body) == {"project_id", "redirect_url"}
+    assert body["project_id"].startswith("proj_crime_")
+    assert body["redirect_url"] == f"/?project_id={body['project_id']}"
+
+    fetched = client.get(f"/api/projects/{body['project_id']}")
+    assert fetched.status_code == 200
+    project = fetched.json()
+    assert len(project["scenes"]) == 7
+    assert project["scenes"][2]["text"] == clean
+    assert project["voice"] == VI_VOICE and project["style_preset"] == "neo_noir_silhouette"
+    assert project["image_provider"] == "meta_muse_cloud"
+    assert project["metadata"]["language"] == "vi" and project["metadata"]["case_id"] == case_id
+    assert project["metadata"]["voices"] == {"en": EN_VOICE, "vi": VI_VOICE}
+    assert get_project(body["project_id"]) is not None
+
+
+def test_date_flag_blocks_create_project(client, small_chunks, monkeypatch):
+    case_id = finished_case(client, monkeypatch)
+    dated = "Vụ việc xảy ra vào đêm ngày 15 tháng 10 năm 2021 giữa cơn mưa lớn ở bãi cảng, không ai hay biết."
+    assert client.put(f"{BASE}/cases/{case_id}/scenes/5", json={"narration_vi": dated}).status_code == 200
+
+    blocked = client.post(f"{BASE}/cases/{case_id}/create-project", json={"language": "en", "voice": EN_VOICE})
+    assert blocked.status_code == 409
+    assert "5" in blocked.json()["detail"] and "2021" not in blocked.json()["detail"]
+
+
+def test_create_project_validates_input(client, small_chunks, monkeypatch):
+    case_id = finished_case(client, monkeypatch)
+    url = f"{BASE}/cases/{case_id}/create-project"
+
+    assert client.post(url, json={"language": "fr", "voice": VI_VOICE}).status_code == 422
+    assert client.post(url, json={"voice": VI_VOICE}).status_code == 422
+    assert client.post(url, json={"language": "vi", "visual_style": "khong-co"}).status_code == 400
+    assert client.post(url, json={"language": "vi", "image_provider": "../x"}).status_code == 400
+    assert client.post(url, json={"language": "vi", "voices": {"fr": "x"}}).status_code == 400
+    assert client.post(f"{BASE}/cases/case_00000000/create-project", json={"language": "vi"}).status_code == 404
+    assert project_service.list_projects() == []
+
+    # voice bỏ trống thì dùng giọng mặc định của ngôn ngữ
+    response = client.post(url, json={"language": "en", "image_provider": "9router_gemini"})
+    assert response.status_code == 200, response.text
+    project = get_project(response.json()["project_id"])
+    assert project.voice == "en-US-AndrewMultilingualNeural" and project.image_provider == "9router_gemini"
+    assert project.scenes[0].text == DISCLAIMER["en"]
+
+
+# ---------------------------------------------------------------- vẽ bảng ghim
+
+def test_render_board_scene_writes_into_case_folder(client, small_chunks, monkeypatch, isolated_projects_dir):
+    case_id = finished_case(client, monkeypatch)
+
+    vi = client.post(f"{BASE}/render-board-scene/6", json={"case_id": case_id, "language": "vi"})
+    en = client.post(f"{BASE}/render-board-scene/6", json={"case_id": case_id, "language": "en"})
+    assert vi.status_code == en.status_code == 200, vi.text
+    assert set(vi.json()) == {"image_path"}
+
+    boards = isolated_projects_dir / "_cases" / case_id / "boards"
+    assert Path(vi.json()["image_path"]) == boards / "board_006_vi.jpg"
+    assert Path(en.json()["image_path"]) == boards / "board_006_en.jpg"
+    for path in (boards / "board_006_vi.jpg", boards / "board_006_en.jpg"):
+        assert path.is_file() and path.stat().st_size > 30000
+        with Image.open(path) as img:
+            assert img.size == (1920, 1080)
+
+    static_boards = PROJECT_DIR / "backend" / "static" / "evidence_boards" / case_id
+    assert not static_boards.exists()                             # thư mục static là công khai: không ghi vào đó
+
+    assert client.post(f"{BASE}/render-board-scene/99", json={"case_id": case_id, "language": "vi"}).status_code == 400
+    assert client.post(f"{BASE}/render-board-scene/6", json={"case_id": case_id, "language": "fr"}).status_code == 422
+    assert client.post(f"{BASE}/render-board-scene/6", json={"case_id": "case_00000000", "language": "vi"}).status_code == 404
+    assert client.post(f"{BASE}/render-board-scene/6", json={"case_id": "../x", "language": "vi"}).status_code == 400
+    assert client.post(f"{BASE}/render-board-scene/0", json={"case_id": case_id, "language": "vi"}).status_code == 422
+
+
+# ---------------------------------------------------------------- bản ngôn ngữ khác (job)
+
+def test_create_language_version_route(client, small_chunks, monkeypatch):
+    case_id = finished_case(client, monkeypatch)
+    vi_id = create_vi_project(client, case_id)
+    plan = get_plan(client, case_id)
+
+    response = client.post(f"/api/projects/{vi_id}/create-language-version", json={"language": "en"})
+    assert response.status_code == 200, response.text
+    assert set(response.json()) == {"job_id"}
+    job_id = response.json()["job_id"]
+    assert re.fullmatch(r"job_[0-9a-f]{8}", job_id)
+
+    job = wait_job(client, job_id)
+    assert job["status"] == "done", job
+    assert job["error"] == ""
+    assert job["result"]["project_id"] != vi_id
+    assert job["result"]["rewritten_orders"] == []
+
+    en = client.get(f"/api/projects/{job['result']['project_id']}").json()
+    assert en["metadata"]["language"] == "en" and en["metadata"]["sibling_project_ids"] == [vi_id]
+    assert en["voice"] == "en-US-AndrewMultilingualNeural"
+    assert [s["text"] for s in en["scenes"]] == [s["narration_en"] for s in plan["scenes"]]
+    assert client.get(f"/api/projects/{vi_id}").json()["metadata"]["sibling_project_ids"] == [en["id"]]
+
+    # voice chọn riêng được dùng
+    other = client.post(f"/api/projects/{vi_id}/create-language-version", json={"voice": "en-GB-RyanNeural"})
+    assert other.status_code == 200                                # ngôn ngữ mặc định là "en"
+    other_job = wait_job(client, other.json()["job_id"])
+    assert other_job["status"] == "done"
+    assert client.get(f"/api/projects/{other_job['result']['project_id']}").json()["voice"] == "en-GB-RyanNeural"
+
+
+def test_create_language_version_rewrites_edited_scenes(client, small_chunks, monkeypatch):
+    case_id = finished_case(client, monkeypatch)
+    vi_id = create_vi_project(client, case_id)
+    saved = project_service.get_project(vi_id)
+    edited_vi = "Run rẩy, bà Hà gọi trực ban hình sự và nói vừa thấy một bóng người áo khoác sẫm chạy qua cổng cảng."
+    next(s for s in saved.scenes if s.order == 3).text = edited_vi
+    project_service._save_project(saved)
+    llm, calls = use_llm(monkeypatch, {"REWRITE_EN": {"scenes": [{"order": 3, "narration_en": REWRITE_3}]}})
+
+    response = client.post(f"/api/projects/{vi_id}/create-language-version", json={"language": "en"})
+    job = wait_job(client, response.json()["job_id"])
+
+    assert job["status"] == "done", job
+    assert job["result"]["rewritten_orders"] == [3]
+    assert calls == ["REWRITE_EN"]
+    en = get_project(job["result"]["project_id"])
+    assert next(s for s in en.scenes if s.order == 3).text == REWRITE_3
+
+
+def test_create_language_version_failures_are_reported_in_the_job(client, small_chunks, monkeypatch):
+    # Dự án thường (không tạo từ kế hoạch): job failed với đúng thông báo của builder.
+    plain = project_service.create_project(ProjectCreateRequest(name="Dự án thường"))
+    response = client.post(f"/api/projects/{plain.id}/create-language-version", json={"language": "en"})
+    assert response.status_code == 200
+    job = wait_job(client, response.json()["job_id"])
+    assert job["status"] == "failed" and job["result"] is None
+    assert job["error"] == "Dự án này không được tạo từ kế hoạch chuyển thể."
+
+    assert client.post("/api/projects/proj_khongco/create-language-version", json={"language": "en"}).status_code == 404
+    assert client.post(f"/api/projects/{plain.id}/create-language-version", json={"language": "fr"}).status_code == 422
+    assert client.get(f"{BASE}/jobs/job_00000000").status_code == 404
+
+    # Đã ở ngôn ngữ đó
+    case_id = finished_case(client, monkeypatch)
+    vi_id = create_vi_project(client, case_id)
+    job = wait_job(client, client.post(f"/api/projects/{vi_id}/create-language-version",
+                                       json={"language": "vi"}).json()["job_id"])
+    assert job["status"] == "failed" and job["error"] == "Dự án này đã ở ngôn ngữ đó."
+
+
+def test_language_version_job_error_never_contains_real_names(client, small_chunks, monkeypatch):
+    case_id = finished_case(client, monkeypatch)
+    vi_id = create_vi_project(client, case_id)
+    saved = project_service.get_project(vi_id)
+    next(s for s in saved.scenes if s.order == 3).text = "Một lời Việt mới cho cảnh ba, được sửa tay sau khi tạo dự án."
+    project_service._save_project(saved)
+    # Lời Anh quá ngắn (loại) và còn tên thật: thông báo của việc hỏng trích dẫn tên thật.
+    bad = {"scenes": [{"order": 3, "narration_en": f"Short line about {REAL_VICTIM}."}]}
+    use_llm(monkeypatch, {"REWRITE_EN": bad})
+
+    job = wait_job(client, client.post(f"/api/projects/{vi_id}/create-language-version",
+                                       json={"language": "en"}).json()["job_id"])
+
+    assert job["status"] == "failed"
+    assert "lời Anh" in job["error"]
+    assert "Hùng" not in job["error"] and REAL_VICTIM not in job["error"]
+    assert sorted(p["id"] for p in project_service.list_projects()) == [vi_id]        # không để lại dự án dở
+
+
+def test_language_version_job_unexpected_error_is_reported_without_details(client, small_chunks, monkeypatch):
+    case_id = finished_case(client, monkeypatch)
+    vi_id = create_vi_project(client, case_id)
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError(f"hỏng ngoài dự kiến liên quan tới {REAL_VICTIM}")
+
+    from routers import language_versions
+    monkeypatch.setattr(language_versions, "create_language_version", boom)
+    job = wait_job(client, client.post(f"/api/projects/{vi_id}/create-language-version",
+                                       json={"language": "en"}).json()["job_id"])
+    assert job["status"] == "failed"
+    assert "RuntimeError" in job["error"] and REAL_VICTIM not in job["error"] and "Hùng" not in job["error"]
+
+
+# ---------------------------------------------------------------- luồng cũ đã bỏ, kiểm id
+
+def test_old_routes_removed(client):
+    assert client.post(f"{BASE}/fictionalize", json={"raw_report": DOSSIER, "duration_minutes": 1}).status_code in (404, 405)
+    assert client.post(f"{BASE}/create-project", json={"raw_report": DOSSIER}).status_code in (404, 405)
+    assert not hasattr(true_crime, "_CASE_PLAN_CACHE")
+    assert not hasattr(true_crime, "CaseFictionalizerEngine")
+
+    from services import case_fictionalizer
+    for name in ("JubenshaMatrix", "ForeshadowingLedgerManager", "YouTubeReviewerScriptGenerator",
+                 "CaseFictionalizerEngine"):
+        assert not hasattr(case_fictionalizer, name), name
+    for name in ("AnonymizerShield", "REGEX_PERSON", "REGEX_PLATE", "REGEX_PHONE", "REGEX_DATE", "VN_SURNAMES",
+                 "FICTIONAL_SUSPECT_NAMES", "FICTIONAL_VICTIM_NAMES", "FICTIONAL_LOCATIONS"):
+        assert hasattr(case_fictionalizer, name), name
+
+    paths = {getattr(route, "path", "") for route in app.routes}
+    assert not any(p.startswith(f"{BASE}/fictionalize") or p == f"{BASE}/create-project" for p in paths)
+
+
+def test_openapi_lists_the_new_routes_only(client):
+    response = client.get("/openapi.json")
+    assert response.status_code == 200
+    paths = response.json()["paths"]
+    for path in (f"{BASE}/analyze", f"{BASE}/cases/{{case_id}}", f"{BASE}/cases/{{case_id}}/progress",
+                 f"{BASE}/cases/{{case_id}}/resume", f"{BASE}/cases/{{case_id}}/entities",
+                 f"{BASE}/cases/{{case_id}}/scenes/{{order}}", f"{BASE}/cases/{{case_id}}/create-project",
+                 f"{BASE}/render-board-scene/{{scene_id}}", f"{BASE}/jobs/{{job_id}}",
+                 "/api/projects/{project_id}/create-language-version"):
+        assert path in paths, path
+    assert f"{BASE}/fictionalize" not in paths and f"{BASE}/create-project" not in paths
+
+
+def test_path_ids_validated(client):
+    # `..%2Fx` được giải mã thành `../x`: không bao giờ trả 200.
+    assert client.get(f"{BASE}/cases/..%2Fx").status_code != 200
+    assert client.get(f"{BASE}/cases/..%2Fx/progress").status_code != 200
+    assert client.get(f"{BASE}/jobs/..%2Fx").status_code != 200
+
+    for path in (f"{BASE}/cases/%2E%2E", f"{BASE}/cases/bad.id", f"{BASE}/cases/bad.id/progress",
+                 f"{BASE}/cases/a%20b", f"{BASE}/jobs/bad.id", f"{BASE}/jobs/%2E%2E"):
+        assert client.get(path).status_code == 400, path
+    assert client.post(f"{BASE}/cases/bad.id/resume").status_code == 400
+    assert client.put(f"{BASE}/cases/bad.id/entities", json={"updates": []}).status_code == 400
+    assert client.put(f"{BASE}/cases/bad.id/scenes/3", json={"narration_vi": "x"}).status_code == 400
+    assert client.post(f"{BASE}/cases/bad.id/create-project", json={"language": "vi"}).status_code == 400
+    assert client.post("/api/projects/bad.id/create-language-version", json={"language": "en"}).status_code == 400
+    assert client.post("/api/projects/%2E%2E/create-language-version", json={"language": "en"}).status_code == 400
 
 
 if __name__ == "__main__":
-    test_neo_noir_style_and_camera_motion()
-    test_true_crime_api_endpoints()
-    print("\n🎉 ALL TRUE CRIME ROUTER & PIPELINE TESTS PASSED 100%!")
+    pytest.main([__file__, "-v"])

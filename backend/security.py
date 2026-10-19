@@ -39,7 +39,7 @@ def require_safe_id(value: object, field: str = "id") -> str:
 
 PATH_ID_PARAMS = (
     "project_id", "scene_id", "session_id", "case_id", "task_id",
-    "render_id", "voice_id", "char_id", "account_id",
+    "render_id", "voice_id", "char_id", "account_id", "job_id",
 )
 
 
