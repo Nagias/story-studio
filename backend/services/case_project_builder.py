@@ -27,6 +27,7 @@ from services import case_store, project_service
 from services.case_adaptation_checks import (
     apply_aliases,
     build_forbidden_names,
+    find_dates,
     find_unknown_names,
     fold,
     has_blocking_flags,
@@ -51,6 +52,7 @@ NOT_FROM_PLAN_MESSAGE = "Dự án này không được tạo từ kế hoạch c
 
 _DISCLAIMER_BG = (12, 12, 16)
 _DISCLAIMER_TEXT = (255, 255, 255)
+_ID_TRIES = 20      # số lần sinh id dự án mới khi trùng id một dự án đang có
 
 
 class BlockingFlagsError(Exception):
@@ -296,6 +298,29 @@ def _scene_from_plan(plan: CaseAdaptationPlan, adapted: AdaptedScene, language: 
     return scene
 
 
+def _new_project_id() -> str:
+    return f"proj_crime_{uuid.uuid4().hex[:8]}"
+
+
+def _claim_project_dir() -> tuple[str, Path]:
+    """Tạo thư mục cho một dự án mới. Thư mục phải chưa tồn tại (exist_ok=False): id trùng một dự án đang có (rất hiếm)
+    thì sinh id khác, để hoàn tác khi lỗi chỉ xoá thư mục do chính lần gọi này tạo và không bao giờ đụng dự án khác."""
+    for _ in range(_ID_TRIES):
+        project_id = _new_project_id()
+        project_dir = project_service._get_project_dir(project_id)
+        try:
+            project_dir.mkdir(parents=True, exist_ok=False)
+        except FileExistsError:
+            continue
+        try:
+            project_service._ensure_project_subdirs(project_id)
+        except BaseException:
+            project_service.delete_project(project_id)      # thư mục vừa tạo ở trên
+            raise
+        return project_id, project_dir
+    raise RuntimeError("Không tạo được mã dự án mới (trùng mã nhiều lần liên tiếp). Hãy thử lại.")
+
+
 def create_project_from_plan(plan: CaseAdaptationPlan, language: Lang, voice: str, *,
                              visual_style: Optional[str] = None, image_provider: str = "meta_muse_cloud",
                              voices: Optional[dict] = None) -> Project:
@@ -305,9 +330,7 @@ def create_project_from_plan(plan: CaseAdaptationPlan, language: Lang, voice: st
         raise BlockingFlagsError(_blocking_message(plan))
     voice = voice or DEFAULT_VOICES[language]
 
-    project_id = f"proj_crime_{uuid.uuid4().hex[:8]}"
-    project_dir = project_service._get_project_dir(project_id)
-    project_service._ensure_project_subdirs(project_id)
+    project_id, project_dir = _claim_project_dir()
     try:
         scenes = [_scene_from_plan(plan, adapted, language, project_id, project_dir)
                   for adapted in sorted(plan.scenes, key=lambda s: s.order)]
@@ -406,7 +429,8 @@ def _alias_pool(plan: CaseAdaptationPlan) -> list[str]:
 
 def _guard_rewritten(plan: CaseAdaptationPlan, rewritten: dict[int, str]) -> dict[int, str]:
     """rewrite_english không có bài gốc nên chỉ bắt được tên trong bảng tên. Ở đây quét thêm các tên mà regex bắt
-    được trên bài gốc: tên đã có tên hư cấu thì tự thay, tên chưa có thì dừng (không bao giờ nêu tên thật)."""
+    được trên bài gốc: tên đã có tên hư cấu thì tự thay, tên chưa có thì dừng. Ngày tháng hoặc năm cụ thể cũng dừng.
+    Thông báo chỉ nêu cảnh nào, không bao giờ nêu tên thật hay nội dung lời."""
     if not rewritten:
         return {}
     forbidden = build_forbidden_names(plan.bible, case_store.load_source(plan.case_id) or "")
@@ -418,6 +442,10 @@ def _guard_rewritten(plan: CaseAdaptationPlan, rewritten: dict[int, str]) -> dic
             raise LanguageVersionError(
                 f"Lời Anh viết lại cho cảnh {order} còn tên thật chưa có tên thay thế. "
                 "Hãy thêm tên đó vào bảng tên hoặc sửa lời Việt của cảnh này rồi tạo lại.")
+        if find_dates(fixed):
+            raise LanguageVersionError(
+                f"Lời Anh viết lại cho cảnh {order} còn ngày tháng hoặc năm cụ thể. "
+                "Hãy sửa lời Việt của cảnh này thành cách nói chung (ví dụ \"giữa thập niên 2010\") rồi tạo lại.")
         safe[order] = fixed
     return safe
 
@@ -427,10 +455,8 @@ def _materialize_language_version(source: Project, plan: CaseAdaptationPlan, lan
     """Phần nặng của create_language_version (chép file, vẽ bảng ghim, lưu): chạy trong luồng riêng.
     `texts`: scene.id -> lời kể mới."""
     old_id = source.id
-    new_id = f"proj_crime_{uuid.uuid4().hex[:8]}"
     old_dir = project_service._get_project_dir(old_id)
-    new_dir = project_service._get_project_dir(new_id)
-    project_service._ensure_project_subdirs(new_id)
+    new_id, new_dir = _claim_project_dir()
     try:
         _copy_media(old_dir, new_dir)
         new = source.model_copy(deep=True)

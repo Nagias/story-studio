@@ -392,6 +392,49 @@ def test_create_project_cleans_up_when_drawing_fails(isolated_projects_dir, monk
     assert [p for p in isolated_projects_dir.iterdir() if p.name != "_cases"] == []
 
 
+def force_project_ids(monkeypatch, *ids):
+    """Ép những id dự án đầu tiên builder sinh ra (để dựng va chạm id); hết danh sách thì sinh id thật."""
+    queue = list(ids)
+    real = case_project_builder._new_project_id
+    monkeypatch.setattr(case_project_builder, "_new_project_id", lambda: queue.pop(0) if queue else real())
+
+
+def snapshot_project(project_id):
+    root = project_service._get_project_dir(project_id)
+    return {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
+
+
+def test_create_project_id_collision_regenerates_id_and_keeps_existing_project(isolated_projects_dir, monkeypatch):
+    plan = build_plan()
+    existing = make_vi_project(plan)
+    (project_service._get_project_dir(existing.id) / "images" / "ghi_chu.txt").write_text("giữ nguyên", encoding="utf-8")
+    before = snapshot_project(existing.id)
+
+    force_project_ids(monkeypatch, existing.id, existing.id, "proj_crime_00000001")
+    created = make_vi_project(plan)
+
+    assert created.id == "proj_crime_00000001"
+    assert snapshot_project(existing.id) == before                   # dự án trùng id không bị ghi đè hay xoá
+    assert project_service.get_project(created.id) is not None
+
+
+def test_create_project_failure_after_id_collision_never_deletes_existing_project(isolated_projects_dir, monkeypatch):
+    plan = build_plan()
+    existing = make_vi_project(plan)
+    before = snapshot_project(existing.id)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("không vẽ được")
+
+    force_project_ids(monkeypatch, existing.id, "proj_crime_00000002")
+    monkeypatch.setattr(case_project_builder, "render_board_scene", boom)
+    with pytest.raises(RuntimeError):
+        make_vi_project(plan)
+
+    assert snapshot_project(existing.id) == before                   # hoàn tác chỉ xoá thư mục do lần gọi này tạo
+    assert sorted(p.name for p in isolated_projects_dir.iterdir() if p.name != "_cases") == [existing.id]
+
+
 # ---------------------------------------------------------------- bản ngôn ngữ khác
 
 def prepare_source_media(project):
@@ -592,6 +635,63 @@ def test_language_version_rewritten_text_gets_aliases_and_blocks_real_names(isol
     assert "4" in message and "Hoang" not in message and "Hoàng" not in message
     assert sorted(p.name for p in isolated_projects_dir.iterdir()) == before          # không để lại dự án dở
     assert project_service.get_project(source.id).metadata["sibling_project_ids"] == [new.id]
+
+
+def test_language_version_rewritten_text_with_exact_date_is_blocked_without_naming_the_text(isolated_projects_dir, monkeypatch):
+    plan = build_plan()
+    source = make_vi_project(plan)
+    saved = project_service.get_project(source.id)
+    scene_by_order(saved, 4).text = "Câu đã sửa của cảnh bốn, kể lại diễn biến bằng lời mới."
+    project_service._save_project(saved)
+
+    async def dated(bible, items, *, llm=None):
+        return {4: "On October 7, 2014 the loading yard lay silent under the rain while nobody yet knew who had been "
+                   "standing beside the victim in the dark, parked between the silent containers all night long."}
+
+    monkeypatch.setattr(case_project_builder, "rewrite_english", dated)
+    before = sorted(p.name for p in isolated_projects_dir.iterdir())
+
+    with pytest.raises(LanguageVersionError) as info:
+        run(create_language_version(source.id, "en"))
+
+    message = str(info.value)
+    assert "4" in message                                            # nêu cảnh nào
+    assert "October" not in message and "2014" not in message        # không nêu lại nội dung
+    assert sorted(p.name for p in isolated_projects_dir.iterdir()) == before          # không để lại dự án dở
+    assert project_service.get_project(source.id).metadata["sibling_project_ids"] == []
+
+
+def test_language_version_id_collision_regenerates_id_and_keeps_source(isolated_projects_dir, monkeypatch):
+    plan = build_plan()
+    source = prepare_source_media(make_vi_project(plan))
+    before = snapshot_project(source.id)
+
+    force_project_ids(monkeypatch, source.id, "proj_crime_00000003")
+    new, _ = run(create_language_version(source.id, "en"))
+
+    assert new.id == "proj_crime_00000003"
+    after = snapshot_project(source.id)
+    changed = {name for name in set(before) | set(after) if before.get(name) != after.get(name)}
+    assert changed == {"project.json"}                               # chỉ thêm liên kết anh em; media của dự án gốc còn nguyên
+    assert project_service.get_project(source.id).metadata["sibling_project_ids"] == [new.id]
+    assert media_file(source.id, "audio/scene_002.mp3").read_bytes() == b"fake-audio"
+
+
+def test_language_version_failure_after_id_collision_never_deletes_source(isolated_projects_dir, monkeypatch):
+    plan = build_plan()
+    source = prepare_source_media(make_vi_project(plan))
+    before = snapshot_project(source.id)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("không vẽ được")
+
+    force_project_ids(monkeypatch, source.id, "proj_crime_00000004")
+    monkeypatch.setattr(case_project_builder, "_draw_text_image", boom)
+    with pytest.raises(RuntimeError):
+        run(create_language_version(source.id, "en"))
+
+    assert snapshot_project(source.id) == before
+    assert sorted(p.name for p in isolated_projects_dir.iterdir() if p.name != "_cases") == [source.id]
 
 
 def test_language_version_twice_creates_two_projects(isolated_projects_dir):
