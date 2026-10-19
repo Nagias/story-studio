@@ -1,0 +1,24 @@
+# Ghim đúng phiên bản đã chạy ổn trên .venv (Python 3.14, Windows 11) ngày 19/10/2026.
+# Nâng cấp: đổi số phiên bản ở đây, cài lại, chạy lại test rồi mới dùng.
+fastapi==0.142.2
+starlette==1.7.0
+uvicorn==0.54.0
+pydantic==2.13.5
+edge-tts==7.3.1
+pillow==12.3.0
+httpx==0.28.1
+python-multipart==0.0.32
+websockets==17.2
+opencv-python-headless==5.0.0.93
+numpy==2.5.3
+python-dotenv==1.2.4        # config.py
+playwright==1.64.0          # runners/muse_fleet_runner.py (sau khi cài: python -m playwright install chromium)
+typer==0.27.3               # run_studio.py (CLI)
+rich==15.0.0                # run_studio.py (CLI)
+
+# Tuỳ chọn (code tự bỏ qua nếu chưa cài):
+# openai              # services/image_service.py
+# faster-whisper      # services/subtitle_engine.py (căn chỉnh phụ đề theo từ)
+# av                  # services/tts_service.py
+# rembg               # services/grid_slicer.py (tách nền parallax)
+# Công cụ ngoài: ffmpeg/ffprobe trong PATH, uv (giọng VieNeu), Google Chrome hoặc Microsoft Edge

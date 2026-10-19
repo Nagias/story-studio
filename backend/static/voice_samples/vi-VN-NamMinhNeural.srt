@@ -1,0 +1,4 @@
+1
+00:00:00,100 --> 00:00:04,125
+Xin chào, tôi là Nam Minh, giọng đọc nam trầm ấm.
+

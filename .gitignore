@@ -1,0 +1,38 @@
+# Bí mật / môi trường
+.env
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Tài khoản Muse đã đăng nhập (cookie) - tuyệt đối không commit
+backend/chrome_profiles/
+
+# Dữ liệu chạy / sinh ra
+projects/*
+backend/static/muse_outputs/
+backend/static/comic_slices/
+backend/static/evidence_boards/
+backend/static/reference_images/
+comic_slices/
+output/
+public/
+qa_test_report.json
+*.log*
+backend/runners/.fleet_runner.lock
+backend/runners/.work/
+
+# Bản sao lưu / lưu trữ / gói phát hành
+.backup/
+_archive_*/
+dist/
+
+# Build Tailwind (cài lại bằng npm install trong tools/tailwind)
+tools/tailwind/node_modules/
+tools/tailwind/.npm-cache/
+
+# Trạng thái tài khoản Muse lúc chạy (app tự tạo lại mặc định nếu thiếu)
+backend/config/muse_fleet_accounts.json
+backend/config/*.tmp

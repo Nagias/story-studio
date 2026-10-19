@@ -1,0 +1,11 @@
+{
+  "name": "story-studio-tailwind",
+  "private": true,
+  "description": "Build CSS Tailwind cục bộ cho backend/static (thay cho cdn.tailwindcss.com)",
+  "scripts": {
+    "build": "tailwindcss -c tailwind.config.js -i input.css -o ../../backend/static/tailwind.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.17"
+  }
+}
