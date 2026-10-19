@@ -36,3 +36,6 @@ tools/tailwind/.npm-cache/
 # Trạng thái tài khoản Muse lúc chạy (app tự tạo lại mặc định nếu thiếu)
 backend/config/muse_fleet_accounts.json
 backend/config/*.tmp
+
+# Cache cài đặt (uv / VieNeu...)
+.cache/
