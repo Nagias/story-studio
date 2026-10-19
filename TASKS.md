@@ -61,8 +61,8 @@ File rác chuyển vào `_archive_2026-10-19/` (giữ cấu trúc, xem `MANIFEST
 - [x] Ghim phiên bản `backend/requirements.txt` (== bản đang chạy), thêm `requirements-dev.txt` (pytest), bỏ `aiofiles` không dùng
 - [x] Sửa 12 test lỗi sẵn: khôi phục `generate_offline_script` (true-crime crash khi hồ sơ ngắn), video ≤1 phút dùng cảnh 5s, thêm preset `kingdom_shin` + style `roman_legionary_epic` (UI có mà backend thiếu), cảnh toàn cảnh vẫn giữ đặc điểm nhân vật, phong cách lạ dùng `DEFAULT_STYLE`, cập nhật test karaoke/style cũ
 - [x] Build Tailwind cục bộ: `tools/tailwind` (3.4.17, đúng bản CDN) -> `backend/static/tailwind.css`, so sánh giao diện khớp bản CDN
-- [ ] `index.html`: thay script CDN bằng `tailwind.css` (chờ session "Sửa 3 lỗi chung" xong)
-- [ ] `/open-folder`: import `_get_project_dir` trong `api.py` (chờ session kia xong)
-- [ ] Dọn: 61 dự án test + 11 bảng ghim không dùng, cache Chrome 3 profile (giữ đăng nhập), `__pycache__`, cache npm
-- [ ] Chạy lại test, git init + commit đầu tiên
-- [ ] Sau commit: `_archive_2026-10-19/`, `.backup/` vào Thùng rác
+- [x] `index.html`: thay script CDN bằng `tailwind.css` (đặt cuối `<head>` như bản CDN); kiểm tra trên trình duyệt: không còn script CDN, không lỗi console
+- [x] `/open-folder`: import `_get_project_dir` trong `api.py` + `tests/test_open_folder.py`
+- [x] Dọn (vào Thùng rác): 61 dự án test (94 MB) + 11 bảng ghim không dùng (33 MB), cache Chrome 3 profile (~120 MB, kiểm tra cả 3 vẫn đăng nhập Muse), `__pycache__`, cache npm
+- [x] Chạy lại test: 128 pass / 0 fail (17 file offline); git init + commit `ffa1c3b`
+- [x] Sau commit: `_archive_2026-10-19/` (19 MB), `.backup/` vào Thùng rác
