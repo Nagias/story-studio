@@ -172,6 +172,61 @@ def test_other_http_status_maps_to_http():
     assert err.kind not in RETRYABLE_KINDS
 
 
+# ---------------------------------------------------------------- 9router bận (429/502/503/504)
+
+@pytest.mark.parametrize("status", [429, 502, 503, 504])
+def test_busy_statuses_map_to_busy(status):
+    err = _error_of(lambda request: httpx.Response(status, text="upstream overloaded"))
+    assert err.kind == "busy"
+    assert "9router" in err.user_message and "bận" in err.user_message
+    assert str(status) in err.user_message
+    assert err.retry_after_s is None
+    assert err.kind not in RETRYABLE_KINDS          # bận thì chờ rồi gọi lại, không tốn lượt thử
+
+
+def test_busy_reads_reset_hint_from_body():
+    """Thân lỗi thật của 9router khi tài khoản Gemini đang bị giới hạn."""
+    body = "[antigravity/gemini-3.8-flash-high] [403]: HTTP 403 (reset after 2m)"
+    err = _error_of(lambda request: httpx.Response(503, text=body))
+    assert err.kind == "busy"
+    assert err.retry_after_s == 120
+
+
+@pytest.mark.parametrize("text, seconds", [
+    ("reset after 45s", 45),
+    ("Rate limited, Reset after 1m30s", 90),
+    ("reset after 1h", 3600),
+    ('{"error": {"message": "quota exceeded, retry in 2 minutes"}}', 120),
+])
+def test_busy_reset_hint_formats(text, seconds):
+    assert _error_of(lambda request: httpx.Response(429, text=text)).retry_after_s == seconds
+
+
+def test_busy_reads_retry_after_header():
+    err = _error_of(lambda request: httpx.Response(429, headers={"Retry-After": "30"}, text="slow down"))
+    assert err.kind == "busy"
+    assert err.retry_after_s == 30
+
+
+def test_busy_retry_after_http_date():
+    from email.utils import format_datetime
+    from datetime import datetime, timedelta, timezone
+
+    when = format_datetime(datetime.now(timezone.utc) + timedelta(seconds=90), usegmt=True)
+    err = _error_of(lambda request: httpx.Response(503, headers={"Retry-After": when}))
+    assert 80 <= err.retry_after_s <= 91
+
+
+def test_no_credentials_wins_over_busy_status():
+    body = {"error": {"message": "No active credentials for provider: antigravity"}}
+    assert _error_of(lambda request: httpx.Response(503, json=body)).kind == "no_credentials"
+
+
+def test_llm_error_retry_after_defaults_to_none():
+    assert LLMError("timeout", "Hết giờ").retry_after_s is None
+    assert LLMError("busy", "Bận", retry_after_s=5).retry_after_s == 5
+
+
 def test_missing_key_raises_auth_without_calling_api(monkeypatch):
     monkeypatch.setattr(config, "NINEROUTER_API_KEY", "")
     called = []
@@ -209,6 +264,7 @@ def test_key_never_leaks_into_error_messages():
     handlers = [
         lambda request: httpx.Response(500, text=f"echo Authorization: Bearer {TEST_KEY}"),
         lambda request: httpx.Response(401, text=f"bad {TEST_KEY}"),
+        lambda request: httpx.Response(503, text=f"echo {TEST_KEY} (reset after 1m)"),
         _reply(f"không phải json {TEST_KEY}"),
     ]
     for handler in handlers:

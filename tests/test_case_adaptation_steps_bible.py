@@ -20,7 +20,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from models.case_adaptation_schemas import MAX_ATTEMPTS, CaseBible, CasePipeline
-from services import case_adaptation_llm, case_store
+from services import case_adaptation_llm, case_adaptation_steps, case_store
 from services.case_adaptation_checks import GENERIC_TERMS, fold, is_kept_term
 from services.case_adaptation_llm import LLMError
 from services.case_adaptation_prompts import extract_prompt
@@ -180,6 +180,107 @@ def test_retryable_llm_error_is_retried(isolated_projects_dir):
     llm, calls = make_fake_llm({"EXTRACT 0": [LLMError("invalid_json", "Model trả về nội dung không phải JSON hợp lệ.")]})
     result = _run(pipeline, "extract_00", llm)
     assert calls == ["EXTRACT 0", "EXTRACT 0"]
+    assert len(result.output["events"]) == 6
+
+
+# ---------------------------------------------------------------- ask_validated: 9router bận
+
+def _busy(seconds=None) -> LLMError:
+    return LLMError("busy", "9router đang bận hoặc tạm thời không dùng được (HTTP 503).", retry_after_s=seconds)
+
+
+def _scripted_llm(replies: list):
+    """LLM giả trả lần lượt `replies` (phần tử là Exception thì raise); `seen` ghi user prompt từng lần gọi."""
+    seen: list[str] = []
+
+    async def llm(system, user, *, temperature=0.4, timeout=240.0, client=None):
+        seen.append(user)
+        reply = replies[len(seen) - 1]
+        if isinstance(reply, BaseException):
+            raise reply
+        return reply
+
+    return llm, seen
+
+
+@pytest.fixture
+def busy_sleeps(monkeypatch):
+    """Thay hàm chờ khi 9router bận bằng hàm ghi lại số giây, để test không phải chờ thật."""
+    waited: list[float] = []
+
+    async def fake_sleep(seconds):
+        waited.append(seconds)
+
+    monkeypatch.setattr(case_adaptation_steps, "busy_sleep", fake_sleep)
+    return waited
+
+
+def test_busy_sleep_defaults_to_asyncio_sleep():
+    assert case_adaptation_steps.busy_sleep is asyncio.sleep
+
+
+def test_busy_waits_then_retries_without_using_an_attempt(busy_sleeps):
+    def validate(raw):
+        if raw.get("ok"):
+            return raw
+        raise StepRejected("chưa đủ")
+
+    llm, seen = _scripted_llm([_busy(120), {"n": 1}, {"n": 2}, {"ok": True}])
+    result = asyncio.run(ask_validated("TASK: X", validate, llm=llm, step_label="thử"))
+
+    assert result == {"ok": True}
+    assert len(seen) == 1 + MAX_ATTEMPTS        # lần bị bận không tính vào MAX_ATTEMPTS
+    assert busy_sleeps == [120]                 # chờ đúng số giây 9router báo
+    assert seen[1] == "TASK: X"                 # bận: prompt chưa tới model, không nối lý do
+
+
+def test_busy_without_hint_backs_off_from_60s(busy_sleeps):
+    llm, seen = _scripted_llm([_busy(), _busy(), {"ok": True}])
+    assert asyncio.run(ask_validated("TASK: X", lambda raw: raw, llm=llm, step_label="thử")) == {"ok": True}
+    assert busy_sleeps == [60, 120]
+
+
+def test_busy_zero_hint_still_waits_a_little(busy_sleeps):
+    llm, _seen = _scripted_llm([_busy(0), {"ok": True}])
+    asyncio.run(ask_validated("TASK: X", lambda raw: raw, llm=llm, step_label="thử"))
+    assert busy_sleeps == [case_adaptation_steps.BUSY_MIN_WAIT_S]
+    assert busy_sleeps[0] > 0
+
+
+def test_busy_too_long_fails_step(busy_sleeps):
+    llm, seen = _scripted_llm([_busy()] * 20)
+    with pytest.raises(StepFailed) as info:
+        asyncio.run(ask_validated("TASK: X", lambda raw: raw, llm=llm, step_label="gộp tên"))
+
+    assert busy_sleeps == [60, 120, 240, 480]
+    assert sum(busy_sleeps) == case_adaptation_steps.BUSY_WAIT_CAP_S == 15 * 60
+    assert len(seen) == 5                       # gọi lại sau mỗi lần chờ, lần cuối vẫn bận thì dừng
+    message = info.value.user_message
+    assert "gộp tên" in message and "9router" in message and "15 phút" in message
+    assert "HTTP 503" in message                # kèm lỗi gần nhất
+
+
+def test_busy_long_hint_is_capped(busy_sleeps):
+    llm, _seen = _scripted_llm([_busy(600)] * 5)
+    with pytest.raises(StepFailed):
+        asyncio.run(ask_validated("TASK: X", lambda raw: raw, llm=llm, step_label="thử"))
+    assert busy_sleeps == [600, 300]
+
+
+def test_auth_error_not_retried_and_no_wait(busy_sleeps):
+    llm, seen = _scripted_llm([LLMError("auth", "9router từ chối API key (401)."), {"ok": True}])
+    with pytest.raises(StepFailed) as info:
+        asyncio.run(ask_validated("TASK: X", lambda raw: raw, llm=llm, step_label="thử"))
+    assert len(seen) == 1 and busy_sleeps == []
+    assert "401" in info.value.user_message
+
+
+def test_busy_inside_pipeline_step(isolated_projects_dir, busy_sleeps):
+    pipeline = _new_pipeline()
+    llm, calls = make_fake_llm({"EXTRACT 0": [_busy(30)]})
+    result = _run(pipeline, "extract_00", llm)
+    assert calls == ["EXTRACT 0", "EXTRACT 0"]
+    assert busy_sleeps == [30]
     assert len(result.output["events"]) == 6
 
 
