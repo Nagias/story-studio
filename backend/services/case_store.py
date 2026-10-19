@@ -9,11 +9,13 @@ Lưu trữ phân tích vụ án trên đĩa: projects/_cases/<case_id>/
 
 Thư mục `_cases` không có project.json nên list_projects() không thấy.
 Mọi file ghi UTF-8, ghi qua file tạm rồi đổi tên để tắt máy giữa chừng không để lại file cụt.
+Đọc/đổi tên gặp PermissionError (Windows khoá file vài ms khi luồng khác đang đọc/ghi) thì tự thử lại.
 Id không an toàn (case_id, step_id) thì raise ValueError.
 """
 import json
 import logging
 import os
+import time
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -25,6 +27,9 @@ from security import is_safe_id, require_safe_id
 from services import project_service
 
 logger = logging.getLogger(__name__)
+
+_TRIES = 8           # số lần thử khi file đang bị khoá (chỉ tốn thời gian khi thật sự bị khoá)
+_RETRY_DELAY = 0.02  # giây chờ sau lần thử đầu, tăng tuyến tính ở các lần sau (20, 40, ... 140 ms)
 
 
 def cases_dir() -> Path:
@@ -47,17 +52,34 @@ def _case_dir(case_id: str) -> Path:
     return cases_dir() / _safe(case_id, "case_id")
 
 
+def _retry_if_locked(action):
+    """Windows báo PermissionError khi file đang bị tiến trình/luồng khác mở (đọc đúng lúc đổi tên,
+    hoặc đổi tên đúng lúc có người đọc). Khoá chỉ kéo dài vài ms nên thử lại vài lần rồi mới báo lỗi."""
+    for attempt in range(_TRIES):
+        try:
+            return action()
+        except PermissionError:
+            if attempt == _TRIES - 1:
+                raise
+            time.sleep(_RETRY_DELAY * (attempt + 1))  # chờ lâu dần
+
+
 def _write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex[:8]}.tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        _retry_if_locked(lambda: os.replace(tmp, path))
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def _read_text(path: Path) -> Optional[str]:
-    if not path.is_file():
+    try:
+        return _retry_if_locked(lambda: path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
         return None
-    return path.read_text(encoding="utf-8")
 
 
 def _write_json(path: Path, data) -> None:
@@ -104,18 +126,20 @@ def load_pipeline(case_id: str) -> Optional[CasePipeline]:
 
 
 def list_pipelines() -> list[CasePipeline]:
-    """Mọi hàng việc đọc được, cũ trước. Thư mục lạ hoặc file hỏng thì bỏ qua và ghi log."""
+    """Mọi hàng việc đọc được, cũ trước. Thư mục lạ, file hỏng hoặc file đang bị khoá thì bỏ qua và ghi log."""
     root = cases_dir()
     if not root.is_dir():
         return []
     found = []
     for d in root.iterdir():
-        if not d.is_dir() or not is_safe_id(d.name) or not (d / "pipeline.json").is_file():
+        if not d.is_dir() or not is_safe_id(d.name):
             continue
         try:
-            found.append(CasePipeline.model_validate_json((d / "pipeline.json").read_text(encoding="utf-8")))
-        except ValueError as exc:  # JSON hỏng hoặc sai schema (ValidationError cũng là ValueError)
-            logger.warning("Bỏ qua pipeline hỏng %s: %s", d.name, exc)
+            text = _read_text(d / "pipeline.json")
+            if text is not None:
+                found.append(CasePipeline.model_validate_json(text))
+        except (OSError, ValueError) as exc:  # khoá/lỗi đọc; JSON hỏng hoặc sai schema (ValidationError là ValueError)
+            logger.warning("Bỏ qua pipeline không đọc được %s: %s", d.name, exc)
     return sorted(found, key=lambda p: (p.created_at, p.case_id))
 
 

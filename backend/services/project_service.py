@@ -23,6 +23,9 @@ import re
 def _get_project_dir(project_id: str) -> Path:
     if not project_id or not re.fullmatch(r"[a-zA-Z0-9_\-]{1,64}", project_id):
         raise ValueError(f"Invalid project_id format: {project_id}")
+    # Thư mục bắt đầu bằng "_" dành cho hệ thống (vd _cases chứa phân tích vụ án), không phải dự án.
+    if project_id.startswith("_"):
+        raise ValueError(f"Reserved project_id: {project_id}")
     p_dir = (PROJECTS_DIR / project_id).resolve()
     if not p_dir.is_relative_to(PROJECTS_DIR.resolve()) or p_dir == PROJECTS_DIR.resolve():
         raise ValueError("Project directory traversal detected.")

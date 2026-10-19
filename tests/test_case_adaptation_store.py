@@ -4,6 +4,8 @@ giữ nguyên dấu tiếng Việt, ẩn khỏi danh sách dự án, từ chối
 Chạy trong thư mục tạm qua fixture isolated_projects_dir, không đụng projects/ thật.
 """
 import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -215,3 +217,130 @@ def test_rejects_unsafe_step_id(isolated_projects_dir, bad_step):
         case_store.save_step_output("case_0a1b2c3d", bad_step, {"a": 1})
     with pytest.raises(ValueError):
         case_store.load_step_output("case_0a1b2c3d", bad_step)
+
+
+def test_concurrent_save_and_read_pipeline_do_not_raise(isolated_projects_dir):
+    """Worker ghi pipeline sau mỗi việc trong lúc API đọc liên tục (poll 1 ms, gắt hơn thực tế nhiều):
+    Windows báo share violation (PermissionError) nếu đổi tên file đang bị mở; store phải tự thử lại,
+    không để lỗi lọt ra. Không dùng vòng đọc không nghỉ vì GIL làm mọi lần thử cùng trúng lúc file đang mở."""
+    cid = "case_0a1b2c3d"
+    case_store.save_pipeline(_pipeline(cid, "2026-10-19T10:00:00"))
+    stop = threading.Event()
+    errors: list[BaseException] = []
+    reads = []
+
+    def reader():
+        while not stop.is_set():
+            try:
+                loaded = case_store.load_pipeline(cid)
+                assert loaded is not None and loaded.case_id == cid
+                listed = case_store.list_pipelines()
+                assert all(isinstance(p, CasePipeline) for p in listed)
+                reads.append(1)
+            except BaseException as exc:  # noqa: BLE001 - test cần thấy mọi lỗi
+                errors.append(exc)
+                return
+            time.sleep(0.001)
+
+    thread = threading.Thread(target=reader)
+    thread.start()
+    last = None
+    try:
+        for i in range(300):
+            last = _pipeline(cid, "2026-10-19T10:00:00")
+            last.steps[1].attempts = i
+            case_store.save_pipeline(last)
+    finally:
+        stop.set()
+        thread.join(timeout=30)
+    assert not errors, errors[0]
+    assert reads, "reader chưa đọc lần nào"
+    assert case_store.load_pipeline(cid) == last
+    assert not list((isolated_projects_dir / "_cases" / cid).rglob("*.tmp"))
+
+
+def test_save_retries_replace_on_permission_error(isolated_projects_dir, monkeypatch):
+    monkeypatch.setattr(case_store, "_RETRY_DELAY", 0)
+    real_replace = case_store.os.replace
+    calls = []
+
+    def flaky_replace(src, dst):
+        calls.append(1)
+        if len(calls) < 3:
+            raise PermissionError(13, "The process cannot access the file")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(case_store.os, "replace", flaky_replace)
+    pipeline = _pipeline("case_0a1b2c3d", "2026-10-19T10:00:00")
+    case_store.save_pipeline(pipeline)
+    assert len(calls) == 3
+    assert case_store.load_pipeline("case_0a1b2c3d") == pipeline
+
+
+def test_save_gives_up_after_max_tries_and_leaves_no_tmp(isolated_projects_dir, monkeypatch):
+    monkeypatch.setattr(case_store, "_RETRY_DELAY", 0)
+    calls = []
+
+    def locked_replace(src, dst):
+        calls.append(1)
+        raise PermissionError(13, "The process cannot access the file")
+
+    monkeypatch.setattr(case_store.os, "replace", locked_replace)
+    with pytest.raises(PermissionError):
+        case_store.save_pipeline(_pipeline("case_0a1b2c3d", "2026-10-19T10:00:00"))
+    assert len(calls) == case_store._TRIES
+    assert not list((isolated_projects_dir / "_cases").rglob("*.tmp"))
+
+
+def test_read_retries_on_permission_error_and_list_skips_locked_file(isolated_projects_dir, monkeypatch):
+    monkeypatch.setattr(case_store, "_RETRY_DELAY", 0)
+    ok = _pipeline("case_00000001", "2026-10-19T09:00:00")
+    locked = _pipeline("case_00000002", "2026-10-19T10:00:00")
+    case_store.save_pipeline(ok)
+    case_store.save_pipeline(locked)
+
+    real_read_text = Path.read_text
+    fails = {"case_00000001": 2, "case_00000002": 10**6}  # 01 hồi phục sau 2 lần, 02 bị khoá mãi
+
+    def flaky_read_text(self, *args, **kwargs):
+        if self.name == "pipeline.json" and fails.get(self.parent.name, 0) > 0:
+            fails[self.parent.name] -= 1
+            raise PermissionError(13, "The process cannot access the file")
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", flaky_read_text)
+    assert case_store.load_pipeline("case_00000001") == ok  # thử lại rồi đọc được
+    fails["case_00000001"] = 2
+    assert [p.case_id for p in case_store.list_pipelines()] == ["case_00000001"]  # 02 bị bỏ qua, không văng lỗi
+    with pytest.raises(PermissionError):
+        case_store.load_pipeline("case_00000002")  # đọc đơn lẻ vẫn báo lỗi thật sau khi hết lần thử
+
+
+@pytest.mark.parametrize("reserved", ["_cases", "_archive", "_x"])
+def test_project_dir_rejects_reserved_underscore_ids(isolated_projects_dir, reserved):
+    with pytest.raises(ValueError):
+        project_service._get_project_dir(reserved)
+    assert project_service._get_project_dir("proj_abc12345") == (isolated_projects_dir / "proj_abc12345").resolve()
+
+
+def test_project_api_cannot_touch_cases_dir(isolated_projects_dir):
+    """`_cases` qua được SAFE_ID_RE; các route /api/projects/{id} không được xoá hay ghi đè nó."""
+    from fastapi.testclient import TestClient
+    from main import app
+
+    pipeline = _pipeline("case_0a1b2c3d", "2026-10-19T10:00:00")
+    case_store.save_pipeline(pipeline)
+    cases = isolated_projects_dir / "_cases"
+    client = TestClient(app, base_url="http://127.0.0.1:8000", client=("127.0.0.1", 50000),
+                        raise_server_exceptions=False)
+
+    resp = client.delete("/api/projects/_cases")
+    assert resp.status_code == 400
+    assert cases.is_dir()
+    assert case_store.load_pipeline("case_0a1b2c3d") == pipeline
+
+    resp = client.put("/api/projects/_cases", json={"name": "ghi đè"})
+    assert not resp.is_success
+    assert not (cases / "project.json").exists()
+    assert project_service.list_projects() == []
+    assert case_store.load_pipeline("case_0a1b2c3d") == pipeline
