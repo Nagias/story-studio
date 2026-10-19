@@ -54,6 +54,21 @@ _KIND_HINTS = {
     "open_questions": "những câu hỏi còn bỏ ngỏ: vụ án chưa có lời giải, các giả thuyết và điều còn bí ẩn, đúng như bài viết",
     "epilogue": "kết và dư âm: hệ quả, những người ở lại, điều vụ án để lại",
 }
+_TEASER_MARK = ("[CHỈ GỢI: sự việc của nhịp sau; chỉ hé lộ bằng một câu hỏi, một hình ảnh hoặc một chi tiết chưa "
+                "có lời giải, không kể trọn]")
+_TEASED_MARK = "[đã được hé lộ ở đoạn mở đầu: giờ kể đầy đủ, không lặp lại câu mở đầu]"
+_TONE_RULE_VI = ("Giọng tôn trọng nạn nhân, điện ảnh, không kiểu báo lá cải: không dùng từ giật gân hay ghê rợn "
+                 "(ví dụ \"ghê rợn\", \"rùng rợn\", \"máu me\", \"man rợ\", \"dã man\"), không tả máu hay vết thương chi tiết.")
+_TONE_RULE_EN = ("Giọng tôn trọng nạn nhân, điện ảnh, không kiểu báo lá cải: không dùng từ giật gân hay ghê rợn "
+                 "(ví dụ \"gruesome\", \"grisly\", \"horrific\", \"bloody\", \"brutal slaying\"), không tả máu hay vết thương chi tiết.")
+_ID_NUMBER_RULE_VI = ("Không giữ con số nhận dạng của bài: số nhà, biển số xe, số điện thoại, số giấy tờ, số hồ sơ, số phòng, "
+                      "số hiệu container... Nói chung chung (\"số 88 đường ...\" → \"một căn nhà trên con phố gần cảng\"; "
+                      "\"gọi đến số ...\" → \"gọi điện báo cảnh sát\"). Mã số giả trong bảng tên chỉ dùng khi chính con số "
+                      "là bằng chứng (ví dụ biển số bị camera ghi lại). Giờ trong ngày và tuổi thì giữ.")
+_ID_NUMBER_RULE_EN = ("Không giữ con số nhận dạng của bài: số nhà, biển số xe, số điện thoại, số giấy tờ, số hồ sơ, số phòng... "
+                      "Nói chung chung (\"88 ... Street\" → \"a house on a street near the port\"; \"dialed 09...\" → "
+                      "\"called the police\"). Mã số giả trong bảng tên chỉ dùng khi chính con số là bằng chứng. "
+                      "Giờ trong ngày và tuổi thì giữ.")
 _KIND_LABELS = {
     "person": "người", "place": "địa danh", "organization": "tổ chức", "identifier": "mã số",
 }
@@ -280,11 +295,13 @@ def _alias_vi_of(bible: CaseBible, entity_id: str) -> str:
     return ent.alias_vi if ent is not None else entity_id
 
 
-def _event_lines(events: Iterable[TimelineEvent], bible: CaseBible, indent: str = "") -> str:
+def _event_lines(events: Iterable[TimelineEvent], bible: CaseBible, indent: str = "",
+                 marks: Optional[dict[str, str]] = None) -> str:
     lines = []
     for ev in events:
         when = f' | mốc trong bài: "{_one_line(ev.time_label, 80)}"' if ev.time_label.strip() else ""
-        lines.append(f"{indent}- {ev.id}{when} | {_one_line(_aliased(ev.summary, bible), 400)}")
+        mark = f" {marks[ev.id]}" if marks and ev.id in marks else ""
+        lines.append(f"{indent}- {ev.id}{mark}{when} | {_one_line(_aliased(ev.summary, bible), 400)}")
     return "\n".join(lines) if lines else f"{indent}(không có sự việc nào)"
 
 
@@ -363,9 +380,9 @@ THỜI LƯỢNG VÀ SỐ CẢNH
 QUY TẮC NHỊP
 1. Thứ tự theo cấu trúc phim: hook (mở đầu gây tò mò, không tiết lộ kết) → setup (bối cảnh, con người) → discovery (phát hiện vụ án) → investigation (điều tra) → twist (bước ngoặt) → kết thúc → epilogue (kết và dư âm). Kết thúc của vụ này là {ending}. Không bắt buộc đủ mọi loại; một loại có thể có nhiều nhịp liền nhau (ví dụ ba nhịp investigation).
 2. "kind": một trong {kinds}.
-3. "event_ids": id các sự việc nhịp này kể, theo thứ tự kể. MỌI sự việc trong dòng thời gian (đủ {n_events} id) phải nằm trong ĐÚNG MỘT nhịp: không bỏ sót sự việc nào, kể cả sự việc nhỏ, và không kể lại cùng một sự việc ở hai nhịp. Chỉ dùng id có trong danh sách trên. Ngoại lệ duy nhất: nhịp hook được mượn trước tối đa 1 sự việc của một nhịp sau để gây tò mò (sự việc đó vẫn nằm trong nhịp của nó).
+3. "event_ids": id các sự việc nhịp này kể, theo thứ tự kể. MỌI sự việc trong dòng thời gian (đủ {n_events} id) phải nằm trong ĐÚNG MỘT nhịp: không bỏ sót sự việc nào, kể cả sự việc nhỏ, và không kể lại cùng một sự việc ở hai nhịp. Chỉ dùng id có trong danh sách trên. Ngoại lệ duy nhất: nhịp hook được mượn trước tối đa 1 sự việc của một nhịp sau, nhưng chỉ để gợi tò mò (một câu hỏi, một hình ảnh, một chi tiết chưa có lời giải), không kể lại trọn sự việc; sự việc đó vẫn nằm trong nhịp của nó, và chính nhịp đó mới kể đầy đủ.
 4. "scene_count": số nguyên từ {min_part} đến {max_part}; không ít hơn số sự việc của nhịp chia {MAX_EVENTS_PER_SCENE} (mỗi cảnh kể tối đa {MAX_EVENTS_PER_SCENE} sự việc), và không nhiều hơn {MAX_SCENES_PER_EVENT} × số sự việc của nhịp (mỗi sự việc đủ cho tối đa {MAX_SCENES_PER_EVENT} cảnh; nhịp 1 sự việc thì đúng {min_part} cảnh). Nhịp có nhiều sự việc thì tách thành nhiều nhịp.
-5. "summary_vi": 1–2 câu tiếng Việt nói nhịp này kể gì; chỉ dùng tên hư cấu như trong hồ sơ trên; không ghi ngày, tháng hay năm cụ thể.
+5. "summary_vi": 1–2 câu tiếng Việt nói nhịp này kể gì; chỉ dùng tên hư cấu như trong hồ sơ trên; không ghi ngày, tháng hay năm cụ thể. Riêng nhịp hook: "summary_vi" là lời gợi tò mò (câu hỏi hay hình ảnh mở đầu), không tóm tắt diễn biến hay kết quả.
 6. "id": "p1", "p2", "p3"... theo thứ tự.
 
 Trả về đúng một JSON object theo mẫu (thay phần trong <...> bằng số nguyên):
@@ -376,12 +393,17 @@ Trả về đúng một JSON object theo mẫu (thay phần trong <...> bằng s
 
 def write_vi_prompt(bible: CaseBible, part: StoryPart, events: list[TimelineEvent], source_chunks: list[str],
                     prev_scenes: list[dict], *, part_position: Optional[tuple[int, int]] = None,
-                    revealed_ids: Iterable[str] = ()) -> str:
-    """`revealed_ids`: id bằng chứng/quan hệ đã hiện ở các nhịp trước (đánh dấu trong danh sách)."""
+                    revealed_ids: Iterable[str] = (), teaser_ids: Iterable[str] = (),
+                    teased_ids: Iterable[str] = ()) -> str:
+    """- `revealed_ids`: id bằng chứng/quan hệ đã hiện ở các nhịp trước (đánh dấu trong danh sách).
+    - `teaser_ids`: sự việc nhịp hook mượn của nhịp sau: chỉ được gợi, không kể trọn.
+    - `teased_ids`: sự việc của nhịp này đã được hook hé lộ: giờ mới kể đầy đủ."""
     n = part.scene_count
     lo, hi = VI_WORDS
     per_scene = max_events_per_scene(len(events), n)
     event_ids = ", ".join(ev.id for ev in events) or "(không có)"
+    marks = {e: _TEASER_MARK for e in teaser_ids}
+    marks.update({e: _TEASED_MARK for e in teased_ids})
     if prev_scenes:
         prev = "\n".join(f"- {s.get('narration_vi', '')}" for s in prev_scenes)
         prev_rule = "Nối tiếp mạch kể từ hai cảnh này, không lặp lại nội dung của chúng."
@@ -397,7 +419,7 @@ NHỊP NÀY
 - Số cảnh: đúng {n} cảnh.
 - {_solved_rule(bible)}
 - Sự việc phải kể, theo thứ tự (mỗi sự việc phải được kể ít nhất trong một cảnh):
-{_event_lines(events, bible, indent="  ")}
+{_event_lines(events, bible, indent="  ", marks=marks)}
 
 BẢNG TÊN: đoạn gốc dưới đây dùng tên thật; lời kể CHỈ được dùng tên hư cấu ở bên phải mũi tên (gọi tắt theo tên hư cấu cũng được, ví dụ "ông" + tên):
 {_name_table_vi(bible)}
@@ -418,13 +440,15 @@ CÁCH VIẾT
 2. Kể đúng thứ tự sự việc. Mỗi cảnh kể 1–{per_scene} sự việc; sự việc quan trọng có thể kéo dài 2 cảnh. Kể cụ thể (ai, làm gì, ở đâu, bằng cách nào, thấy gì), không tóm gọn kiểu "sau đó cảnh sát vào cuộc điều tra".
 3. "Như phim": được thêm không khí, cảm xúc, nội tâm và lời thoại dựng lại (đặt trong lời kể, ví dụ: cô run giọng nói: "..."), nhưng chỉ từ những gì đoạn gốc có. Không thêm sự kiện, nhân vật có vai trò trong vụ án, động cơ, nghi phạm hay bằng chứng mới; nhân vật phụ không tên (người qua đường, hàng xóm) thì được.
 4. Ngày giờ: không viết ngày, tháng, năm cụ thể (không "15 tháng 10", không "15/10", không "năm 2021"); năm đổi thành thời kỳ ("đầu những năm 2020"). Giữ giờ trong ngày ("khoảng 23 giờ 30"), mùa và các mốc tương đối ("chiều hôm đó", "hơn một giờ sau"). Tuổi để xấp xỉ hoặc viết bằng chữ.
-5. Giữ tên quốc gia và tên chung của cơ quan ("cảnh sát", "công an", "toà án"). Tôn trọng nạn nhân, không tả máu me.
-6. "visual_kind" của từng cảnh:
-   - "board": cảnh nói về bằng chứng hoặc mối quan hệ; "board_reveal" là id các bằng chứng/quan hệ hiện lên bảng điều tra ở cảnh này (chỉ dùng id trong danh sách trên, ưu tiên những cái chưa hiện).
+5. {_ID_NUMBER_RULE_VI}
+6. Giữ tên quốc gia và tên chung của cơ quan ("cảnh sát", "công an", "toà án"). {_TONE_RULE_VI}
+7. Sự việc ghi [CHỈ GỢI] (nhịp mở đầu mượn của nhịp sau): chỉ hé lộ bằng một câu hỏi, một hình ảnh hoặc một chi tiết chưa có lời giải, trong một hai câu; không kể trọn diễn biến, không nói kết quả. Sự việc ghi [đã được hé lộ ở đoạn mở đầu]: giờ mới kể đầy đủ, không lặp lại câu mở đầu.
+8. "visual_kind" của từng cảnh:
+   - "board": cảnh nói về chính các bằng chứng hoặc mối quan hệ hiện lên bảng điều tra ở cảnh đó. "board_reveal" PHẢI có ít nhất 1 id (chỉ dùng id trong danh sách trên, ưu tiên những cái chưa hiện), và lời kể của cảnh nói rõ nội dung của đúng những bằng chứng/quan hệ ấy. Không dùng "board" cho lời kể chung chung (ví dụ "lời khai được ghi vào hồ sơ"); không có gì để hiện thì dùng "image".
    - "video": một khoảnh khắc hành động ngắn (chạy, bỏ trốn, xe lao đi...). Tối đa 1 cảnh video trong nhịp này; lời cảnh video ngắn hơn, khoảng {_VI_VIDEO_TARGET} từ.
    - "image": mọi cảnh còn lại.
    Cảnh không phải "board" thì "board_reveal" là [].
-7. "covers_event_ids": id các sự việc (của nhịp này) mà lời kể của cảnh đó thật sự kể ra: mỗi cảnh có từ 1 đến {per_scene} id, chia đều cho các cảnh theo thứ tự. Gộp mọi cảnh lại phải có đủ: {event_ids}.
+9. "covers_event_ids": id các sự việc (của nhịp này) mà lời kể của cảnh đó thật sự kể ra: mỗi cảnh có từ 1 đến {per_scene} id, chia đều cho các cảnh theo thứ tự. Gộp mọi cảnh lại phải có đủ: {event_ids}.
 
 Trả về đúng một JSON object, "scenes" có đúng {n} phần tử theo thứ tự kể:
 {{"scenes": [{{"narration_vi": "...", "visual_kind": "image", "board_reveal": [], "covers_event_ids": ["..."]}}]}}"""
@@ -440,7 +464,8 @@ def _en_writing_rules(count_rule: str) -> str:
 3. Văn phong người dẫn chuyện phim tài liệu true-crime Mỹ: câu rõ, nhịp tự nhiên khi đọc to; viết lại cho tự nhiên chứ không dịch sát từng chữ. Lời thoại dựng lại thì viết lại bằng tiếng Anh tự nhiên.
 4. Tên: chỉ dùng tên ở phần "lời Anh dùng" trong bảng tên; không dùng tên thật, không dùng dạng tên tiếng Việt khi hai dạng khác nhau. Bỏ danh xưng tiếng Việt ("ông", "bà", "anh", "chị"); gọi bằng tên hoặc "he", "she".
 5. Ngày giờ: không ngày, tháng, năm cụ thể ("October 15", "2021"); dùng thời kỳ ("in the early 2020s"), mùa và mốc tương đối ("one autumn night", "three days later"). Giữ giờ trong ngày ("around 11:30 p.m.").
-6. Giữ tên quốc gia và tên chung của cơ quan bằng tiếng Anh ("Vietnam", "Taiwan", "the police", "the court"). Tôn trọng nạn nhân, không tả máu me."""
+6. {_ID_NUMBER_RULE_EN}
+7. Giữ tên quốc gia và tên chung của cơ quan bằng tiếng Anh ("Vietnam", "Taiwan", "the police", "the court"). {_TONE_RULE_EN}"""
 
 
 def write_en_prompt(bible: CaseBible, part: StoryPart, vi_scenes: list[dict], source_chunks: list[str], *,

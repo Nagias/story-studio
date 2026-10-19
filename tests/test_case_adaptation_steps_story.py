@@ -9,6 +9,7 @@ G5–G7 của luồng chuyển thể vụ án: dàn ý, viết lời Việt → 
 """
 import asyncio
 import copy
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +26,7 @@ from services.case_adaptation_checks import fold, has_blocking_flags
 from services.case_adaptation_llm import LLMError
 from services.case_adaptation_prompts import outline_prompt
 from services.case_adaptation_steps import (
+    STEP_TIMEOUTS,
     SoftRejected,
     StepFailed,
     StepRejected,
@@ -35,7 +37,7 @@ from services.case_adaptation_steps import (
     run_step,
 )
 from services.video_service import CAMERA_MOTIONS
-from tests.case_adaptation_fakes import FIXTURES_DIR, load_fixture, make_fake_llm
+from tests.case_adaptation_fakes import FIXTURES_DIR, load_fixture, make_fake_llm, marker_of
 
 DOSSIER = (FIXTURES_DIR / "dossier.txt").read_text(encoding="utf-8")
 RETRY_MARK = "LẦN TRƯỚC BỊ LOẠI VÌ"
@@ -94,6 +96,11 @@ def _prompt_for(llm, marker: str, nth: int = 0) -> str:
     return hits[nth]
 
 
+def _has_word(text: str, phrase: str) -> bool:
+    """`phrase` xuất hiện trong `text` theo ranh giới từ ("ong trong" không khớp trong "động trong")."""
+    return re.search(r"(?<!\w)" + re.escape(phrase) + r"(?!\w)", text) is not None
+
+
 def _bible(pipeline: CasePipeline) -> CaseBible:
     return CaseBible.model_validate(case_store.load_step_output(pipeline.case_id, "aliases"))
 
@@ -142,7 +149,24 @@ def test_full_pipeline_produces_plan(isolated_projects_dir):
     texts = [t for s in plan.scenes for t in (s.narration_vi, s.narration_en, s.image_prompt, s.video_prompt)]
     texts += [p.summary_vi for p in plan.parts]
     for real in REAL_NAMES:
-        assert all(fold(real) not in fold(t) for t in texts), real
+        assert not any(_has_word(fold(t), fold(real)) for t in texts), real
+
+
+def test_each_step_kind_gets_its_own_timeout(isolated_projects_dir):
+    fake, _calls = make_fake_llm()
+    seen: dict[str, set] = {}
+
+    async def llm(system, user, *, temperature=0.4, timeout=None, client=None):
+        seen.setdefault(marker_of(user).split(" ")[0], set()).add(timeout)
+        return await fake(system, user, temperature=temperature)
+
+    pipeline = _new_pipeline()
+    _run_pipeline(pipeline, llm)
+    asyncio.run(rewrite_english(_bible(pipeline), [(3, "Run rẩy, bà Đặng Thu Hà gọi đến trực ban hình sự.")], llm=llm))
+
+    assert seen == {"EXTRACT": {240.0}, "CLUSTER": {240.0}, "ALIASES": {240.0}, "OUTLINE": {600.0},
+                    "WRITE_VI": {360.0}, "WRITE_EN": {360.0}, "PROMPTS": {360.0}, "REWRITE_EN": {360.0}}
+    assert STEP_TIMEOUTS["build_outline"] == 600.0 and STEP_TIMEOUTS["write_prompts"] == 360.0
 
 
 def test_short_material_warns(isolated_projects_dir):
@@ -413,7 +437,7 @@ def test_outline_prompt_has_events_with_fictional_names_only(isolated_projects_d
     assert "evd_1" in prompt and "35" in prompt and "40" in prompt and "48" in prompt
     assert "Trịnh Quang Vũ" in prompt and "Cảng Hải Yến" in prompt
     for real in REAL_NAMES:
-        assert fold(real) not in fold(prompt), real
+        assert not _has_word(fold(prompt), fold(real)), real
 
 
 # ---------------------------------------------------------------- G6: lời Việt
@@ -463,6 +487,79 @@ def test_write_vi_each_scene_must_cover_one_to_three_events(isolated_projects_di
     reason = _reason(llm)
     assert "cảnh 1" in reason and "tối đa 3" in reason
     assert "cảnh 2" in reason and "cảnh 3" in reason and "ít nhất 1" in reason
+
+
+def test_write_vi_board_scene_without_reveal_rejected(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    bad = copy.deepcopy(load_fixture("WRITE_VI p2"))
+    bad["scenes"][1]["board_reveal"] = []                                # cảnh board không hiện gì lên bảng
+    llm, calls = make_fake_llm({"WRITE_VI p2": [bad, load_fixture("WRITE_VI p2")]})
+    _run_pipeline(pipeline, llm, stop_after="write_vi_p2")
+    assert calls.count("WRITE_VI p2") == 2
+    reason = _reason(llm)
+    assert "cảnh 2" in reason and "board_reveal" in reason and "image" in reason
+
+
+def test_write_vi_identifying_number_from_source_soft_rejected(isolated_projects_dir):
+    # Bài gốc có "số 88 Đường Lê Lợi" và "container số 14": lời kể giữ "số 88" là lộ chi tiết nhận dạng.
+    pipeline = _new_pipeline()
+    bad = copy.deepcopy(load_fixture("WRITE_VI p1"))
+    bad["scenes"][0]["narration_vi"] = bad["scenes"][0]["narration_vi"].replace(
+        "trên Đường Thanh Lam", "ở số 88 Đường Thanh Lam")
+    llm, calls = make_fake_llm({"WRITE_VI p1": [bad, load_fixture("WRITE_VI p1")]})
+    _run_pipeline(pipeline, llm, stop_after="write_vi_p1")
+    assert calls.count("WRITE_VI p1") == 2
+    reason = _reason(llm)
+    assert "cảnh 1" in reason and "'88'" in reason and "số nhà" in reason
+
+
+def test_write_vi_times_and_ages_are_not_identifying_numbers(isolated_projects_dir):
+    # "14" có trong bài cạnh chữ "số" (container số 14), nhưng "14 giờ", "14:30", "14 tuổi" là giờ và tuổi: giữ.
+    pipeline = _new_pipeline()
+    ok = copy.deepcopy(load_fixture("WRITE_VI p1"))
+    ok["scenes"][0]["narration_vi"] = ("Khoảng 14 giờ chiều hôm trước, rồi lúc 14:30, một cậu bé 14 tuổi còn "
+                                       + ok["scenes"][0]["narration_vi"])
+    llm, calls = make_fake_llm({"WRITE_VI p1": ok})
+    _run_pipeline(pipeline, llm, stop_after="write_vi_p1")
+    assert calls.count("WRITE_VI p1") == 1
+
+
+def test_write_en_identifying_number_soft_rejected(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    bad = copy.deepcopy(load_fixture("WRITE_EN p1"))
+    bad["scenes"][0]["narration_en"] = bad["scenes"][0]["narration_en"].replace(
+        "on Thanh Lam Street", "at 88 Thanh Lam Street")
+    llm, calls = make_fake_llm({"WRITE_EN p1": [bad, load_fixture("WRITE_EN p1")]})
+    _run_pipeline(pipeline, llm, stop_after="write_en_p1")
+    assert calls.count("WRITE_EN p1") == 2
+    assert "'88'" in _reason(llm)
+
+
+def test_hook_borrowed_event_is_marked_tease_only(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    outline = _outline_with(parts=_parts(("hook", [*ALL_EVENTS[:6], "ev_1_6"], 3), ("investigation", ALL_EVENTS[6:], 3)))
+    vi1 = copy.deepcopy(load_fixture("WRITE_VI p1"))
+    vi1["scenes"][0]["covers_event_ids"].append("ev_1_6")
+    llm, _calls = make_fake_llm({"OUTLINE": outline, "WRITE_VI p1": vi1})
+    _run_pipeline(pipeline, llm, stop_after="write_vi_p2")
+    hook, owner = _prompt_for(llm, "WRITE_VI p1"), _prompt_for(llm, "WRITE_VI p2")
+    teaser = next(line for line in hook.splitlines() if line.strip().startswith("- ev_1_6"))
+    assert "CHỈ GỢI" in teaser
+    assert not any("CHỈ GỢI" in line for line in hook.splitlines() if line.strip().startswith("- ev_0_"))
+    told = next(line for line in owner.splitlines() if line.strip().startswith("- ev_1_6"))
+    assert "hé lộ" in told and "kể đầy đủ" in told
+    prompt = _prompt_for(llm, "OUTLINE")
+    assert "gợi tò mò" in prompt and "không kể lại trọn" in prompt
+
+
+def test_write_prompts_forbid_sensational_wording(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    llm, _calls = make_fake_llm()
+    _run_pipeline(pipeline, llm, stop_after="write_en_p1")
+    for marker in ("WRITE_VI p1", "WRITE_EN p1"):
+        prompt = _prompt_for(llm, marker)
+        assert "báo lá cải" in prompt and "số nhà" in prompt, marker
+    assert "ghê rợn" in _prompt_for(llm, "WRITE_VI p1") and "gruesome" in _prompt_for(llm, "WRITE_EN p1")
 
 
 def test_write_vi_short_narration_and_unknown_reveal_rejected(isolated_projects_dir):

@@ -102,6 +102,19 @@ _TEMPERATURE_OUTLINE = 0.3
 _TEMPERATURE_VI = 0.7
 _TEMPERATURE_EN = 0.6
 _TEMPERATURE_PROMPTS = 0.5
+# Timeout (giây) của một lần gọi LLM, theo loại việc. Dàn ý đọc cả dòng thời gian nên lâu nhất (lần chạy thật:
+# 137 s với 6 sự việc); đọc đoạn, gộp tên, đặt tên hư cấu giữ mức mặc định của call_llm_json (thật: ≤ 63 s).
+STEP_TIMEOUTS: dict[str, float] = {
+    "extract_chunk": 240.0,
+    "cluster_names": 240.0,
+    "assign_aliases": 240.0,
+    "build_outline": 600.0,
+    "write_vi": 360.0,
+    "write_en": 360.0,
+    "write_prompts": 360.0,
+    "rewrite_english": 360.0,
+}
+_DEFAULT_TIMEOUT = 240.0
 _PREV_SCENES = 2                 # số cảnh cuối của nhịp trước đưa vào prompt lời Việt
 _MAX_LISTED_IDS = 40             # id ngắn nên liệt kê được nhiều hơn tên
 SHORT_MATERIAL_WARNING = "Bài chỉ đủ tư liệu cho khoảng {n} phút (bạn chọn {m} phút)."
@@ -163,9 +176,10 @@ async def ask_validated(
     *,
     llm: LLMCall,
     temperature: float = 0.4,
+    timeout: float = _DEFAULT_TIMEOUT,
     step_label: str,
 ) -> T:
-    """Gọi LLM tối đa MAX_ATTEMPTS lần cho tới khi `validate` nhận kết quả.
+    """Gọi LLM tối đa MAX_ATTEMPTS lần cho tới khi `validate` nhận kết quả. `timeout` (giây) cho từng lần gọi.
 
     - `validate` raise StepRejected (hoặc pydantic ValidationError) khi kết quả không đạt; lý do được nối vào prompt
       lần sau. Kết quả không phải dict/list (null, số, chuỗi) cũng bị loại.
@@ -179,7 +193,7 @@ async def ask_validated(
     for _attempt in range(MAX_ATTEMPTS):
         prompt = user if reason is None else user + RETRY_NOTE.format(reason=reason.rstrip(" ."))
         try:
-            raw = await llm(SYSTEM_PROMPT, prompt, temperature=temperature)
+            raw = await llm(SYSTEM_PROMPT, prompt, temperature=temperature, timeout=timeout)
         except LLMError as exc:
             if exc.kind not in RETRYABLE_KINDS:
                 raise StepFailed(f"Bước {step_label} thất bại: {exc.user_message}") from exc
@@ -565,7 +579,7 @@ async def _run_extract(pipeline: CasePipeline, step: PipelineStep, llm: LLMCall)
     output = await ask_validated(
         extract_prompt(chunk, index, len(chunks), known),
         lambda raw: _validate_extract(raw, chunk, known),
-        llm=llm, temperature=_TEMPERATURE_EXTRACT, step_label=label,
+        llm=llm, temperature=_TEMPERATURE_EXTRACT, timeout=STEP_TIMEOUTS["extract_chunk"], step_label=label,
     )
     return StepResult(output=output)
 
@@ -660,7 +674,7 @@ async def _run_cluster(pipeline: CasePipeline, step: PipelineStep, llm: LLMCall)
     output = await ask_validated(
         cluster_prompt(names),
         lambda raw: _validate_cluster(raw, names),
-        llm=llm, temperature=_TEMPERATURE_CLUSTER, step_label=label,
+        llm=llm, temperature=_TEMPERATURE_CLUSTER, timeout=STEP_TIMEOUTS["cluster_names"], step_label=label,
     )
     return StepResult(output=output)
 
@@ -874,7 +888,7 @@ async def _run_aliases(pipeline: CasePipeline, step: PipelineStep, llm: LLMCall)
     output = await ask_validated(
         aliases_prompt(groups, source[:OPENING_EXCERPT_CHARS]),
         lambda raw: _validate_aliases(raw, groups, extracts, source),
-        llm=llm, temperature=_TEMPERATURE_ALIASES, step_label=label,
+        llm=llm, temperature=_TEMPERATURE_ALIASES, timeout=STEP_TIMEOUTS["assign_aliases"], step_label=label,
     )
     return StepResult(output=output)
 
@@ -942,12 +956,37 @@ def _part_output(pipeline: CasePipeline, kind: str, part_id: str, label: str) ->
     return data["scenes"]
 
 
+# Con số đứng riêng, từ 2 chữ số (không dính chữ, dấu ":" hay "/": "22h15", "02:21", "15B1", "2020s" không tính).
+_NUMBER = re.compile(r"(?<![\w.,:/\-])(\d{2,})(?![\w:/\-]|[.,]\d)")
+# Trên bài đã fold: chữ báo hiệu số nhà, biển số, số điện thoại... đứng ngay trước hoặc ngay sau con số.
+_ID_CUE_BEFORE = re.compile(
+    r"(?<!\w)(?:so nha|so|nha|duong|pho|hem|ngo|kiet|can ho|phong|bien so|bien kiem soat|dien thoai|sdt|"
+    r"no\.?|number|street|plate|phone|room|apartment|unit|#)\s*$")
+_ID_CUE_AFTER = re.compile(r"\s*(?:duong|pho|street|st\.|road|avenue|lane)(?!\w)")
+# Trong lời kể: con số là giờ, tuổi hay thời lượng thì giữ (spec 7.6).
+_TIME_AGE_AFTER = re.compile(r"\s*(?:gio|phut|giay|tuoi|a\.?m\b|p\.?m\b|years?|year-old|minutes?|hours?|seconds?|"
+                             r"o'clock|%)", re.IGNORECASE)
+
+
+def _identifying_numbers(source_text: str) -> set[str]:
+    """Các con số trong bài gốc đứng cạnh chữ báo hiệu số nhà, biển số, số điện thoại ("số 88", "88 Đường...")."""
+    folded = fold(source_text or "")
+    found = set()
+    for m in _NUMBER.finditer(folded):
+        before = folded[max(0, m.start() - 24):m.start()]
+        if _ID_CUE_BEFORE.search(before) or _ID_CUE_AFTER.match(folded, m.end()):
+            found.add(m.group(1))
+    return found
+
+
 class _TextGuard:
     """Tìm lỗi nhẹ trong chữ LLM viết: tên thật (kể cả tên regex bắt được trên bài gốc), ngày tháng cụ thể,
-    dạng tên tiếng Việt trong lời Anh, tên người trong prompt hình. Mỗi lỗi là một câu ngắn gửi lại cho model."""
+    con số nhận dạng lấy từ bài, dạng tên tiếng Việt trong lời Anh, tên người trong prompt hình. Mỗi lỗi là một
+    câu ngắn gửi lại cho model."""
 
     def __init__(self, bible: CaseBible, source_text: str = ""):
         self.bible = bible
+        self.id_numbers = _identifying_numbers(source_text)
         self.forbidden = build_forbidden_names(bible, source_text)
         self.by_real = {f.real: f for f in self.forbidden}
         self.aliases = list(dict.fromkeys(a.strip() for e in bible.entities
@@ -997,8 +1036,19 @@ class _TextGuard:
                     break
         return out
 
+    def identifying_numbers(self, text: str) -> list[str]:
+        """Con số nhận dạng của bài (số nhà, biển số, số điện thoại...) còn trong lời kể; giờ và tuổi thì giữ."""
+        folded = fold(text)
+        found: list[str] = []
+        for m in _NUMBER.finditer(folded):
+            number = m.group(1)
+            if number in self.id_numbers and not _TIME_AGE_AFTER.match(folded, m.end()) and number not in found:
+                found.append(number)
+        return [f"có con số nhận dạng '{n}' lấy từ bài (số nhà, biển số, số điện thoại, số giấy tờ...): bỏ số này, "
+                "nói chung chung (ví dụ 'một căn nhà trên con phố gần cảng')" for n in found]
+
     def narration(self, text: str, lang: str) -> list[str]:
-        issues = self.real_names(text, lang) + self.dates(text)
+        issues = self.real_names(text, lang) + self.dates(text) + self.identifying_numbers(text)
         if lang == "en":
             issues += self.vi_forms_in_en(text)
         return issues
@@ -1085,6 +1135,21 @@ def _repeated_event_problems(drafts: list[tuple[str, str, list[str], int]]) -> l
         problems.append(f"Các sự việc sau nằm trong nhiều nhịp: {_id_list(repeated)}. Mỗi sự việc chỉ thuộc đúng một "
                         "nhịp, không kể lại để độn cảnh (riêng nhịp hook được mượn trước 1 sự việc)")
     return problems
+
+
+def _hook_borrowed(outline: CaseOutline) -> dict[str, str]:
+    """Sự việc mà nhịp hook mượn trước của nhịp khác (dàn ý đã kiểm nên mỗi sự việc lặp đều là loại này):
+    {id sự việc: id nhịp hook}."""
+    where: dict[str, list[StoryPart]] = {}
+    for part in outline.parts:
+        for event_id in part.event_ids:
+            where.setdefault(event_id, []).append(part)
+    borrowed = {}
+    for event_id, parts in where.items():
+        hooks = [p for p in parts if p.kind == "hook"]
+        if len(parts) == 2 and len(hooks) == 1:
+            borrowed[event_id] = hooks[0].id
+    return borrowed
 
 
 def _too_few_scenes_problem(total: int, n_events: int, supported: int, target_minutes: int,
@@ -1195,7 +1260,7 @@ async def _run_outline(pipeline: CasePipeline, step: PipelineStep, llm: LLMCall)
     output = await ask_validated(
         outline_prompt(bible, minutes, target_scenes(minutes)),
         lambda raw: _validate_outline(raw, bible, minutes),
-        llm=llm, temperature=_TEMPERATURE_OUTLINE, step_label=label,
+        llm=llm, temperature=_TEMPERATURE_OUTLINE, timeout=STEP_TIMEOUTS["build_outline"], step_label=label,
     )
     parts = [StoryPart.model_validate(p) for p in output["parts"]]
     return StepResult(output=output, new_steps=_story_steps(parts))
@@ -1296,6 +1361,10 @@ def _validate_write_vi(raw: Any, ctx: _PartContext, guard: _TextGuard) -> dict:
         if unknown:
             problems.append(f"cảnh {k}: board_reveal có id không có trong danh sách bằng chứng/quan hệ: "
                             f"{_id_list(unknown)}")
+        visual = _norm_visual(scene.visual_kind)
+        if visual == "board" and not reveal:
+            problems.append(f"cảnh {k} là cảnh board nhưng board_reveal rỗng; cảnh board phải hiện ít nhất 1 bằng "
+                            "chứng/quan hệ và lời kể nói về chính những cái đó, không có thì đổi visual_kind thành image")
         # Chỉ tính sự việc của nhịp này; mỗi cảnh phải kể 1..per_scene sự việc, để không dồn hết vào một cảnh.
         covers = [e for e in _clean_ids(scene.covers_event_ids) if e in part_events]
         if not covers:
@@ -1306,7 +1375,7 @@ def _validate_write_vi(raw: Any, ctx: _PartContext, guard: _TextGuard) -> dict:
                             "sự việc; hãy chia các sự việc cho các cảnh theo thứ tự")
         covered.update(covers)
         soft += [f"cảnh {k} {issue}" for issue in guard.narration(scene.narration_vi, "vi")]
-        scenes.append({"narration_vi": scene.narration_vi, "visual_kind": _norm_visual(scene.visual_kind),
+        scenes.append({"narration_vi": scene.narration_vi, "visual_kind": visual,
                        "board_reveal": reveal, "covers_event_ids": covers})
     missing = [e for e in ctx.part.event_ids if e not in covered]
     if missing:
@@ -1320,12 +1389,16 @@ async def _run_write_vi(pipeline: CasePipeline, step: PipelineStep, llm: LLMCall
     previous = [_part_output(pipeline, "write_vi", p.id, ctx.label) for p in ctx.outline.parts[:ctx.index]]
     prev_scenes = previous[-1][-_PREV_SCENES:] if previous else []
     revealed = [r for scenes in previous for s in scenes for r in s.get("board_reveal", [])]
+    borrowed = _hook_borrowed(ctx.outline)
+    teaser_ids = [e for e in ctx.part.event_ids if borrowed.get(e) == ctx.part.id]
+    teased_ids = [e for e in ctx.part.event_ids if e in borrowed and borrowed[e] != ctx.part.id]
     guard = _TextGuard(ctx.bible, _source_text(pipeline))
     output = await ask_validated(
         write_vi_prompt(ctx.bible, ctx.part, _part_events(ctx), _part_chunks(pipeline, ctx), prev_scenes,
-                        part_position=ctx.position, revealed_ids=revealed),
+                        part_position=ctx.position, revealed_ids=revealed, teaser_ids=teaser_ids,
+                        teased_ids=teased_ids),
         lambda raw: _validate_write_vi(raw, ctx, guard),
-        llm=llm, temperature=_TEMPERATURE_VI, step_label=ctx.label,
+        llm=llm, temperature=_TEMPERATURE_VI, timeout=STEP_TIMEOUTS["write_vi"], step_label=ctx.label,
     )
     return StepResult(output=output)
 
@@ -1363,7 +1436,7 @@ async def _run_write_en(pipeline: CasePipeline, step: PipelineStep, llm: LLMCall
     output = await ask_validated(
         write_en_prompt(ctx.bible, ctx.part, vi_scenes, _part_chunks(pipeline, ctx), part_position=ctx.position),
         lambda raw: _validate_write_en(raw, len(vi_scenes), guard),
-        llm=llm, temperature=_TEMPERATURE_EN, step_label=ctx.label,
+        llm=llm, temperature=_TEMPERATURE_EN, timeout=STEP_TIMEOUTS["write_en"], step_label=ctx.label,
     )
     return StepResult(output=output)
 
@@ -1434,7 +1507,7 @@ async def _run_write_prompts(pipeline: CasePipeline, step: PipelineStep, llm: LL
     output = await ask_validated(
         prompts_prompt(ctx.bible, ctx.part, scenes, pipeline.visual_style, part_position=ctx.position),
         lambda raw: _validate_write_prompts(raw, ctx, vi_scenes, guard),
-        llm=llm, temperature=_TEMPERATURE_PROMPTS, step_label=ctx.label,
+        llm=llm, temperature=_TEMPERATURE_PROMPTS, timeout=STEP_TIMEOUTS["write_prompts"], step_label=ctx.label,
     )
     return StepResult(output=output)
 
@@ -1543,7 +1616,7 @@ async def rewrite_english(bible: CaseBible, items: list[tuple[int, str]], *,
         rewrite_en_prompt(bible, items),
         lambda raw: _validate_rewrite(raw, orders, guard),
         llm=llm if llm is not None else case_adaptation_llm.call_llm_json,
-        temperature=_TEMPERATURE_EN, step_label="viết lại lời Anh",
+        temperature=_TEMPERATURE_EN, timeout=STEP_TIMEOUTS["rewrite_english"], step_label="viết lại lời Anh",
     )
 
 

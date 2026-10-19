@@ -1,19 +1,19 @@
 {
   "scenes": [
     {
-      "narration_vi": "Gần nửa đêm, khoảng 23 giờ 30, mưa trút xuống kho bãi bốc dỡ Cảng Hải Yến trên Đường Thanh Lam. Giữa những dãy container im lìm, ông Trịnh Quang Vũ, giám đốc Công ty Vận tải Sao Biển, nằm bất động ở khu container số 14. Người đàn ông bốn mươi tám tuổi ấy đã không còn thở.",
+      "narration_vi": "Gần nửa đêm, khoảng 23 giờ 30, mưa trút xuống kho bãi bốc dỡ Cảng Hải Yến trên Đường Thanh Lam. Giữa những dãy container im lìm, ông Trịnh Quang Vũ, giám đốc Công ty Vận tải Sao Biển, nằm bất động trong một khoảng trống giữa hai dãy container. Người đàn ông bốn mươi tám tuổi ấy đã không còn thở.",
       "visual_kind": "image",
       "board_reveal": [],
       "covers_event_ids": ["ev_0_1", "ev_0_2"]
     },
     {
-      "narration_vi": "Trên gáy ông là một vết thương chí mạng do vật sắc nhọn gây ra. Người tìm thấy ông là bà Đặng Thu Hà, kế toán trưởng ba mươi sáu tuổi. Đêm ấy, bà chạy chiếc xe máy biển số 29C2-456.78 quay lại văn phòng để lấy sổ sách tài chính, và bước thẳng vào hiện trường.",
+      "narration_vi": "Trên gáy ông là một vết thương chí mạng do vật sắc nhọn gây ra. Người tìm thấy ông là bà Đặng Thu Hà, kế toán trưởng ba mươi sáu tuổi. Đêm ấy, bà chạy xe máy quay lại văn phòng để lấy sổ sách tài chính, và bước thẳng vào hiện trường.",
       "visual_kind": "image",
       "board_reveal": [],
       "covers_event_ids": ["ev_0_3", "ev_0_4"]
     },
     {
-      "narration_vi": "Run rẩy, bà Hà gọi đến trực ban hình sự qua số 0987 654 321. Giọng bà lạc đi khi kể rằng vừa thấy một bóng người mặc áo khoác sẫm màu chạy vụt qua cổng cảng, rồi biến mất trong màn mưa tầm tã. Bóng người ấy là ai?",
+      "narration_vi": "Run rẩy, bà Hà bấm máy gọi đến trực ban hình sự. Giọng bà lạc đi khi kể rằng vừa thấy một bóng người mặc áo khoác sẫm màu chạy vụt qua cổng cảng, rồi biến mất trong màn mưa tầm tã. Bóng người ấy là ai?",
       "visual_kind": "image",
       "board_reveal": [],
       "covers_event_ids": ["ev_0_5", "ev_0_6"]
