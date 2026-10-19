@@ -21,6 +21,7 @@ from models.case_adaptation_schemas import (
     CaseEvidence,
     CaseRelation,
     DISCLAIMER,
+    SceneFlag,
 )
 from services.case_adaptation_checks import (
     ForbiddenName,
@@ -325,6 +326,8 @@ def test_check_plan_does_not_mutate_input_and_is_idempotent():
     twice = check_plan(once, source)
     assert [s.model_dump() for s in twice.scenes] == [s.model_dump() for s in once.scenes]
     assert twice.bible.model_dump() == once.bible.model_dump()
+    assert twice.warnings == once.warnings and twice.check_warnings == once.check_warnings
+    assert twice.flags == once.flags
     # tính lại từ đầu: cờ không nhân đôi qua các lần chạy
     assert [(f.kind, f.field) for f in twice.scenes[0].flags] == [(f.kind, f.field) for f in once.scenes[0].flags]
     assert len(twice.scenes[0].flags) == len(set((f.kind, f.field, f.detail) for f in twice.scenes[0].flags))
@@ -395,8 +398,9 @@ def test_unrevealed_evidence_warns():
     ]
     scenes = [_scene(1, board_reveal=["ev1"], visual_kind="board"), _scene(2)]
     checked = check_plan(_plan(scenes, evidence=ev), "")
-    assert any("ev2" in w for w in checked.warnings)
-    assert not any("ev1" in w for w in checked.warnings)
+    assert any("ev2" in w for w in checked.check_warnings)
+    assert not any("ev1" in w for w in checked.check_warnings)
+    assert checked.warnings == []              # `warnings` là danh sách bền, không chứa kết quả kiểm
     # đây là cảnh báo, không chặn
     assert not has_blocking_flags(checked)
 
@@ -450,21 +454,118 @@ def test_check_plan_replaces_names_in_title_and_labels_and_warns():
     assert plan.bible.title_vi == "Vụ án Nguyễn Văn Hùng"
 
 
-def test_check_plan_warns_on_unknown_name_in_title_and_date_in_prompt():
-    plan = _plan(
-        [_scene(1, image_prompt="A newspaper clipping dated March 3, 2014 on a cluttered desk, cinematic close-up shot.")],
-        title_vi="Vụ án Trần Quang Minh",
-    )
+def test_unknown_name_in_title_is_blocking_plan_flag():
+    plan = _plan([_scene(1)], title_vi="Vụ án Trần Quang Minh")
     checked = check_plan(plan, "Trần Quang Minh là hàng xóm.")
-    joined = "\n".join(checked.warnings)
-    assert "Trần Quang Minh" in joined and "title_vi" in joined
-    assert "March 3, 2014" in joined and "image_prompt" in joined
-    # ngày trong prompt chỉ cảnh báo, không chặn
+    assert [(f.kind, f.field) for f in checked.flags] == [("unknown_name", "title")]
+    assert "Trần Quang Minh" in checked.flags[0].detail and "title_vi" in checked.flags[0].detail
     assert checked.scenes[0].flags == []
+    assert has_blocking_flags(checked) is True
+
+
+def test_unknown_name_in_title_en_is_blocking_plan_flag():
+    plan = _plan([_scene(1)], title_en="The Tran Quang Minh Case")
+    checked = check_plan(plan, "Trần Quang Minh là hàng xóm.")
+    assert [(f.kind, f.field) for f in checked.flags] == [("unknown_name", "title")]
+    assert has_blocking_flags(checked)
+
+
+def test_unknown_name_in_evidence_and_relation_labels_is_plan_flag():
+    ents = [_entity("e1", ["Nguyễn Văn Hùng"], "Trịnh Quang Vũ", "Trinh Quang Vu")]
+    ev = [CaseEvidence(id="ev1", label_vi="Con dao của Trần Quang Minh", label_en="The knife")]
+    rel = [CaseRelation(id="r1", source_id="e1", target_id="e1", label_vi="Hàng xóm", label_en="Neighbor of Tran Quang Minh")]
+    plan = _plan([_scene(1, board_reveal=["ev1", "r1"], visual_kind="board")], entities=ents, evidence=ev, relations=rel)
+    checked = check_plan(plan, "Trần Quang Minh là hàng xóm của Nguyễn Văn Hùng.")
+    assert [(f.kind, f.field) for f in checked.flags] == [("unknown_name", "evidence:ev1"), ("unknown_name", "relation:r1")]
+    assert checked.scenes[0].flags == []
+    assert has_blocking_flags(checked)
+
+
+def test_unknown_name_in_image_prompt_is_scene_flag():
+    scene = _scene(1, image_prompt="Wide shot of Trần Quang Minh standing outside a shuttered shop at dusk, cinematic.")
+    checked = check_plan(_plan([scene]), "Trần Quang Minh là hàng xóm.")
+    assert [(f.kind, f.field) for f in checked.scenes[0].flags] == [("unknown_name", "image_prompt")]
+    assert checked.flags == []
+    assert has_blocking_flags(checked)
+
+
+def test_known_alias_names_in_title_and_labels_never_block():
+    plan = _plan([_scene(1)], title_vi="Vụ án Nguyễn Văn Hùng")
+    checked = check_plan(plan, "")
+    assert checked.flags == [] and not has_blocking_flags(checked)
+
+
+def test_dates_outside_narration_are_check_warnings_only():
+    ev = [CaseEvidence(id="ev1", label_vi="Hồ sơ năm 2014", label_en="File from 2014")]
+    plan = _plan(
+        [_scene(1, board_reveal=["ev1"], visual_kind="board",
+                image_prompt="A newspaper clipping dated March 3, 2014 on a cluttered desk, cinematic close-up shot.")],
+        evidence=ev, title_vi="Vụ án năm 2014",
+    )
+    checked = check_plan(plan, "")
+    joined = "\n".join(checked.check_warnings)
+    assert "March 3, 2014" in joined and "image_prompt" in joined
+    assert "năm 2014" in joined and "title_vi" in joined and "ev1" in joined
+    assert checked.warnings == []
+    assert checked.scenes[0].flags == [] and checked.flags == []
+    assert not has_blocking_flags(checked)
+
+
+def test_warnings_persist_across_check_plan_calls_without_duplicates():
+    scenes = [_scene(1, narration_en="Nguyen Van Hung left.")]
+    plan = _plan(scenes)
+    plan.warnings = ["Bài chỉ đủ tư liệu cho khoảng 6 phút."]       # thông báo do bước khác ghi vào
+    once = check_plan(plan, "")
+    assert once.warnings[0] == "Bài chỉ đủ tư liệu cho khoảng 6 phút."
+    replaced = [w for w in once.warnings if "Đã tự thay" in w]
+    assert len(replaced) == 1
+
+    twice = check_plan(once, "")
+    thrice = check_plan(twice, "")
+    assert twice.warnings == once.warnings == thrice.warnings
+    assert plan.warnings == ["Bài chỉ đủ tư liệu cho khoảng 6 phút."]    # đầu vào không bị đổi
+
+    # người dùng gõ lại đúng tên thật đó ở đúng trường đó: cùng một thông báo, không nhân đôi
+    retyped = once.model_copy(deep=True)
+    retyped.scenes[0].narration_en = "Nguyen Van Hung left."
+    assert check_plan(retyped, "").warnings == once.warnings
+
+    # người dùng sửa cảnh thêm một lần có tên thật: thông báo cũ còn, thông báo mới được nối
+    edited = twice.model_copy(deep=True)
+    edited.scenes[0].narration_vi = "Ông Hùng ở lại."
+    after = check_plan(edited, "")
+    assert after.warnings[: len(once.warnings)] == once.warnings
+    assert len(after.warnings) == len(once.warnings) + 1
+    assert "narration_vi" in after.warnings[-1]
+
+
+def test_check_warnings_and_flags_are_recomputed_each_call():
+    ev = [CaseEvidence(id="ev1", label_vi="Chiếc búa", label_en="The hammer")]
+    plan = _plan([_scene(1)], evidence=ev, title_vi="Vụ án Trần Quang Minh")
+    source = "Trần Quang Minh là hàng xóm."
+    first = check_plan(plan, source)
+    assert any("ev1" in w for w in first.check_warnings)
+    assert [f.field for f in first.flags] == ["title"] and has_blocking_flags(first)
+
+    fixed = first.model_copy(deep=True)
+    fixed.scenes[0].board_reveal = ["ev1"]
+    fixed.bible.title_vi = "Đêm Không Ngủ"
+    second = check_plan(fixed, source)
+    assert second.check_warnings == []
+    assert second.flags == []
+    assert not has_blocking_flags(second)
+
+
+def test_check_plan_ignores_stale_check_warnings_and_plan_flags_from_input():
+    plan = _plan([_scene(1)])
+    plan.check_warnings = ["cũ"]
+    plan.flags = [SceneFlag(kind="unknown_name", field="title", detail="cũ")]
+    checked = check_plan(plan, "")
+    assert checked.check_warnings == [] and checked.flags == []
     assert not has_blocking_flags(checked)
 
 
 def test_has_blocking_flags_false_for_clean_plan():
     checked = check_plan(_plan([_scene(1), _scene(2)]), "")
     assert has_blocking_flags(checked) is False
-    assert checked.warnings == []
+    assert checked.warnings == [] and checked.check_warnings == [] and checked.flags == []

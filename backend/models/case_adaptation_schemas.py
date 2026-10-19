@@ -128,7 +128,11 @@ class CaseAdaptationPlan(BaseModel):
     bible: CaseBible
     parts: list[StoryPart]
     scenes: list[AdaptedScene]
+    # warnings: bền, chỉ được nối thêm (thông báo của hàng việc, các lần tự thay tên). check_plan không xoá.
     warnings: list[str] = []
+    # check_warnings và flags (cờ cấp kế hoạch: tên tập, nhãn bằng chứng/quan hệ): check_plan tính lại từ đầu mỗi lần.
+    check_warnings: list[str] = []
+    flags: list[SceneFlag] = []
 
 
 StepKind = Literal[

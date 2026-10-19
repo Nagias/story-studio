@@ -11,7 +11,8 @@ Kiểm lọt tên thật, ngày tháng cụ thể và tự áp tên hư cấu (G
     * Tên quốc gia và tên chung của cơ quan được giữ nguyên (spec mục 6): build_forbidden_names không đưa
       chúng vào danh sách cấm (khi entity là địa danh hoặc cơ quan), nên không bị coi là lọt tên.
 - find_dates: ngày-tháng cụ thể và năm viết bằng số; giờ trong ngày và thập niên được giữ.
-- check_plan: tính lại cờ (từng cảnh) và cảnh báo (toàn kế hoạch) từ đầu, trả về bản sao mới.
+- check_plan: trả về bản sao mới; cờ (từng cảnh và cấp kế hoạch) và check_warnings tính lại từ đầu,
+  còn warnings là danh sách bền, chỉ nối thêm các lần tự thay tên.
 """
 import re
 import unicodedata
@@ -350,13 +351,16 @@ def _unique(items: Iterable[str]) -> list[str]:
 
 
 def check_plan(plan: CaseAdaptationPlan, source_text: str) -> CaseAdaptationPlan:
-    """Trả bản sao đã kiểm; không đổi `plan`. Cờ và cảnh báo luôn tính lại từ đầu nên gọi lại sau khi
-    người dùng sửa vẫn đúng.
+    """Trả bản sao đã kiểm; không đổi `plan`. Gọi lại sau mỗi lần người dùng sửa đều đúng.
 
-    - Tên thật đã có alias: tự thay (ở lời kể, prompt, tên tập, nhãn bằng chứng/quan hệ) và ghi cảnh báo.
-    - Tên thật chưa có alias, thiếu lời kể, id lạ trong board_reveal: cờ ở cảnh (chặn tạo dự án).
-    - Ngày cụ thể trong lời kể: cờ ở cảnh. Ở prompt, tên tập, nhãn: cảnh báo của cả kế hoạch, không chặn
-      (SceneFlag gắn theo cảnh nên các chỗ ngoài cảnh chỉ có cảnh báo).
+    - `warnings` là danh sách bền: không bao giờ xoá, chỉ nối thêm các thông báo "Đã tự thay..." (không trùng).
+      Thông báo do bước khác ghi vào (ví dụ bài chỉ đủ tư liệu cho N phút) vì vậy còn nguyên.
+    - `check_warnings` và mọi cờ (`flags` ở từng cảnh và `flags` cấp kế hoạch) tính lại từ đầu mỗi lần.
+    - Tên thật đã có alias: tự thay (lời kể, prompt, tên tập, nhãn bằng chứng/quan hệ) và ghi vào `warnings`.
+    - Cờ chặn tạo dự án:
+        * ở cảnh: tên thật chưa có alias (lời kể, prompt), thiếu lời kể, id lạ trong board_reveal, ngày cụ thể trong lời kể;
+        * cấp kế hoạch: tên thật chưa có alias trong tên tập (field "title") hoặc nhãn ("evidence:<id>", "relation:<id>").
+    - Ngày cụ thể trong prompt, tên tập, nhãn và bằng chứng chưa hiện ra: chỉ vào `check_warnings`, không chặn.
     - Cảnh `disclaimer` không bị quét.
     """
     new = plan.model_copy(deep=True)
@@ -364,7 +368,13 @@ def check_plan(plan: CaseAdaptationPlan, source_text: str) -> CaseAdaptationPlan
     forbidden = build_forbidden_names(bible, source_text)
     aliases = _unique(a.strip() for e in bible.entities for a in (e.alias_vi, e.alias_en) if a and a.strip())
     by_key = _active_entries(forbidden)
-    warnings: list[str] = []
+    warnings: list[str] = list(new.warnings)    # bền: chỉ nối thêm
+    check_warnings: list[str] = []              # tính lại từ đầu
+    plan_flags: list[SceneFlag] = []            # tính lại từ đầu
+
+    def note(message: str) -> None:
+        if message not in warnings:
+            warnings.append(message)
 
     def clean(text: str, lang: Lang) -> tuple[str, list[tuple[str, str]], list[str]]:
         fixed, replaced = apply_aliases(text, forbidden, lang, extra_aliases=aliases)
@@ -390,7 +400,7 @@ def check_plan(plan: CaseAdaptationPlan, source_text: str) -> CaseAdaptationPlan
             if fixed != text:
                 setattr(scene, field, fixed)
             for real, alias in pairs:
-                warnings.append(f"Đã tự thay tên thật '{real}' bằng '{alias}' ở cảnh {scene.order} ({field}).")
+                note(f"Đã tự thay tên thật '{real}' bằng '{alias}' ở cảnh {scene.order} ({field}).")
             for name in unknown:
                 flags.append(SceneFlag(kind="unknown_name", field=field,
                                        detail=f"Tên thật chưa có tên thay thế: '{name}'."))
@@ -399,16 +409,16 @@ def check_plan(plan: CaseAdaptationPlan, source_text: str) -> CaseAdaptationPlan
                     flags.append(SceneFlag(kind="date", field=field,
                                            detail=f"Ngày tháng hoặc năm cụ thể: '{found}'."))
                 else:
-                    warnings.append(f"Còn ngày tháng hoặc năm cụ thể '{found}' ở cảnh {scene.order} ({field}); "
-                                    "hãy sửa thành cách nói chung.")
+                    check_warnings.append(f"Còn ngày tháng hoặc năm cụ thể '{found}' ở cảnh {scene.order} ({field}); "
+                                          "hãy sửa thành cách nói chung.")
         for rid in _unique(scene.board_reveal):
             if rid not in valid_ids:
                 flags.append(SceneFlag(kind="bad_reveal", field="board_reveal",
                                        detail=f"Id không có trong bằng chứng hoặc quan hệ: '{rid}'."))
         scene.flags = flags
 
-    # --- tên tập và nhãn bằng chứng/quan hệ: không có cờ theo cảnh nên chỉ tự thay và cảnh báo
-    def clean_label(obj, field: str, lang: Lang, where: str) -> None:
+    # --- tên tập và nhãn bằng chứng/quan hệ: hiện trong video nên tên thật chưa có alias là cờ cấp kế hoạch
+    def clean_label(obj, field: str, lang: Lang, where: str, flag_field: str) -> None:
         text = getattr(obj, field)
         if not text or not text.strip():
             return
@@ -416,32 +426,34 @@ def check_plan(plan: CaseAdaptationPlan, source_text: str) -> CaseAdaptationPlan
         if fixed != text:
             setattr(obj, field, fixed)
         for real, alias in pairs:
-            warnings.append(f"Đã tự thay tên thật '{real}' bằng '{alias}' ở {where} ({field}).")
+            note(f"Đã tự thay tên thật '{real}' bằng '{alias}' ở {where} ({field}).")
         for name in unknown:
-            warnings.append(f"Tên thật '{name}' còn trong {where} ({field}) nhưng chưa có tên thay thế; "
-                            "hãy thêm tên này vào bảng tên.")
+            plan_flags.append(SceneFlag(kind="unknown_name", field=flag_field,
+                                        detail=f"Tên thật chưa có tên thay thế ở {where} ({field}): '{name}'."))
         for found in _unique(find_dates(fixed)):
-            warnings.append(f"Còn ngày tháng hoặc năm cụ thể '{found}' ở {where} ({field}); "
-                            "hãy sửa thành cách nói chung.")
+            check_warnings.append(f"Còn ngày tháng hoặc năm cụ thể '{found}' ở {where} ({field}); "
+                                  "hãy sửa thành cách nói chung.")
 
-    clean_label(bible, "title_vi", "vi", "tiêu đề")
-    clean_label(bible, "title_en", "en", "tiêu đề")
+    clean_label(bible, "title_vi", "vi", "tiêu đề", "title")
+    clean_label(bible, "title_en", "en", "tiêu đề", "title")
     for ev in bible.evidence:
-        clean_label(ev, "label_vi", "vi", f"nhãn bằng chứng '{ev.id}'")
-        clean_label(ev, "label_en", "en", f"nhãn bằng chứng '{ev.id}'")
+        clean_label(ev, "label_vi", "vi", f"nhãn bằng chứng '{ev.id}'", f"evidence:{ev.id}")
+        clean_label(ev, "label_en", "en", f"nhãn bằng chứng '{ev.id}'", f"evidence:{ev.id}")
     for rel in bible.relations:
-        clean_label(rel, "label_vi", "vi", f"nhãn quan hệ '{rel.id}'")
-        clean_label(rel, "label_en", "en", f"nhãn quan hệ '{rel.id}'")
+        clean_label(rel, "label_vi", "vi", f"nhãn quan hệ '{rel.id}'", f"relation:{rel.id}")
+        clean_label(rel, "label_en", "en", f"nhãn quan hệ '{rel.id}'", f"relation:{rel.id}")
 
     # --- bằng chứng chưa hiện ra ở cảnh nào
     for ev in bible.evidence:
         if ev.id not in revealed:
-            warnings.append(f"Bằng chứng '{ev.id}' ({ev.label_vi}) chưa hiện ra trên bảng điều tra ở cảnh nào.")
+            check_warnings.append(f"Bằng chứng '{ev.id}' ({ev.label_vi}) chưa hiện ra trên bảng điều tra ở cảnh nào.")
 
     new.warnings = warnings
+    new.check_warnings = check_warnings
+    new.flags = plan_flags
     return new
 
 
 def has_blocking_flags(plan: CaseAdaptationPlan) -> bool:
-    """Còn cảnh bị đánh dấu thì chặn tạo dự án."""
-    return any(scene.flags for scene in plan.scenes)
+    """Còn cờ ở cảnh hoặc cờ cấp kế hoạch (tên tập, nhãn) thì chặn tạo dự án."""
+    return bool(plan.flags) or any(scene.flags for scene in plan.scenes)
