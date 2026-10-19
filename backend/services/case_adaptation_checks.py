@@ -70,7 +70,8 @@ _KEPT_TERMS = frozenset(_key(t) for t in [
 # Prompt đọc bài (case_adaptation_prompts.extract_prompt) liệt kê đúng danh sách này, và bước đọc bài bỏ các mục
 # này khỏi danh sách tên, nên prompt và code luôn khớp nhau.
 GENERIC_TERMS: tuple[str, ...] = (
-    "cảnh sát", "công an", "toà án", "toà án nhân dân", "viện kiểm sát", "viện kiểm sát nhân dân", "bệnh viện",
+    "cảnh sát", "công an", "toà án", "tòa án", "toà án nhân dân", "tòa án nhân dân", "viện kiểm sát",
+    "viện kiểm sát nhân dân", "bệnh viện",
     "cơ quan điều tra", "cơ quan công an", "cơ quan cảnh sát điều tra", "cơ quan chức năng", "lực lượng chức năng",
     "chính quyền địa phương", "công an phường", "công an xã", "công an huyện", "công an tỉnh", "đội trọng án",
     "cảnh sát giao thông", "cảnh sát hình sự", "cảnh sát cơ động", "phòng cháy chữa cháy",
@@ -82,18 +83,24 @@ GENERIC_TERMS: tuple[str, ...] = (
     "police", "court", "prosecutor", "hospital", "investigators", "detective", "coroner", "medical examiner",
     "victim", "suspect", "witness", "killer", "neighbors", "family",
 )
-_GENERIC_KEYS = frozenset(_key(t) for t in GENERIC_TERMS)
+def _accented_key(name: str) -> str:
+    """Dạng so khớp giữ dấu: NFC, chữ thường, khoảng trắng gộp thành một dấu cách."""
+    return " ".join(unicodedata.normalize("NFC", name).lower().split())
+
+
+# So có phân biệt dấu: bỏ dấu thì tên thật trùng danh từ chung ("Gia Định" ~ "gia đình", "Hưng Thu" ~ "hung thủ").
+_GENERIC_KEYS = frozenset(_accented_key(t) for t in GENERIC_TERMS)
 
 
 def is_kept_term(name: str, kind: Optional[str] = None) -> bool:
     """Tên được giữ nguyên trong lời kể, không cần tên hư cấu (spec mục 6):
-    - danh từ chung trong GENERIC_TERMS, với mọi loại;
-    - tên quốc gia và tên chung của cơ quan (_KEPT_TERMS), trừ khi là người (`kind == "person"`),
+    - danh từ chung trong GENERIC_TERMS, với mọi loại; so đúng dấu (không phân biệt hoa thường), vì khi bỏ dấu
+      nhiều tên thật trùng danh từ chung;
+    - tên quốc gia và tên chung của cơ quan (_KEPT_TERMS, so bỏ dấu), trừ khi là người (`kind == "person"`),
       vì "Đức", "Nga", "Mỹ" cũng là tên người. `kind` không rõ (None) thì coi như không phải người."""
-    key = _key(name)
-    if key in _GENERIC_KEYS:
+    if _accented_key(name) in _GENERIC_KEYS:
         return True
-    return kind != "person" and key in _KEPT_TERMS
+    return kind != "person" and _key(name) in _KEPT_TERMS
 
 
 # ---------------------------------------------------------------- tên cấm

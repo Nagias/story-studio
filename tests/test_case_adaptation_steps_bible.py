@@ -250,6 +250,31 @@ def test_extract_prompt_lists_the_same_generic_terms_code_skips():
     assert is_kept_term("Việt Nam", "place") and not is_kept_term("Nga", "person")   # "Nga" cũng là tên người
 
 
+def test_generic_terms_match_with_diacritics():
+    # Tên thật bỏ dấu trùng một danh từ chung ("Gia Định" ~ "gia đình", "Hưng Thu" ~ "hung thủ") không được bỏ.
+    assert not is_kept_term("Gia Định", "place") and not is_kept_term("Gia Định")
+    assert not is_kept_term("Hưng Thu", "person") and not is_kept_term("Hùng Thu", "person")
+    assert is_kept_term("gia đình") and is_kept_term("Gia đình") and is_kept_term("GIA  ĐÌNH", "person")
+    assert is_kept_term("hung thủ") and is_kept_term("Hung thủ", "person")
+    assert is_kept_term("Tòa án") and is_kept_term("Toà án nhân dân")          # hai cách đặt dấu đều là danh từ chung
+
+
+def test_extract_keeps_real_names_that_fold_like_generic_terms(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    first = copy.deepcopy(load_fixture("EXTRACT 0"))
+    first["names"] += [
+        {"name": "Gia Định", "kind": "place", "role": "other", "context": "Vùng nạn nhân từng sống."},
+        {"name": "Hưng Thu", "kind": "person", "role": "witness", "context": "Người bảo vệ cảng."},
+    ]
+    first["events"][0]["names"] += ["Gia Định", "Hưng Thu"]
+    llm, calls = make_fake_llm({"EXTRACT 0": first})
+    result = _run(pipeline, "extract_00", llm)
+    assert calls == ["EXTRACT 0"]
+    names = [n["name"] for n in result.output["names"]]
+    assert "Gia Định" in names and "Hưng Thu" in names
+    assert {"Gia Định", "Hưng Thu"} <= set(result.output["events"][0]["names"])
+
+
 def test_extract_generic_term_only_in_event_names_is_accepted(isolated_projects_dir):
     # Model làm đúng lời dặn: không đưa "Cơ quan điều tra" vào names, chỉ nhắc trong events → không bị loại.
     pipeline = _new_pipeline()
