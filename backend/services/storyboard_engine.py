@@ -38,6 +38,8 @@ from models.schemas import (
 
 logger = logging.getLogger("story_studio.storyboard_engine")
 
+STORYBOARD_LLM_TIMEOUT_SEC = 240.0
+
 MASTER_SYSTEM_PROMPT = """BẠN LÀ TỔNG ĐẠO DIỄN VÀ NHÀ THIẾT KẾ PHÂN CẢNH ĐIỆN ẢNH (CHIEF FILM DIRECTOR & AUDIO-VISUAL ARCHITECT).
 NHIỆM VỤ: Chuyển thể văn bản kịch bản thô thành một Bảng Phân Cảnh JSON (Master Storyboard) chuẩn xác tuyệt đối để hệ thống máy tính tự động dựng thành video YouTube đạt chuẩn điện ảnh.
 
@@ -316,11 +318,14 @@ Hãy phân tích và xuất toàn bộ Master Storyboard dưới định dạng 
                 {"role": "system", "content": MASTER_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
+            # Không có stream:false thì 9router trả 200 nhưng body không phải JSON → luôn rơi về offline
+            "stream": False,
             "temperature": 0.4,
             "response_format": {"type": "json_object"},
         }
 
-        async with httpx.AsyncClient(timeout=45.0) as client:
+        # Gemini "high" qua 9router mất ~100 s cho prompt storyboard (đo 2026-10-19); 45 s cũ luôn hết giờ
+        async with httpx.AsyncClient(timeout=STORYBOARD_LLM_TIMEOUT_SEC) as client:
             resp = await client.post(
                 f"{active_base_url}/chat/completions",
                 json=payload,
