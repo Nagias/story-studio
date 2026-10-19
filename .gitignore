@@ -39,3 +39,7 @@ backend/config/*.tmp
 
 # Cache cài đặt (uv / VieNeu...)
 .cache/
+
+# Worktree của Claude Code và workspace của superpowers (không commit)
+.claude/worktrees/
+.superpowers/
