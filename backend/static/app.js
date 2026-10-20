@@ -5092,12 +5092,27 @@ function closeMuseModal() {
   }
 }
 
+// Một lần /status lỗi hoặc quá 4 s (trang bị ẩn, máy bận) chưa phải mất kết nối: giữ trạng thái cũ,
+// chỉ báo offline sau MUSE_STATUS_MAX_FAILURES lần lỗi liên tiếp. Máy chủ tự báo offline khi runner im 60 s.
+const MUSE_STATUS_MAX_FAILURES = 3;
+let museStatusFailures = 0;
+let museStatusEverLoaded = false;
+
 async function pollMuseBridgeStatus() {
   try {
     const data = await API.getMuseBridgeStatus();
-    updateMuseCloudUI(data);
+    if (data) {
+      updateMuseCloudUI(data);
+      museStatusFailures = 0;
+      museStatusEverLoaded = true;
+      return;
+    }
   } catch (err) {
     console.debug("Muse bridge status poll silent catch", err);
+  }
+  museStatusFailures += 1;
+  // Chưa từng nhận được trạng thái thì không có gì để giữ: báo offline ngay
+  if (!museStatusEverLoaded || museStatusFailures >= MUSE_STATUS_MAX_FAILURES) {
     updateMuseCloudUI(null);
   }
 }
