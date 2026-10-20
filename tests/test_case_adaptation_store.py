@@ -192,7 +192,7 @@ def test_new_case_id_shape_and_uniqueness():
     assert all(re.fullmatch(r"case_[0-9a-f]{8}", i) for i in ids)
 
 
-@pytest.mark.parametrize("bad", ["../x", "..", "a/b", "a\\b", "", "x" * 65, "có dấu", ".hidden"])
+@pytest.mark.parametrize("bad", ["../x", "../../x", "..", "a/b", "a\\b", "", "x" * 65, "có dấu", ".hidden"])
 def test_rejects_unsafe_case_id(isolated_projects_dir, bad):
     with pytest.raises(ValueError):
         case_store.load_plan(bad)
@@ -208,6 +208,8 @@ def test_rejects_unsafe_case_id(isolated_projects_dir, bad):
         case_store.save_plan(_plan(case_id=bad))
     with pytest.raises(ValueError):
         case_store.save_pipeline(_pipeline(bad, "2026-10-19T10:00:00"))
+    # Thư mục vụ án là projects/_cases/<case_id>: "../x" thoát ra projects/x, "../../x" thoát ra ngoài projects.
+    assert not (isolated_projects_dir / "x").exists()
     assert not (isolated_projects_dir.parent / "x").exists()
 
 
