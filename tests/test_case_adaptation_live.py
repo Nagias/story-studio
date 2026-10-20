@@ -24,7 +24,13 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from services import case_adaptation_llm, case_store
-from services.case_adaptation_checks import ForbiddenName, build_forbidden_names, find_unknown_names, has_blocking_flags
+from services.case_adaptation_checks import (
+    ForbiddenName,
+    build_forbidden_names,
+    find_name_matches,
+    find_unknown_names,
+    has_blocking_flags,
+)
 from services.case_adaptation_llm import RETRYABLE_KINDS, LLMError
 from services.case_adaptation_steps import RETRY_NOTE
 from services.case_worker import pipeline_progress, start_analysis, worker_loop
@@ -42,15 +48,16 @@ TIMEOUT_S = float(os.getenv("STORY_STUDIO_LIVE_TIMEOUT_S", "3600"))
 _RETRY_MARK = RETRY_NOTE.split("{")[0].strip()
 
 # Tên và số nhận dạng thật trong dossier.txt, chép tay để kiểm độc lập với hồ sơ do model tự rút ra.
-# Tên so bằng bộ so khớp của code thật (find_unknown_names): đúng dấu hoặc hoàn toàn không dấu, theo ranh giới từ,
-# nên "lẻ loi" không bị coi là "Lê Lợi". Số nhận dạng toàn chữ ASCII nên so chuỗi liền.
+# Tên so bằng bộ so khớp của code thật (find_name_matches): đúng dấu hoặc hoàn toàn không dấu, theo ranh giới từ,
+# nên "lẻ loi" không bị coi là "Lê Lợi". Ở đây không xét hoa thường (any_case), để kiểm chặt hơn code thật: tên thật
+# viết thường cả tên cũng bị tính là lọt. Số nhận dạng toàn chữ ASCII nên so chuỗi liền.
 REAL_NAMES = ["Nguyễn Văn Hùng", "Lê Thị Mai", "Vũ Đình Trọng", "Tân Hải", "Lê Lợi", "Hải Phòng"]
 REAL_IDENTIFIERS = ["15B1", "0912345678", "987.65"]
 _REAL_FORBIDDEN = [ForbiddenName(name) for name in REAL_NAMES]
 
 
 def _real_names_in(text: str, aliases: list[str]) -> list[str]:
-    found = find_unknown_names(text, _REAL_FORBIDDEN, aliases)
+    found = list(dict.fromkeys(m.name.real for m in find_name_matches(text, _REAL_FORBIDDEN, aliases, any_case=True)))
     return found + [ident for ident in REAL_IDENTIFIERS if ident.lower() in text.lower()]
 
 

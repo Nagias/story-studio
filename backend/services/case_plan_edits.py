@@ -8,10 +8,13 @@ lại. Cả chuỗi đó nằm trong một khoá chung nên hai yêu cầu sửa
 - edit_entities: đổi tên hư cấu của thực thể có sẵn và/hoặc thêm thực thể mới (thường là tên mà regex bắt được trên bài
   gốc). Tên hư cấu cũ được thay bằng tên mới trong mọi chữ của kế hoạch theo ranh giới từ, một lượt duy nhất (đổi chỗ
   hai tên cho nhau không bị thay chồng), và không thay chỗ nằm trong một tên hư cấu dài hơn của thực thể khác.
+  Chỗ khớp phải qua cùng quy tắc với phần kiểm lọt tên (case_adaptation_checks.accept_match): "Năm ấy" không phải tên
+  "Nam", "Hung thủ" không phải tên "Hùng".
+  Tên thật mới thêm chỉ bị từ chối khi trùng cách viết giữ dấu của một tên thật có sẵn: "Nguyễn Văn Hưng" thêm được
+  khi đã có "Nguyễn Văn Hùng" (hai người khác nhau), "NGUYỄN VĂN HÙNG" thì không.
 - edit_scene: sửa lời kể Việt và/hoặc Anh của một cảnh.
 - Thông báo lỗi chỉ nêu id thực thể, số mục và order cảnh; không bao giờ nêu tên thật hay chữ người dùng vừa nhập.
 """
-import re
 import threading
 import unicodedata
 from typing import Literal, Optional, Sequence
@@ -20,7 +23,7 @@ from pydantic import BaseModel, Field
 
 from models.case_adaptation_schemas import CaseAdaptationPlan, CaseEntity, Lang
 from services import case_store
-from services.case_adaptation_checks import build_forbidden_names, check_plan, fold
+from services.case_adaptation_checks import build_forbidden_names, check_plan, find_names, fold, spelling_key
 from services.case_worker import CaseNotFoundError
 
 _LOCK = threading.RLock()
@@ -84,40 +87,31 @@ def _clean_text(value: str, what: str, limit: int) -> str:
     return text
 
 
-def _compile(keys) -> Optional[re.Pattern]:
-    """Một regex cho mọi tên (dạng đã fold), tên dài thử trước, khớp theo ranh giới từ."""
-    ordered = sorted(keys, key=lambda k: (-len(k), k))
-    if not ordered:
-        return None
-    alts = [r"\s+".join(re.escape(token) for token in k.split()) for k in ordered]
-    return re.compile(r"(?<!\w)(?:" + "|".join(alts) + r")(?!\w)")
-
-
 class _AliasSwap:
     """Đổi tên hư cấu cũ thành mới cho một ngôn ngữ, một lượt duy nhất trên mỗi chuỗi.
 
-    `table`: dạng fold của tên -> chữ thay thế, hoặc None nếu chỉ để giữ nguyên. Mọi tên hư cấu hiện có (cả hai ngôn ngữ,
-    cả thực thể không đổi) đều có trong bảng: chỗ khớp tên dài hơn mà thực thể khác sở hữu thắng, nên tên ngắn nằm
-    trong đó không bị thay giữa chừng."""
+    `table`: cách viết giữ dấu của tên (spelling_key) -> (tên như đã viết, chữ thay thế hoặc None nếu chỉ để giữ nguyên).
+    Mọi tên hư cấu hiện có (cả hai ngôn ngữ, cả thực thể không đổi) đều có trong bảng: chỗ khớp tên dài hơn mà thực thể
+    khác sở hữu thắng, nên tên ngắn nằm trong đó không bị thay giữa chừng. Chỗ khớp tìm bằng find_names, tức cùng quy tắc
+    accept_match với phần kiểm lọt tên."""
 
-    def __init__(self, table: dict[str, Optional[str]]):
-        self.table = table
-        self.pattern = _compile(table)
+    def __init__(self, table: dict[str, tuple[str, Optional[str]]]):
+        self.names = [name for name, _replacement in table.values()]
+        self.replacements = [replacement for _name, replacement in table.values()]
 
     def __call__(self, text: str) -> str:
-        if not text or self.pattern is None:
+        if not text or not self.names:
             return text
         norm = unicodedata.normalize("NFC", text)
-        folded = fold(norm)                              # cùng độ dài với norm nên vị trí khớp dùng được cho norm
         parts: list[str] = []
         last = 0
-        for m in self.pattern.finditer(folded):
-            replacement = self.table.get(" ".join(m.group(0).split()))
+        for start, end, index in find_names(norm, self.names):
+            replacement = self.replacements[index]
             if replacement is None:
                 continue
-            parts.append(norm[last:m.start()])
+            parts.append(norm[last:start])
             parts.append(replacement)
-            last = m.end()
+            last = end
         if not parts:
             return text
         parts.append(norm[last:])
@@ -125,19 +119,19 @@ class _AliasSwap:
 
 
 def _swaps(old: list[CaseEntity], changed: dict[str, CaseEntity]) -> dict[Lang, _AliasSwap]:
-    tables: dict[Lang, dict[str, Optional[str]]] = {"vi": {}, "en": {}}
+    tables: dict[Lang, dict[str, tuple[str, Optional[str]]]] = {"vi": {}, "en": {}}
     for ent in old:                                      # tên hiện có, để giữ nguyên
         for alias in (ent.alias_vi, ent.alias_en):
             if _key(alias):
                 for table in tables.values():
-                    table.setdefault(_key(alias), None)
+                    table.setdefault(spelling_key(alias), (alias, None))
     for ent in old:                                      # tên bị đổi: ghi đè lên mục giữ nguyên
         new = changed.get(ent.id)
         if new is None:
             continue
         for lang, before, after in (("vi", ent.alias_vi, new.alias_vi), ("en", ent.alias_en, new.alias_en)):
             if before != after and _key(before):
-                tables[lang][_key(before)] = after
+                tables[lang][spelling_key(before)] = (before, after)
     return {lang: _AliasSwap(table) for lang, table in tables.items()}
 
 
@@ -203,7 +197,8 @@ def edit_entities(case_id: str, updates: Sequence[EntityUpdate], additions: Sequ
             labels[ent.id] = f"thực thể '{ent.id}'"
             changed[ent.id] = ent
 
-        real_keys = {_key(n) for e in entities for n in e.real_names}
+        # So cách viết giữ dấu: "Nguyễn Văn Hưng" và "Nguyễn Văn Hùng" là hai người, thêm được; khác hoa thường thì không.
+        real_spellings = {spelling_key(n) for e in entities for n in e.real_names}
         for j, add in enumerate(additions, start=1):
             where = f"Mục thêm số {j}"
             names = list(dict.fromkeys(_clean_text(n, f"{where}: một tên thật", MAX_ALIAS_CHARS)
@@ -212,9 +207,9 @@ def edit_entities(case_id: str, updates: Sequence[EntityUpdate], additions: Sequ
                 raise PlanEditError(f"{where}: cần ít nhất một tên thật.")
             if len(names) > MAX_REAL_NAMES:
                 raise PlanEditError(f"{where}: tối đa {MAX_REAL_NAMES} tên thật cho một thực thể.")
-            if {_key(n) for n in names} & real_keys:
+            if {spelling_key(n) for n in names} & real_spellings:
                 raise PlanEditError(f"{where}: có tên thật đã thuộc một thực thể trong bảng tên.")
-            real_keys |= {_key(n) for n in names}
+            real_spellings |= {spelling_key(n) for n in names}
             ent = CaseEntity(
                 id=_new_entity_id(add.kind, set(by_id)), kind=add.kind, real_names=names, role="other",
                 alias_vi=_clean_text(add.alias_vi, f"{where}: alias_vi", MAX_ALIAS_CHARS),

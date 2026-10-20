@@ -2,21 +2,32 @@
 Kiểm lọt tên thật, ngày tháng cụ thể và tự áp tên hư cấu (G7, không dùng LLM).
 
 - fold: chữ thường, bỏ dấu (đ thành d), giữ nguyên độ dài từng ký tự để đổi vị trí khớp về chuỗi gốc.
-- apply_aliases / find_unknown_names: tìm trên chuỗi đã fold, theo ranh giới từ, rồi chỉ nhận chỗ khớp có cách viết
-  đúng như tên thật (xem _same_spelling), vì khi bỏ dấu nhiều từ thường trùng tên thật ("lẻ loi" ~ "Lê Lợi",
-  "tàn hại" ~ "Tân Hải").
+- accept_match: quy tắc chung "nhận chỗ khớp này không?", dùng ở mọi chỗ tìm tên thật hay tên hư cấu trong chữ (kiểm
+  lọt tên ở đây, _TextGuard của các bước viết, đổi tên hư cấu trên màn xem lại). Tên được tìm trên chuỗi đã fold, theo
+  ranh giới từ; vì khi bỏ dấu nhiều từ thường trùng tên ("lẻ loi" ~ "Lê Lợi", "Năm" ~ "Nam"), chỗ khớp chỉ được nhận khi:
+    * viết đúng dấu như tên (không phân biệt hoa thường, kiểu đặt dấu thanh cũ/mới coi như một) hoặc viết hoàn toàn
+      không dấu ("Le Loi", "LE LOI");
+    * viết hoa như tên riêng: tên một âm tiết ("Lâm") phải viết hoa chữ đầu, để không thay nhầm "làm", "lắm"; tên nhiều
+      chữ thì chữ nào tên viết hoa, chỗ khớp cũng phải viết hoa ("Hòa Bình", "HÒA BÌNH"; "cuộc sống hòa bình" và
+      "Lâm đồng ý" không phải tên). Riêng chữ chỉ loại đứng đầu ("đường", "cảng", "công ty", "ông"...) hay đứng cuối
+      trong tiếng Anh ("street", "port"...) được viết thường ("trên đường Lê Lợi");
+    * không nằm trong một danh từ chung của GENERIC_TERMS viết đúng dấu: tên thật "Hưng Thu" bỏ dấu trùng "hung thủ",
+      tên "Hùng" không dấu trùng chữ "Hung" trong "Hung thủ", nhưng các cụm này trong lời kể không phải tên.
+- find_name_matches / apply_aliases / find_unknown_names: tên thật trong chữ.
+    * Mọi chỗ khớp của mọi tên được xét; chỉ giữ chỗ được nhận, rồi chọn các chỗ không chồng nhau, chỗ dài hơn trước.
+      Vì vậy tên dài viết sai không che mất tên ngắn đúng ở cùng chỗ ("Lê Lợi hưng phấn" khi có tên "Lê Lợi Hùng").
     * Chỗ khớp nằm trọn trong một lần xuất hiện của tên hư cấu thì bỏ qua (tên hư cấu được phép
       chứa một mảnh trùng tên thật của người khác, ví dụ "Phan Đức Lâm" so với tên thật "Lâm").
     * Tên thật chỉ có một âm tiết và ngắn hơn 3 ký tự thì bỏ qua.
-    * Mọi tên (một hay nhiều âm tiết) chỉ nhận khi chỗ khớp viết đúng dấu như tên thật (không phân biệt hoa thường,
-      kiểu đặt dấu thanh cũ/mới coi như một) hoặc viết hoàn toàn không dấu ("Le Loi", "LE LOI").
-    * Tên thật một âm tiết (ví dụ "Lâm") còn phải viết hoa chữ đầu, để không thay nhầm "làm", "lắm"
-      vì khi bỏ dấu chúng trùng "lam".
-    * Chỗ khớp mà viết đúng dấu là một danh từ chung trong GENERIC_TERMS thì bỏ qua: tên thật "Hưng Thu" hay
-      "Gia Định" bỏ dấu trùng "hung thủ", "gia đình", nhưng hai cụm này trong lời kể không phải tên.
+    * Hai tên thật chỉ khác dấu ("Nguyễn Văn Hùng", "Nguyễn Văn Hưng") là hai tên: mỗi cách viết đúng dấu dùng tên hư
+      cấu của mình. Chỗ viết không dấu ("Nguyen Van Hung") mà khớp nhiều tên thật có tên hư cấu khác nhau thì không biết
+      là ai: dùng tên của thực thể đứng trước trong bảng tên và đánh dấu `ambiguous` (check_plan ghi cảnh báo, không chặn).
     * Tên quốc gia và tên chung của cơ quan được giữ nguyên (spec mục 6): build_forbidden_names không đưa
       chúng vào danh sách cấm (khi entity là địa danh hoặc cơ quan), nên không bị coi là lọt tên.
 - find_dates: ngày-tháng cụ thể và năm viết bằng số; giờ trong ngày và thập niên được giữ.
+- identifying_numbers / find_identifying_numbers: con số nhận dạng của bài (số nhà, biển số, số điện thoại...) còn
+  trong chữ; giờ, tuổi, số tiền và số lượng thì giữ.
+- find_vi_forms_in_en: tên hư cấu dạng tiếng Việt dùng trong lời Anh.
 - check_plan: trả về bản sao mới; cờ (từng cảnh và cấp kế hoạch) và check_warnings tính lại từ đầu,
   còn warnings là danh sách bền, chỉ nối thêm các lần tự thay tên.
 """
@@ -24,7 +35,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Sequence
 
 from models.case_adaptation_schemas import CaseAdaptationPlan, CaseBible, Lang, SceneFlag
 from services.case_fictionalizer import AnonymizerShield
@@ -94,8 +105,26 @@ def _accented_key(name: str) -> str:
     return " ".join(unicodedata.normalize("NFC", name).lower().split())
 
 
+# Dấu thanh đặt kiểu cũ -> kiểu mới ("hoà" -> "hòa", "thuý" -> "thúy"), để hai cách viết cùng một tên được coi là một.
+_TONE_PLACEMENT = {
+    "oà": "òa", "oá": "óa", "oả": "ỏa", "oã": "õa", "oạ": "ọa",
+    "oè": "òe", "oé": "óe", "oẻ": "ỏe", "oẽ": "õe", "oẹ": "ọe",
+    "uý": "úy", "uỳ": "ùy", "uỷ": "ủy", "uỹ": "ũy", "uỵ": "ụy",
+}
+_TONE_PLACEMENT_RE = re.compile("|".join(_TONE_PLACEMENT))
+
+
+@lru_cache(maxsize=32768)
+def spelling_key(text: str) -> str:
+    """Cách viết giữ dấu để so sánh: NFC, chữ thường, khoảng trắng gộp, dấu thanh theo kiểu mới.
+    "Hoà Bình" và "HÒA BÌNH" cùng một cách viết; "Hùng" và "Hưng" là hai cách viết."""
+    return _TONE_PLACEMENT_RE.sub(lambda m: _TONE_PLACEMENT[m.group(0)], _accented_key(text))
+
+
 # So có phân biệt dấu: bỏ dấu thì tên thật trùng danh từ chung ("Gia Định" ~ "gia đình", "Hưng Thu" ~ "hung thủ").
 _GENERIC_KEYS = frozenset(_accented_key(t) for t in GENERIC_TERMS)
+_GENERIC_SPELLINGS = frozenset(spelling_key(t) for t in GENERIC_TERMS)
+_GENERIC_FOLDED = tuple(sorted({_key(t) for t in GENERIC_TERMS}))
 
 
 def is_kept_term(name: str, kind: Optional[str] = None) -> bool:
@@ -123,119 +152,247 @@ class ForbiddenName:
 
 def build_forbidden_names(bible: CaseBible, source_text: str) -> list[ForbiddenName]:
     """`real_names` của mọi entity, cộng tên regex bắt được trên bài gốc mà chưa có trong entity nào.
-    Địa danh/cơ quan trùng tên quốc gia hay tên chung của cơ quan bị loại (được giữ nguyên trong lời kể);
-    người thì không, vì "Đức" hay "Nga" cũng là tên người."""
+    - Tên trùng nhau khi so cách viết giữ dấu (spelling_key: không phân biệt hoa thường, dấu thanh kiểu cũ/mới) thì chỉ
+      giữ tên đứng trước. Hai tên chỉ khác dấu ("Nguyễn Văn Hùng", "Nguyễn Văn Hưng") là hai tên, giữ cả hai.
+    - Tên regex đã nằm trong cách viết của một tên có sẵn (cùng cách viết, hoặc là dạng không dấu của nó) thì bỏ.
+    - Địa danh/cơ quan trùng tên quốc gia hay tên chung của cơ quan bị loại (được giữ nguyên trong lời kể);
+      người thì không, vì "Đức" hay "Nga" cũng là tên người."""
     out: list[ForbiddenName] = []
-    seen: set[str] = set()
+    spellings: set[str] = set()
+    by_key: dict[str, list[str]] = {}
+
+    def add(name: str, fn: ForbiddenName) -> None:
+        spellings.add(spelling_key(name))
+        by_key.setdefault(_key(name), []).append(name)
+        out.append(fn)
+
     for ent in bible.entities:
         kept = _KEPT_TERMS if ent.kind in ("place", "organization") else frozenset()
         for name in ent.real_names:
             key = _key(name)
-            if not key or key in seen or key in kept:
+            if not key or key in kept or spelling_key(name) in spellings:
                 continue
-            seen.add(key)
-            out.append(ForbiddenName(name.strip(), ent.id, ent.alias_vi.strip() or None, ent.alias_en.strip() or None))
+            add(name, ForbiddenName(name.strip(), ent.id, ent.alias_vi.strip() or None, ent.alias_en.strip() or None))
     if source_text:
         # REGEX_PERSON nối chữ qua cả dòng mới ("Lê Thu Hà\nTrần"), nên đổi mỗi chỗ xuống dòng thành dấu chấm
         # để tên không bao giờ vắt qua dòng; tên còn dính ký tự xuống dòng thì bỏ.
         flat = _LINE_BREAKS.sub(" . ", source_text)
         for name in sorted(AnonymizerShield().extract_pii_candidates(flat)["persons"]):
             key = _key(name)
-            if key and key not in seen and key not in _KEPT_TERMS and not _LINE_BREAKS.search(name):
-                seen.add(key)
-                out.append(ForbiddenName(name.strip()))
+            if not key or key in _KEPT_TERMS or _LINE_BREAKS.search(name):
+                continue
+            if any(_same_spelling(name, other) for other in by_key.get(key, ())):
+                continue
+            add(name, ForbiddenName(name.strip()))
     return out
 
 
-# ---------------------------------------------------------------- so khớp tên
-
-def _active_entries(forbidden: Iterable[ForbiddenName]) -> dict[str, ForbiddenName]:
-    """Các tên còn hiệu lực, theo dạng fold. Bỏ tên rỗng và tên một âm tiết ngắn hơn 3 ký tự."""
-    entries: dict[str, ForbiddenName] = {}
-    for fn in forbidden:
-        key = _key(fn.real)
-        if not key or key in entries:
-            continue
-        if " " not in key and len(key) < 3:
-            continue
-        entries[key] = fn
-    return entries
-
-
-@lru_cache(maxsize=64)
-def _compile_names(keys: tuple[str, ...]) -> Optional[re.Pattern]:
-    """Một regex duy nhất cho mọi tên, tên dài thử trước để tên đầy đủ thắng tên gọi tắt của nó."""
-    if not keys:
-        return None
-    ordered = sorted(keys, key=lambda k: (-len(k), k))
-    alts = [r"\s+".join(re.escape(tok) for tok in k.split()) for k in ordered]
-    return re.compile(r"(?<!\w)(?:" + "|".join(alts) + r")(?!\w)")
-
-
-def _alias_spans(folded: str, aliases: Iterable[str], real_keys: set[str]) -> list[tuple[int, int]]:
-    """Vị trí các lần xuất hiện của tên hư cấu. Alias trùng một tên thật (sau fold) không được tính là
-    lá chắn, nếu không thì LLM đặt alias giống hệt tên thật sẽ lọt qua kiểm tra."""
-    keys = {k for k in (_key(a) for a in aliases if a) if k and k not in real_keys}
-    pattern = _compile_names(tuple(sorted(keys)))
-    if pattern is None:
-        return []
-    return [m.span() for m in pattern.finditer(folded)]
-
-
-# Dấu thanh đặt kiểu cũ -> kiểu mới ("hoà" -> "hòa", "thuý" -> "thúy"), để hai cách viết cùng một tên được coi là một.
-_TONE_PLACEMENT = {
-    "oà": "òa", "oá": "óa", "oả": "ỏa", "oã": "õa", "oạ": "ọa",
-    "oè": "òe", "oé": "óe", "oẻ": "ỏe", "oẽ": "õe", "oẹ": "ọe",
-    "uý": "úy", "uỳ": "ùy", "uỷ": "ủy", "uỹ": "ũy", "uỵ": "ụy",
-}
-_TONE_PLACEMENT_RE = re.compile("|".join(_TONE_PLACEMENT))
-
-
-def _spelling(text: str) -> str:
-    """Cách viết giữ dấu để so sánh: NFC, chữ thường, khoảng trắng gộp, dấu thanh theo kiểu mới."""
-    return _TONE_PLACEMENT_RE.sub(lambda m: _TONE_PLACEMENT[m.group(0)], _accented_key(text))
-
+# ---------------------------------------------------------------- quy tắc chung "nhận chỗ khớp này không?"
 
 def _same_spelling(orig: str, real: str) -> bool:
-    """`orig` (chỗ khớp trên bài, đã NFC) có viết như tên thật `real` không: đúng từng dấu (không phân biệt hoa
-    thường), hoặc hoàn toàn không dấu ("Le Loi", "le loi"). Viết sai dấu thì là từ khác trùng khi bỏ dấu."""
-    if _spelling(orig) == _spelling(real):
+    """`orig` (chỗ khớp trên bài, trùng `real` khi bỏ dấu) có viết như tên `real` không: đúng từng dấu (không phân biệt
+    hoa thường), hoặc hoàn toàn không dấu ("Le Loi", "le loi"). Viết sai dấu thì là từ khác trùng khi bỏ dấu."""
+    if spelling_key(orig) == spelling_key(real):
         return True
     low = unicodedata.normalize("NFC", orig).lower()
     return _fold_nfc(low) == low
 
 
-def _single_token_ok(orig: str, real: str) -> bool:
-    """Tên một âm tiết chỉ nhận khi viết hoa chữ đầu và đúng dấu (hoặc bỏ hết dấu)."""
-    if not real.strip().replace("-", "").isalpha():
-        return True                       # số điện thoại, biển số...: so khớp bình thường
-    if orig[:1].islower():
+# Chữ chỉ loại đứng đầu tên (địa danh, cơ quan, cách gọi người): trong lời kể thường viết thường ("trên đường Lê Lợi",
+# "ở cảng Tân Hải", "ông Hùng") nên không bắt viết hoa; phần tên riêng phía sau vẫn phải viết hoa. Tiếng Anh thì chữ chỉ
+# loại đứng cuối ("Tan Hai port", "Le Loi street").
+_FREE_PREFIXES = tuple(sorted({spelling_key(p) + " " for p in (
+    "thành phố", "tp", "tp.", "tỉnh", "quận", "huyện", "thị xã", "thị trấn", "xã", "phường", "thôn", "ấp", "làng",
+    "khu phố", "đường", "phố", "ngõ", "hẻm", "kiệt", "cảng", "sân bay", "ga", "chợ", "bến xe", "bến", "cầu", "sông",
+    "núi", "đảo", "công ty", "tập đoàn", "ngân hàng", "bệnh viện", "trường", "nhà máy", "khách sạn", "nhà hàng",
+    "cửa hàng", "siêu thị", "chung cư", "tòa nhà", "quán", "ông", "bà", "cô", "chị", "chú", "bác",
+    "the", "port of", "city of",
+)}, key=len, reverse=True))
+_FREE_SUFFIXES = tuple(sorted({" " + spelling_key(s) for s in (
+    "street", "st.", "road", "avenue", "lane", "port", "harbor", "harbour", "city", "county", "district", "province",
+    "bridge", "river", "lake", "park", "company", "hospital", "school",
+)}, key=len, reverse=True))
+
+
+@lru_cache(maxsize=8192)
+def _free_words(name: str) -> tuple[int, int]:
+    """Số chữ đầu và số chữ cuối của tên được phép viết thường (chữ chỉ loại). Luôn chừa ít nhất một chữ phải viết hoa."""
+    spelled = spelling_key(name)
+    count = len(spelled.split())
+    lead = next((len(p.split()) for p in _FREE_PREFIXES if spelled.startswith(p)), 0)
+    trail = next((len(s.split()) for s in _FREE_SUFFIXES if spelled.endswith(s)), 0)
+    return (lead, trail) if lead + trail < count else (0, 0)
+
+
+def _capitalised_like(span: str, name: str) -> bool:
+    """Chỗ khớp viết hoa như tên riêng `name` (xem accept_match)."""
+    words, real = span.split(), name.split()
+    if len(real) <= 1:
+        if not name.strip().replace("-", "").isalpha():
+            return True                    # số điện thoại, biển số...: không xét hoa thường
+        return not span[:1].islower()
+    lead, trail = _free_words(name)
+    for i, (word, real_word) in enumerate(zip(words, real)):
+        if i < lead or i >= len(real) - trail:
+            continue
+        if real_word[:1].isupper() and word[:1].islower():
+            return False
+    return True
+
+
+@lru_cache(maxsize=1024)
+def _generic_spans(text: str) -> tuple[tuple[int, int], ...]:
+    """Vị trí các danh từ chung của GENERIC_TERMS viết đúng dấu trong `text` (đã NFC)."""
+    folded = _fold_nfc(text)
+    spans: list[tuple[int, int]] = []
+    for key in _GENERIC_FOLDED:
+        if key.split(" ", 1)[0] not in folded:
+            continue
+        for m in _name_pattern(key).finditer(folded):
+            if spelling_key(text[m.start():m.end()]) in _GENERIC_SPELLINGS:
+                spans.append(m.span())
+    return tuple(spans)
+
+
+def accept_match(text: str, start: int, end: int, name: str, *, any_case: bool = False) -> bool:
+    """Quy tắc chung "nhận chỗ khớp này không?" cho tên thật lẫn tên hư cấu.
+
+    `text` đã chuẩn hoá NFC; `text[start:end]` trùng `name` khi bỏ dấu, theo ranh giới từ. Nhận khi:
+    - viết như `name`: đúng dấu (không phân biệt hoa thường, dấu thanh kiểu cũ/mới), hoặc hoàn toàn không dấu;
+    - viết hoa như tên riêng (bỏ qua khi `any_case`, dùng để ẩn tên trong thông báo lỗi, nơi ẩn thừa không hại gì):
+      tên một âm tiết viết hoa chữ đầu; tên nhiều chữ thì chữ nào `name` viết hoa, chỗ khớp cũng viết hoa, trừ chữ chỉ
+      loại đứng đầu ("đường", "cảng", "công ty", "ông"...) hay đứng cuối trong tiếng Anh ("street", "port"...);
+    - không nằm trong một danh từ chung của GENERIC_TERMS viết đúng dấu ("Hung" trong "Hung thủ")."""
+    span = text[start:end]
+    if not _same_spelling(span, name):
         return False
-    return _same_spelling(orig, real)
+    if not any_case and not _capitalised_like(span, name):
+        return False
+    return not any(a <= start and end <= b for a, b in _generic_spans(text))
 
 
-def _scan(norm: str, forbidden: Iterable[ForbiddenName], alias_pool: Iterable[str]):
-    """Các chỗ khớp tên thật chưa nằm trong tên hư cấu: (bắt đầu, kết thúc, ForbiddenName)."""
-    entries = _active_entries(forbidden)
-    pattern = _compile_names(tuple(entries))
-    if pattern is None:
-        return []
+@lru_cache(maxsize=8192)
+def _name_pattern(key: str) -> re.Pattern:
+    """Regex tìm một tên (dạng fold) theo ranh giới từ; giữa các chữ là khoảng trắng bất kỳ."""
+    return re.compile(r"(?<!\w)" + r"\s+".join(re.escape(tok) for tok in key.split()) + r"(?!\w)")
+
+
+def _candidates(norm: str, names: Sequence[str], *, any_case: bool = False) -> list[tuple[int, int, list[int]]]:
+    """Mọi chỗ trong `norm` (đã NFC) trùng một tên của `names` khi bỏ dấu mà accept_match nhận, kể cả các chỗ chồng nhau:
+    (bắt đầu, kết thúc, chỉ số các tên nhận chỗ đó, theo thứ tự trong `names`)."""
     folded = _fold_nfc(norm)
-    spans = _alias_spans(folded, alias_pool, {_key(f.real) for f in forbidden})
-    hits = []
-    for m in pattern.finditer(folded):
-        s, e = m.span()
-        if any(a <= s and e <= b for a, b in spans):
+    by_key: dict[str, list[int]] = {}
+    for i, name in enumerate(names):
+        key = _key(name)
+        if key:
+            by_key.setdefault(key, []).append(i)
+    out: list[tuple[int, int, list[int]]] = []
+    for key, indexes in by_key.items():
+        if key.split(" ", 1)[0] not in folded:
             continue
-        if _accented_key(norm[s:e]) in _GENERIC_KEYS:
-            continue    # chữ viết đúng dấu là danh từ chung ("hung thủ"), không phải tên thật bỏ dấu ("Hưng Thu")
-        key = " ".join(m.group(0).split())
-        fn = entries[key]
-        ok = _single_token_ok(norm[s:e], fn.real) if " " not in key else _same_spelling(norm[s:e], fn.real)
-        if not ok:
+        for m in _name_pattern(key).finditer(folded):
+            start, end = m.span()
+            ok = [i for i in indexes if accept_match(norm, start, end, names[i], any_case=any_case)]
+            if ok:
+                out.append((start, end, ok))
+    return out
+
+
+def _non_overlapping(cands: list[tuple[int, int, list[int]]]) -> list[tuple[int, int, list[int]]]:
+    """Chọn các chỗ khớp không chồng nhau: chỗ dài hơn trước, bằng nhau thì chỗ đứng trước; trả theo thứ tự trong chuỗi."""
+    chosen: list[tuple[int, int, list[int]]] = []
+    for cand in sorted(cands, key=lambda c: (c[0] - c[1], c[0])):
+        if all(cand[1] <= s or e <= cand[0] for s, e, _ in chosen):
+            chosen.append(cand)
+    return sorted(chosen, key=lambda c: c[0])
+
+
+def _exact_first(span: str, indexes: list[int], names: Sequence[str]) -> list[int]:
+    """`indexes` với các tên viết đúng y như `span` (giữ dấu) lên trước."""
+    exact = [i for i in indexes if spelling_key(names[i]) == spelling_key(span)]
+    return exact + [i for i in indexes if i not in exact]
+
+
+def find_names(text: str, names: Sequence[str], *, any_case: bool = False) -> list[tuple[int, int, int]]:
+    """Các chỗ trong `text` viết đúng một tên của `names` (accept_match), không chồng nhau, tên dài hơn thắng:
+    (bắt đầu, kết thúc, chỉ số của tên trong `names`). Vị trí tính trên `text` đã NFC. Nhiều tên cùng nhận một chỗ thì
+    chọn tên viết đúng y như chỗ đó, không có thì tên đứng trước."""
+    if not text or not names:
+        return []
+    norm = unicodedata.normalize("NFC", text)
+    return [(s, e, _exact_first(norm[s:e], indexes, names)[0])
+            for s, e, indexes in _non_overlapping(_candidates(norm, names, any_case=any_case))]
+
+
+# ---------------------------------------------------------------- tên thật trong chữ
+
+def _active_entries(forbidden: Iterable[ForbiddenName]) -> list[ForbiddenName]:
+    """Các tên còn hiệu lực, giữ thứ tự: bỏ tên rỗng, tên một âm tiết ngắn hơn 3 ký tự, và tên viết giống hệt
+    (spelling_key) một tên đứng trước."""
+    out: list[ForbiddenName] = []
+    seen: set[str] = set()
+    for fn in forbidden:
+        key = _key(fn.real)
+        if not key or (" " not in key and len(key) < 3):
             continue
-        hits.append((s, e, fn))
-    return hits
+        spelled = spelling_key(fn.real)
+        if spelled in seen:
+            continue
+        seen.add(spelled)
+        out.append(fn)
+    return out
+
+
+@dataclass(frozen=True)
+class NameMatch:
+    """Một chỗ trong chữ viết đúng một tên thật. Vị trí tính trên chữ đã NFC."""
+    start: int
+    end: int
+    text: str                                # chữ như viết ở chỗ đó
+    name: ForbiddenName                      # tên thật được chọn (mơ hồ thì là tên đứng trước có tên hư cấu)
+    candidates: tuple[ForbiddenName, ...]    # mọi tên thật nhận chỗ này
+    ambiguous: bool = False                  # viết không dấu, trùng nhiều tên thật có tên hư cấu khác nhau
+
+
+def _alias_pair(fn: ForbiddenName) -> tuple[str, str]:
+    return (fn.alias_vi or "").strip(), (fn.alias_en or "").strip()
+
+
+def _resolve(span: str, accepted: tuple[ForbiddenName, ...]) -> tuple[ForbiddenName, bool]:
+    """Tên thật của một chỗ khớp: tên viết đúng y như chỗ đó; chỗ viết không dấu mà khớp nhiều tên có tên hư cấu khác
+    nhau thì không biết là ai: lấy tên đứng trước (theo thứ tự bảng tên) có tên hư cấu, và báo là mơ hồ."""
+    exact = [fn for fn in accepted if spelling_key(fn.real) == spelling_key(span)]
+    if exact:
+        return exact[0], False
+    if len({_alias_pair(fn) for fn in accepted}) <= 1:
+        return accepted[0], False
+    named = [fn for fn in accepted if any(_alias_pair(fn))]
+    return (named or list(accepted))[0], True
+
+
+def find_name_matches(text: str, forbidden: Iterable[ForbiddenName], aliases: Iterable[str] = (), *,
+                      any_case: bool = False) -> list[NameMatch]:
+    """Các chỗ trong `text` viết đúng một tên thật (accept_match), không chồng nhau, tên dài hơn thắng; bỏ chỗ nằm trọn
+    trong một lần xuất hiện của tên hư cấu thuộc `aliases`. Alias trùng một tên thật (sau fold) không được tính là
+    lá chắn, nếu không thì LLM đặt alias giống hệt tên thật sẽ lọt qua kiểm tra."""
+    if not text:
+        return []
+    forbidden = list(forbidden)
+    entries = _active_entries(forbidden)
+    if not entries:
+        return []
+    norm = unicodedata.normalize("NFC", text)
+    real_keys = {_key(f.real) for f in forbidden}
+    shields = [a for a in dict.fromkeys(a.strip() for a in aliases if a and a.strip()) if _key(a) not in real_keys]
+    shield_spans = [(s, e) for s, e, _ in _candidates(norm, shields, any_case=any_case)]
+    cands = [c for c in _candidates(norm, [f.real for f in entries], any_case=any_case)
+             if not any(a <= c[0] and c[1] <= b for a, b in shield_spans)]
+    out: list[NameMatch] = []
+    for start, end, indexes in _non_overlapping(cands):
+        accepted = tuple(entries[i] for i in indexes)
+        name, ambiguous = _resolve(norm[start:end], accepted)
+        out.append(NameMatch(start, end, norm[start:end], name, accepted, ambiguous))
+    return out
 
 
 def _alias_for(fn: ForbiddenName, lang: Lang) -> Optional[str]:
@@ -249,42 +406,114 @@ def _forbidden_aliases(forbidden: Iterable[ForbiddenName]) -> list[str]:
     return [a for f in forbidden for a in (f.alias_vi, f.alias_en) if a]
 
 
-def apply_aliases(text: str, forbidden: list[ForbiddenName], lang: Lang,
-                  extra_aliases: Iterable[str] = ()) -> tuple[str, list[str]]:
-    """Thay tên thật đã có alias bằng alias của `lang`. Trả (văn bản mới, các tên thật đã thay).
-    Tên chưa có alias được để nguyên (find_unknown_names sẽ bắt)."""
-    if not text:
-        return text, []
+def _replace_names(text: str, forbidden: list[ForbiddenName], lang: Lang, pool: Iterable[str], *,
+                   any_case: bool = False) -> tuple[str, list[tuple[NameMatch, str]]]:
+    """Thay tên thật đã có alias bằng alias của `lang`. Trả (chữ mới, các (chỗ khớp, alias) đã thay)."""
     norm = unicodedata.normalize("NFC", text)
-    pool = [*_forbidden_aliases(forbidden), *extra_aliases]
     parts: list[str] = []
-    replaced: list[str] = []
+    done: list[tuple[NameMatch, str]] = []
     last = 0
-    for s, e, fn in _scan(norm, forbidden, pool):
-        alias = _alias_for(fn, lang)
+    for match in find_name_matches(norm, forbidden, pool, any_case=any_case):
+        alias = _alias_for(match.name, lang)
         if alias is None:
             continue
-        parts.append(norm[last:s])
-        parts.append(alias)
-        last = e
-        if fn.real not in replaced:
-            replaced.append(fn.real)
-    if not replaced:
+        parts += [norm[last:match.start], alias]
+        last = match.end
+        done.append((match, alias))
+    if not done:
         return text, []
     parts.append(norm[last:])
-    return "".join(parts), replaced
+    return "".join(parts), done
+
+
+def apply_aliases(text: str, forbidden: list[ForbiddenName], lang: Lang,
+                  extra_aliases: Iterable[str] = (), *, any_case: bool = False) -> tuple[str, list[str]]:
+    """Thay tên thật đã có alias bằng alias của `lang`. Trả (văn bản mới, các tên thật đã thay).
+    Tên chưa có alias được để nguyên (find_unknown_names sẽ bắt). `any_case`: xem accept_match."""
+    if not text:
+        return text, []
+    pool = [*_forbidden_aliases(forbidden), *extra_aliases]
+    fixed, done = _replace_names(text, forbidden, lang, pool, any_case=any_case)
+    return fixed, _unique(match.name.real for match, _alias in done)
 
 
 def find_unknown_names(text: str, forbidden: list[ForbiddenName], aliases: list[str]) -> list[str]:
     """Tên thật còn sót trong `text`, bỏ qua chỗ nằm trọn trong một tên hư cấu thuộc `aliases`."""
+    return _unique(match.name.real for match in find_name_matches(text, forbidden, aliases))
+
+
+# ---------------------------------------------------------------- con số nhận dạng, dạng tên Việt trong lời Anh
+
+# Con số đứng riêng, từ 2 chữ số (không dính chữ, dấu ":" hay "/": "22h15", "02:21", "15B1", "2020s" không tính).
+_NUMBER = re.compile(r"(?<![\w.,:/\-])(\d{2,})(?![\w:/\-]|[.,]\d)")
+# Trên chữ đã fold: chữ báo hiệu số nhà, biển số, số điện thoại... đứng ngay trước hoặc ngay sau con số. Không có "no"
+# trơn, vì "nợ" bỏ dấu cũng là "no" ("nợ 50 triệu" là động cơ, không phải số nhà); "No." có dấu chấm thì vẫn tính.
+_ID_CUE_BEFORE = re.compile(
+    r"(?<!\w)(?:so nha|so|nha|duong|pho|hem|ngo|kiet|can ho|phong|bien so|bien kiem soat|dien thoai|sdt|"
+    r"no\.|number|street|plate|phone|room|apartment|unit|#)\s*$")
+_ID_CUE_AFTER = re.compile(r"\s*(?:duong|pho|street|st\.|road|avenue|lane)(?!\w)")
+# Trong lời kể: con số là giờ, tuổi hay thời lượng thì giữ (spec 7.6).
+_TIME_AGE_AFTER = re.compile(r"\s*(?:gio|phut|giay|tuoi|a\.?m\b|p\.?m\b|years?|year-old|minutes?|hours?|seconds?|"
+                             r"o'clock|%)", re.IGNORECASE)
+# Trên chữ gốc (giữ dấu, phân biệt hoa thường): đơn vị tiền và số lượng đứng ngay sau con số thì đó là số tiền, số lượng
+# ("nợ 50 triệu", "30 người", "12 ngày"), không phải số nhận dạng. Viết hoa thì là tên đường ("số 88 Đồng Khởi").
+_QUANTITY_AFTER = re.compile(
+    r"\s*(?:triệu|tỷ|tỉ|nghìn|ngàn|trăm|đồng|usd|USD|vnd|VND|vnđ|VNĐ|dollars?|euros?|km|kg|mét|"
+    r"người|people|persons?|ngày|tuần|tháng|days?|weeks?|months?)(?!\w)")
+
+
+def _numbers(text: str) -> tuple[str, str, list[tuple[int, int]]]:
+    """(chữ đã NFC, chữ đã fold, vị trí các con số đứng riêng). Hai chuỗi dài bằng nhau nên vị trí dùng chung."""
+    norm = unicodedata.normalize("NFC", text or "")
+    folded = _fold_nfc(norm)
+    return norm, folded, [m.span(1) for m in _NUMBER.finditer(folded)]
+
+
+def identifying_numbers(source_text: str) -> set[str]:
+    """Các con số trong bài gốc đứng cạnh chữ báo hiệu số nhà, biển số, số điện thoại ("số 88", "88 Đường..."),
+    trừ số tiền và số lượng."""
+    norm, folded, spans = _numbers(source_text)
+    found: set[str] = set()
+    for start, end in spans:
+        if _QUANTITY_AFTER.match(norm, end):
+            continue
+        if _ID_CUE_BEFORE.search(folded[max(0, start - 24):start]) or _ID_CUE_AFTER.match(folded, end):
+            found.add(folded[start:end])
+    return found
+
+
+def find_identifying_numbers(text: str, id_numbers: set[str]) -> list[str]:
+    """Con số nhận dạng của bài (`id_numbers`, xem identifying_numbers) còn trong `text`; giờ, tuổi, số tiền và số
+    lượng thì giữ."""
+    norm, folded, spans = _numbers(text)
+    found: list[str] = []
+    for start, end in spans:
+        number = folded[start:end]
+        if number not in id_numbers or number in found:
+            continue
+        if _TIME_AGE_AFTER.match(folded, end) or _QUANTITY_AFTER.match(norm, end):
+            continue
+        found.append(number)
+    return found
+
+
+def find_vi_forms_in_en(text: str, entities: Iterable) -> list:
+    """Các thực thể (CaseEntity) có tên hư cấu dạng tiếng Việt (Hán-Việt...) xuất hiện trong lời Anh `text`, khi dạng
+    Anh khác hẳn. Mã số (identifier) thì bỏ qua."""
     if not text:
         return []
     norm = unicodedata.normalize("NFC", text)
-    found: list[str] = []
-    for _s, _e, fn in _scan(norm, forbidden, aliases):
-        if fn.real not in found:
-            found.append(fn.real)
-    return found
+    out = []
+    for ent in entities:
+        if ent.kind == "identifier":
+            continue
+        key_vi, key_en = _key(ent.alias_vi or ""), _key(ent.alias_en or "")
+        if not key_vi or not key_en or key_vi == key_en or key_vi in key_en:
+            continue
+        en_spans = [(s, e) for s, e, _ in find_names(norm, [ent.alias_en])]
+        if any(not any(a <= s and e <= b for a, b in en_spans) for s, e, _ in find_names(norm, [ent.alias_vi])):
+            out.append(ent)
+    return out
 
 
 # ---------------------------------------------------------------- ngày tháng
@@ -444,13 +673,19 @@ def check_plan(plan: CaseAdaptationPlan, source_text: str) -> CaseAdaptationPlan
         * ở cảnh: tên thật chưa có alias (lời kể, prompt), thiếu lời kể, id lạ trong board_reveal, ngày cụ thể trong lời kể;
         * cấp kế hoạch: tên thật chưa có alias trong tên tập (field "title") hoặc nhãn ("evidence:<id>", "relation:<id>").
     - Ngày cụ thể trong prompt, tên tập, nhãn và bằng chứng chưa hiện ra: chỉ vào `check_warnings`, không chặn.
+    - Cũng chỉ vào `check_warnings` (các bước viết gọi lại model khi gặp, nhưng hết lượt thì vẫn nhận kết quả):
+        * tên viết không dấu trùng tên thật của nhiều người có tên hư cấu khác nhau: đã thay bằng tên hư cấu của thực thể
+          đứng trước trong bảng tên, cảnh báo nêu cảnh và tên hư cấu đã dùng, không nêu tên thật;
+        * con số nhận dạng lấy từ bài gốc (số nhà, biển số...) còn trong lời kể hay prompt;
+        * tên hư cấu dạng tiếng Việt trong lời Anh.
     - Cảnh `disclaimer` không bị quét.
     """
     new = plan.model_copy(deep=True)
     bible = new.bible
     forbidden = build_forbidden_names(bible, source_text)
     aliases = _unique(a.strip() for e in bible.entities for a in (e.alias_vi, e.alias_en) if a and a.strip())
-    by_key = _active_entries(forbidden)
+    pool = [*_forbidden_aliases(forbidden), *aliases]
+    id_numbers = identifying_numbers(source_text)
     warnings: list[str] = list(new.warnings)    # bền: chỉ nối thêm
     check_warnings: list[str] = []              # tính lại từ đầu
     plan_flags: list[SceneFlag] = []            # tính lại từ đầu
@@ -459,9 +694,18 @@ def check_plan(plan: CaseAdaptationPlan, source_text: str) -> CaseAdaptationPlan
         if message not in warnings:
             warnings.append(message)
 
-    def clean(text: str, lang: Lang) -> tuple[str, list[tuple[str, str]], list[str]]:
-        fixed, replaced = apply_aliases(text, forbidden, lang, extra_aliases=aliases)
-        pairs = [(real, _alias_for(by_key[_key(real)], lang) or "") for real in replaced]
+    def warn(message: str) -> None:
+        if message not in check_warnings:
+            check_warnings.append(message)
+
+    def clean(text: str, lang: Lang, where: str) -> tuple[str, list[tuple[str, str]], list[str]]:
+        """Thay tên, trả (chữ mới, các (tên thật, alias) đã thay chắc chắn, tên thật còn sót). Chỗ mơ hồ đã thay thì
+        cảnh báo ở `where`, không ghi vào `warnings` vì không biết đó là tên thật nào."""
+        fixed, done = _replace_names(text, forbidden, lang, pool)
+        pairs = _unique((match.name.real, alias) for match, alias in done if not match.ambiguous)
+        for alias in _unique(alias for match, alias in done if match.ambiguous):
+            warn(f"Đã thay một tên viết không dấu (trùng tên thật của nhiều người) bằng '{alias}' ở {where}, theo "
+                 "thực thể đứng trước trong bảng tên; hãy xem lại cho đúng người.")
         return fixed, pairs, find_unknown_names(fixed, forbidden, aliases)
 
     # --- từng cảnh
@@ -479,11 +723,12 @@ def check_plan(plan: CaseAdaptationPlan, source_text: str) -> CaseAdaptationPlan
                 if field in _NARRATION_FIELDS:
                     flags.append(SceneFlag(kind="missing_text", field=field, detail=_MISSING_TEXT[field]))
                 continue
-            fixed, pairs, unknown = clean(text, lang)
+            where = f"cảnh {scene.order} ({field})"
+            fixed, pairs, unknown = clean(text, lang, where)
             if fixed != text:
                 setattr(scene, field, fixed)
             for real, alias in pairs:
-                note(f"Đã tự thay tên thật '{real}' bằng '{alias}' ở cảnh {scene.order} ({field}).")
+                note(f"Đã tự thay tên thật '{real}' bằng '{alias}' ở {where}.")
             for name in unknown:
                 flags.append(SceneFlag(kind="unknown_name", field=field,
                                        detail=f"Tên thật chưa có tên thay thế: '{name}'."))
@@ -492,8 +737,13 @@ def check_plan(plan: CaseAdaptationPlan, source_text: str) -> CaseAdaptationPlan
                     flags.append(SceneFlag(kind="date", field=field,
                                            detail=f"Ngày tháng hoặc năm cụ thể: '{found}'."))
                 else:
-                    check_warnings.append(f"Còn ngày tháng hoặc năm cụ thể '{found}' ở cảnh {scene.order} ({field}); "
-                                          "hãy sửa thành cách nói chung.")
+                    warn(f"Còn ngày tháng hoặc năm cụ thể '{found}' ở {where}; hãy sửa thành cách nói chung.")
+            for number in find_identifying_numbers(fixed, id_numbers):
+                warn(f"Còn con số nhận dạng '{number}' lấy từ bài gốc (số nhà, biển số, số điện thoại...) ở {where}; "
+                     "hãy bỏ số này hoặc nói chung chung.")
+            if field == "narration_en":
+                for ent in find_vi_forms_in_en(fixed, bible.entities):
+                    warn(f"Lời Anh ở {where} dùng dạng tên tiếng Việt '{ent.alias_vi}'; hãy đổi thành '{ent.alias_en}'.")
         for rid in _unique(scene.board_reveal):
             if rid not in valid_ids:
                 flags.append(SceneFlag(kind="bad_reveal", field="board_reveal",
@@ -505,7 +755,7 @@ def check_plan(plan: CaseAdaptationPlan, source_text: str) -> CaseAdaptationPlan
         text = getattr(obj, field)
         if not text or not text.strip():
             return
-        fixed, pairs, unknown = clean(text, lang)
+        fixed, pairs, unknown = clean(text, lang, f"{where} ({field})")
         if fixed != text:
             setattr(obj, field, fixed)
         for real, alias in pairs:
@@ -514,8 +764,7 @@ def check_plan(plan: CaseAdaptationPlan, source_text: str) -> CaseAdaptationPlan
             plan_flags.append(SceneFlag(kind="unknown_name", field=flag_field,
                                         detail=f"Tên thật chưa có tên thay thế ở {where} ({field}): '{name}'."))
         for found in _unique(find_dates(fixed)):
-            check_warnings.append(f"Còn ngày tháng hoặc năm cụ thể '{found}' ở {where} ({field}); "
-                                  "hãy sửa thành cách nói chung.")
+            warn(f"Còn ngày tháng hoặc năm cụ thể '{found}' ở {where} ({field}); hãy sửa thành cách nói chung.")
 
     clean_label(bible, "title_vi", "vi", "tiêu đề", "title")
     clean_label(bible, "title_en", "en", "tiêu đề", "title")
@@ -529,7 +778,7 @@ def check_plan(plan: CaseAdaptationPlan, source_text: str) -> CaseAdaptationPlan
     # --- bằng chứng chưa hiện ra ở cảnh nào
     for ev in bible.evidence:
         if ev.id not in revealed:
-            check_warnings.append(f"Bằng chứng '{ev.id}' ({ev.label_vi}) chưa hiện ra trên bảng điều tra ở cảnh nào.")
+            warn(f"Bằng chứng '{ev.id}' ({ev.label_vi}) chưa hiện ra trên bảng điều tra ở cảnh nào.")
 
     new.warnings = warnings
     new.check_warnings = check_warnings

@@ -23,6 +23,7 @@ from models.case_adaptation_schemas import (
     DISCLAIMER,
     SceneFlag,
 )
+from services import case_adaptation_checks as checks
 from services.case_adaptation_checks import (
     ForbiddenName,
     apply_aliases,
@@ -96,9 +97,9 @@ def test_fold_is_stable_for_decomposed_input():
 
 def test_leak_variants_are_caught():
     fb = [ForbiddenName("Nguyễn Văn Hùng", "e1", "Trịnh Quang Vũ", "Trinh Quang Vu")]
-    for t in ["NGUYỄN VĂN HÙNG bước vào", "Nguyen Van Hung walked in", "ông nguyễn văn hùng."]:
+    for t in ["NGUYỄN VĂN HÙNG bước vào", "Nguyen Van Hung walked in", "ông Nguyễn Văn Hùng.", "NGUYEN VAN HUNG"]:
         new, replaced = apply_aliases(t, fb, "vi")
-        assert "Hùng" not in new and "Hung" not in new and replaced
+        assert "Hùng" not in new and "Hung" not in new and "HÙNG" not in new and "HUNG" not in new and replaced
 
 
 def test_alias_language_follows_lang_argument():
@@ -156,8 +157,10 @@ def test_real_fragment_outside_alias_is_still_flagged():
 def test_find_unknown_names_matches_folded_and_uppercase():
     fb = [ForbiddenName("Trần Quang Minh", None, None, None)]
     assert find_unknown_names("TRAN QUANG MINH đã khai", fb, []) == ["Trần Quang Minh"]
-    assert find_unknown_names("Ông trần quang minh đã khai", fb, []) == ["Trần Quang Minh"]
+    assert find_unknown_names("Ông Tran Quang Minh đã khai", fb, []) == ["Trần Quang Minh"]
     assert find_unknown_names("Một người lạ đã khai", fb, []) == []
+    # Viết thường cả tên thì là cụm từ thường, không phải tên riêng (xem các test viết hoa bên dưới).
+    assert find_unknown_names("Ông trần quang minh đã khai", fb, []) == []
 
 
 def test_alias_identical_to_real_name_is_not_a_shield():
@@ -191,6 +194,7 @@ STREET = [ForbiddenName("Lê Lợi", "e1", "Thanh Lam", "Thanh Lam"), ForbiddenN
     "Cảnh tàn hại sau trận bão.",
     "Ông ta sống lẻ loi, tàn hại cả đời mình.",
     "Lê Loi và Le Lợi",           # lẫn dấu: không phải cách viết nào của tên thật
+    "lê lợi", "le loi", "đường le loi", "Lê lợi",     # chữ của tên viết thường: cụm từ thường, không phải tên riêng
 ])
 def test_multi_word_name_is_not_matched_inside_ordinary_words_that_fold_the_same(text):
     assert apply_aliases(text, STREET, "vi") == (text, [])
@@ -198,7 +202,7 @@ def test_multi_word_name_is_not_matched_inside_ordinary_words_that_fold_the_same
 
 
 @pytest.mark.parametrize("text", [
-    "Lê Lợi", "LÊ LỢI", "lê lợi", "Le Loi", "le loi", "LE LOI", "Đường Lê Lợi", "đường le loi", "Số 5 Lê  Lợi.",
+    "Lê Lợi", "LÊ LỢI", "Le Loi", "LE LOI", "Đường Lê Lợi", "đường Le Loi", "Số 5 Lê  Lợi.",
 ])
 def test_multi_word_name_is_matched_with_same_diacritics_or_without_any(text):
     assert find_unknown_names(text, STREET, []) == ["Lê Lợi"]
@@ -264,6 +268,226 @@ def test_check_plan_leaves_generic_terms_alone_when_real_names_collide():
     assert checked.scenes[1].narration_vi == "Lê Minh lớn lên ở Phú An."
     assert all("cảnh 1 " not in w for w in checked.warnings)
     assert len(checked.warnings) == 2 and not has_blocking_flags(checked)
+
+
+# ---------------------------------------------------------------- quy tắc chung "nhận chỗ khớp này không?"
+
+@pytest.mark.parametrize("span, name, ok", [
+    ("Nam", "Nam", True),
+    ("Năm", "Nam", False),                    # khác dấu: từ khác
+    ("nam", "Nam", False),                    # tên một âm tiết phải viết hoa chữ đầu
+    ("Hung", "Hùng", True),                   # không dấu
+    ("Hùng", "Hưng", False),
+    ("Hòa Bình", "Hoà Bình", True),           # dấu thanh kiểu cũ/mới
+    ("HOA BINH", "Hòa Bình", True),
+    ("hòa bình", "Hòa Bình", False),          # viết thường: cụm từ thường
+    ("Hòa bình", "Hòa Bình", False),          # chữ đầu câu viết hoa, chữ sau viết thường
+    ("cảng Tân Hải", "Cảng Tân Hải", True),   # chữ chỉ loại địa danh đứng đầu được viết thường
+    ("đường Lê Lợi", "Đường Lê Lợi", True),
+    ("cảng tân hải", "Cảng Tân Hải", False),  # phần tên riêng vẫn phải viết hoa
+    ("Tan Hai port", "Tan Hai Port", True),   # chữ chỉ loại đứng cuối (tiếng Anh) được viết thường
+    ("ông Hùng", "ông Hùng", True),
+    ("ông hùng", "ông Hùng", False),
+])
+def test_accept_match_spelling_and_capitals(span, name, ok):
+    assert checks.accept_match(span, 0, len(span), name) is ok
+
+
+def test_accept_match_skips_a_span_inside_a_correctly_spelled_generic_term():
+    text = "Hung thủ vẫn lẩn trốn, còn Hùng vẫn chờ."
+    assert checks.accept_match(text, 0, 4, "Hùng") is False                  # "Hung" nằm trong "Hung thủ"
+    start = text.index("Hùng")
+    assert checks.accept_match(text, start, start + 4, "Hùng") is True
+    shouty = "HUNG THU vẫn lẩn trốn."                                  # không dấu: không phải danh từ chung "hung thủ"
+    assert checks.accept_match(shouty, 0, 8, "Hưng Thu") is True
+
+
+def test_single_syllable_real_name_is_not_found_inside_a_generic_term():
+    fb = [ForbiddenName("Hùng", "e1", "Vũ", "Vu")]
+    text = "Hung thủ vẫn lẩn trốn."
+    assert apply_aliases(text, fb, "vi") == (text, [])
+    assert find_unknown_names(text, fb, []) == []
+
+
+# ---------------------------------------------------------------- hai tên thật trùng nhau khi bỏ dấu
+
+HUNG_TWO = [_entity("e1", ["Nguyễn Văn Hùng", "Hùng"], "Trịnh Quang Vũ", "Trinh Quang Vu"),
+            _entity("e2", ["Nguyễn Văn Hưng", "Hưng"], "Lê Minh Tâm", "Le Minh Tam")]
+
+
+def test_build_forbidden_names_keeps_real_names_that_differ_only_in_diacritics():
+    fb = build_forbidden_names(_plan([_scene(1)], entities=HUNG_TWO).bible, "")
+    assert [(f.real, f.entity_id) for f in fb] == [
+        ("Nguyễn Văn Hùng", "e1"), ("Hùng", "e1"), ("Nguyễn Văn Hưng", "e2"), ("Hưng", "e2")]
+
+
+def test_real_names_that_fold_equal_each_get_their_own_alias():
+    fb = build_forbidden_names(_plan([_scene(1)], entities=HUNG_TWO).bible, "")
+    text = "Nguyễn Văn Hưng bước vào, Nguyễn Văn Hùng ở lại. Hưng nhìn Hùng."
+    assert apply_aliases(text, fb, "vi") == (
+        "Lê Minh Tâm bước vào, Trịnh Quang Vũ ở lại. Lê Minh Tâm nhìn Trịnh Quang Vũ.",
+        ["Nguyễn Văn Hưng", "Nguyễn Văn Hùng", "Hưng", "Hùng"])
+    assert find_unknown_names("Hưng bước vào.", fb, []) == ["Hưng"]
+    assert find_unknown_names("NGUYỄN VĂN HƯNG bước vào.", fb, []) == ["Nguyễn Văn Hưng"]
+
+
+def test_unaccented_name_shared_by_two_entities_uses_the_first_entity_and_is_marked_ambiguous():
+    fb = build_forbidden_names(_plan([_scene(1)], entities=HUNG_TWO).bible, "")
+    new, replaced = apply_aliases("Nguyen Van Hung walked in. Hung said nothing.", fb, "en")
+    assert new == "Trinh Quang Vu walked in. Trinh Quang Vu said nothing."
+    matches = checks.find_name_matches("Nguyen Van Hung walked in.", fb, [])
+    assert len(matches) == 1 and matches[0].ambiguous
+    assert matches[0].name.entity_id == "e1"
+    assert {f.entity_id for f in matches[0].candidates} == {"e1", "e2"}
+    # Viết đúng dấu thì không mơ hồ.
+    assert not checks.find_name_matches("Nguyễn Văn Hưng bước vào.", fb, [])[0].ambiguous
+
+
+def test_check_plan_replaces_each_accented_spelling_and_warns_about_the_ambiguous_one():
+    plan = _plan([_scene(2, narration_vi="Nguyễn Văn Hưng bước vào, còn Hùng đứng chờ.",
+                          narration_en="Nguyen Van Hung walked in; Hung said nothing.")], entities=HUNG_TWO)
+    checked = check_plan(plan, "")
+    scene = checked.scenes[0]
+    assert scene.narration_vi == "Lê Minh Tâm bước vào, còn Trịnh Quang Vũ đứng chờ."
+    assert scene.narration_en == "Trinh Quang Vu walked in; Trinh Quang Vu said nothing."
+    assert scene.flags == [] and not has_blocking_flags(checked)       # mơ hồ không chặn tạo dự án
+    notes = [w for w in checked.check_warnings if "cảnh 2" in w]
+    assert len(notes) == 1 and "narration_en" in notes[0] and "Trinh Quang Vu" in notes[0]
+    for real in ("Hùng", "Hưng", "Hung", "HUNG"):
+        assert real not in notes[0]                                    # không nêu tên thật
+    assert not any("narration_en" in w for w in checked.warnings)      # không ghi đoán tên thật vào danh sách bền
+    assert any("'Nguyễn Văn Hưng' bằng 'Lê Minh Tâm'" in w for w in checked.warnings)
+
+
+def test_unaccented_name_shared_by_two_spellings_of_one_entity_is_not_ambiguous():
+    ents = [_entity("e1", ["Nguyễn Văn Hùng", "Nguyễn Văn Hưng"], "Trịnh Quang Vũ", "Trinh Quang Vu")]
+    checked = check_plan(_plan([_scene(1, narration_en="Nguyen Van Hung left.")], entities=ents), "")
+    assert checked.scenes[0].narration_en == "Trinh Quang Vu left."
+    assert checked.check_warnings == [] and not has_blocking_flags(checked)
+
+
+def test_regex_name_differing_only_in_diacritics_from_an_entity_name_is_still_forbidden():
+    source = "Nguyễn Văn Hùng đi cùng em trai là Nguyễn Văn Hưng. Nguyen Van Hung bỏ chạy."
+    reals = [f.real for f in build_forbidden_names(_plan([_scene(1)]).bible, source)]
+    assert "Nguyễn Văn Hưng" in reals
+    assert "Nguyen Van Hung" not in reals         # không dấu: đã nằm trong cách viết của tên thật "Nguyễn Văn Hùng"
+    checked = check_plan(_plan([_scene(1, narration_vi="Nguyễn Văn Hưng đứng ở cổng.")]), source)
+    assert [(f.kind, f.field) for f in checked.scenes[0].flags] == [("unknown_name", "narration_vi")]
+
+
+# ---------------------------------------------------------------- tên dài bị loại không che tên ngắn
+
+def test_longer_name_rejected_by_spelling_does_not_hide_a_shorter_exact_one():
+    fb = [ForbiddenName("Lê Lợi", "e1", "Thanh Lam", "Thanh Lam"), ForbiddenName("Lê Lợi Hùng", "e2", "Bá Tùng", "Ba Tung")]
+    assert apply_aliases("Lê Lợi hưng phấn kể lại.", fb, "vi") == ("Thanh Lam hưng phấn kể lại.", ["Lê Lợi"])
+    assert find_unknown_names("Lê Lợi hưng phấn kể lại.", fb, []) == ["Lê Lợi"]
+
+    fb2 = [ForbiddenName("Hùng", "e1", "Vũ", "Vu"), ForbiddenName("Hùng Anh", "e2", "Tuấn Kiệt", "Tuan Kiet")]
+    assert apply_aliases("Hùng ánh mắt lạnh lùng.", fb2, "vi") == ("Vũ ánh mắt lạnh lùng.", ["Hùng"])
+    assert find_unknown_names("Hùng ánh mắt lạnh lùng.", fb2, []) == ["Hùng"]
+    # tên dài viết đúng vẫn thắng tên ngắn nằm trong nó
+    assert apply_aliases("Hùng Anh gặp Hùng.", fb2, "vi") == ("Tuấn Kiệt gặp Vũ.", ["Hùng Anh", "Hùng"])
+
+
+def test_check_plan_replaces_the_short_name_when_the_long_one_is_misspelled():
+    ents = [_entity("e1", ["Lê Lợi"], "Thanh Lam", "Thanh Lam", kind="place"),
+            _entity("e2", ["Lê Lợi Hùng"], "Bá Tùng", "Ba Tung")]
+    checked = check_plan(_plan([_scene(1, narration_vi="Lê Lợi hưng phấn kể lại.")], entities=ents), "")
+    assert checked.scenes[0].narration_vi == "Thanh Lam hưng phấn kể lại."
+    assert not has_blocking_flags(checked)
+
+
+# ---------------------------------------------------------------- tên nhiều chữ phải viết hoa
+
+PEACE = [ForbiddenName("Hòa Bình", "e1", "Thanh Sơn", "Thanh Son")]
+
+
+@pytest.mark.parametrize("text", [
+    "Họ mơ một cuộc sống hòa bình.", "Hòa bình đã trở lại.", "cuộc sống hoà bình", "sống hoa binh",
+])
+def test_multi_word_name_written_in_lowercase_is_an_ordinary_phrase(text):
+    assert apply_aliases(text, PEACE, "vi") == (text, [])
+    assert find_unknown_names(text, PEACE, []) == []
+
+
+@pytest.mark.parametrize("text", ["Hòa Bình", "HÒA BÌNH", "Hoa Binh", "HOA BINH", "Hoà Bình"])
+def test_multi_word_name_in_title_case_or_capitals_is_replaced(text):
+    assert apply_aliases(f"Họ về {text} sống.", PEACE, "vi") == ("Họ về Thanh Sơn sống.", ["Hòa Bình"])
+
+
+@pytest.mark.parametrize("text", ["Bình minh lên.", "thành công rồi", "Anh ấy rất trung thành."])
+def test_names_that_are_also_common_phrases_are_kept_in_lowercase(text):
+    fb = [ForbiddenName("Bình Minh", "e1", "A Bê", "A Be"), ForbiddenName("Thành Công", "e2", "Xê Đê", "Xe De"),
+          ForbiddenName("Trung Thành", "e3", "Ê Ép", "E Ep")]
+    assert apply_aliases(text, fb, "vi") == (text, [])
+
+
+def test_lowercase_second_word_is_not_part_of_the_name():
+    fb = [ForbiddenName("Lâm", "e1", "Quang Huy", "Quang Huy"), ForbiddenName("Lâm Đồng", "e2", "Đồi Mây", "Doi May")]
+    assert apply_aliases("Lâm đồng ý về Lâm Đồng.", fb, "vi") == ("Quang Huy đồng ý về Đồi Mây.", ["Lâm", "Lâm Đồng"])
+
+
+def test_place_type_word_in_lowercase_still_matches_the_real_place():
+    fb = [ForbiddenName("Cảng Tân Hải", "e1", "Cảng Hải Yến", "Hai Yen Port"),
+          ForbiddenName("Đường Lê Lợi", "e2", "Đường Thanh Lam", "Thanh Lam Street")]
+    new, replaced = apply_aliases("Xe dừng ở cảng Tân Hải, gần đường Lê Lợi.", fb, "vi")
+    assert new == "Xe dừng ở Cảng Hải Yến, gần Đường Thanh Lam." and replaced == ["Cảng Tân Hải", "Đường Lê Lợi"]
+
+
+def test_any_case_also_matches_names_written_in_lowercase():
+    # Dùng để ẩn tên thật trong thông báo lỗi (case_redact): ẩn thừa không hại gì, ẩn thiếu thì lọt tên.
+    fb = [ForbiddenName("Nguyễn Văn Hùng", "e1", "[ẩn]", "[ẩn]"), ForbiddenName("Lâm", "e2", "[ẩn]", "[ẩn]")]
+    text = "tóm tắt quá ngắn: 'nguyễn văn hùng và lâm đi làm'"
+    assert apply_aliases(text, fb, "vi")[0] == text
+    assert apply_aliases(text, fb, "vi", any_case=True)[0] == "tóm tắt quá ngắn: '[ẩn] và [ẩn] đi làm'"
+
+
+def test_check_plan_leaves_the_common_phrase_and_replaces_the_place():
+    ents = [_entity("e1", ["Hòa Bình"], "Thanh Sơn", "Thanh Son", kind="place")]
+    plan = _plan([_scene(1, narration_vi="Họ mơ một cuộc sống hòa bình ở Hòa Bình.")], entities=ents)
+    checked = check_plan(plan, "")
+    assert checked.scenes[0].narration_vi == "Họ mơ một cuộc sống hòa bình ở Thanh Sơn."
+    assert checked.scenes[0].flags == []
+
+
+# ---------------------------------------------------------------- con số nhận dạng, dạng tên Việt trong lời Anh
+
+def test_identifying_numbers_skip_debts_money_and_quantities():
+    source = ("Ông Trọng nợ 50 triệu đồng, nhà ở số 88 Đường Lê Lợi. Tổng số 30 người có mặt, số 12 ngày sau, "
+              "chạy số 45 km. Phòng 12A, No. 7 Main Street.")
+    assert checks.identifying_numbers(source) == {"88"}
+    assert checks.identifying_numbers("He lived at No. 17 and owed no 25 dollars.") == {"17"}
+
+
+def test_find_identifying_numbers_keeps_amounts_times_and_ages():
+    ids = {"88", "14"}
+    assert checks.find_identifying_numbers("Hắn nợ 88 triệu, lúc 14 giờ, cậu bé 14 tuổi, 14 ngày sau.", ids) == []
+    assert checks.find_identifying_numbers("Căn nhà số 88 vẫn sáng đèn, 88 people waited.", ids) == ["88"]
+
+
+def test_check_plan_warns_about_identifying_numbers_left_in_narration():
+    source = "Kho bãi ở số 88 Đường Lê Lợi."
+    plan = _plan([_scene(4, narration_vi="Căn nhà số 88 vẫn sáng đèn.", narration_en="At 88 the lights were on.")])
+    checked = check_plan(plan, source)
+    notes = [w for w in checked.check_warnings if "cảnh 4" in w and "'88'" in w]
+    assert len(notes) == 2 and any("narration_vi" in w for w in notes) and any("narration_en" in w for w in notes)
+    assert not has_blocking_flags(checked)                             # chỉ cảnh báo, không chặn
+    assert check_plan(_plan([_scene(4, narration_vi="Hắn nợ 88 triệu đồng.")]), source).check_warnings == []
+
+
+def test_check_plan_warns_about_vietnamese_alias_form_in_english_narration():
+    ents = [_entity("e1", ["Lưu Vĩnh Phúc"], "Lưu Vinh Phú", "Liu Rongfu"),
+            _entity("e2", ["Cảng Tân Hải"], "Cảng Hải Yến", "Hai Yen Port", kind="place")]
+    plan = _plan([_scene(3, narration_en="Luu Vinh Phu walked to Cang Hai Yen alone.")], entities=ents)
+    checked = check_plan(plan, "")
+    notes = [w for w in checked.check_warnings if "cảnh 3" in w and "narration_en" in w]
+    assert len(notes) == 2
+    assert any("'Lưu Vinh Phú'" in w and "'Liu Rongfu'" in w for w in notes)
+    assert any("'Cảng Hải Yến'" in w and "'Hai Yen Port'" in w for w in notes)
+    assert not any("Lưu Vĩnh Phúc" in w for w in checked.check_warnings)
+    assert not has_blocking_flags(checked)
+    clean = _plan([_scene(3, narration_en="Liu Rongfu walked to Hai Yen Port alone.")], entities=ents)
+    assert check_plan(clean, "").check_warnings == []
 
 
 # ---------------------------------------------------------------- find_dates

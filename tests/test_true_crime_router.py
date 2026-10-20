@@ -25,7 +25,15 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from main import app
-from models.case_adaptation_schemas import DISCLAIMER, MAX_SOURCE_CHARS
+from models.case_adaptation_schemas import (
+    DISCLAIMER,
+    MAX_SOURCE_CHARS,
+    AdaptedScene,
+    CaseAdaptationPlan,
+    CaseBible,
+    CaseEntity,
+    StoryPart,
+)
 from models.schemas import ProjectCreateRequest
 from routers import true_crime
 from services import case_adaptation_llm, case_jobs, case_redact, case_store, case_worker, project_service
@@ -430,6 +438,66 @@ def test_entities_additions_apply_new_names_everywhere(client, small_chunks, mon
     assert add(alias_en="").status_code == 400
     assert add(kind="khong-ro").status_code == 422
     assert get_plan(client, case_id) == plan
+
+
+def test_entities_can_add_a_real_name_that_differs_only_in_diacritics(client, small_chunks, monkeypatch):
+    case_id = finished_case(client, monkeypatch)
+    brother = "Nguyễn Văn Hưng"                                    # bỏ dấu thì trùng tên nạn nhân "Nguyễn Văn Hùng"
+    case_store.save_source(case_id, case_store.load_source(case_id) + f"\nEm trai nạn nhân là {brother}.")
+    text = (f"Đêm ấy, {brother} đứng chờ ở cổng cảng, còn {REAL_VICTIM} vẫn ngồi trong văn phòng xem sổ sách tới tận "
+            "khuya, không hay biết gì về bóng người ngoài kia.")
+    flagged = client.put(f"{BASE}/cases/{case_id}/scenes/3", json={"narration_vi": text}).json()
+    assert [f["kind"] for f in scene_of(flagged, 3)["flags"]] == ["unknown_name"]     # không lọt lặng lẽ
+    assert brother in scene_of(flagged, 3)["narration_vi"]
+
+    def add(real_names):
+        return client.put(f"{BASE}/cases/{case_id}/entities", json={"additions": [
+            {"kind": "person", "real_names": real_names, "alias_vi": "Mã Văn Khoa", "alias_en": "Ma Van Khoa"}]})
+
+    assert add(["NGUYỄN VĂN HÙNG"]).status_code == 400              # cùng cách viết, chỉ khác hoa thường
+    response = add([brother])
+    assert response.status_code == 200, response.text
+    scene = scene_of(response.json(), 3)
+    assert scene["flags"] == []
+    assert scene["narration_vi"].startswith("Đêm ấy, Mã Văn Khoa đứng chờ") and "còn Trịnh Quang Vũ vẫn" in scene["narration_vi"]
+    assert add([brother]).status_code == 400                        # giờ đã thuộc một thực thể
+
+    # Viết không dấu thì không biết là ai: thay bằng tên của thực thể đứng trước, cảnh báo (không chặn, không nêu tên thật).
+    english = "Nguyen Van Hung stood at the port gate in the rain, waiting for someone who never came back that night."
+    plan = client.put(f"{BASE}/cases/{case_id}/scenes/4", json={"narration_en": english}).json()
+    assert scene_of(plan, 4)["narration_en"].startswith("Trinh Quang Vu stood at the port gate")
+    assert scene_of(plan, 4)["flags"] == []
+    notes = [w for w in plan["check_warnings"] if "cảnh 4" in w]
+    assert len(notes) == 1 and "Trinh Quang Vu" in notes[0]
+    assert "Hùng" not in notes[0] and "Hưng" not in notes[0] and "Hung" not in notes[0]
+
+
+def test_entity_update_swaps_only_real_occurrences_of_short_aliases(client, isolated_projects_dir):
+    text_vi = "Năm ấy, Nam sống một mình bên bến cảng. Hung thủ vẫn lẩn trốn, còn Hùng vẫn chờ."
+    text_en = "That year, Nam lived alone by the docks. The killer was still out there, and Hung kept waiting."
+    plan = CaseAdaptationPlan(
+        case_id="case_0a1b2c3d", created_at="2026-10-20T00:00:00", model="test", target_minutes=8, visual_style="noir",
+        bible=CaseBible(source_language="vi", culture="vietnamese", title_vi="Bến Cảng", title_en="The Docks", timeline=[],
+                        entities=[CaseEntity(id="person_1", kind="person", real_names=["Trần Văn Bảo"],
+                                             alias_vi="Nam", alias_en="Nam"),
+                                  CaseEntity(id="person_2", kind="person", real_names=["Lý Văn Cường"],
+                                             alias_vi="Hùng", alias_en="Hung")]),
+        parts=[StoryPart(id="p1", kind="hook", summary_vi=text_vi, event_ids=[], scene_count=1)],
+        scenes=[AdaptedScene(order=1, part_id="disclaimer", narration_vi=DISCLAIMER["vi"], narration_en=DISCLAIMER["en"],
+                             visual_kind="disclaimer"),
+                AdaptedScene(order=2, part_id="p1", narration_vi=text_vi, narration_en=text_en, visual_kind="image")],
+    )
+    case_store.save_plan(plan)
+    response = client.put(f"{BASE}/cases/{plan.case_id}/entities", json={"updates": [
+        {"id": "person_1", "alias_vi": "Tuấn", "alias_en": "Tuan"},
+        {"id": "person_2", "alias_vi": "Dũng", "alias_en": "Dung"}]})
+    assert response.status_code == 200, response.text
+    after = response.json()
+    expected_vi = "Năm ấy, Tuấn sống một mình bên bến cảng. Hung thủ vẫn lẩn trốn, còn Dũng vẫn chờ."
+    assert scene_of(after, 2)["narration_vi"] == expected_vi           # "Năm", "Hung thủ" giữ nguyên
+    assert after["parts"][0]["summary_vi"] == expected_vi
+    assert scene_of(after, 2)["narration_en"] == ("That year, Tuan lived alone by the docks. The killer was still out "
+                                                  "there, and Dung kept waiting.")
 
 
 # ---------------------------------------------------------------- sửa lời từng cảnh, tạo dự án

@@ -65,7 +65,8 @@ def hide_real_names(case_id: str, text: str, fallback: str) -> str:
                                                           alias_vi="", alias_en="")])
         forbidden = build_forbidden_names(bible, case_store.load_source(case_id) or "")
         masked = [dataclasses.replace(f, alias_vi=MASK, alias_en=MASK) for f in forbidden]
-        return apply_aliases(text, masked, "vi")[0]
+        # any_case: thông báo lỗi trích nguyên chữ LLM viết, có thể viết thường cả tên; ẩn thừa ở đây không hại gì.
+        return apply_aliases(text, masked, "vi", any_case=True)[0]
     except Exception:
         logger.exception("Vụ %s: không ẩn được tên thật trong thông báo; dùng thông báo chung", case_id)
         return fallback

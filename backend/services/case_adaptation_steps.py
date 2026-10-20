@@ -10,8 +10,9 @@ Bộ chạy một việc nhỏ của hàng việc phân tích vụ án, cùng c�
   Hàm chờ `busy_sleep` (mặc định asyncio.sleep) và đồng hồ `busy_clock` (time.monotonic) lấy lúc gọi để test thay.
   Mỗi tiến trình chỉ có một lần gọi LLM tại một thời điểm (cổng _LLM_GATE quanh mọi lần gọi qua ask_validated:
   việc của worker lẫn rewrite_english, ở bất kỳ event loop hay luồng nào).
-  Lỗi nhẹ (SoftRejected: tên thật, ngày tháng, tên trong prompt hình) cũng được gọi lại, nhưng hết lượt thì nhận
-  kết quả đó; check_plan ở G7 tự thay tên đã có tên hư cấu và đánh dấu phần còn lại.
+  Lỗi nhẹ (SoftRejected: tên thật, ngày tháng, con số nhận dạng, dạng tên Việt trong lời Anh, tên trong prompt hình)
+  cũng được gọi lại, nhưng hết lượt thì nhận kết quả đó; check_plan ở G7 tự thay tên đã có tên hư cấu, đánh dấu tên
+  và ngày tháng còn lại, và ghi con số nhận dạng, dạng tên Việt trong lời Anh vào check_warnings để màn xem lại hiện ra.
 - chunk_source (G1): cắt bài theo đoạn văn (dòng trống, rồi tới xuống dòng); đoạn văn dài quá thì cắt theo câu,
   câu dài quá thì cắt ở khoảng trắng.
   Mỗi đoạn là một lát cắt nguyên văn của bài, nên nối lại không mất chữ nào.
@@ -65,8 +66,13 @@ from services.case_adaptation_checks import (
     build_forbidden_names,
     check_plan,
     find_dates,
+    find_identifying_numbers,
+    find_name_matches,
+    find_names,
     find_unknown_names,
+    find_vi_forms_in_en,
     fold,
+    identifying_numbers,
     is_kept_term,
 )
 from services.case_adaptation_llm import BUSY_KIND, RETRYABLE_KINDS, LLMCall, LLMError
@@ -161,9 +167,10 @@ class StepRejected(Exception):
 
 
 class SoftRejected(StepRejected):
-    """Kết quả dùng được nhưng còn lỗi nên sửa (tên thật, ngày tháng cụ thể, tên trong prompt hình).
-    ask_validated gửi lý do để model làm lại; hết lượt mà không có kết quả sạch thì dùng `value` của lần gần nhất,
-    vì check_plan sẽ tự thay tên đã có tên hư cấu và đánh dấu phần còn lại để người dùng sửa."""
+    """Kết quả dùng được nhưng còn lỗi nên sửa (tên thật, ngày tháng cụ thể, con số nhận dạng, dạng tên Việt trong lời
+    Anh, tên trong prompt hình). ask_validated gửi lý do để model làm lại; hết lượt mà không có kết quả sạch thì dùng
+    `value` của lần gần nhất, vì check_plan sẽ tự thay tên đã có tên hư cấu, đánh dấu tên và ngày tháng còn lại, và ghi
+    các lỗi nhẹ khác vào check_warnings để người dùng sửa."""
 
     def __init__(self, reason: str, value: Any):
         super().__init__(reason)
@@ -1038,51 +1045,36 @@ def _part_output(pipeline: CasePipeline, kind: str, part_id: str, label: str) ->
     return data["scenes"]
 
 
-# Con số đứng riêng, từ 2 chữ số (không dính chữ, dấu ":" hay "/": "22h15", "02:21", "15B1", "2020s" không tính).
-_NUMBER = re.compile(r"(?<![\w.,:/\-])(\d{2,})(?![\w:/\-]|[.,]\d)")
-# Trên bài đã fold: chữ báo hiệu số nhà, biển số, số điện thoại... đứng ngay trước hoặc ngay sau con số.
-_ID_CUE_BEFORE = re.compile(
-    r"(?<!\w)(?:so nha|so|nha|duong|pho|hem|ngo|kiet|can ho|phong|bien so|bien kiem soat|dien thoai|sdt|"
-    r"no\.?|number|street|plate|phone|room|apartment|unit|#)\s*$")
-_ID_CUE_AFTER = re.compile(r"\s*(?:duong|pho|street|st\.|road|avenue|lane)(?!\w)")
-# Trong lời kể: con số là giờ, tuổi hay thời lượng thì giữ (spec 7.6).
-_TIME_AGE_AFTER = re.compile(r"\s*(?:gio|phut|giay|tuoi|a\.?m\b|p\.?m\b|years?|year-old|minutes?|hours?|seconds?|"
-                             r"o'clock|%)", re.IGNORECASE)
-
-
-def _identifying_numbers(source_text: str) -> set[str]:
-    """Các con số trong bài gốc đứng cạnh chữ báo hiệu số nhà, biển số, số điện thoại ("số 88", "88 Đường...")."""
-    folded = fold(source_text or "")
-    found = set()
-    for m in _NUMBER.finditer(folded):
-        before = folded[max(0, m.start() - 24):m.start()]
-        if _ID_CUE_BEFORE.search(before) or _ID_CUE_AFTER.match(folded, m.end()):
-            found.add(m.group(1))
-    return found
+def _lang_alias(fn: ForbiddenName, lang: str) -> str:
+    return ((fn.alias_vi if lang == "vi" else fn.alias_en) or "").strip()
 
 
 class _TextGuard:
     """Tìm lỗi nhẹ trong chữ LLM viết: tên thật (kể cả tên regex bắt được trên bài gốc), ngày tháng cụ thể,
     con số nhận dạng lấy từ bài, dạng tên tiếng Việt trong lời Anh, tên người trong prompt hình. Mỗi lỗi là một
-    câu ngắn gửi lại cho model."""
+    câu ngắn gửi lại cho model. Tên tìm bằng bộ so khớp chung của case_adaptation_checks (accept_match), nên khớp
+    đúng như check_plan ở bước ráp."""
 
     def __init__(self, bible: CaseBible, source_text: str = ""):
         self.bible = bible
-        self.id_numbers = _identifying_numbers(source_text)
+        self.id_numbers = identifying_numbers(source_text)
         self.forbidden = build_forbidden_names(bible, source_text)
-        self.by_real = {f.real: f for f in self.forbidden}
         self.aliases = list(dict.fromkeys(a.strip() for e in bible.entities
                                           for a in (e.alias_vi, e.alias_en) if a and a.strip()))
 
     def real_names(self, text: str, lang: str) -> list[str]:
-        out = []
-        for real in find_unknown_names(text, self.forbidden, self.aliases):
-            fn = self.by_real.get(real)
-            alias = ((fn.alias_vi if lang == "vi" else fn.alias_en) if fn else None) or ""
-            if alias:
-                out.append(f"có tên thật '{real}' (thay bằng '{alias}')")
+        out: list[str] = []
+        for match in find_name_matches(text, self.forbidden, self.aliases):
+            if match.ambiguous:
+                options = list(dict.fromkeys(a for f in match.candidates if (a := _lang_alias(f, lang))))
+                issue = (f"có tên viết không dấu '{match.text}' trùng tên thật của nhiều người (dùng đúng tên hư cấu "
+                         f"của người được nhắc tới: {_quoted_list(options)})")
+            elif alias := _lang_alias(match.name, lang):
+                issue = f"có tên thật '{match.name.real}' (thay bằng '{alias}')"
             else:
-                out.append(f"có tên thật '{real}' (không có tên hư cấu: bỏ tên này, thay bằng cách gọi chung)")
+                issue = f"có tên thật '{match.name.real}' (không có tên hư cấu: bỏ tên này, thay bằng cách gọi chung)"
+            if issue not in out:
+                out.append(issue)
         return out
 
     @staticmethod
@@ -1092,42 +1084,26 @@ class _TextGuard:
 
     def vi_forms_in_en(self, text: str) -> list[str]:
         """Tên hư cấu dạng tiếng Việt (Hán-Việt...) xuất hiện trong lời Anh, khi dạng Anh khác hẳn."""
-        folded = fold(text)
-        out = []
-        for ent in self.bible.entities:
-            if ent.kind == "identifier":
-                continue
-            key_vi, key_en = _fold_key(ent.alias_vi), _fold_key(ent.alias_en)
-            if not key_vi or not key_en or key_vi == key_en or key_vi in key_en:
-                continue
-            rest = _word_pattern(key_en).sub(" ", folded)
-            if _word_pattern(key_vi).search(rest):
-                out.append(f"dùng dạng tên tiếng Việt '{ent.alias_vi}' (lời Anh phải dùng '{ent.alias_en}')")
-        return out
+        return [f"dùng dạng tên tiếng Việt '{ent.alias_vi}' (lời Anh phải dùng '{ent.alias_en}')"
+                for ent in find_vi_forms_in_en(text, self.bible.entities)]
 
     def names_in_prompt(self, text: str) -> list[str]:
         out = [f"có tên thật '{real}'" for real in find_unknown_names(text, self.forbidden, self.aliases)]
-        folded = fold(text)
         for ent in self.bible.entities:
             if ent.kind != "person":
                 continue
             for alias in dict.fromkeys((ent.alias_en, ent.alias_vi)):
-                key = _fold_key(alias)
-                if key and _word_pattern(key).search(folded):
+                if alias and find_names(text, [alias]):
                     out.append(f"ghi tên nhân vật '{alias}' (tả bằng ngoại hình, không ghi tên)")
                     break
         return out
 
     def identifying_numbers(self, text: str) -> list[str]:
-        """Con số nhận dạng của bài (số nhà, biển số, số điện thoại...) còn trong lời kể; giờ và tuổi thì giữ."""
-        folded = fold(text)
-        found: list[str] = []
-        for m in _NUMBER.finditer(folded):
-            number = m.group(1)
-            if number in self.id_numbers and not _TIME_AGE_AFTER.match(folded, m.end()) and number not in found:
-                found.append(number)
+        """Con số nhận dạng của bài (số nhà, biển số, số điện thoại...) còn trong lời kể; giờ, tuổi, số tiền và số
+        lượng thì giữ."""
         return [f"có con số nhận dạng '{n}' lấy từ bài (số nhà, biển số, số điện thoại, số giấy tờ...): bỏ số này, "
-                "nói chung chung (ví dụ 'một căn nhà trên con phố gần cảng')" for n in found]
+                "nói chung chung (ví dụ 'một căn nhà trên con phố gần cảng')"
+                for n in find_identifying_numbers(text, self.id_numbers)]
 
     def narration(self, text: str, lang: str) -> list[str]:
         issues = self.real_names(text, lang) + self.dates(text) + self.identifying_numbers(text)

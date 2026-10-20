@@ -20,7 +20,7 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from models.case_adaptation_schemas import DISCLAIMER, MAX_ATTEMPTS, CaseBible, CasePipeline
+from models.case_adaptation_schemas import DISCLAIMER, MAX_ATTEMPTS, CaseBible, CaseEntity, CasePipeline
 from services import case_store
 from services.case_adaptation_checks import fold, has_blocking_flags
 from services.case_adaptation_llm import LLMError
@@ -30,6 +30,7 @@ from services.case_adaptation_steps import (
     SoftRejected,
     StepFailed,
     StepRejected,
+    _TextGuard,
     ask_validated,
     chunk_source,
     initial_steps,
@@ -533,6 +534,40 @@ def test_write_en_identifying_number_soft_rejected(isolated_projects_dir):
     _run_pipeline(pipeline, llm, stop_after="write_en_p1")
     assert calls.count("WRITE_EN p1") == 2
     assert "'88'" in _reason(llm)
+
+
+def test_assemble_lists_soft_rejected_numbers_and_vietnamese_forms_in_check_warnings(isolated_projects_dir):
+    # Lỗi nhẹ còn sau MAX_ATTEMPTS lần vẫn được nhận; bước ráp phải ghi lại để màn xem lại hiện ra (không chặn).
+    pipeline = _new_pipeline()
+    vi = copy.deepcopy(load_fixture("WRITE_VI p1"))
+    vi["scenes"][0]["narration_vi"] = vi["scenes"][0]["narration_vi"].replace(
+        "trên Đường Thanh Lam", "ở số 88 Đường Thanh Lam")
+    en = copy.deepcopy(load_fixture("WRITE_EN p1"))
+    en["scenes"][1]["narration_en"] = en["scenes"][1]["narration_en"].replace(
+        "The person who found him", "At Cang Hai Yen, the person who found him")
+    llm, calls = make_fake_llm({"WRITE_VI p1": vi, "WRITE_EN p1": en})
+    _run_pipeline(pipeline, llm)
+    assert calls.count("WRITE_VI p1") == MAX_ATTEMPTS and calls.count("WRITE_EN p1") == MAX_ATTEMPTS
+    plan = case_store.load_plan(pipeline.case_id)
+    assert "số 88" in plan.scenes[1].narration_vi and "Cang Hai Yen" in plan.scenes[2].narration_en
+    assert any("cảnh 2" in w and "narration_vi" in w and "'88'" in w for w in plan.check_warnings), plan.check_warnings
+    assert any("cảnh 3" in w and "narration_en" in w and "'Cảng Hải Yến'" in w and "'Hai Yen Port'" in w
+               for w in plan.check_warnings), plan.check_warnings
+    assert not has_blocking_flags(plan)
+
+
+def test_text_guard_catches_real_names_that_differ_only_in_diacritics():
+    bible = CaseBible(source_language="vi", culture="vietnamese", title_vi="Đêm Mưa", title_en="Rain", timeline=[],
+                      entities=[CaseEntity(id="person_1", kind="person", real_names=["Nguyễn Văn Hùng"],
+                                           alias_vi="Trịnh Quang Vũ", alias_en="Trinh Quang Vu"),
+                                CaseEntity(id="person_2", kind="person", real_names=["Nguyễn Văn Hưng"],
+                                           alias_vi="Lê Minh Tâm", alias_en="Le Minh Tam")])
+    guard = _TextGuard(bible)
+    assert guard.narration("Nguyễn Văn Hưng bước vào kho.", "vi") == [
+        "có tên thật 'Nguyễn Văn Hưng' (thay bằng 'Lê Minh Tâm')"]
+    issues = guard.narration("Nguyen Van Hung walked into the yard.", "en")
+    assert len(issues) == 1 and "'Trinh Quang Vu'" in issues[0] and "'Le Minh Tam'" in issues[0]
+    assert guard.narration("Hung thủ vẫn lẩn trốn, cuộc sống hòa bình đã mất.", "vi") == []
 
 
 def test_hook_borrowed_event_is_marked_tease_only(isolated_projects_dir):
