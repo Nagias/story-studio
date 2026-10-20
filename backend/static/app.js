@@ -5115,7 +5115,7 @@ function updateMuseCloudUI(data) {
   museFleetState.concurrencyLimit = (data && data.concurrency_limit !== undefined) ? data.concurrency_limit : null;
   applyMuseFleetAccounts(data);
 
-  // 1. Update Header Status Badge
+  // 1. Update Header Status Badge (huy hiệu chỉ hiện từ 1880px, khớp với nút trong header của index.html)
   if (DOM.btnMuseCloudStatus && DOM.headerMuseStatusDot && DOM.headerMuseStatusText && DOM.headerMuseSpecsBadge) {
     if (statusStr === 'online') {
       DOM.btnMuseCloudStatus.className = "px-2.5 py-1.5 bg-gradient-to-r from-emerald-50 to-teal-50 hover:from-emerald-100 hover:to-teal-100 text-emerald-800 rounded-lg text-xs font-bold border border-emerald-300 transition flex items-center gap-1.5 shadow-xs group cursor-pointer";
@@ -5125,7 +5125,8 @@ function updateMuseCloudUI(data) {
       `;
       DOM.headerMuseStatusText.textContent = "Sẵn sàng";
       DOM.headerMuseStatusText.className = "text-emerald-900";
-      DOM.headerMuseSpecsBadge.className = "hidden xl:inline text-[10px] bg-white px-1.5 py-0.5 rounded text-emerald-700 border border-emerald-200 font-mono";
+      DOM.headerMuseStatusText.title = "";
+      DOM.headerMuseSpecsBadge.className = "hidden min-[1880px]:inline text-[10px] bg-white px-1.5 py-0.5 rounded text-emerald-700 border border-emerald-200 font-mono";
       DOM.headerMuseSpecsBadge.textContent = museFleetKindSummary();
     } else if (statusStr === 'busy') {
       DOM.btnMuseCloudStatus.className = "px-2.5 py-1.5 bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 rounded-lg text-xs font-bold border border-amber-300 transition flex items-center gap-1.5 shadow-xs group cursor-pointer animate-pulse";
@@ -5134,9 +5135,12 @@ function updateMuseCloudUI(data) {
       `;
       const activeMsg = data?.active_job?.status_message || "Đang render...";
       DOM.headerMuseStatusText.textContent = activeMsg.length > 25 ? activeMsg.substring(0, 22) + "..." : activeMsg;
-      DOM.headerMuseStatusText.className = "text-amber-900";
-      DOM.headerMuseSpecsBadge.className = "hidden xl:inline text-[10px] bg-white px-1.5 py-0.5 rounded text-amber-800 border border-amber-200 font-mono";
-      DOM.headerMuseSpecsBadge.textContent = `Đang render • ${museFleetKindSummary()}`;
+      // Giới hạn bề rộng để thông báo dài không ép mất tên dự án trên màn 1280-1600px; rê chuột xem đủ câu.
+      // 140px vừa đủ các câu runner gửi lâu nhất ("Muse đang tạo video..." 136px, "Gửi prompt lên Muse..." 137px).
+      DOM.headerMuseStatusText.className = "text-amber-900 truncate max-w-[140px]";
+      DOM.headerMuseStatusText.title = activeMsg;
+      DOM.headerMuseSpecsBadge.className = "hidden min-[1880px]:inline text-[10px] bg-white px-1.5 py-0.5 rounded text-amber-800 border border-amber-200 font-mono";
+      DOM.headerMuseSpecsBadge.textContent = museFleetKindSummary();   // chữ trạng thái bên cạnh đã nói đang render
     } else {
       DOM.btnMuseCloudStatus.className = "px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold border border-rose-300 transition flex items-center gap-1.5 shadow-xs group cursor-pointer";
       DOM.headerMuseStatusDot.innerHTML = `
@@ -5144,7 +5148,8 @@ function updateMuseCloudUI(data) {
       `;
       DOM.headerMuseStatusText.textContent = "Chưa kết nối";
       DOM.headerMuseStatusText.className = "text-rose-700 underline decoration-rose-300";
-      DOM.headerMuseSpecsBadge.className = "hidden xl:inline text-[10px] bg-rose-100 px-1.5 py-0.5 rounded text-rose-800 font-semibold";
+      DOM.headerMuseStatusText.title = "";
+      DOM.headerMuseSpecsBadge.className = "hidden min-[1880px]:inline text-[10px] bg-rose-100 px-1.5 py-0.5 rounded text-rose-800 font-semibold";
       DOM.headerMuseSpecsBadge.textContent = "Bấm để xem Fleet";
     }
   }
