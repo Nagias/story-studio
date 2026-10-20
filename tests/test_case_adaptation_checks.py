@@ -182,6 +182,53 @@ def test_single_syllable_name_does_not_rewrite_common_words():
     assert replaced == ["Lâm"]
 
 
+STREET = [ForbiddenName("Lê Lợi", "e1", "Thanh Lam", "Thanh Lam"), ForbiddenName("Tân Hải", "e2", "Hải Yến", "Hai Yen")]
+
+
+@pytest.mark.parametrize("text", [
+    "Một bóng người lẻ loi đứng trong mưa.",
+    "Một bóng người LẺ LOI đứng trong mưa.",
+    "Cảnh tàn hại sau trận bão.",
+    "Ông ta sống lẻ loi, tàn hại cả đời mình.",
+    "Lê Loi và Le Lợi",           # lẫn dấu: không phải cách viết nào của tên thật
+])
+def test_multi_word_name_is_not_matched_inside_ordinary_words_that_fold_the_same(text):
+    assert apply_aliases(text, STREET, "vi") == (text, [])
+    assert find_unknown_names(text, STREET, []) == []
+
+
+@pytest.mark.parametrize("text", [
+    "Lê Lợi", "LÊ LỢI", "lê lợi", "Le Loi", "le loi", "LE LOI", "Đường Lê Lợi", "đường le loi", "Số 5 Lê  Lợi.",
+])
+def test_multi_word_name_is_matched_with_same_diacritics_or_without_any(text):
+    assert find_unknown_names(text, STREET, []) == ["Lê Lợi"]
+    new, replaced = apply_aliases(text, STREET, "vi")
+    assert replaced == ["Lê Lợi"] and "Thanh Lam" in new and "Lợi" not in new and "Loi" not in new
+
+
+def test_check_plan_keeps_ordinary_words_and_replaces_the_real_street():
+    ents = [_entity("e1", ["Lê Lợi"], "Thanh Lam", "Thanh Lam", kind="place"),
+            _entity("e2", ["Tân Hải"], "Hải Yến", "Hai Yen", kind="place")]
+    plan = _plan([_scene(1, narration_vi="Một bóng người lẻ loi, cảnh tàn hại.", narration_en="A lonely figure."),
+                  _scene(2, narration_vi="Nhà ở đường Lê Lợi, gần cảng Tân Hải.", narration_en="On LE LOI street.")],
+                 entities=ents)
+    checked = check_plan(plan, "")
+    assert checked.scenes[0].narration_vi == "Một bóng người lẻ loi, cảnh tàn hại."
+    assert checked.scenes[0].flags == []
+    assert checked.scenes[1].narration_vi == "Nhà ở đường Thanh Lam, gần cảng Hải Yến."
+    assert checked.scenes[1].narration_en == "On Thanh Lam street."
+    assert not has_blocking_flags(checked)
+    assert all("lẻ loi" not in w and "tàn hại" not in w for w in checked.warnings)
+
+
+def test_old_and_new_tone_placement_are_the_same_spelling():
+    fb = [ForbiddenName("Lê Thuý Hoà", "e1", "An Nhiên", "An Nhien"), ForbiddenName("Hoà", "e2", "Bình", "Binh")]
+    for text in ["Lê Thuý Hoà", "Lê Thúy Hòa", "LÊ THÚY HÒA"]:
+        assert apply_aliases(text, fb, "vi") == ("An Nhiên", ["Lê Thuý Hoà"])
+    assert find_unknown_names("Cô Hòa bước vào, rồi Hoà đi.", fb, []) == ["Hoà"]
+    assert apply_aliases("Cô Hòa bước vào.", fb, "vi") == ("Cô Bình bước vào.", ["Hoà"])
+
+
 # Tên thật mà bỏ dấu thì trùng một danh từ chung: chỗ viết đúng dấu danh từ chung không phải là tên.
 COLLIDING = [ForbiddenName("Hưng Thu", "e1", "Lê Minh", "Le Minh"),
              ForbiddenName("Gia Định", "e2", "Phú An", "Phu An")]

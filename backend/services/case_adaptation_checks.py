@@ -2,12 +2,16 @@
 Kiểm lọt tên thật, ngày tháng cụ thể và tự áp tên hư cấu (G7, không dùng LLM).
 
 - fold: chữ thường, bỏ dấu (đ thành d), giữ nguyên độ dài từng ký tự để đổi vị trí khớp về chuỗi gốc.
-- apply_aliases / find_unknown_names: so khớp trên chuỗi đã fold, theo ranh giới từ.
+- apply_aliases / find_unknown_names: tìm trên chuỗi đã fold, theo ranh giới từ, rồi chỉ nhận chỗ khớp có cách viết
+  đúng như tên thật (xem _same_spelling), vì khi bỏ dấu nhiều từ thường trùng tên thật ("lẻ loi" ~ "Lê Lợi",
+  "tàn hại" ~ "Tân Hải").
     * Chỗ khớp nằm trọn trong một lần xuất hiện của tên hư cấu thì bỏ qua (tên hư cấu được phép
       chứa một mảnh trùng tên thật của người khác, ví dụ "Phan Đức Lâm" so với tên thật "Lâm").
     * Tên thật chỉ có một âm tiết và ngắn hơn 3 ký tự thì bỏ qua.
-    * Tên thật một âm tiết (ví dụ "Lâm") chỉ khớp khi viết hoa chữ đầu và đúng dấu (hoặc bỏ hết dấu),
-      để không thay nhầm "làm", "lắm" vì khi bỏ dấu chúng trùng "lam".
+    * Mọi tên (một hay nhiều âm tiết) chỉ nhận khi chỗ khớp viết đúng dấu như tên thật (không phân biệt hoa thường,
+      kiểu đặt dấu thanh cũ/mới coi như một) hoặc viết hoàn toàn không dấu ("Le Loi", "LE LOI").
+    * Tên thật một âm tiết (ví dụ "Lâm") còn phải viết hoa chữ đầu, để không thay nhầm "làm", "lắm"
+      vì khi bỏ dấu chúng trùng "lam".
     * Chỗ khớp mà viết đúng dấu là một danh từ chung trong GENERIC_TERMS thì bỏ qua: tên thật "Hưng Thu" hay
       "Gia Định" bỏ dấu trùng "hung thủ", "gia đình", nhưng hai cụm này trong lời kể không phải tên.
     * Tên quốc gia và tên chung của cơ quan được giữ nguyên (spec mục 6): build_forbidden_names không đưa
@@ -178,14 +182,36 @@ def _alias_spans(folded: str, aliases: Iterable[str], real_keys: set[str]) -> li
     return [m.span() for m in pattern.finditer(folded)]
 
 
+# Dấu thanh đặt kiểu cũ -> kiểu mới ("hoà" -> "hòa", "thuý" -> "thúy"), để hai cách viết cùng một tên được coi là một.
+_TONE_PLACEMENT = {
+    "oà": "òa", "oá": "óa", "oả": "ỏa", "oã": "õa", "oạ": "ọa",
+    "oè": "òe", "oé": "óe", "oẻ": "ỏe", "oẽ": "õe", "oẹ": "ọe",
+    "uý": "úy", "uỳ": "ùy", "uỷ": "ủy", "uỹ": "ũy", "uỵ": "ụy",
+}
+_TONE_PLACEMENT_RE = re.compile("|".join(_TONE_PLACEMENT))
+
+
+def _spelling(text: str) -> str:
+    """Cách viết giữ dấu để so sánh: NFC, chữ thường, khoảng trắng gộp, dấu thanh theo kiểu mới."""
+    return _TONE_PLACEMENT_RE.sub(lambda m: _TONE_PLACEMENT[m.group(0)], _accented_key(text))
+
+
+def _same_spelling(orig: str, real: str) -> bool:
+    """`orig` (chỗ khớp trên bài, đã NFC) có viết như tên thật `real` không: đúng từng dấu (không phân biệt hoa
+    thường), hoặc hoàn toàn không dấu ("Le Loi", "le loi"). Viết sai dấu thì là từ khác trùng khi bỏ dấu."""
+    if _spelling(orig) == _spelling(real):
+        return True
+    low = unicodedata.normalize("NFC", orig).lower()
+    return _fold_nfc(low) == low
+
+
 def _single_token_ok(orig: str, real: str) -> bool:
     """Tên một âm tiết chỉ nhận khi viết hoa chữ đầu và đúng dấu (hoặc bỏ hết dấu)."""
     if not real.strip().replace("-", "").isalpha():
         return True                       # số điện thoại, biển số...: so khớp bình thường
     if orig[:1].islower():
         return False
-    low = orig.lower()
-    return low == unicodedata.normalize("NFC", real).strip().lower() or low == _fold_nfc(low)
+    return _same_spelling(orig, real)
 
 
 def _scan(norm: str, forbidden: Iterable[ForbiddenName], alias_pool: Iterable[str]):
@@ -205,7 +231,8 @@ def _scan(norm: str, forbidden: Iterable[ForbiddenName], alias_pool: Iterable[st
             continue    # chữ viết đúng dấu là danh từ chung ("hung thủ"), không phải tên thật bỏ dấu ("Hưng Thu")
         key = " ".join(m.group(0).split())
         fn = entries[key]
-        if " " not in key and not _single_token_ok(norm[s:e], fn.real):
+        ok = _single_token_ok(norm[s:e], fn.real) if " " not in key else _same_spelling(norm[s:e], fn.real)
+        if not ok:
             continue
         hits.append((s, e, fn))
     return hits

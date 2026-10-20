@@ -13,7 +13,6 @@ chạy tới `done`; kế hoạch không còn cờ nào (cảnh lẫn cấp kế
 """
 import asyncio
 import os
-import re
 import sys
 import time
 from pathlib import Path
@@ -25,8 +24,8 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from services import case_adaptation_llm, case_store
-from services.case_adaptation_checks import build_forbidden_names, find_unknown_names, fold, has_blocking_flags
-from services.case_adaptation_llm import LLMError
+from services.case_adaptation_checks import ForbiddenName, build_forbidden_names, find_unknown_names, has_blocking_flags
+from services.case_adaptation_llm import RETRYABLE_KINDS, LLMError
 from services.case_adaptation_steps import RETRY_NOTE
 from services.case_worker import pipeline_progress, start_analysis, worker_loop
 from tests.case_adaptation_fakes import FIXTURES_DIR
@@ -43,19 +42,16 @@ TIMEOUT_S = float(os.getenv("STORY_STUDIO_LIVE_TIMEOUT_S", "3600"))
 _RETRY_MARK = RETRY_NOTE.split("{")[0].strip()
 
 # Tên và số nhận dạng thật trong dossier.txt, chép tay để kiểm độc lập với hồ sơ do model tự rút ra.
-# Tên đầy đủ so không dấu, theo ranh giới từ. Số thì so chuỗi liền.
-REAL_NAMES = ["Nguyễn Văn Hùng", "Lê Thị Mai", "Vũ Đình Trọng", "Tân Hải", "Lê Lợi"]
+# Tên so bằng bộ so khớp của code thật (find_unknown_names): đúng dấu hoặc hoàn toàn không dấu, theo ranh giới từ,
+# nên "lẻ loi" không bị coi là "Lê Lợi". Số nhận dạng toàn chữ ASCII nên so chuỗi liền.
+REAL_NAMES = ["Nguyễn Văn Hùng", "Lê Thị Mai", "Vũ Đình Trọng", "Tân Hải", "Lê Lợi", "Hải Phòng"]
 REAL_IDENTIFIERS = ["15B1", "0912345678", "987.65"]
+_REAL_FORBIDDEN = [ForbiddenName(name) for name in REAL_NAMES]
 
 
-def _word_pattern(name: str) -> re.Pattern:
-    return re.compile(r"(?<!\w)" + r"\s+".join(re.escape(part) for part in fold(name).split()) + r"(?!\w)")
-
-
-def _real_names_in(text: str) -> list[str]:
-    folded = fold(text)
-    found = [name for name in REAL_NAMES if _word_pattern(name).search(folded)]
-    return found + [ident for ident in REAL_IDENTIFIERS if ident.lower() in folded]
+def _real_names_in(text: str, aliases: list[str]) -> list[str]:
+    found = find_unknown_names(text, _REAL_FORBIDDEN, aliases)
+    return found + [ident for ident in REAL_IDENTIFIERS if ident.lower() in text.lower()]
 
 
 class _CallLog:
@@ -91,7 +87,8 @@ class _CallLog:
         )
 
 
-async def _wait_for_pipeline(case_id: str) -> None:
+async def _wait_for_pipeline(case_id: str) -> bool:
+    """Chạy worker cho tới khi hàng việc hết `running`. Trả True nếu quá TIMEOUT_S mà chưa xong."""
     stop = asyncio.Event()
     task = asyncio.create_task(worker_loop(stop, idle_sleep=0.5))
     deadline = time.monotonic() + TIMEOUT_S
@@ -100,8 +97,9 @@ async def _wait_for_pipeline(case_id: str) -> None:
             if task.done():
                 break
             if time.monotonic() > deadline:
-                pytest.fail(f"Hàng việc chưa xong sau {TIMEOUT_S:.0f} s.", pytrace=False)
+                return True
             await asyncio.sleep(1.0)
+        return False
     finally:
         stop.set()
         if not task.done():
@@ -109,26 +107,40 @@ async def _wait_for_pipeline(case_id: str) -> None:
         await asyncio.gather(task, return_exceptions=True)
 
 
+async def _ping(real_call) -> None:
+    await real_call("Chỉ trả JSON.", 'TASK: PING\nTrả về {"ok": true}', temperature=0.0, timeout=60.0)
+
+
+def _check_9router_ready(real_call) -> None:
+    """Một lần gọi nhỏ trước: 9router không sẵn sàng (bận, hết hạn mức, sai key) thì báo ngay thay vì để mỗi việc chờ tới
+    15 phút. Lỗi tạm thời (timeout, mạng, JSON hỏng) được thử thêm một lần; bận, auth, không có tài khoản thì không."""
+    not_ready = None
+    for attempt in range(2):
+        try:
+            asyncio.run(_ping(real_call))
+            return
+        except LLMError as exc:
+            not_ready = exc
+            if exc.kind not in RETRYABLE_KINDS:
+                break
+    pytest.fail(f"9router chưa sẵn sàng ({not_ready.kind}): {not_ready.user_message}", pytrace=False)
+
+
 def test_dossier_through_real_9router(isolated_projects_dir, monkeypatch, capsys):
     log = _CallLog()
     real_call = case_adaptation_llm.call_llm_json
 
-    # Một lần gọi nhỏ trước: 9router không sẵn sàng (bận, hết hạn mức, sai key) thì báo ngay thay vì để mỗi việc chờ tới 15 phút.
-    not_ready = None
-    try:
-        asyncio.run(real_call("Chỉ trả JSON.", 'TASK: PING\nTrả về {"ok": true}', temperature=0.0, timeout=60.0))
-    except LLMError as exc:
-        not_ready = exc
-    if not_ready is not None:
-        pytest.fail(f"9router chưa sẵn sàng ({not_ready.kind}): {not_ready.user_message}", pytrace=False)
+    _check_9router_ready(real_call)
 
     monkeypatch.setattr(case_adaptation_llm, "call_llm_json", log.wrap(real_call))
     started = time.monotonic()
     case_id = start_analysis(DOSSIER, TARGET_MINUTES, STYLE)
-    asyncio.run(_wait_for_pipeline(case_id))
+    timed_out = asyncio.run(_wait_for_pipeline(case_id))
     elapsed = time.monotonic() - started
     with capsys.disabled():
         print("\n" + log.summary(elapsed))
+    if timed_out:
+        pytest.fail(f"Hàng việc chưa xong sau {TIMEOUT_S:.0f} s.", pytrace=False)
 
     pipeline = case_store.load_pipeline(case_id)
     progress = pipeline_progress(pipeline)
@@ -155,6 +167,6 @@ def test_dossier_through_real_9router(isolated_projects_dir, monkeypatch, capsys
     for scene in story:
         for field in ("narration_vi", "narration_en", "image_prompt", "video_prompt"):
             text = getattr(scene, field)
-            for name in _real_names_in(text) + find_unknown_names(text, forbidden, aliases):
+            for name in _real_names_in(text, aliases) + find_unknown_names(text, forbidden, aliases):
                 leaks.append((scene.order, field, name))
     assert not leaks, f"lọt tên thật: {leaks}"
