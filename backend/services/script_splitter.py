@@ -17,11 +17,12 @@ import re
 import json
 import math
 import logging
-from typing import List, Dict, Any, Optional, Tuple
+import functools
+from typing import List, Dict, Any, Optional, Tuple, Callable, Awaitable
 
 import httpx
 
-from config import NINEROUTER_BASE_URL, NINEROUTER_API_KEY, NINEROUTER_LLM_MODEL
+from config import NINEROUTER_BASE_URL, NINEROUTER_API_KEY, NINEROUTER_SCENE_MODEL
 
 logger = logging.getLogger("story_studio.script_splitter")
 
@@ -243,7 +244,7 @@ class SemanticStoryAnalyzer:
     ):
         self.ninerouter_api_key = ninerouter_api_key or os.getenv("NINEROUTER_API_KEY") or NINEROUTER_API_KEY
         self.ninerouter_base_url = ninerouter_base_url or os.getenv("NINEROUTER_BASE_URL") or NINEROUTER_BASE_URL
-        self.ninerouter_model = model_name or NINEROUTER_LLM_MODEL or "ag/gemini-3.8-flash-high"
+        self.ninerouter_model = model_name or NINEROUTER_SCENE_MODEL or "ag/gemini-3.8-flash-low"
         self.gemini_api_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
         self.openrouter_api_key = openrouter_api_key or os.getenv("OPENROUTER_API_KEY")
         self.preferred_provider = preferred_provider.lower()
@@ -460,6 +461,7 @@ class SemanticStoryAnalyzer:
         pacing: Optional[str] = None,
         style_preset: str = "manga_murata_battle",
         is_novel: bool = False,
+        part_note: Optional[str] = None,
     ) -> Optional[List[Dict[str, Any]]]:
         """
         Calls 9router Gateway with Gemini 3.8 Flash to analyze script or adapt novel chapter
@@ -469,7 +471,7 @@ class SemanticStoryAnalyzer:
             return None
 
         actual_pacing = pacing or pacing_name or "fast"
-        model = self.ninerouter_model or "ag/gemini-3.8-flash-high"
+        model = self.ninerouter_model or "ag/gemini-3.8-flash-low"
         endpoint = f"{self.ninerouter_base_url.rstrip('/')}/chat/completions"
         pacing_info = PACING_CONFIGS.get(actual_pacing, PACING_CONFIGS["fast"])
 
@@ -542,9 +544,10 @@ class SemanticStoryAnalyzer:
         }
 
         user_content = (
-            f"TARGET PACING: {pacing_name} ({pacing_info['description']})\n"
+            f"TARGET PACING: {actual_pacing} ({pacing_info['description']})\n"
             f"STYLE PRESET: {style_preset}\n"
             f"IS LIGHT NOVEL CHAPTER: {is_novel}\n\n"
+            f"{_part_header(part_note)}"
             f"STORY CONTENT TO ADAPT:\n{text_chunk}"
         )
 
@@ -559,7 +562,7 @@ class SemanticStoryAnalyzer:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=65.0) as client:
+            async with httpx.AsyncClient(timeout=LLM_PART_TIMEOUT_S) as client:
                 res = await client.post(endpoint, headers=headers, json=payload)
                 if res.status_code == 200:
                     data = res.json()
@@ -575,9 +578,13 @@ class SemanticStoryAnalyzer:
                 else:
                     logger.warning(f"9router LLM returned status {res.status_code}: {res.text[:200]}")
                     self.last_error = f"9router HTTP {res.status_code}: {res.text[:200]}"
+        except httpx.TimeoutException:
+            logger.error(f"9router LLM timeout after {LLM_PART_TIMEOUT_S:g}s")
+            self.last_error = f"9router không trả lời trong {LLM_PART_TIMEOUT_S:g} giây"
         except Exception as e:
-            logger.error(f"Error calling 9router LLM: {e}")
-            self.last_error = f"Lỗi gọi 9router: {e}"
+            logger.error(f"Error calling 9router LLM: {type(e).__name__}: {e}")
+            # Một số lỗi httpx có chuỗi rỗng: kèm tên lỗi để người dùng biết chuyện gì xảy ra
+            self.last_error = f"Lỗi gọi 9router: {type(e).__name__}: {e}".rstrip(": ")
 
         return None
 
@@ -585,6 +592,7 @@ class SemanticStoryAnalyzer:
         self,
         text_chunk: str,
         pacing_name: str,
+        part_note: Optional[str] = None,
     ) -> Optional[List[Dict[str, Any]]]:
         """
         Calls Gemini API (gemini-2.0-flash / gemini-1.5-flash) to perform deep semantic decomposition.
@@ -627,7 +635,7 @@ class SemanticStoryAnalyzer:
             "contents": [
                 {
                     "parts": [
-                        {"text": f"{system_instruction}\n\nSTORY SCRIPT:\n{text_chunk}"}
+                        {"text": f"{system_instruction}\n\n{_part_header(part_note)}STORY SCRIPT:\n{text_chunk}"}
                     ]
                 }
             ],
@@ -638,7 +646,7 @@ class SemanticStoryAnalyzer:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=45.0) as client:
+            async with httpx.AsyncClient(timeout=LLM_PART_TIMEOUT_S) as client:
                 res = await client.post(endpoint, json=payload)
                 if res.status_code == 200:
                     data = res.json()
@@ -659,6 +667,7 @@ class SemanticStoryAnalyzer:
         self,
         text_chunk: str,
         pacing_name: str,
+        part_note: Optional[str] = None,
     ) -> Optional[List[Dict[str, Any]]]:
         """
         Calls OpenRouter API for deep semantic decomposition using Gemini or Claude or Llama models.
@@ -691,6 +700,7 @@ class SemanticStoryAnalyzer:
             '  "image_prompt": "Cinematic 8k English prompt for Midjourney/Flux",\n'
             '  "estimated_duration": 3.5\n'
             "}]\n\n"
+            f"{_part_header(part_note)}"
             f"STORY SCRIPT:\n{text_chunk}"
         )
 
@@ -710,7 +720,7 @@ class SemanticStoryAnalyzer:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=45.0) as client:
+            async with httpx.AsyncClient(timeout=LLM_PART_TIMEOUT_S) as client:
                 res = await client.post(endpoint, json=payload, headers=headers)
                 if res.status_code == 200:
                     data = res.json()
@@ -819,6 +829,209 @@ def group_sentences_by_pacing(
     return scenes_raw
 
 
+# Mỗi lần gọi LLM chỉ gửi một phần ngắn, như luồng true-crime (khúc 3.000 ký tự): gửi cả chương
+# một lần thì LLM hay tóm tắt, bỏ chi tiết hoặc trả quá lâu. Bài dài được chia nhiều phần, gọi lần lượt.
+LLM_PART_MAX_CHARS = 3000
+# Số lần gọi tối đa cho một phần: lần đầu và một lần thử lại kèm góp ý.
+LLM_PART_ATTEMPTS = 2
+# Lời kể các cảnh của một phần phải dài ít nhất chừng này so với phần gốc; ngắn hơn là LLM đã tóm tắt.
+# Đo thật 20/10/2026 trên bài true-crime tiếng Việt: lời kể kiểu reviewer 40-64% vẫn đủ mọi sự kiện;
+# 30% đã mất cả một tình tiết; gửi cả bài một lần (LLM lười) chỉ còn 12%. Lần thử lại kèm góp ý
+# đưa phần 27% lên 60-76%.
+LLM_MIN_COVERAGE = 0.4
+# Bấy nhiêu phần liền nhau gọi lỗi (HTTP, timeout, JSON hỏng) thì coi như LLM đang hỏng: các phần còn lại
+# chia offline, không chờ thêm. Phần LLM trả lời nhưng kể quá ngắn không tính, vì LLM vẫn chạy.
+LLM_MAX_FAILED_PARTS_IN_ROW = 2
+# Timeout một lần gọi (giây). Luồng true-crime đo thật ≤ 63 s cho khúc 3.000 ký tự; chừa thêm vì
+# danh sách cảnh kèm prompt ảnh dài hơn.
+LLM_PART_TIMEOUT_S = 150.0
+
+# Chỗ ngắt câu: sau dấu kết câu (kèm nháy/ngoặc đóng) có khoảng trắng, để "3.5" không bị tách;
+# dấu kết câu CJK không cần khoảng trắng phía sau.
+_SENTENCE_BREAK = re.compile(r'(?:(?<=[.!?…])|(?<=[.!?…]["\'”’)\]]))\s+|(?<=[。！？])\s*')
+
+
+def _pack_pieces(pieces: List[str], sep: str, max_chars: int) -> List[str]:
+    """Gộp các mảnh (mỗi mảnh <= max_chars) thành ít phần nhất, mỗi phần <= max_chars."""
+    packed: List[str] = []
+    current = ""
+    for piece in pieces:
+        candidate = f"{current}{sep}{piece}" if current else piece
+        if len(candidate) <= max_chars:
+            current = candidate
+        else:
+            packed.append(current)
+            current = piece
+    if current:
+        packed.append(current)
+    return packed
+
+
+def split_text_for_llm(full_text: str, max_chars: int) -> List[str]:
+    """
+    Chia bài thành các phần <= max_chars ký tự để gửi LLM, ưu tiên ranh giới đoạn văn rồi câu;
+    câu dài hơn giới hạn mới cắt theo từ. Không bỏ chữ nào: chỉ khoảng trắng ở chỗ cắt có thể đổi.
+    """
+    text = full_text.strip()
+    if len(text) <= max_chars:
+        return [text] if text else []
+
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    pieces: List[str] = []
+    for para in (p.strip() for p in text.split("\n")):
+        if len(para) <= max_chars:
+            if para:
+                pieces.append(para)
+            continue
+        sentence_pieces: List[str] = []
+        for sentence in _SENTENCE_BREAK.split(para):
+            if len(sentence) <= max_chars:
+                if sentence:
+                    sentence_pieces.append(sentence)
+                continue
+            words: List[str] = []
+            for word in sentence.split():
+                words.extend(word[i:i + max_chars] for i in range(0, len(word), max_chars))
+            sentence_pieces.extend(_pack_pieces(words, " ", max_chars))
+        pieces.extend(_pack_pieces(sentence_pieces, " ", max_chars))
+    return _pack_pieces(pieces, "\n", max_chars)
+
+
+def _llm_part_note(index: int, total: int) -> Optional[str]:
+    """Dặn LLM đây là một phần của bài dài, để không tóm tắt và không mở hook mới giữa chừng."""
+    if total <= 1:
+        return None
+    note = (
+        f"PART {index}/{total} OF THE SAME STORY (the text is long, so it is sent in parts). "
+        "Adapt ALL of this part's content in order; do not summarize or skip anything."
+    )
+    if index > 1:
+        note += " Continue directly from the previous part: do NOT open with a new hook or re-introduce the story."
+    return note
+
+
+def _part_header(part_note: Optional[str]) -> str:
+    return f"{part_note}\n\n" if part_note else ""
+
+
+def _check_part_scenes(part: str, scenes: Any) -> Optional[Tuple[str, str]]:
+    """Kiểm cảnh LLM trả cho một phần. Đạt thì None; không đạt thì (lý do cho người dùng, góp ý gửi lại LLM)."""
+    if not isinstance(scenes, list) or not scenes:
+        return "LLM không trả về cảnh nào", "Your previous answer contained no scenes. Return the JSON array of scenes."
+    if any(not isinstance(s, dict) or not str(s.get("text") or "").strip() for s in scenes):
+        return "LLM trả cảnh thiếu lời kể", "Every scene object MUST have a non-empty 'text' field."
+    coverage = sum(len(str(s["text"]).strip()) for s in scenes) / max(len(part), 1)
+    if coverage < LLM_MIN_COVERAGE:
+        pct = round(coverage * 100)
+        return (
+            f"LLM tóm tắt quá ngắn (lời kể chỉ bằng {pct}% phần gốc)",
+            f"Your previous answer narrated only about {pct}% of this part and skipped content. Narrate ALL "
+            "events, details and dialogue of this part in order, using as many scenes as needed; do not summarize.",
+        )
+    return None
+
+
+async def _llm_scenes_for_part(
+    analyzer: "SemanticStoryAnalyzer",
+    call_part: Callable[..., Awaitable[Optional[List[Dict[str, Any]]]]],
+    part: str,
+    index: int,
+    total: int,
+) -> Tuple[Optional[List[Dict[str, Any]]], str, bool]:
+    """
+    Gọi LLM cho một phần; lỗi hoặc kết quả mỏng thì thử lại kèm góp ý.
+    Trả (cảnh, "", False) khi đạt, hoặc (None, lý do, có phải lỗi gọi LLM ở lần cuối không).
+    """
+    base_note = _llm_part_note(index, total)
+    note = base_note
+    reason = ""
+    call_error = False
+    for _attempt in range(LLM_PART_ATTEMPTS):
+        analyzer.last_error = None
+        scenes = await call_part(part, part_note=note)
+        problem = _check_part_scenes(part, scenes)
+        if problem is None and isinstance(scenes, list):
+            for scene in scenes:
+                try:
+                    scene["estimated_duration"] = float(scene.get("estimated_duration", 4.0))
+                except (TypeError, ValueError):
+                    scene["estimated_duration"] = 4.0
+            return scenes, "", False
+        user_reason, llm_feedback = problem or ("LLM không trả về cảnh nào", "")
+        call_error = bool(analyzer.last_error)
+        reason = analyzer.last_error or user_reason
+        logger.warning(f"Chia cảnh bằng LLM: phần {index}/{total} không đạt ({reason})")
+        # Lỗi gọi (HTTP, timeout, JSON hỏng) thì gọi lại như cũ; kết quả mỏng/thiếu lời thì kèm góp ý
+        feedback = None if call_error else f"PREVIOUS ATTEMPT REJECTED: {llm_feedback}"
+        note = "\n\n".join(n for n in (base_note, feedback) if n) or None
+    return None, reason, call_error
+
+
+async def _scenes_in_parts(
+    analyzer: "SemanticStoryAnalyzer",
+    text: str,
+    call_part: Callable[..., Awaitable[Optional[List[Dict[str, Any]]]]],
+    offline_part: Callable[[str], List[Dict[str, Any]]],
+) -> Tuple[List[Dict[str, Any]], List[Tuple[int, int, int, str]], int, int]:
+    """
+    Chia bài thành phần nhỏ, gọi LLM lần lượt từng phần, nối cảnh và đánh lại order từ 1.
+    Phần LLM không làm được (sau khi thử lại) thì chỉ phần đó chia offline, các phần khác giữ cảnh AI;
+    LLM_MAX_FAILED_PARTS_IN_ROW phần liền nhau gọi lỗi thì các phần còn lại chia offline luôn.
+    Trả (cảnh, các phần chia offline [(phần, cảnh đầu, cảnh cuối, lý do)], số phần AI làm, tổng số phần).
+    """
+    parts = split_text_for_llm(text, LLM_PART_MAX_CHARS)
+    total = len(parts)
+    if total > 1:
+        logger.info(f"Bài dài {len(text)} ký tự, chia {total} phần (tối đa {LLM_PART_MAX_CHARS} ký tự) để gọi LLM")
+    scenes: List[Dict[str, Any]] = []
+    offline_notes: List[Tuple[int, int, int, str]] = []
+    ai_parts = 0
+    failed_in_row = 0
+    for index, part in enumerate(parts, start=1):
+        if failed_in_row >= LLM_MAX_FAILED_PARTS_IN_ROW:
+            part_scenes, reason, call_error = None, f"bỏ qua LLM vì {failed_in_row} phần liền trước gọi lỗi", True
+        else:
+            part_scenes, reason, call_error = await _llm_scenes_for_part(analyzer, call_part, part, index, total)
+        # Chỉ lỗi gọi mới tính vào chuỗi lỗi; LLM trả lời (dù kể ngắn) nghĩa là nó vẫn chạy
+        failed_in_row = failed_in_row + 1 if call_error else 0
+        if part_scenes:
+            ai_parts += 1
+        else:
+            part_scenes = offline_part(part)
+            offline_notes.append((index, len(scenes) + 1, len(scenes) + len(part_scenes), reason))
+        scenes.extend(part_scenes)
+    for order, scene in enumerate(scenes, start=1):
+        scene["order"] = order
+    return scenes, offline_notes, ai_parts, total
+
+
+def _offline_parts_reason(offline_notes: List[Tuple[int, int, int, str]], total: int) -> str:
+    """Báo những cảnh nào chia offline; các phần liền nhau cùng lý do được gộp một mục."""
+    groups: List[List[Any]] = []
+    for part, first, last, reason in offline_notes:
+        if groups and groups[-1][4] == reason and groups[-1][1] == part - 1:
+            groups[-1][1], groups[-1][3] = part, last
+        else:
+            groups.append([part, part, first, last, reason])
+    items = []
+    for p1, p2, first, last, reason in groups:
+        parts_label = f"phần {p1}/{total}" if p1 == p2 else f"phần {p1}–{p2}/{total}"
+        items.append(f"cảnh {first}–{last} ({parts_label}): {reason}")
+    return "Chia offline, prompt ảnh là mẫu chung ở " + "; ".join(items)
+
+
+def _offline_fallback_reason(llm_failure: str, has_key: bool) -> str:
+    """
+    Vì sao cả bài phải chia offline. Không lặng lẽ: caller cần báo người dùng rằng prompt ảnh
+    là mẫu chung, không do AI viết. llm_failure là lý do LLM lỗi ở phần đầu tiên ("" nếu chưa gọi).
+    """
+    if llm_failure:
+        return llm_failure
+    if not has_key:
+        return "Chưa cấu hình key 9router (NINEROUTER_API_KEY)"
+    return "LLM không trả về cảnh nào"
+
+
 # ==============================================================================
 # 5. PUBLIC API INTERFACES
 # ==============================================================================
@@ -857,20 +1070,39 @@ async def analyze_vox_script_async(
             "scenes": [],
         }
 
-    # Attempt Cloud LLM if available and requested
-    llm_scenes = None
+    # Attempt Cloud LLM if available and requested: bài chia phần nhỏ, gọi lần lượt;
+    # phần LLM không làm được thì chỉ phần đó chia offline, không bỏ chữ nào.
+    call_part = None
     if provider != "offline":
         if provider in ("9router", "auto", "gemini") and analyzer.ninerouter_api_key:
-            llm_scenes = await analyzer.call_9router_semantic_analyzer(
-                clean_text[:15000], pacing=pacing, style_preset=style_preset
+            call_part = functools.partial(
+                analyzer.call_9router_semantic_analyzer, pacing=pacing, style_preset=style_preset
             )
         elif (provider in ("gemini", "auto") and analyzer.gemini_api_key):
-            llm_scenes = await analyzer.call_gemini_semantic_analyzer(clean_text[:12000], pacing)
+            call_part = functools.partial(analyzer.call_gemini_semantic_analyzer, pacing_name=pacing)
         elif (provider in ("openrouter", "auto") and analyzer.openrouter_api_key):
-            llm_scenes = await analyzer.call_openrouter_semantic_analyzer(clean_text[:12000], pacing)
+            call_part = functools.partial(analyzer.call_openrouter_semantic_analyzer, pacing_name=pacing)
 
-    # Process scenes if LLM succeeded
-    if llm_scenes and isinstance(llm_scenes, list) and len(llm_scenes) > 0:
+    def offline_part(part: str) -> List[Dict[str, Any]]:
+        return split_text_into_vox_scenes_offline(
+            full_text=part,
+            pacing=pacing,
+            max_words_per_scene=max_words_per_scene,
+            style_preset=style_preset,
+            character_anchor=character_anchor,
+        )["scenes"]
+
+    llm_failure = ""
+    if call_part:
+        llm_scenes, offline_notes, ai_parts, total_parts = await _scenes_in_parts(
+            analyzer, clean_text, call_part, offline_part)
+        if not ai_parts:
+            llm_failure = offline_notes[0][3] if offline_notes else ""
+    else:
+        llm_scenes, offline_notes, ai_parts, total_parts = [], [], 0, 0
+
+    # Process scenes if LLM succeeded (ít nhất một phần)
+    if ai_parts:
         total_duration = sum(s.get("estimated_duration", 4.0) for s in llm_scenes)
         beats_count = {}
         for s in llm_scenes:
@@ -888,7 +1120,7 @@ async def analyze_vox_script_async(
             s.setdefault("emotion", "")
             s.setdefault("image_prompt", s.get("text", ""))
 
-        return {
+        result = {
             "title": "Vox Storyboard Analysis (AI Generated)",
             "total_scenes": len(llm_scenes),
             "estimated_total_duration": round(total_duration, 2),
@@ -897,6 +1129,10 @@ async def analyze_vox_script_async(
             "narrative_summary": beats_count,
             "scenes": llm_scenes,
         }
+        if offline_notes:
+            result["provider_used"] = "llm_partial"
+            result["fallback_reason"] = _offline_parts_reason(offline_notes, total_parts)
+        return result
 
     # Layer 2: Offline High-Fidelity Semantic Parser
     offline = split_text_into_vox_scenes_offline(
@@ -907,13 +1143,8 @@ async def analyze_vox_script_async(
         character_anchor=character_anchor,
     )
     if provider != "offline":
-        # Không lặng lẽ: caller cần báo người dùng rằng prompt ảnh là mẫu chung, không do AI viết
-        if analyzer.last_error:
-            offline["fallback_reason"] = analyzer.last_error
-        elif not (analyzer.ninerouter_api_key or analyzer.gemini_api_key or analyzer.openrouter_api_key):
-            offline["fallback_reason"] = "Chưa cấu hình key 9router (NINEROUTER_API_KEY)"
-        else:
-            offline["fallback_reason"] = "LLM không trả về cảnh nào"
+        has_key = bool(analyzer.ninerouter_api_key or analyzer.gemini_api_key or analyzer.openrouter_api_key)
+        offline["fallback_reason"] = _offline_fallback_reason(llm_failure, has_key)
     return offline
 
 
@@ -932,23 +1163,41 @@ async def adapt_novel_chapter_to_us_podcast(
     if not clean_text:
         return {"title": "Empty Novel Text", "scenes": [], "total_scenes": 0}
 
-    scenes = await analyzer.call_9router_semantic_analyzer(
-        clean_text[:15000],
-        pacing_name=pacing,
-        style_preset=style_preset,
-        is_novel=True,
-    )
-    if not scenes:
-        # Fallback to local splitter
+    def offline_part(part: str) -> List[Dict[str, Any]]:
         return split_text_into_vox_scenes_offline(
+            part, pacing=pacing, style_preset=style_preset, character_anchor=target_character,
+        )["scenes"]
+
+    # Chương chia phần nhỏ, gọi lần lượt; phần LLM không làm được thì chỉ phần đó chia offline
+    scenes: List[Dict[str, Any]] = []
+    offline_notes: List[Tuple[int, int, int, str]] = []
+    ai_parts = total_parts = 0
+    if analyzer.ninerouter_api_key:
+        scenes, offline_notes, ai_parts, total_parts = await _scenes_in_parts(
+            analyzer,
+            clean_text,
+            functools.partial(
+                analyzer.call_9router_semantic_analyzer,
+                pacing_name=pacing,
+                style_preset=style_preset,
+                is_novel=True,
+            ),
+            offline_part,
+        )
+    if not ai_parts:
+        # Fallback to local splitter (chỉ dùng 9router nên chỉ key 9router mới tính)
+        offline = split_text_into_vox_scenes_offline(
             clean_text,
             pacing=pacing,
             style_preset=style_preset,
             character_anchor=target_character,
         )
+        offline["fallback_reason"] = _offline_fallback_reason(
+            offline_notes[0][3] if offline_notes else "", bool(analyzer.ninerouter_api_key))
+        return offline
 
     total_duration = sum(s.get("estimated_duration", 4.0) for s in scenes)
-    return {
+    result = {
         "title": "US Novel Podcast Storyboard",
         "total_scenes": len(scenes),
         "estimated_total_duration": round(total_duration, 2),
@@ -957,6 +1206,10 @@ async def adapt_novel_chapter_to_us_podcast(
         "provider_used": "9router_gemini",
         "scenes": scenes,
     }
+    if offline_notes:
+        result["provider_used"] = "9router_gemini_partial"
+        result["fallback_reason"] = _offline_parts_reason(offline_notes, total_parts)
+    return result
 
 
 def split_text_into_vox_scenes_offline(

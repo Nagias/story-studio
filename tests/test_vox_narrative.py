@@ -56,6 +56,7 @@ async def test_vox_analyze_script_api():
         res = await client.post("/api/vox/analyze-script", json={
             "text": STORY_VOX_TEXT,
             "pacing": "fast",
+            "provider": "offline",  # kiểm bộ chia offline; "auto" sẽ gọi 9router thật khi .env có key
             "style_preset": "cinematic_realistic"
         })
         assert res.status_code == 200
@@ -91,6 +92,7 @@ async def test_vox_project_script_injection():
             v_res = await client.post(f"/api/projects/{p_id}/vox-script", json={
                 "text": STORY_VOX_TEXT,
                 "pacing": "fast",
+                "provider": "offline",
                 "replace_existing": True
             })
             assert v_res.status_code == 200

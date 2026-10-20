@@ -305,6 +305,8 @@ class VoxScriptAnalysisResponse(BaseModel):
     provider_used: str
     narrative_summary: Dict[str, int]
     scenes: List[VoxScene]
+    # Có giá trị khi LLM lỗi và cảnh do bộ chia offline tạo (prompt ảnh là mẫu chung)
+    fallback_reason: Optional[str] = None
 
 class VoxProjectScriptRequest(BaseModel):
     text: str

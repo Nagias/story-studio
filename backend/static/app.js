@@ -3728,7 +3728,10 @@ async function handleStep1ProcessScript() {
       const total = createdProject.scenes.length;
       const failedImages = createdProject.scenes.filter(s => s.status_image === 'error').length;
       const analysisNote = createdProject.metadata?.scene_analysis?.fallback_reason;
-      if (analysisNote) {
+      if (analysisNote && createdProject.metadata?.scene_analysis?.provider === 'partial') {
+        // AI chia được phần lớn bài; vài phần chia offline, lý do ghi rõ cảnh nào
+        showToast(`AI đã chia cảnh, nhưng một số đoạn phải chia offline. ${escapeHtml(String(analysisNote))}.`, "warning", 12000);
+      } else if (analysisNote) {
         showToast(`AI chia cảnh không chạy được (${escapeHtml(String(analysisNote))}). Các cảnh được chia offline, prompt ảnh chỉ là mẫu chung.`, "warning", 10000);
       }
       if (failedImages > 0) {

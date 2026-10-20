@@ -29,6 +29,9 @@ NINEROUTER_BASE_URL = os.getenv("NINEROUTER_BASE_URL", "http://127.0.0.1:20128/v
 NINEROUTER_API_KEY = os.getenv("NINEROUTER_API_KEY", "")
 NINEROUTER_IMAGE_MODEL = os.getenv("NINEROUTER_IMAGE_MODEL", "ag/gemini-3.1-flash-image")
 NINEROUTER_LLM_MODEL = os.getenv("NINEROUTER_LLM_MODEL", "ag/gemini-3.8-flash-high")
+# Model chia kịch bản thành cảnh (script_splitter). Đo thật 20/10/2026 trên khúc 2.700 ký tự tiếng Việt:
+# bản -low 16 s, kể đủ sự kiện (57%); bản -high 100-150 s, hay quá timeout mà không kể đủ hơn.
+NINEROUTER_SCENE_MODEL = os.getenv("NINEROUTER_SCENE_MODEL", "ag/gemini-3.8-flash-low")
 
 # Server configuration (Defaults to localhost 127.0.0.1 for local safety)
 HOST = os.getenv("STORY_STUDIO_HOST", "127.0.0.1")

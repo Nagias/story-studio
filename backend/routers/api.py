@@ -505,6 +505,8 @@ async def import_vox_script_to_project(project_id: str, req: VoxProjectScriptReq
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to analyze Vox script: {str(e)}")
+    if analysis.get("fallback_reason"):
+        logger.warning(f"vox-script dùng bộ chia offline: {analysis['fallback_reason']}")
 
     if req.replace_existing:
         for existing_scene in list(project.scenes):
@@ -537,6 +539,7 @@ async def import_vox_script_to_project(project_id: str, req: VoxProjectScriptReq
         "success": True,
         "pacing": req.pacing or "fast",
         "provider_used": analysis.get("provider_used", "offline_semantic_rules"),
+        "fallback_reason": analysis.get("fallback_reason"),
         "narrative_summary": analysis.get("narrative_summary", {}),
         "added_scenes": len(created_scenes),
         "total_scenes": len(updated_proj.scenes) if updated_proj else 0,
@@ -567,9 +570,13 @@ async def ingest_novel_chapter(req: NovelIngestRequest):
         target_character=req.target_character,
     )
 
+    fallback_reason = analysis.get("fallback_reason")
+    if fallback_reason:
+        logger.warning(f"ingest-chapter dùng bộ chia offline: {fallback_reason}")
     scenes_list = analysis.get("scenes", [])
     if not scenes_list:
-        raise HTTPException(status_code=500, detail="Failed to parse scenes from novel text.")
+        detail = "Failed to parse scenes from novel text."
+        raise HTTPException(status_code=500, detail=f"{detail} {fallback_reason}" if fallback_reason else detail)
 
     proj_id = req.project_id
     if not proj_id or req.create_new_project:
@@ -607,6 +614,7 @@ async def ingest_novel_chapter(req: NovelIngestRequest):
         "style_preset": style_preset,
         "voice": voice,
         "image_provider": "9router_gemini",
+        "fallback_reason": fallback_reason,
         "project": project,
         "scenes": created_scenes,
     }
@@ -747,6 +755,8 @@ async def create_project_from_script(req: CreateProjectFromScriptRequest):
 
     # Split text into scenes using 9router Gemini 3.8 Flash for maximum cinematic shot variety
     analysis_fallback_reason = None
+    # "9router": AI chia hết; "partial": AI chia, vài phần bài chia offline; "offline": cả bài chia offline
+    analysis_provider = "9router"
     try:
         analysis = await analyze_vox_script_async(
             full_text=req.text,
@@ -757,6 +767,8 @@ async def create_project_from_script(req: CreateProjectFromScriptRequest):
         )
         scenes_data = analysis.get("scenes", [])
         analysis_fallback_reason = analysis.get("fallback_reason")
+        if analysis.get("provider_used") == "llm_partial":
+            analysis_provider = "partial"
     except Exception as e:
         logger.warning(f"9router scene analysis failed ({e}), falling back to offline splitter.")
         analysis_fallback_reason = f"Lỗi phân tích cảnh bằng 9router: {e}"
@@ -817,7 +829,7 @@ async def create_project_from_script(req: CreateProjectFromScriptRequest):
         project.scenes = created_scenes
     # Ghi lại cách chia cảnh để giao diện cảnh báo khi prompt ảnh chỉ là mẫu offline
     project.metadata["scene_analysis"] = {
-        "provider": "offline" if analysis_fallback_reason else "9router",
+        "provider": "offline" if analysis_fallback_reason and analysis_provider != "partial" else analysis_provider,
         "fallback_reason": analysis_fallback_reason,
     }
     from services.project_service import _save_project
@@ -1740,6 +1752,7 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
             "logs": ["Bắt đầu chu trình sản xuất Video Dài theo Stepper Pipeline (MoneyPrinterTurbo)..."],
         })
 
+        analysis_note = None  # lý do cảnh được chia offline (prompt ảnh mẫu chung), để báo trong log
         if req.text and req.text.strip():
             pacing = req.pacing or "fast"
             try:
@@ -1751,13 +1764,17 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
                     provider="9router",
                 )
                 raw_scenes = vox_res.get("scenes", [])
-            except Exception:
+                analysis_note = vox_res.get("fallback_reason")
+            except Exception as e:
+                analysis_note = f"Lỗi phân tích cảnh bằng 9router: {e}"
                 raw_scenes = split_text_into_vox_scenes_offline(
                     full_text=req.text.strip(),
                     pacing=pacing,
                     style_preset=project.style_preset,
                     character_anchor=project.character_anchor,
-                )
+                )["scenes"]
+            if analysis_note:
+                logger.warning(f"produce-long-video dùng bộ chia offline: {analysis_note}")
 
             new_scenes = []
             for idx, sc in enumerate(raw_scenes, start=1):
@@ -1784,7 +1801,7 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
             "step_label": f"Bước 1 hoàn tất: Kịch bản gồm {total_scenes} phân cảnh & Nhân vật đã khóa.",
             "logs": active_renders[render_id]["logs"] + [
                 f"[Giai đoạn 1/5] Đã thiết lập kịch bản gồm {total_scenes} cảnh. Nhân vật: {project.character_anchor or 'Mặc định'}."
-            ],
+            ] + ([f"⚠ Chia cảnh: {analysis_note}"] if analysis_note else []),
         })
 
         # ----------------- PHASE 2: EDGE-TTS & SRT (15% -> 40%) -----------------
