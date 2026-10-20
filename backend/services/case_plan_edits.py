@@ -119,19 +119,29 @@ class _AliasSwap:
 
 
 def _swaps(old: list[CaseEntity], changed: dict[str, CaseEntity]) -> dict[Lang, _AliasSwap]:
+    """Bảng thay cho từng ngôn ngữ. Chữ của một ngôn ngữ có khi còn tên cũ ở dạng của ngôn ngữ kia ("Hùng" hay
+    "Lý Tiểu Long" trong lời Anh, "Li Xiaolong" trong lời Việt): dạng đó cũng đổi sang tên mới của ngôn ngữ đang sửa.
+    Trừ một trường hợp: dạng tiếng Anh trùng dạng Việt khi bỏ dấu ("Hung" của "Hùng") thì trong lời Việt nó là chữ
+    tiếng Việt ("Hung hăng", "Lam lũ"), nên để nguyên."""
     tables: dict[Lang, dict[str, tuple[str, Optional[str]]]] = {"vi": {}, "en": {}}
     for ent in old:                                      # tên hiện có, để giữ nguyên
         for alias in (ent.alias_vi, ent.alias_en):
             if _key(alias):
                 for table in tables.values():
                     table.setdefault(spelling_key(alias), (alias, None))
-    for ent in old:                                      # tên bị đổi: ghi đè lên mục giữ nguyên
-        new = changed.get(ent.id)
-        if new is None:
-            continue
+    renamed = [(ent, changed[ent.id]) for ent in old if ent.id in changed]
+    for ent, new in renamed:                             # tên bị đổi: ghi đè lên mục giữ nguyên
         for lang, before, after in (("vi", ent.alias_vi, new.alias_vi), ("en", ent.alias_en, new.alias_en)):
             if before != after and _key(before):
                 tables[lang][spelling_key(before)] = (before, after)
+    for ent, new in renamed:                             # dạng của ngôn ngữ kia: chỉ lấp mục còn để giữ nguyên
+        cross: list[tuple[Lang, str, str]] = [("en", ent.alias_vi, new.alias_en)]
+        if _key(ent.alias_en) != _key(ent.alias_vi):
+            cross.append(("vi", ent.alias_en, new.alias_vi))
+        for lang, before, after in cross:
+            spelled = spelling_key(before)
+            if _key(before) and spelled != spelling_key(after) and tables[lang].get(spelled, ("", None))[1] is None:
+                tables[lang][spelled] = (before, after)
     return {lang: _AliasSwap(table) for lang, table in tables.items()}
 
 

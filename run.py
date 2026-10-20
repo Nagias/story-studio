@@ -1,8 +1,11 @@
+import socket
 import sys
 import time
 import threading
+import urllib.request
 import webbrowser
 from pathlib import Path
+from typing import Optional
 
 # Safe console re-encoding on Windows
 if sys.stdout:
@@ -53,6 +56,24 @@ def open_browser(url: str, delay: float = 1.5):
     t = threading.Thread(target=_target, daemon=True)
     t.start()
 
+def existing_server(host: str, port: int) -> Optional[str]:
+    """Ai đang nghe ở cổng `port`: None nếu cổng trống, "story_studio" nếu /api/health trả 200, "other" nếu là
+    chương trình khác. Bấm run.bat hai lần thì bản thứ hai thấy "story_studio" và không bật server nữa."""
+    probe = "127.0.0.1" if host in ("", "0.0.0.0") else "::1" if host == "::" else host
+    try:
+        with socket.create_connection((probe, port), timeout=0.5):
+            pass
+    except OSError:
+        return None
+    url_host = f"[{probe}]" if ":" in probe else probe
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))   # máy có proxy vẫn hỏi thẳng localhost
+    try:
+        with opener.open(f"http://{url_host}:{port}/api/health", timeout=2) as resp:
+            return "story_studio" if resp.status == 200 else "other"
+    except Exception:
+        return "other"
+
+
 def start_fleet_runner_daemon():
     """Tự động khởi động Fleet Runner ngầm cùng Web Server để xử lý các tác vụ Muse."""
     runner_script = STORY_STUDIO_DIR / "backend" / "runners" / "muse_fleet_runner.py"
@@ -77,19 +98,33 @@ def start_fleet_runner_daemon():
             print(f"[!] Warning: Could not start Fleet Runner daemon: {e}")
 
 def main():
+    url = f"http://localhost:{PORT}"
     print("=" * 60)
     print("[*] Starting YouTube Story Maker Web Studio...")
     print(f"[*] Root directory: {STORY_STUDIO_DIR}")
-    print(f"[*] Server URL: http://localhost:{PORT}")
+    print(f"[*] Server URL: {url}")
     print("=" * 60)
+
+    # Check for --no-browser argument
+    auto_open = "--no-browser" not in sys.argv
+
+    # Không bật server thứ hai khi cổng đã có người dùng
+    running = existing_server(HOST, PORT)
+    if running == "story_studio":
+        print(f"[*] Story Studio đang chạy sẵn ở {url}: không bật thêm server thứ hai.")
+        if auto_open:
+            webbrowser.open(url)
+        return
+    if running == "other":
+        print(f"[!] Cổng {PORT} đang bị một chương trình khác dùng. Tắt chương trình đó, hoặc đặt biến môi trường "
+              f"STORY_STUDIO_PORT sang cổng khác rồi chạy lại.")
+        sys.exit(1)
 
     # Automatically start local fleet runner
     start_fleet_runner_daemon()
 
-    # Check for --no-browser argument
-    auto_open = "--no-browser" not in sys.argv
     if auto_open:
-        open_browser(f"http://localhost:{PORT}")
+        open_browser(url)
 
     # Launch uvicorn server
     uvicorn.run(

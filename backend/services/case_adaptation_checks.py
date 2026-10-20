@@ -73,7 +73,7 @@ def _key(name: str) -> str:
 # ---------------------------------------------------------------- tên cần giữ nguyên
 
 # Tên quốc gia và tên chung của cơ quan được giữ nguyên trong lời kể (spec mục 6, 7.5).
-_KEPT_TERMS = frozenset(_key(t) for t in [
+_KEPT_NAMES = (
     "Việt Nam", "Đài Loan", "Hoa Kỳ", "Mỹ", "Trung Quốc", "Nhật Bản", "Hàn Quốc", "Thái Lan",
     "Singapore", "Malaysia", "Campuchia", "Lào", "Philippines", "Indonesia", "Ấn Độ", "Pháp", "Đức",
     "Nga", "Úc", "Canada", "Vương quốc Anh",
@@ -81,7 +81,18 @@ _KEPT_TERMS = frozenset(_key(t) for t in [
     "Thailand", "Cambodia", "Laos", "India", "France", "Germany", "Russia", "Australia", "United Kingdom",
     "cảnh sát", "công an", "tòa án", "toà án", "viện kiểm sát", "viện kiểm sát nhân dân", "bệnh viện",
     "police", "the police", "court", "the court", "prosecutor", "prosecutors", "hospital",
-])
+)
+_KEPT_TERMS = frozenset(_key(t) for t in _KEPT_NAMES)
+
+# Cụm giữ nguyên chứa một chữ hay là tên người ("Nam" trong "Việt Nam", "miền Nam"; "Loan" trong "Đài Loan"; "Đức"
+# trong "nước Đức"): tên ngắn nằm trọn bên trong một cụm như vậy không phải tên người, không thay, không báo. Chỉ gồm
+# cụm hầu như không thể là một phần tên người, vì cụm này che tên thật nằm bên trong nó.
+_PROTECTED_PHRASES = tuple(dict.fromkeys([
+    *(t for t in _KEPT_NAMES if " " in t),
+    "miền Nam", "miền Bắc", "miền Trung", "miền Tây", "miền Đông", "Nam Bộ", "Bắc Bộ", "Trung Bộ", "Tây Nguyên",
+    "Đông Nam Á", "Triều Tiên", "Nam Phi",
+    "nước Mỹ", "nước Anh", "nước Pháp", "nước Đức", "nước Nga", "nước Úc", "nước Lào", "nước Nhật",
+]))
 
 # Danh từ chung chỉ cơ quan, vai trò, nghề nghiệp trong vụ án: không phải tên riêng, không cần tên hư cấu.
 # Prompt đọc bài (case_adaptation_prompts.extract_prompt) liệt kê đúng danh sách này, và bước đọc bài bỏ các mục
@@ -254,6 +265,25 @@ def _generic_spans(text: str) -> tuple[tuple[int, int], ...]:
     return tuple(spans)
 
 
+_PROTECTED_BY_KEY: dict[str, tuple[str, ...]] = {}
+for _phrase in _PROTECTED_PHRASES:
+    _PROTECTED_BY_KEY[_key(_phrase)] = (*_PROTECTED_BY_KEY.get(_key(_phrase), ()), _phrase)
+
+
+@lru_cache(maxsize=1024)
+def _protected_spans(text: str) -> tuple[tuple[int, int], ...]:
+    """Vị trí các cụm _PROTECTED_PHRASES trong `text` (đã NFC), viết đúng dấu hoặc hoàn toàn không dấu."""
+    folded = _fold_nfc(text)
+    spans: list[tuple[int, int]] = []
+    for key, phrases in _PROTECTED_BY_KEY.items():
+        if key.split(" ", 1)[0] not in folded:
+            continue
+        for m in _name_pattern(key).finditer(folded):
+            if any(_same_spelling(text[m.start():m.end()], p) for p in phrases):
+                spans.append(m.span())
+    return tuple(spans)
+
+
 def accept_match(text: str, start: int, end: int, name: str, *, any_case: bool = False) -> bool:
     """Quy tắc chung "nhận chỗ khớp này không?" cho tên thật lẫn tên hư cấu.
 
@@ -262,13 +292,17 @@ def accept_match(text: str, start: int, end: int, name: str, *, any_case: bool =
     - viết hoa như tên riêng (bỏ qua khi `any_case`, dùng để ẩn tên trong thông báo lỗi, nơi ẩn thừa không hại gì):
       tên một âm tiết viết hoa chữ đầu; tên nhiều chữ thì chữ nào `name` viết hoa, chỗ khớp cũng viết hoa, trừ chữ chỉ
       loại đứng đầu ("đường", "cảng", "công ty", "ông"...) hay đứng cuối trong tiếng Anh ("street", "port"...);
-    - không nằm trong một danh từ chung của GENERIC_TERMS viết đúng dấu ("Hung" trong "Hung thủ")."""
+    - không nằm trong một danh từ chung của GENERIC_TERMS viết đúng dấu ("Hung" trong "Hung thủ");
+    - không nằm trọn bên trong một cụm _PROTECTED_PHRASES dài hơn nó ("Nam" trong "Việt Nam"). Tên dài chứa cả cụm đó
+      ("Nguyễn Việt Nam") vẫn được nhận."""
     span = text[start:end]
     if not _same_spelling(span, name):
         return False
     if not any_case and not _capitalised_like(span, name):
         return False
-    return not any(a <= start and end <= b for a, b in _generic_spans(text))
+    if any(a <= start and end <= b for a, b in _generic_spans(text)):
+        return False
+    return not any(a <= start and end <= b and b - a > end - start for a, b in _protected_spans(text))
 
 
 @lru_cache(maxsize=8192)

@@ -10,6 +10,8 @@ Worker chạy hàng việc phân tích vụ án ngay trong tiến trình server 
   thông báo tiếng Việt; vụ đó dừng, các vụ khác vẫn chạy.
 - worker_loop: gọi run_next_step liên tục, hết việc thì nghỉ `idle_sleep` giây. Mọi lỗi trong một vòng đều được ghi
   log, vòng lặp không bao giờ chết vì lỗi. Chỉ có một worker_loop (main.py) nên mỗi lúc chỉ có một lần gọi LLM.
+- acquire_worker_lock / release_worker_lock: khoá file của hệ điều hành trong projects/_cases, để chỉ một server chạy
+  worker (và recover_interrupted) dù bật hai server, kể cả ở hai cổng khác nhau. Khoá tự nhả khi tiến trình chết.
 - recover_interrupted: gọi lúc server khởi động; việc đang `running` (server tắt giữa chừng) về `pending`.
 - resume_pipeline ("Thử lại"): việc `failed` về `pending`, attempts = 0; vụ chạy tiếp từ đúng việc đó.
 - pipeline_progress: trạng thái cho giao diện, nhãn tiếng Việt kiểu "Đang đọc đoạn 2/5".
@@ -23,10 +25,12 @@ import logging
 import os
 import threading
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Literal, Optional
 
 import config
 from models.case_adaptation_schemas import MAX_SOURCE_CHARS, CasePipeline, PipelineStep
+from runners.single_instance import try_lock_file, unlock_file
 from services import case_adaptation_steps, case_store
 from services.case_adaptation_llm import LLMCall
 from services.case_adaptation_steps import StepFailed, StepResult, chunk_source, initial_steps
@@ -246,6 +250,45 @@ async def worker_loop(stop: asyncio.Event, idle_sleep: float = 1.0) -> None:
             await asyncio.wait_for(stop.wait(), timeout=pause)
         except asyncio.TimeoutError:
             pass
+
+
+# ---------------------------------------------------------------- một server chạy worker
+
+_worker_lock_guard = threading.Lock()
+_worker_lock: Optional[tuple[Path, int]] = None          # (file khoá, fd) mà tiến trình này đang giữ
+
+
+def worker_lock_path() -> Path:
+    return case_store.cases_dir() / ".worker.lock"
+
+
+def acquire_worker_lock() -> bool:
+    """Giữ khoá hàng việc cho tiến trình này. True nếu đang giữ (gọi lại vẫn True), False nếu server khác đang giữ.
+    Lỗi đĩa (không tạo được thư mục hay file khoá) thì ném OSError."""
+    global _worker_lock
+    path = worker_lock_path()
+    with _worker_lock_guard:
+        if _worker_lock is not None:
+            if _worker_lock[0] == path:
+                return True
+            unlock_file(_worker_lock[1])                 # thư mục projects đã đổi (test): nhả khoá của thư mục cũ
+            _worker_lock = None
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = try_lock_file(path)
+        if fd is None:
+            return False
+        _worker_lock = (path, fd)
+        return True
+
+
+def release_worker_lock() -> None:
+    global _worker_lock
+    with _worker_lock_guard:
+        if _worker_lock is None:
+            return
+        fd = _worker_lock[1]
+        _worker_lock = None
+        unlock_file(fd)
 
 
 # ---------------------------------------------------------------- khởi động lại, thử lại

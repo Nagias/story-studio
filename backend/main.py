@@ -29,8 +29,17 @@ from services.video_service import get_available_bgm_tracks
 
 async def _start_case_worker():
     """Worker phân tích vụ án (spec 7.1a): đưa việc bị gián đoạn về hàng chờ rồi chạy hàng việc ngầm.
-    Trả (stop, task), hoặc (None, None) khi bị tắt bằng STORY_STUDIO_DISABLE_CASE_WORKER=1."""
+    Trả (stop, task), hoặc (None, None) khi bị tắt bằng STORY_STUDIO_DISABLE_CASE_WORKER=1 hay khi một server khác
+    đang chạy worker (bật run.bat hai lần): server này khi đó không đụng tới hàng việc, kể cả việc đang `running`."""
     if case_worker.worker_disabled():
+        return None, None
+    try:
+        held = await asyncio.to_thread(case_worker.acquire_worker_lock)
+    except OSError as e:
+        print(f"Warning: không tạo được khoá hàng việc phân tích, server này không chạy worker: {e}")
+        return None, None
+    if not held:
+        print("[*] Case worker: một server Story Studio khác đang chạy hàng việc phân tích; server này không chạy worker")
         return None, None
     try:
         recovered = await asyncio.to_thread(case_worker.recover_interrupted)
@@ -49,6 +58,7 @@ async def _stop_case_worker(stop, task) -> None:
     stop.set()
     task.cancel()
     await asyncio.gather(task, return_exceptions=True)   # nuốt CancelledError của task con, không nuốt của lifespan
+    case_worker.release_worker_lock()
 
 
 @asynccontextmanager

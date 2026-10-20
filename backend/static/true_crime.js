@@ -22,6 +22,9 @@
 const TC_API = '/api/true-crime';
 const TC_POLL_MS = 2000;          // hỏi tiến độ mỗi 2 giây khi đang phân tích
 const TC_POLL_RETRY_MS = 5000;    // mất kết nối tạm thời: hỏi lại chậm hơn
+const TC_POLL_TIMEOUT_MS = 20000; // một lần hỏi tiến độ quá 20 giây chưa có trả lời: coi như mất kết nối, hỏi lại
+const TC_LANG_MAX_FAILURES = 60;  // bản tiếng Anh: mất kết nối liên tục ~5 phút (60 lần x 5 giây) thì thôi theo dõi
+const TC_LANG_MAX_MS = 60 * 60 * 1000;   // bản tiếng Anh: theo dõi tối đa 60 phút cho một việc
 const TC_CASE_KEY = 'story_studio_true_crime_case_id';
 const TC_EN_DEFAULT_VOICE = 'en-US-AndrewMultilingualNeural';
 const TC_MAX_SOURCE_CHARS = 200000;
@@ -134,21 +137,30 @@ function tcErrorDetail(data, status) {
   return `Máy chủ trả lỗi HTTP ${status}.`;
 }
 
+// options.timeoutMs (tuỳ chọn): quá thời gian đó chưa có trả lời thì huỷ request và ném lỗi như mất kết nối
+// (status 0). Chỉ dùng cho các lần hỏi tiến độ; request làm việc (tạo dự án, lưu...) có thể chạy lâu nên không đặt.
 async function tcFetch(url, options = {}) {
   const init = { method: options.method || 'GET', headers: { Accept: 'application/json' } };
   if (options.body !== undefined) {
     init.headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(options.body);
   }
+  const controller = options.timeoutMs ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), options.timeoutMs) : null;
+  if (controller) init.signal = controller.signal;
   let res;
   let raw = '';
   try {
     res = await fetch(url, init);
     raw = await res.text();
   } catch {
-    const error = new Error('Không kết nối được máy chủ Story Studio. Kiểm tra máy chủ còn chạy rồi thử lại.');
+    const error = new Error(controller?.signal.aborted
+      ? 'Máy chủ Story Studio không trả lời kịp. Kiểm tra máy chủ còn chạy rồi thử lại.'
+      : 'Không kết nối được máy chủ Story Studio. Kiểm tra máy chủ còn chạy rồi thử lại.');
     error.status = 0;
     throw error;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
   let data = null;
   if (raw) {
@@ -184,11 +196,13 @@ function tcEnqueue(task) {
 
 // ================= NÚT VÀ THÔNG BÁO =================
 
-function tcSetBusyLabel(btn, busy, label) {
+// labelClass: lớp của chữ khi bận, để nút chỉ hiện biểu tượng trên màn hẹp vẫn giữ đúng như vậy khi bận.
+function tcSetBusyLabel(btn, busy, label, labelClass = '') {
   if (!btn) return;
   if (busy) {
     if (btn.dataset.idleHtml === undefined) btn.dataset.idleHtml = btn.innerHTML;
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>${tcEsc(label)}</span>`;
+    const cls = labelClass ? ` class="${labelClass}"` : '';
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span${cls}>${tcEsc(label)}</span>`;
   } else if (btn.dataset.idleHtml !== undefined) {
     btn.innerHTML = btn.dataset.idleHtml;
     delete btn.dataset.idleHtml;
@@ -441,7 +455,7 @@ async function tcPollProgress() {
   TrueCrimeState.pollAgain = false;
   let next = null;
   try {
-    const progress = await tcFetch(tcCaseUrl(caseId, '/progress'));
+    const progress = await tcFetch(tcCaseUrl(caseId, '/progress'), { timeoutMs: TC_POLL_TIMEOUT_MS });
     if (caseId !== TrueCrimeState.caseId) return;
     TrueCrimeState.progress = progress;
     tcRenderProgress();
@@ -1015,14 +1029,24 @@ async function tcCreateVietnameseProject() {
 // ================= TẠO BẢN TIẾNG ANH (nút trên thanh đầu trang) =================
 // Chỉ hiện ở dự án true-crime bản Việt (metadata.case_id có giá trị và metadata.language === 'vi'). Bấm: lưu dự án,
 // gửi job tạo bản Anh (dùng lại ảnh và video, đổi lời kể và giọng), hỏi trạng thái job mỗi 2 giây rồi mở dự án mới.
-// Máy chủ không chặn tạo trùng, nên giao diện chặn: mỗi dự án gốc chỉ có một job tại một thời điểm, đăng ký ngay
-// lúc bấm (trước mọi await) và chỉ gỡ khi job kết thúc.
+// - Mỗi dự án gốc chỉ có một job tại một thời điểm: giao diện đăng ký ngay lúc bấm (trước mọi await) và chỉ gỡ khi job
+//   kết thúc; máy chủ cũng không tạo job thứ hai khi job trước còn chạy (trả lại đúng job đó, already_running).
+// - Tải lại trang giữa chừng: lần đầu vẽ nút cho một dự án, giao diện hỏi máy chủ việc đang chạy
+//   (GET language-version-job) rồi theo dõi tiếp.
+// - Mỗi lần hỏi có giới hạn thời gian (TC_POLL_TIMEOUT_MS); mất kết nối liên tục quá TC_LANG_MAX_FAILURES lần hoặc
+//   theo dõi quá TC_LANG_MAX_MS thì thôi theo dõi và báo người dùng (việc trên máy chủ vẫn chạy tiếp).
 
-const TC_LANG_JOBS = new Map();   // id dự án gốc -> {jobId, timer, retrying}
+const TC_LANG_JOBS = new Map();     // id dự án gốc -> {jobId, timer, retrying, failures, startedAt}
+const TC_LANG_CHECKED = new Set();  // dự án đã hỏi máy chủ việc đang chạy (một lần cho mỗi lần tải trang)
+const TC_LANG_LABEL_CLASS = 'hidden 2xl:inline text-[11px]';   // như chữ của nút trong index.html
 
 function tcLanguageEligible(project) {
   const meta = project && project.metadata;
   return !!(meta && meta.case_id && meta.language === 'vi');
+}
+
+function tcNewLanguageJob(jobId = null) {
+  return { jobId, timer: null, retrying: false, failures: 0, startedAt: Date.now() };
 }
 
 function refreshLanguageVersionButton(project) {
@@ -1035,7 +1059,28 @@ function refreshLanguageVersionButton(project) {
   btn.title = job
     ? 'Đang tạo bản tiếng Anh. Chờ xong rồi dự án mới sẽ tự mở.'
     : 'Tạo bản tiếng Anh: dùng lại ảnh và video, đổi sang lời kể và giọng đọc tiếng Anh';
-  tcSetBusyLabel(btn, !!job, job && job.retrying ? 'Mất kết nối, thử lại...' : 'Đang tạo bản Anh...');
+  tcSetBusyLabel(btn, !!job, job && job.retrying ? 'Mất kết nối, thử lại...' : 'Đang tạo bản Anh...',
+    TC_LANG_LABEL_CLASS);
+  if (eligible && !job && !TC_LANG_CHECKED.has(project.id)) tcResumeLanguageJob(project.id);
+}
+
+// Hỏi máy chủ một lần xem dự án này có việc tạo bản Anh đang chạy không (vd. sau khi tải lại trang); có thì theo dõi
+// tiếp như vừa bấm. Lỗi thì bỏ qua: người dùng bấm nút, máy chủ trả lại đúng việc đang chạy.
+async function tcResumeLanguageJob(sourceId) {
+  TC_LANG_CHECKED.add(sourceId);
+  let data;
+  try {
+    data = await tcFetch(`/api/projects/${encodeURIComponent(sourceId)}/language-version-job?language=en`,
+      { timeoutMs: TC_POLL_TIMEOUT_MS });
+  } catch {
+    return;
+  }
+  const jobId = data && data.job && data.job.status === 'running' ? data.job.job_id : null;
+  if (!jobId || TC_LANG_JOBS.has(sourceId)) return;
+  const job = tcNewLanguageJob(jobId);
+  TC_LANG_JOBS.set(sourceId, job);
+  refreshLanguageVersionButton(AppState.currentProject);
+  tcScheduleLanguagePoll(sourceId, job, 0);
 }
 
 function tcEndLanguageJob(sourceId, job) {
@@ -1054,7 +1099,7 @@ async function tcCreateEnglishVersion() {
   if (Array.isArray(siblings) && siblings.length
       && !window.confirm('Dự án này đã có bản ngôn ngữ khác. Tạo thêm một bản tiếng Anh nữa?')) return;
 
-  const job = { jobId: null, timer: null, retrying: false };
+  const job = tcNewLanguageJob();
   TC_LANG_JOBS.set(sourceId, job);
   refreshLanguageVersionButton(AppState.currentProject);
   try {
@@ -1067,7 +1112,10 @@ async function tcCreateEnglishVersion() {
       { method: 'POST', body: { language: 'en' } });
     if (!started || !started.job_id) throw new Error('Máy chủ không trả mã việc tạo bản tiếng Anh.');
     job.jobId = started.job_id;
-    showToast('Đã bắt đầu tạo bản tiếng Anh. Nếu phải viết lại lời thì có thể mất vài phút; xong sẽ tự mở dự án mới.',
+    job.startedAt = Date.now();
+    showToast(started.already_running
+      ? 'Bản tiếng Anh của dự án này đang được tạo sẵn: tiếp tục theo dõi việc đó, xong sẽ tự mở dự án mới.'
+      : 'Đã bắt đầu tạo bản tiếng Anh. Nếu phải viết lại lời thì có thể mất vài phút; xong sẽ tự mở dự án mới.',
       'info', 7000);
     tcScheduleLanguagePoll(sourceId, job, TC_POLL_MS);
   } catch (err) {
@@ -1081,12 +1129,25 @@ function tcScheduleLanguagePoll(sourceId, job, delay) {
   job.timer = setTimeout(() => tcPollLanguageJob(sourceId, job), delay);
 }
 
+// Thôi theo dõi nhưng vẫn để dự án trong TC_LANG_CHECKED: chỉ tải lại trang mới hỏi lại máy chủ, nên giao diện không tự
+// theo dõi lại ngay ở lần vẽ nút kế tiếp.
+function tcGiveUpLanguageJob(sourceId, job, why) {
+  tcEndLanguageJob(sourceId, job);
+  showToast(`${why} Việc trên máy chủ có thể vẫn đang chạy: tải lại trang để theo dõi tiếp, `
+    + 'hoặc xem danh sách dự án.', 'warning', 12000);
+}
+
 async function tcPollLanguageJob(sourceId, job) {
   job.timer = null;
   if (TC_LANG_JOBS.get(sourceId) !== job) return;
+  if (Date.now() - job.startedAt > TC_LANG_MAX_MS) {
+    tcGiveUpLanguageJob(sourceId, job, `Việc tạo bản tiếng Anh đã chạy quá ${TC_LANG_MAX_MS / 60000} phút nên giao diện `
+      + 'thôi theo dõi.');
+    return;
+  }
   let data;
   try {
-    data = await tcFetch(`${TC_API}/jobs/${encodeURIComponent(job.jobId)}`);
+    data = await tcFetch(`${TC_API}/jobs/${encodeURIComponent(job.jobId)}`, { timeoutMs: TC_POLL_TIMEOUT_MS });
   } catch (err) {
     if (TC_LANG_JOBS.get(sourceId) !== job) return;
     if (err.status === 404) {       // job nằm trong RAM của máy chủ: khởi động lại máy chủ là mất
@@ -1095,12 +1156,18 @@ async function tcPollLanguageJob(sourceId, job) {
         + 'Xem danh sách dự án; chưa thấy bản tiếng Anh thì bấm tạo lại.', 'error', 12000);
       return;
     }
-    job.retrying = true;            // mất kết nối hoặc máy chủ lỗi tạm thời: hỏi lại chậm hơn
+    job.failures += 1;              // mất kết nối hoặc máy chủ lỗi tạm thời: hỏi lại chậm hơn, có giới hạn
+    if (job.failures >= TC_LANG_MAX_FAILURES) {
+      tcGiveUpLanguageJob(sourceId, job, `Mất kết nối với máy chủ quá lâu (${err.message})`);
+      return;
+    }
+    job.retrying = true;
     refreshLanguageVersionButton(AppState.currentProject);
     tcScheduleLanguagePoll(sourceId, job, TC_POLL_RETRY_MS);
     return;
   }
   if (TC_LANG_JOBS.get(sourceId) !== job) return;
+  job.failures = 0;
   if (job.retrying) {
     job.retrying = false;
     refreshLanguageVersionButton(AppState.currentProject);

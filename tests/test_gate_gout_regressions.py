@@ -89,25 +89,41 @@ async def test_sec_03_block_unc_path_injection_open_folder():
 
 
 @pytest.mark.asyncio
-async def test_sec_04_block_arbitrary_file_overwrite_in_muse_complete():
-    """TC-SEC-04: Chặn Muse Task ghi đè file ngoài sandbox."""
+async def test_sec_04_block_arbitrary_file_overwrite_in_muse_complete(tmp_path, monkeypatch):
+    """TC-SEC-04: Chặn Muse Task ghi đè file ngoài sandbox, hai lớp.
+    1. Tạo task với output_path ngoài projects/muse_outputs bị từ chối (400), không vào hàng đợi.
+    2. Task đã nằm sẵn trong hàng đợi với output_path xấu (bản cũ, hay bị sửa tay) thì kết quả vẫn chỉ lưu vào
+       muse_outputs. Thư mục muse_outputs và hàng đợi là bản tạm, không đụng dữ liệu thật."""
+    import io
+    from routers import muse_bridge
+
+    outputs = tmp_path / "muse_outputs"
+    outputs.mkdir()
+    monkeypatch.setattr(muse_bridge, "MUSE_OUTPUTS_DIR", outputs)
+    monkeypatch.setattr(muse_bridge, "pending_tasks", [])
+    monkeypatch.setattr(muse_bridge, "active_tasks", {})
+    monkeypatch.setattr(muse_bridge, "task_history", [])
+    bad_path = r"C:\Windows\System32\calc.exe"
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://127.0.0.1:8000") as client:
-        resp = await client.post("/api/muse-bridge/tasks/create", json={
-            "prompt": "test prompt",
-            "output_path": r"C:\Windows\System32\calc.exe"
-        })
-        assert resp.status_code == 200
-        task_id = resp.json()["task_id"]
+        resp = await client.post("/api/muse-bridge/tasks/create", json={"prompt": "test prompt", "output_path": bad_path})
+        assert resp.status_code == 400
+        assert muse_bridge.pending_tasks == []
 
+        task_id = "task_m_sec04old"
+        muse_bridge.pending_tasks.append({"task_id": task_id, "prompt": "test prompt", "mode": "text-to-image",
+                                          "status": "pending", "output_path": bad_path})
+        jpeg = io.BytesIO()
+        Image.new("RGB", (64, 64), "gray").save(jpeg, "JPEG")
         resp_comp = await client.post(
             f"/api/muse-bridge/tasks/{task_id}/complete",
-            files={"file": ("test.jpg", b"fake binary data", "image/jpeg")}
+            files={"file": ("test.jpg", jpeg.getvalue(), "image/jpeg")}
         )
-        assert resp_comp.status_code == 200
-        out_path = resp_comp.json().get("output_path", "")
-        # Output path MUST NOT be in System32
-        assert "System32" not in out_path
+        assert resp_comp.status_code == 200, resp_comp.text
+        out_path = Path(resp_comp.json()["output_path"])
+        assert "System32" not in str(out_path)
+        assert out_path.parent == outputs.resolve() and out_path.is_file()
 
 
 def test_core_01_ffmpeg_3layer_audio_sidechain_ducking_success():

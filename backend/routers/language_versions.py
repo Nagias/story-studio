@@ -1,7 +1,9 @@
 """
 Language Versions Router (spec 7.8)
 -----------------------------------
-POST /api/projects/{project_id}/create-language-version  body {language="en", voice=None} -> {job_id}
+POST /api/projects/{project_id}/create-language-version  body {language="en", voice=None} -> {job_id, already_running}
+GET  /api/projects/{project_id}/language-version-job?language=en -> {job}: việc đang chạy (hoặc null), để giao diện tải
+     lại trang giữa chừng vẫn theo dõi tiếp được.
 
 Tạo bản ngôn ngữ khác của một dự án đã dựng từ kế hoạch chuyển thể: chép ảnh và clip Muse, đổi lời kể, giọng, ảnh có chữ;
 cảnh mới thêm hoặc đã sửa lời thì nhờ LLM viết lại lời Anh. Việc ngắn nên chạy qua BackgroundTasks, trạng thái nằm trong
@@ -69,10 +71,22 @@ async def _run_job(job_id: str, project_id: str, language: str, voice: Optional[
         case_jobs.update_job(job_id, status="done", result={"project_id": project.id, "rewritten_orders": rewritten})
 
 
+def _job_key(project_id: str, language: str) -> str:
+    return f"{project_id}:{language}"
+
+
 @router.post("/{project_id}/create-language-version")
 async def create_language_version_endpoint(project_id: str, req: LanguageVersionRequest, background_tasks: BackgroundTasks):
+    """Mỗi dự án và ngôn ngữ chỉ có một việc chạy tại một thời điểm: bấm lại khi việc trước chưa xong thì nhận lại
+    đúng việc đó (`already_running` = true, `voice` của lần bấm sau bị bỏ qua)."""
     if await asyncio.to_thread(project_service.get_project, project_id) is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy dự án.")
-    job_id = case_jobs.create_job(JOB_KIND)
-    background_tasks.add_task(_run_job, job_id, project_id, req.language, req.voice)
-    return {"job_id": job_id}
+    job_id, created = case_jobs.start_job(JOB_KIND, _job_key(project_id, req.language))
+    if created:
+        background_tasks.add_task(_run_job, job_id, project_id, req.language, req.voice)
+    return {"job_id": job_id, "already_running": not created}
+
+
+@router.get("/{project_id}/language-version-job")
+async def running_language_version_job(project_id: str, language: Lang = "en"):
+    return {"job": case_jobs.find_running_job(JOB_KIND, _job_key(project_id, language))}

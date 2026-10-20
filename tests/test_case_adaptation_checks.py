@@ -309,6 +309,29 @@ def test_single_syllable_real_name_is_not_found_inside_a_generic_term():
     assert find_unknown_names(text, fb, []) == []
 
 
+# ---------------------------------------------------------------- tên ngắn nằm trong tên nước, vùng miền
+
+SHORT_REALS = [ForbiddenName("Nam", "e1", "Tuấn", "Tuan"), ForbiddenName("Loan", "e2", "Hương", "Huong"),
+               ForbiddenName("Đức", "e3", "Khang", "Khang")]
+
+
+def test_short_real_name_inside_a_country_or_region_name_is_not_a_match():
+    text = "Nam rời Việt Nam sang Đài Loan, còn Loan ở lại miền Nam. Đức chưa từng sang nước Đức."
+    assert apply_aliases(text, SHORT_REALS, "vi") == (
+        "Tuấn rời Việt Nam sang Đài Loan, còn Hương ở lại miền Nam. Khang chưa từng sang nước Đức.",
+        ["Nam", "Loan", "Đức"])
+    for kept in ("VIỆT NAM, Miền Nam và ĐÀI LOAN.", "Họ sống ở Nam Bộ, rồi lên Tây Nguyên.", "Hàn Quốc và Thái Lan."):
+        assert apply_aliases(kept, SHORT_REALS + [ForbiddenName("Lan", "e4", "Mai", "Mai")], "vi") == (kept, [])
+    assert apply_aliases("Nam left Viet Nam.", SHORT_REALS, "en") == ("Tuan left Viet Nam.", ["Nam"])
+    assert find_unknown_names("Họ rời Việt Nam sang Đài Loan.", [ForbiddenName("Nam"), ForbiddenName("Loan")], []) == []
+
+
+def test_country_name_does_not_hide_a_longer_real_name_that_contains_it():
+    fb = [ForbiddenName("Nguyễn Việt Nam", "e1", "Trần Minh Khang", "Tran Minh Khang")]
+    assert apply_aliases("Nguyễn Việt Nam sống ở Việt Nam.", fb, "vi") == (
+        "Trần Minh Khang sống ở Việt Nam.", ["Nguyễn Việt Nam"])
+
+
 # ---------------------------------------------------------------- hai tên thật trùng nhau khi bỏ dấu
 
 HUNG_TWO = [_entity("e1", ["Nguyễn Văn Hùng", "Hùng"], "Trịnh Quang Vũ", "Trinh Quang Vu"),

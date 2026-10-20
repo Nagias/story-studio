@@ -472,25 +472,32 @@ def test_entities_can_add_a_real_name_that_differs_only_in_diacritics(client, sm
     assert "Hùng" not in notes[0] and "Hưng" not in notes[0] and "Hung" not in notes[0]
 
 
-def test_entity_update_swaps_only_real_occurrences_of_short_aliases(client, isolated_projects_dir):
-    text_vi = "Năm ấy, Nam sống một mình bên bến cảng. Hung thủ vẫn lẩn trốn, còn Hùng vẫn chờ."
-    text_en = "That year, Nam lived alone by the docks. The killer was still out there, and Hung kept waiting."
+SHORT_ALIASES = [CaseEntity(id="person_1", kind="person", real_names=["Trần Văn Bảo"], alias_vi="Nam", alias_en="Nam"),
+                 CaseEntity(id="person_2", kind="person", real_names=["Lý Văn Cường"], alias_vi="Hùng", alias_en="Hung")]
+SHORT_RENAMES = [{"id": "person_1", "alias_vi": "Tuấn", "alias_en": "Tuan"},
+                 {"id": "person_2", "alias_vi": "Dũng", "alias_en": "Dung"}]
+
+
+def save_one_scene_plan(entities, text_vi, text_en):
+    """Lưu một kế hoạch đã xong gồm cảnh miễn trừ và một cảnh (order 2) có lời kể cho sẵn; trả case_id."""
     plan = CaseAdaptationPlan(
         case_id="case_0a1b2c3d", created_at="2026-10-20T00:00:00", model="test", target_minutes=8, visual_style="noir",
         bible=CaseBible(source_language="vi", culture="vietnamese", title_vi="Bến Cảng", title_en="The Docks", timeline=[],
-                        entities=[CaseEntity(id="person_1", kind="person", real_names=["Trần Văn Bảo"],
-                                             alias_vi="Nam", alias_en="Nam"),
-                                  CaseEntity(id="person_2", kind="person", real_names=["Lý Văn Cường"],
-                                             alias_vi="Hùng", alias_en="Hung")]),
+                        entities=entities),
         parts=[StoryPart(id="p1", kind="hook", summary_vi=text_vi, event_ids=[], scene_count=1)],
         scenes=[AdaptedScene(order=1, part_id="disclaimer", narration_vi=DISCLAIMER["vi"], narration_en=DISCLAIMER["en"],
                              visual_kind="disclaimer"),
                 AdaptedScene(order=2, part_id="p1", narration_vi=text_vi, narration_en=text_en, visual_kind="image")],
     )
     case_store.save_plan(plan)
-    response = client.put(f"{BASE}/cases/{plan.case_id}/entities", json={"updates": [
-        {"id": "person_1", "alias_vi": "Tuấn", "alias_en": "Tuan"},
-        {"id": "person_2", "alias_vi": "Dũng", "alias_en": "Dung"}]})
+    return plan.case_id
+
+
+def test_entity_update_swaps_only_real_occurrences_of_short_aliases(client, isolated_projects_dir):
+    text_vi = "Năm ấy, Nam sống một mình bên bến cảng. Hung thủ vẫn lẩn trốn, còn Hùng vẫn chờ."
+    text_en = "That year, Nam lived alone by the docks. The killer was still out there, and Hung kept waiting."
+    case_id = save_one_scene_plan(SHORT_ALIASES, text_vi, text_en)
+    response = client.put(f"{BASE}/cases/{case_id}/entities", json={"updates": SHORT_RENAMES})
     assert response.status_code == 200, response.text
     after = response.json()
     expected_vi = "Năm ấy, Tuấn sống một mình bên bến cảng. Hung thủ vẫn lẩn trốn, còn Dũng vẫn chờ."
@@ -498,6 +505,33 @@ def test_entity_update_swaps_only_real_occurrences_of_short_aliases(client, isol
     assert after["parts"][0]["summary_vi"] == expected_vi
     assert scene_of(after, 2)["narration_en"] == ("That year, Tuan lived alone by the docks. The killer was still out "
                                                   "there, and Dung kept waiting.")
+
+
+def test_entity_update_also_renames_the_other_language_form_of_the_old_name(client, isolated_projects_dir):
+    # Lời Anh còn dạng tiếng Việt ("Hùng", "Lý Tiểu Long"), lời Việt còn dạng tiếng Anh của tên Hoa ("Li Xiaolong").
+    # Dạng tiếng Anh viết không dấu trùng dạng Việt ("Hung") thì trong lời Việt là chữ "hung" ("Hung hăng"): giữ nguyên.
+    entities = [SHORT_ALIASES[1], CaseEntity(id="person_3", kind="person", real_names=["Trương Vĩ Kiệt"],
+                                             alias_vi="Lý Tiểu Long", alias_en="Li Xiaolong")]
+    text_vi = "Hùng gặp Li Xiaolong ở bến cảng. Hung hăng, gã đàn ông lao tới."
+    text_en = "Hùng met Lý Tiểu Long at the docks. Hung said nothing."
+    case_id = save_one_scene_plan(entities, text_vi, text_en)
+    response = client.put(f"{BASE}/cases/{case_id}/entities", json={"updates": [
+        SHORT_RENAMES[1], {"id": "person_3", "alias_vi": "Lý Đại Hổ", "alias_en": "Li Dahu"}]})
+    assert response.status_code == 200, response.text
+    scene = scene_of(response.json(), 2)
+    assert scene["narration_vi"] == "Dũng gặp Lý Đại Hổ ở bến cảng. Hung hăng, gã đàn ông lao tới."
+    assert scene["narration_en"] == "Dung met Li Dahu at the docks. Dung said nothing."
+
+
+def test_entity_update_leaves_country_and_region_names_that_contain_the_old_name(client, isolated_projects_dir):
+    text_vi = "Nam rời Việt Nam sang Đài Loan, còn gia đình ở lại miền Nam."
+    text_en = "Nam left Viet Nam for Taiwan; his family stayed in the South."
+    case_id = save_one_scene_plan(SHORT_ALIASES, text_vi, text_en)
+    response = client.put(f"{BASE}/cases/{case_id}/entities", json={"updates": SHORT_RENAMES})
+    assert response.status_code == 200, response.text
+    scene = scene_of(response.json(), 2)
+    assert scene["narration_vi"] == "Tuấn rời Việt Nam sang Đài Loan, còn gia đình ở lại miền Nam."
+    assert scene["narration_en"] == "Tuan left Viet Nam for Taiwan; his family stayed in the South."
 
 
 # ---------------------------------------------------------------- sửa lời từng cảnh, tạo dự án
@@ -643,7 +677,8 @@ def test_create_language_version_route(client, small_chunks, monkeypatch):
 
     response = client.post(f"/api/projects/{vi_id}/create-language-version", json={"language": "en"})
     assert response.status_code == 200, response.text
-    assert set(response.json()) == {"job_id"}
+    assert set(response.json()) == {"job_id", "already_running"}
+    assert response.json()["already_running"] is False
     job_id = response.json()["job_id"]
     assert re.fullmatch(r"job_[0-9a-f]{8}", job_id)
 
@@ -705,6 +740,60 @@ def test_create_language_version_failures_are_reported_in_the_job(client, small_
     job = wait_job(client, client.post(f"/api/projects/{vi_id}/create-language-version",
                                        json={"language": "vi"}).json()["job_id"])
     assert job["status"] == "failed" and job["error"] == "Dự án này đã ở ngôn ngữ đó."
+
+
+def test_language_version_has_one_running_job_per_project_and_language(client, monkeypatch):
+    # Giao diện tải lại trang giữa chừng rồi bấm lại: máy chủ trả đúng việc đang chạy, không tạo việc trùng.
+    from routers import language_versions
+    started = []
+
+    async def fake_run(job_id, project_id, language, voice):
+        started.append((job_id, project_id, language))
+
+    monkeypatch.setattr(language_versions, "_run_job", fake_run)
+    project = project_service.create_project(ProjectCreateRequest(name="Dự án gốc"))
+
+    def post(language="en"):
+        response = client.post(f"/api/projects/{project.id}/create-language-version", json={"language": language})
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def running(language="en"):
+        response = client.get(f"/api/projects/{project.id}/language-version-job", params={"language": language})
+        assert response.status_code == 200, response.text
+        return response.json()["job"]
+
+    assert running() is None
+    first = post()
+    assert first["already_running"] is False and len(started) == 1
+    job = running()
+    assert job["job_id"] == first["job_id"] and job["status"] == "running"
+
+    again = post()
+    assert again == {"job_id": first["job_id"], "already_running": True}
+    assert len(started) == 1                                        # không chạy thêm việc nào
+    other_language = post("vi")
+    assert other_language["job_id"] != first["job_id"] and len(started) == 2
+
+    case_jobs.update_job(first["job_id"], status="done", result={"project_id": "proj_x", "rewritten_orders": []})
+    assert running() is None                                        # việc đã xong không còn là việc đang chạy
+    assert post()["job_id"] != first["job_id"] and len(started) == 3
+
+    assert client.get(f"/api/projects/{project.id}/language-version-job", params={"language": "fr"}).status_code == 422
+    assert client.get("/api/projects/..%2Fx/language-version-job").status_code in (400, 404)
+
+
+def test_case_jobs_start_job_reuses_only_a_running_job_with_the_same_key():
+    first, created = case_jobs.start_job("language_version", "proj_a:en")
+    assert created is True
+    assert case_jobs.start_job("language_version", "proj_a:en") == (first, False)
+    assert case_jobs.find_running_job("language_version", "proj_a:en")["job_id"] == first
+    assert case_jobs.start_job("language_version", "proj_b:en")[0] != first
+    assert case_jobs.start_job("other_kind", "proj_a:en")[0] != first
+    case_jobs.update_job(first, status="failed", error="x")
+    assert case_jobs.find_running_job("language_version", "proj_a:en") is None
+    second, created = case_jobs.start_job("language_version", "proj_a:en")
+    assert created is True and second != first
 
 
 def test_language_version_job_error_never_contains_real_names(client, small_chunks, monkeypatch):

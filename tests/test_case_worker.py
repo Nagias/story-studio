@@ -523,6 +523,79 @@ def _client():
     return TestClient(app, base_url="http://127.0.0.1:8000", client=("127.0.0.1", 50000))
 
 
+def _hold_lock_in_child(path: Path):
+    """Tiến trình con giữ khoá file `path` (như một server Story Studio khác đang chạy). Trả Popen; gọi kill khi xong."""
+    import subprocess
+    path.parent.mkdir(parents=True, exist_ok=True)
+    child = subprocess.Popen(
+        [sys.executable, "-c",
+         "import sys, time; from pathlib import Path; sys.path.insert(0, sys.argv[1]); "
+         "from runners.single_instance import try_lock_file; "
+         "print(try_lock_file(Path(sys.argv[2])) is not None, flush=True); time.sleep(30)",
+         str(BACKEND_DIR), str(path)],
+        stdout=subprocess.PIPE, text=True,
+    )
+    assert child.stdout.readline().strip() == "True"
+    return child
+
+
+def _stop_child(child) -> None:
+    child.kill()
+    child.wait()
+
+
+def _wait_lock_free(deadline_s: float = 5.0) -> None:
+    # venv launcher trên Windows có một tiến trình con thật, tiến trình đó thoát chậm hơn một chút
+    deadline = time.monotonic() + deadline_s
+    while not case_worker.acquire_worker_lock():
+        assert time.monotonic() < deadline, "khoá worker không được nhả sau khi tiến trình kia thoát"
+        time.sleep(0.2)
+
+
+def test_worker_lock_is_held_by_one_process_only(isolated_projects_dir):
+    assert case_worker.acquire_worker_lock()
+    assert case_worker.acquire_worker_lock()                        # gọi lại trong cùng tiến trình vẫn được
+    case_worker.release_worker_lock()
+    child = _hold_lock_in_child(case_worker.worker_lock_path())
+    try:
+        assert not case_worker.acquire_worker_lock()
+    finally:
+        _stop_child(child)
+    _wait_lock_free()
+    case_worker.release_worker_lock()
+    assert case_store.list_pipelines() == []                        # file khoá không bị coi là một vụ án
+
+
+def test_app_leaves_the_queue_alone_when_another_server_runs_the_worker(isolated_projects_dir, monkeypatch):
+    events = []
+
+    async def fake_loop(stop, idle_sleep=1.0):
+        events.append("start")
+        await stop.wait()
+
+    monkeypatch.delenv("STORY_STUDIO_DISABLE_CASE_WORKER", raising=False)
+    monkeypatch.setattr(case_worker, "recover_interrupted", lambda: events.append("recover") or 0)
+    monkeypatch.setattr(case_worker, "worker_loop", fake_loop)
+    child = _hold_lock_in_child(case_worker.worker_lock_path())
+    try:
+        with _client() as client:
+            time.sleep(0.1)
+            assert client.get("/favicon.ico").status_code == 204    # server vẫn chạy, chỉ không có worker
+        assert events == []                                         # không đụng việc `running` của server kia
+    finally:
+        _stop_child(child)
+    _wait_lock_free()
+    case_worker.release_worker_lock()
+    with _client():                                                 # server kia tắt: lần bật sau chạy worker
+        deadline = time.monotonic() + 5
+        while "start" not in events:
+            assert time.monotonic() < deadline
+            time.sleep(0.01)
+    assert events[:2] == ["recover", "start"]
+    assert case_worker.acquire_worker_lock()                        # tắt app thì khoá được nhả
+    case_worker.release_worker_lock()
+
+
 def test_app_does_not_start_worker_when_disabled(monkeypatch):
     started = []
 
@@ -537,7 +610,7 @@ def test_app_does_not_start_worker_when_disabled(monkeypatch):
     assert started == []
 
 
-def test_app_recovers_then_starts_and_stops_worker(monkeypatch):
+def test_app_recovers_then_starts_and_stops_worker(isolated_projects_dir, monkeypatch):
     events = []
 
     async def fake_loop(stop, idle_sleep=1.0):
@@ -565,7 +638,7 @@ def test_app_recovers_then_starts_and_stops_worker(monkeypatch):
     assert events[2] in ("stop", "cancel")                      # tắt app thì worker dừng
 
 
-def test_app_starts_even_if_recover_fails(monkeypatch):
+def test_app_starts_even_if_recover_fails(isolated_projects_dir, monkeypatch):
     events = []
 
     async def fake_loop(stop, idle_sleep=1.0):

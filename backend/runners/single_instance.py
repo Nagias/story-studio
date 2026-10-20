@@ -49,14 +49,28 @@ else:
 _held_fd: Optional[int] = None
 
 
+def try_lock_file(path: Path) -> Optional[int]:
+    """Khóa không chờ file `path` (tạo nếu chưa có). Trả fd đang giữ khóa, None nếu process khác đang giữ.
+    Khóa tự nhả khi process chết; nhả sớm bằng unlock_file."""
+    fd = os.open(str(path), os.O_RDWR | os.O_CREAT, 0o600)
+    if not _try_lock(fd):
+        os.close(fd)
+        return None
+    return fd
+
+
+def unlock_file(fd: int) -> None:
+    _unlock(fd)
+    os.close(fd)
+
+
 def acquire_runner_lock() -> bool:
     """Giữ khóa suốt vòng đời process. False nếu đã có Fleet Runner khác đang chạy."""
     global _held_fd
     if _held_fd is not None:
         return True
-    fd = os.open(str(LOCK_FILE), os.O_RDWR | os.O_CREAT, 0o600)
-    if not _try_lock(fd):
-        os.close(fd)
+    fd = try_lock_file(LOCK_FILE)
+    if fd is None:
         return False
     # Ghi PID ra sau byte đầu tiên (byte 0 là vùng bị khóa) để tiện tra cứu
     try:
@@ -74,8 +88,7 @@ def release_runner_lock() -> None:
     global _held_fd
     if _held_fd is None:
         return
-    _unlock(_held_fd)
-    os.close(_held_fd)
+    unlock_file(_held_fd)
     _held_fd = None
 
 
