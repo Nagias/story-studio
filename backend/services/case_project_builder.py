@@ -123,6 +123,9 @@ def plan_board_items(plan: CaseAdaptationPlan, lang: Lang) -> tuple[list[Evidenc
     - Bằng chứng/quan hệ không cảnh nào cho hiện ra thì không có trên bảng. Mô tả bằng chứng không bao giờ lên thẻ
       (check_plan không quét mô tả nên có thể còn tên thật).
     - Bản `en`: `metadata["badge_label"]` là nhãn huy hiệu tiếng Anh.
+    - Engine xếp chỗ một lần cho mọi thẻ của cả kế hoạch, nên vụ án nhiều bằng chứng không bị bỏ thẻ nào: lưới thêm
+      ô, mọi thẻ cùng thu nhỏ theo `metadata["card_scale"]`, không thẻ nào đè thẻ nào, và cỡ thẻ giống nhau ở mọi cảnh
+      và cả hai ngôn ngữ.
     """
     bible = plan.bible
     first = _first_reveals(plan)

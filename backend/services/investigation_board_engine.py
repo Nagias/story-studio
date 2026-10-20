@@ -8,11 +8,14 @@ Features:
 2. Fixed-Anchor Grid Layout:
    - Permanent (X, Y) coordinates assigned once (pinned=True) and NEVER recalculated
      in subsequent scenes, guaranteeing visual consistency across the entire video.
+   - Grid sized by the total card count: one cell per card, cells separated by a gap, so cards never
+     overlap; with many cards every card shrinks by the same metadata["card_scale"].
 3. Cumulative Rendering (State = ΔNodes_k + ΔEdges_k):
    - Scene K only displays nodes and edges introduced up to time K.
 4. Natural Gravitational Bezier Red Threads:
    - True gravity sag calculation based on Euclidean distance.
-   - Multi-layer drawing: drop shadow, 3.5px crimson yarn fiber, center highlight.
+   - Multi-layer drawing: drop shadow, 3px crimson yarn fiber, center highlight.
+   - Drawn above the cards (below the pushpins) so threads stay visible where they cross a card.
 5. High-Resolution Evidence Cards:
    - Polaroid styled cards with subtle seeded tilt angles (-3° to +3°).
    - Node-type badges, detective silhouette placeholders, rubber stamps ("ALIBI", "CONFIRMED", "X").
@@ -243,32 +246,130 @@ def generate_corkboard_background(width: int = CANVAS_WIDTH, height: int = CANVA
 # 2. FIXED-ANCHOR GRID LAYOUT
 # ==============================================================================
 
-# Canonical semantic board layout slots for 1920x1080 canvas
-SEMANTIC_ANCHOR_SLOTS = {
-    # Center focus: Victim or primary incident
-    "victim_center": (960, 480),
-    # Top tier: Suspects and primary POIs
-    "suspect_culprit": (460, 270),
-    "suspect_red_herring": (1460, 270),
-    "suspect_secondary": (960, 230),
-    # Lower tier: Physical evidence, forensics, weapon
-    "weapon_primary": (700, 790),
-    "forensic_report": (1220, 790),
-    # Lateral flanks: crime scene location, timeline, surveillance
-    "location_flank": (300, 560),
-    "witness_flank": (1620, 560),
-    "timeline_flank": (960, 830),
-}
+# Thẻ ở cỡ gốc (tỉ lệ 1). Bảng nhiều thẻ thì mọi thẻ cùng được thu nhỏ theo metadata["card_scale"].
+CARD_WIDTH = 250
+CARD_HEIGHT = 310
+PHOTO_WIDTH = 216
+PHOTO_HEIGHT = 186
 
-# Grid matrix for dynamic slot assignment (safe area: x [280..1640], y [240..820])
-GRID_SLOTS = [
-    # Row 1 (top)
-    (420, 260), (780, 240), (1140, 240), (1500, 260),
-    # Row 2 (mid)
-    (340, 530), (740, 520), (1180, 520), (1580, 530),
-    # Row 3 (bottom)
-    (440, 800), (800, 810), (1120, 810), (1480, 800),
-]
+# Vùng đặt thẻ (x1, y1, x2, y2): trừ khung gỗ, phía trên chừa chỗ cho tiêu đề.
+BOARD_SAFE_AREA = (60, 96, 1860, 1030)
+BOARD_CENTER = ((BOARD_SAFE_AREA[0] + BOARD_SAFE_AREA[2]) / 2, (BOARD_SAFE_AREA[1] + BOARD_SAFE_AREA[3]) / 2)
+CARD_GAP_X = 28             # khe hở tối thiểu giữa hai ô lưới cạnh nhau, đủ để thấy sợi chỉ và mặt bần
+CARD_GAP_Y = 22
+MAX_TILT_DEG = 3.2          # độ nghiêng lớn nhất mà compute_deterministic_tilt sinh ra
+MAX_JITTER = 40             # thẻ lệch khỏi tâm ô tối đa chừng này px cho tự nhiên, nhưng không bao giờ ra khỏi ô
+_PINNED_MARGIN = 8          # khe hở tối thiểu với thẻ đã ghim từ trước
+
+# Điểm mà từng loại thẻ muốn đứng gần (khung 1920x1080): nghi phạm hàng trên, nạn nhân giữa bảng, hung khí và
+# giám định hàng dưới, hiện trường bên trái. Loại khác đứng gần giữa bảng. Thẻ lấy ô trống gần điểm đó nhất.
+# Nghi phạm đứng chéo phía trên nạn nhân chứ không thẳng cột: sợi chỉ nghi phạm -> nạn nhân (quan hệ hay gặp nhất)
+# mà chạy dọc thì đè ngay lên tên thẻ nghi phạm.
+TYPE_PREFERRED_POINTS = {
+    "victim": (960, 480),
+    "suspect": (560, 250),
+    "weapon": (700, 790),
+    "forensic_report": (1220, 790),
+    "location": (300, 560),
+    "timeline_event": (960, 830),
+}
+# Thẻ hiện cùng một cảnh: loại đứng trước được chọn ô trước.
+TYPE_LAYOUT_PRIORITY = {"victim": 0, "suspect": 1, "weapon": 2, "forensic_report": 3, "location": 4, "timeline_event": 5}
+
+Rect = Tuple[float, float, float, float]
+
+
+def _tilted_box(scale: float, tilt_deg: float) -> Tuple[float, float]:
+    """(rộng, cao) của khung bao thẻ đã thu nhỏ `scale` và nghiêng `tilt_deg` độ."""
+    rad = math.radians(abs(tilt_deg))
+    w = CARD_WIDTH * math.cos(rad) + CARD_HEIGHT * math.sin(rad)
+    h = CARD_HEIGHT * math.cos(rad) + CARD_WIDTH * math.sin(rad)
+    return w * scale, h * scale
+
+
+def _rect_at(cx: float, cy: float, w: float, h: float) -> Rect:
+    return (cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
+
+
+def _rects_overlap(a: Rect, b: Rect, margin: float = 0.0) -> bool:
+    return a[0] < b[2] + margin and b[0] < a[2] + margin and a[1] < b[3] + margin and b[1] < a[3] + margin
+
+
+def card_scale(node: EvidenceNode) -> float:
+    """Tỉ lệ thu nhỏ thẻ do assign_fixed_anchor_layout ghi vào metadata["card_scale"]; thẻ không có thì cỡ gốc."""
+    try:
+        scale = float((node.metadata or {}).get("card_scale", 1.0))
+    except (TypeError, ValueError):
+        return 1.0
+    if not math.isfinite(scale):
+        return 1.0
+    return min(1.0, max(0.2, scale))
+
+
+def choose_board_grid(count: int, tilt_deg: float = MAX_TILT_DEG) -> Tuple[int, int, float]:
+    """(số cột, số hàng, tỉ lệ thẻ) để `count` thẻ nằm trong vùng đặt thẻ, mỗi thẻ một ô, không thẻ nào chạm nhau.
+
+    Chọn lưới cho thẻ to nhất (không quá cỡ gốc). Các lưới cho thẻ gần to bằng nhau thì lấy lưới có tỉ lệ
+    cột/hàng gần với dáng bảng nhất, để thẻ trải đều thay vì xếp một hàng dài.
+    """
+    count = max(1, count)
+    x1, y1, x2, y2 = BOARD_SAFE_AREA
+    area_w, area_h = x2 - x1, y2 - y1
+    box_w, box_h = _tilted_box(1.0, tilt_deg)
+    ideal_ratio = (area_w / box_w) / (area_h / box_h)
+    options = []
+    for rows in range(1, count + 1):
+        cols = math.ceil(count / rows)
+        if math.ceil(count / cols) < rows:
+            continue                                # hàng cuối trống hẳn: đã có lưới ít hàng hơn cùng số cột
+        cell_w = (area_w - (cols - 1) * CARD_GAP_X) / cols
+        cell_h = (area_h - (rows - 1) * CARD_GAP_Y) / rows
+        scale = min(1.0, cell_w / box_w, cell_h / box_h)
+        if scale > 0:
+            options.append((scale, cols, rows))
+    if not options:                                 # quá nhiều thẻ, không lưới nào còn chỗ: thẻ nhỏ nhất, chấp nhận chạm
+        side = math.ceil(math.sqrt(count))
+        return side, side, 0.2
+    best = max(scale for scale, _, _ in options)
+    scale, cols, rows = min(
+        (o for o in options if o[0] >= best - 0.03),
+        key=lambda o: (abs(o[1] / o[2] - ideal_ratio), -o[0]),
+    )
+    return cols, rows, scale
+
+
+def _grid_cells(cols: int, rows: int) -> List[Rect]:
+    """Các ô lưới (x1, y1, x2, y2) phủ vùng đặt thẻ, cách nhau CARD_GAP_X/CARD_GAP_Y; thứ tự trái->phải, trên->dưới."""
+    x1, y1, x2, y2 = BOARD_SAFE_AREA
+    cell_w = max(1.0, (x2 - x1 - (cols - 1) * CARD_GAP_X) / cols)
+    cell_h = max(1.0, (y2 - y1 - (rows - 1) * CARD_GAP_Y) / rows)
+    cells = []
+    for r in range(rows):
+        for c in range(cols):
+            cx1 = x1 + c * (cell_w + CARD_GAP_X)
+            cy1 = y1 + r * (cell_h + CARD_GAP_Y)
+            cells.append((cx1, cy1, cx1 + cell_w, cy1 + cell_h))
+    return cells
+
+
+def _jitter(node_id: str, slack: float, axis: str) -> float:
+    """Độ lệch cố định theo id thẻ, trong khoảng ±min(MAX_JITTER, slack/2): thẻ lệch nhẹ nhưng vẫn nằm trọn trong ô."""
+    h = int(hashlib.md5(f"{node_id}:{axis}".encode("utf-8")).hexdigest()[:6], 16)
+    unit = (h % 2001) / 1000.0 - 1.0
+    return unit * min(MAX_JITTER, max(0.0, slack) / 2)
+
+
+def _is_placed(node: EvidenceNode) -> bool:
+    """Thẻ đã có chỗ cố định thì không bao giờ bị xếp lại.
+
+    (0, 0) và toạ độ mặc định (960, 540) của EvidenceNode không tính là đã có chỗ (mọi loại thẻ, kể cả nạn nhân),
+    trừ khi chính hàm xếp chỗ đã đặt thẻ ở đó (có metadata["card_scale"]).
+    """
+    if not node.pinned:
+        return False
+    if "card_scale" in (node.metadata or {}):
+        return True
+    return (node.x, node.y) not in ((0, 0), (960, 540))
 
 
 def assign_fixed_anchor_layout(
@@ -277,23 +378,15 @@ def assign_fixed_anchor_layout(
     height: int = CANVAS_HEIGHT,
 ) -> List[EvidenceNode]:
     """
-    Assigns permanent, fixed-anchor (X, Y) coordinates to each EvidenceNode.
-    Once assigned, pinned=True is enforced.
-    Subsequent scenes NEVER recompute or shift node coordinates.
+    Gán toạ độ cố định (x, y) cho từng thẻ; thẻ đã có chỗ (xem _is_placed) giữ nguyên, không bao giờ bị dời.
+
+    - Lưới tính theo tổng số thẻ (choose_board_grid): mỗi thẻ một ô, ô cách nhau một khe, nên không thẻ nào đè thẻ
+      nào. Nhiều thẻ thì mọi thẻ cùng thu nhỏ; tỉ lệ ghi vào metadata["card_scale"], nên gọi một lần với toàn bộ thẻ
+      của cả video thì thẻ không đổi cỡ giữa các cảnh.
+    - Thứ tự chọn ô: cảnh hiện sớm trước, cùng cảnh thì theo TYPE_LAYOUT_PRIORITY (nạn nhân, nghi phạm...). Mỗi thẻ
+      lấy ô trống gần TYPE_PREFERRED_POINTS của loại mình nhất, rồi lệch nhẹ trong ô theo id.
+    - Đặt pinned=True cho mọi thẻ. Danh sách trả về giữ nguyên thứ tự.
     """
-    used_positions: List[Tuple[int, int]] = []
-
-    # First, collect already pinned nodes
-    for node in nodes:
-        if node.pinned and (node.x != 0 or node.y != 0) and not (node.x == 960 and node.y == 540 and node.node_type != "victim"):
-            used_positions.append((node.x, node.y))
-
-    # Helper to check collision
-    def is_slot_free(x: int, y: int, min_dist: float = 190.0) -> bool:
-        for ux, uy in used_positions:
-            if math.hypot(x - ux, y - uy) < min_dist:
-                return False
-        return True
 
     # Deterministic rotation based on node id hash
     def compute_deterministic_tilt(node_id: str) -> float:
@@ -301,68 +394,54 @@ def assign_fixed_anchor_layout(
         # Range -3.2 to +3.2 degrees
         return ((h % 65) - 32) * 0.1
 
-    grid_idx = 0
-
     for node in nodes:
         # Compute deterministic tilt for natural polaroid aesthetic
         if abs(node.rotation_deg) < 0.01:
             node.rotation_deg = compute_deterministic_tilt(node.id)
 
-        # If already pinned with valid position, keep it untouched!
-        if node.pinned and (node.x, node.y) in used_positions:
-            continue
-
-        assigned = False
-
-        # Attempt semantic role-based slot
-        if node.node_type == "victim" and is_slot_free(*SEMANTIC_ANCHOR_SLOTS["victim_center"]):
-            node.x, node.y = SEMANTIC_ANCHOR_SLOTS["victim_center"]
-            assigned = True
-        elif node.node_type == "suspect":
-            if "culprit" in node.id.lower() or "chinh" in node.id.lower():
-                target = SEMANTIC_ANCHOR_SLOTS["suspect_culprit"]
-                if is_slot_free(*target):
-                    node.x, node.y = target
-                    assigned = True
-            elif "red_herring" in node.id.lower() or "gia" in node.id.lower() or "phu" in node.id.lower():
-                target = SEMANTIC_ANCHOR_SLOTS["suspect_red_herring"]
-                if is_slot_free(*target):
-                    node.x, node.y = target
-                    assigned = True
-
-        elif node.node_type == "weapon" and is_slot_free(*SEMANTIC_ANCHOR_SLOTS["weapon_primary"]):
-            node.x, node.y = SEMANTIC_ANCHOR_SLOTS["weapon_primary"]
-            assigned = True
-
-        elif node.node_type == "forensic_report" and is_slot_free(*SEMANTIC_ANCHOR_SLOTS["forensic_report"]):
-            node.x, node.y = SEMANTIC_ANCHOR_SLOTS["forensic_report"]
-            assigned = True
-
-        elif node.node_type == "location" and is_slot_free(*SEMANTIC_ANCHOR_SLOTS["location_flank"]):
-            node.x, node.y = SEMANTIC_ANCHOR_SLOTS["location_flank"]
-            assigned = True
-
-        # Fallback to predefined grid matrix slots
-        if not assigned:
-            while grid_idx < len(GRID_SLOTS):
-                candidate = GRID_SLOTS[grid_idx]
-                grid_idx += 1
-                if is_slot_free(*candidate):
-                    node.x, node.y = candidate
-                    assigned = True
-                    break
-
-        # Ultimate fallback with deterministic jitter
-        if not assigned:
-            h = int(hashlib.md5(node.id.encode("utf-8")).hexdigest()[:6], 16)
-            jitter_x = ((h % 80) - 40)
-            jitter_y = (((h >> 3) % 80) - 40)
-            node.x = max(260, min(width - 260, 960 + jitter_x * 8))
-            node.y = max(220, min(height - 220, 540 + jitter_y * 5))
-
-        # Enforce pinned=True
+    placed = [n for n in nodes if _is_placed(n)]
+    todo = [n for n in nodes if not _is_placed(n)]
+    for node in placed:
         node.pinned = True
-        used_positions.append((node.x, node.y))
+    if not todo:
+        return nodes
+
+    tilt = max([MAX_TILT_DEG] + [abs(n.rotation_deg) for n in nodes])
+    taken: List[Rect] = [_rect_at(n.x, n.y, *_tilted_box(card_scale(n), n.rotation_deg)) for n in placed]
+    # Thẻ ghim từ trước có thể nằm lệch lưới và chặn vài ô: lưới thêm ô (thẻ nhỏ đi) tới khi đủ ô trống cho thẻ mới.
+    grid_size = len(nodes)
+    while True:
+        cols, rows, scale = choose_board_grid(grid_size, tilt)
+        cells = _grid_cells(cols, rows)
+        blocked = {i for i, cell in enumerate(cells) if any(_rects_overlap(cell, t, _PINNED_MARGIN) for t in taken)}
+        if len(cells) - len(blocked) >= len(todo) or scale <= 0.2:
+            break
+        grid_size += 1
+    used_cells: set = set(blocked)
+
+    todo.sort(key=lambda n: (n.appearance_scene_order, TYPE_LAYOUT_PRIORITY.get(n.node_type, len(TYPE_LAYOUT_PRIORITY))))
+    for node in todo:
+        preferred = TYPE_PREFERRED_POINTS.get(node.node_type, BOARD_CENTER)
+        w, h = _tilted_box(scale, node.rotation_deg)
+
+        def distance(i: int) -> float:
+            cx1, cy1, cx2, cy2 = cells[i]
+            return math.hypot((cx1 + cx2) / 2 - preferred[0], (cy1 + cy2) / 2 - preferred[1])
+
+        free = [i for i in range(len(cells)) if i not in used_cells]
+        if free:
+            i = min(free, key=lambda i: (distance(i), i))
+            used_cells.add(i)
+            cx1, cy1, cx2, cy2 = cells[i]
+            x = (cx1 + cx2) / 2 + _jitter(node.id, (cx2 - cx1) - w, "x")
+            y = (cy1 + cy2) / 2 + _jitter(node.id, (cy2 - cy1) - h, "y")
+        else:                                       # quá nhiều thẻ (thẻ đã nhỏ hết mức): ô hợp nhất, chấp nhận chạm
+            cx1, cy1, cx2, cy2 = cells[min(range(len(cells)), key=lambda i: (distance(i), i))]
+            x, y = (cx1 + cx2) / 2, (cy1 + cy2) / 2
+
+        node.x, node.y = int(round(x)), int(round(y))
+        node.pinned = True
+        node.metadata["card_scale"] = round(scale, 4)
 
     return nodes
 
@@ -370,11 +449,6 @@ def assign_fixed_anchor_layout(
 # ==============================================================================
 # 3. POLAROID CARD & RUBBER STAMP RENDERING
 # ==============================================================================
-
-CARD_WIDTH = 250
-CARD_HEIGHT = 310
-PHOTO_WIDTH = 216
-PHOTO_HEIGHT = 186
 
 
 def render_node_placeholder_icon(draw: ImageDraw.ImageDraw, rect: List[int], node_type: str, label: str):
@@ -639,13 +713,16 @@ def draw_red_thread(
     color_hex: str = "#dc2626",
     progress: float = 1.0,
     label: Optional[str] = None,
+    label_avoid: Optional[List[Rect]] = None,
 ):
     """
     Draws a realistic yarn/thread line with:
-    - Soft drop shadow on corkboard surface (alpha blurred).
-    - 3.5px crimson cord body.
+    - Drop shadow (two soft strokes, no blur needed) on whatever lies under the thread: cork or cards.
+    - 3px crimson cord body.
     - 1px lighter core fiber reflection.
     - Animated progression support (progress from 0.0 to 1.0).
+    The thread is drawn above the cards (see render_board_image), so it stays visible where it crosses a card.
+    `label_avoid`: card/tag rectangles the tag should not cover; the placed tag is appended to it.
     """
     raw_points = compute_bezier_points(p0, p2, steps=50)
 
@@ -653,10 +730,11 @@ def draw_red_thread(
     num_pts = max(2, int(len(raw_points) * max(0.01, min(1.0, progress))))
     active_points = raw_points[:num_pts]
 
-    # 1. Thread Drop Shadow (offset down by 6px)
-    shadow_points = [(x + 2, y + 6) for (x, y) in active_points]
-    for i in range(len(shadow_points) - 1):
-        shadow_draw.line([shadow_points[i], shadow_points[i + 1]], fill=(15, 8, 4, 110), width=4)
+    # 1. Thread Drop Shadow (offset down by 5px): wide faint stroke + narrow darker core
+    shadow_points = [(x + 2, y + 5) for (x, y) in active_points]
+    for width, alpha in ((7, 40), (3, 75)):
+        for i in range(len(shadow_points) - 1):
+            shadow_draw.line([shadow_points[i], shadow_points[i + 1]], fill=(15, 8, 4, alpha), width=width)
 
     # 2. Main Red Thread Body
     c = ImageColor.getrgb(color_hex) if color_hex.startswith("#") else (220, 38, 38)
@@ -670,14 +748,38 @@ def draw_red_thread(
 
     # 4. Optional Evidence Thread Tag
     if label and progress >= 0.95:
-        mid_idx = len(active_points) // 2
-        tx, ty = active_points[mid_idx]
         tag_font = get_font(size=11, bold=True)
         tw = int(canvas_draw.textlength(label, font=tag_font)) + 10
         th = 18
+        tx, ty = _label_spot(active_points, tw, th, label_avoid)
+        tag_rect = (tx - tw // 2, ty - th // 2, tx + tw // 2, ty + th // 2)
         # Paper tag background
-        canvas_draw.rectangle([tx - tw // 2, ty - th // 2, tx + tw // 2, ty + th // 2], fill=(255, 253, 235), outline=(140, 110, 60))
+        canvas_draw.rectangle(list(tag_rect), fill=(255, 253, 235), outline=(140, 110, 60))
         canvas_draw.text((tx - tw // 2 + 5, ty - th // 2 + 2), label, font=tag_font, fill=(30, 25, 20))
+        if label_avoid is not None:
+            label_avoid.append(tag_rect)            # nhãn của sợi sau né nhãn này
+
+
+def _overlap_area(a: Rect, b: Rect) -> float:
+    return max(0.0, min(a[2], b[2]) - max(a[0], b[0])) * max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+
+
+def _label_spot(points: List[Tuple[float, float]], tag_w: int, tag_h: int,
+                avoid: Optional[List[Rect]]) -> Tuple[int, int]:
+    """Chỗ đặt nhãn trên đoạn giữa sợi chỉ (20%..80%): chỗ đè lên thẻ và nhãn khác ít nhất, hoà thì gần giữa sợi nhất.
+    Chỉ nằm trên thẻ nên nhãn đặt bừa ở giữa sợi dễ che mất tên thẻ."""
+    mid = len(points) // 2
+    if not avoid:
+        return int(points[mid][0]), int(points[mid][1])
+    candidates = range(int(len(points) * 0.2), int(len(points) * 0.8) + 1)
+    best = min(
+        candidates,
+        key=lambda i: (
+            sum(_overlap_area(_rect_at(points[i][0], points[i][1], tag_w, tag_h), r) for r in avoid),
+            abs(i - mid),
+        ),
+    )
+    return int(points[best][0]), int(points[best][1])
 
 
 # ==============================================================================
@@ -721,116 +823,185 @@ def get_cumulative_board_state(plan: FictionalCasePlan, scene_order: int) -> Boa
 # 6. STATIC IMAGE RENDERER
 # ==============================================================================
 
-def render_board_image(
-    board_state: BoardState,
-    output_path: Optional[str] = None,
-    delta_thread_progress: float = 1.0,
-) -> Image.Image:
-    """
-    Renders the complete 1920x1080 Investigation Corkboard:
-    1. Base corkboard background.
-    2. Shadow layer for cards & threads.
-    3. Thread DAG connecting pinned cards.
-    4. Rotated Polaroid cards with stamps & badges.
-    5. Pushpin heads on top of threads and cards.
-    6. Case header banner at top center.
-    """
-    # 1. Base Canvas
-    canvas = generate_corkboard_background(board_state.canvas_width, board_state.canvas_height)
-    canvas = canvas.convert("RGBA")
+def _card_image(node: EvidenceNode) -> Image.Image:
+    """Thẻ đã thu nhỏ theo card_scale và nghiêng theo rotation_deg (expand=True), tâm ảnh đặt tại (node.x, node.y)."""
+    card = render_polaroid_card(node)
+    scale = card_scale(node)
+    if scale < 0.999:
+        size = (max(1, round(CARD_WIDTH * scale)), max(1, round(CARD_HEIGHT * scale)))
+        card = card.resize(size, Image.Resampling.LANCZOS)
+    return card.rotate(node.rotation_deg, resample=Image.Resampling.BICUBIC, expand=True)
 
+
+def _paste_origin(node: EvidenceNode, card_img: Image.Image) -> Tuple[int, int]:
+    return node.x - card_img.width // 2, node.y - card_img.height // 2
+
+
+def card_footprint(node: EvidenceNode) -> Tuple[int, int, int, int]:
+    """Vùng (x1, y1, x2, y2) mà thẻ thật sự phủ trên bảng (phần ảnh thẻ có alpha > 0), đúng như render_board_image dán."""
+    card_img = _card_image(node)
+    left, top = _paste_origin(node, card_img)
+    bbox = card_img.getchannel("A").getbbox() or (0, 0, 0, 0)
+    return left + bbox[0], top + bbox[1], left + bbox[2], top + bbox[3]
+
+
+def _pin_position(node: EvidenceNode) -> Tuple[float, float]:
+    """Toạ độ đinh ghim: giữa mép trên của thẻ (chưa nghiêng), cách mép 12 px ở cỡ gốc, xoay theo thẻ."""
+    scale = card_scale(node)
+    local_dx = 0.0
+    local_dy = -(CARD_HEIGHT * scale / 2.0) + 12.0 * scale
+    rad = math.radians(-node.rotation_deg)
+    return (node.x + (local_dx * math.cos(rad) - local_dy * math.sin(rad)),
+            node.y + (local_dx * math.sin(rad) + local_dy * math.cos(rad)))
+
+
+def _star_points(cx: float, cy: float, r_outer: float) -> List[Tuple[float, float]]:
+    r_inner = r_outer * 0.42
+    points = []
+    for i in range(10):
+        angle = -math.pi / 2 + i * math.pi / 5
+        r = r_outer if i % 2 == 0 else r_inner
+        points.append((cx + r * math.cos(angle), cy + r * math.sin(angle)))
+    return points
+
+
+def _missing_glyphs(font, text: str) -> set:
+    """Ký tự trong `text` mà font không có glyph: PIL vẽ chúng thành ô vuông .notdef, giống hệt ký tự U+E000."""
+    def signature(ch: str):
+        left, top, right, bottom = font.getbbox(ch)
+        img = Image.new("L", (max(1, right - left), max(1, bottom - top)), 0)
+        ImageDraw.Draw(img).text((-left, -top), ch, font=font, fill=255)
+        return img.size, img.tobytes()
+
+    try:
+        notdef = signature("\ue000")
+        return {ch for ch in set(text) if not ch.isspace() and signature(ch) == notdef}
+    except Exception:
+        return set()
+
+
+def title_banner_text_and_font(title: str):
+    """Chữ in trên băng tiêu đề và font dùng cho nó. Font máy đánh chữ thiếu glyph nào thì đổi sang font đậm thường;
+    hai ngôi sao hai bên vẽ bằng đa giác vì font Courier/Arial của Windows không có glyph "★" (hiện thành ô vuông)."""
+    text = " ".join(str(title or "").upper().split())
+    font = get_font(size=16, bold=True, typewriter=True)
+    if font is not None and _missing_glyphs(font, text):
+        fallback = get_font(size=16, bold=True)
+        if fallback is not None and not _missing_glyphs(fallback, text):
+            font = fallback
+    return text, font
+
+
+def _draw_title_banner(canvas: Image.Image, title: str) -> None:
+    """Băng tiêu đề màu giấy manila ở giữa mép trên, chữ in hoa giữa hai ngôi sao đỏ."""
+    draw = ImageDraw.Draw(canvas)
+    text, font = title_banner_text_and_font(title)
+    star_r = 8
+    side = 16 + 2 * star_r + 12                     # lề + ngôi sao + khoảng cách tới chữ, mỗi bên
+    max_w = canvas.width - 2 * (FRAME_THICKNESS + 40)
+    text_w = draw.textlength(text, font=font)
+    while text and text_w + 2 * side > max_w:       # tiêu đề quá dài: cắt bớt, thêm ".."
+        text = text[:-3].rstrip() + ".."
+        text_w = draw.textlength(text, font=font)
+
+    banner_w = int(max(460, text_w + 2 * side))
+    banner_h = 42
+    bx = (canvas.width - banner_w) // 2
+    by = FRAME_THICKNESS + 4
+    draw.rounded_rectangle([bx, by, bx + banner_w, by + banner_h], radius=5, fill=(244, 238, 222, 235),
+                           outline=(130, 105, 65, 255), width=2)
+    if text:
+        left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
+        tx = bx + (banner_w - (right - left)) / 2 - left
+        ty = by + (banner_h - (bottom - top)) / 2 - top
+        draw.text((tx, ty), text, font=font, fill=(35, 30, 25))
+    cy = by + banner_h / 2
+    for cx in (bx + 16 + star_r, bx + banner_w - 16 - star_r):
+        draw.polygon(_star_points(cx, cy, star_r), fill=(153, 27, 27, 255))
+
+
+def _compose_cards(board_state: BoardState):
+    """(mặt bảng, lớp đinh ghim, toạ độ đinh theo id thẻ, vùng các thẻ).
+
+    Mặt bảng gồm bần + bóng thẻ + thẻ + băng tiêu đề. Sợi chỉ được dán giữa mặt bảng và lớp đinh: trên thẻ, dưới đinh.
+    """
+    canvas = generate_corkboard_background(board_state.canvas_width, board_state.canvas_height).convert("RGBA")
     shadow_layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
     shadow_draw = ImageDraw.Draw(shadow_layer)
-
     card_layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-    thread_layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-    thread_draw = ImageDraw.Draw(thread_layer)
-
     pin_layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-
-    # Pre-render cards and map pin coordinates on canvas
-    node_pin_positions: Dict[str, Tuple[float, float]] = {}
+    pin_positions: Dict[str, Tuple[float, float]] = {}
+    card_rects: List[Rect] = []
 
     for node in board_state.cumulative_nodes:
-        card_img = render_polaroid_card(node)
+        scale = card_scale(node)
+        card_img = _card_image(node)
+        paste_x, paste_y = _paste_origin(node, card_img)
+        shadow_draw.rounded_rectangle(
+            [paste_x + 8 * scale, paste_y + 12 * scale,
+             paste_x + card_img.width + 4 * scale, paste_y + card_img.height + 6 * scale],
+            radius=8, fill=(15, 10, 5, 95),
+        )
+        card_layer.alpha_composite(card_img, (paste_x, paste_y))
+        card_rects.append((paste_x, paste_y, paste_x + card_img.width, paste_y + card_img.height))
 
-        # Rotate card according to fixed tilt
-        rot_deg = node.rotation_deg
-        rotated_card = card_img.rotate(rot_deg, resample=Image.Resampling.BICUBIC, expand=True)
+        pin_cx, pin_cy = _pin_position(node)
+        pin_positions[node.id] = (pin_cx, pin_cy)
+        pin_img = render_pushpin(color_name=node.pin_color, radius=max(7, round(12 * scale)))
+        pin_layer.alpha_composite(pin_img, (int(pin_cx - pin_img.width // 2), int(pin_cy - pin_img.height // 2)))
 
-        # Card center coordinate
-        cx, cy = node.x, node.y
-        paste_x = cx - rotated_card.width // 2
-        paste_y = cy - rotated_card.height // 2
+    canvas = Image.alpha_composite(canvas, shadow_layer.filter(ImageFilter.GaussianBlur(radius=5.0)))
+    canvas = Image.alpha_composite(canvas, card_layer)
+    _draw_title_banner(canvas, board_state.title)
+    return canvas, pin_layer, pin_positions, card_rects
 
-        # Draw card drop shadow onto shadow layer
-        shadow_rect = [
-            paste_x + 8,
-            paste_y + 12,
-            paste_x + rotated_card.width + 4,
-            paste_y + rotated_card.height + 6,
-        ]
-        shadow_draw.rounded_rectangle(shadow_rect, radius=8, fill=(15, 10, 5, 95))
 
-        # Paste rotated card
-        card_layer.alpha_composite(rotated_card, (paste_x, paste_y))
-
-        # Calculate exact canvas position of pushpin (top-center of unrotated card)
-        # Offset from card center: dx=0, dy = -(CARD_HEIGHT // 2) + 12
-        local_dx = 0.0
-        local_dy = -(CARD_HEIGHT / 2.0) + 12.0
-        rad = math.radians(-rot_deg)
-        pin_cx = cx + (local_dx * math.cos(rad) - local_dy * math.sin(rad))
-        pin_cy = cy + (local_dx * math.sin(rad) + local_dy * math.cos(rad))
-        node_pin_positions[node.id] = (pin_cx, pin_cy)
-
-    # 2. Draw Red Threads
-    delta_edge_ids = {e.id for e in board_state.delta_edges}
-
-    for edge in board_state.cumulative_edges:
-        p0 = node_pin_positions.get(edge.source_id)
-        p2 = node_pin_positions.get(edge.target_id)
+def _thread_layer(size: Tuple[int, int], edges: List[RelationEdge], pin_positions: Dict[str, Tuple[float, float]],
+                  progress_of, avoid: List[Rect]) -> Image.Image:
+    """Một lớp trong suốt chứa các sợi chỉ (cả bóng và nhãn); `progress_of(edge)` là phần sợi đã kéo, 0..1.
+    Nhãn sợi chỉ né các vùng trong `avoid` (thẻ) và né nhau."""
+    shadow_layer = Image.new("RGBA", size, (0, 0, 0, 0))
+    thread_layer = Image.new("RGBA", size, (0, 0, 0, 0))
+    shadow_draw = ImageDraw.Draw(shadow_layer)
+    thread_draw = ImageDraw.Draw(thread_layer)
+    avoid = list(avoid)
+    for edge in edges:
+        p0 = pin_positions.get(edge.source_id)
+        p2 = pin_positions.get(edge.target_id)
         if p0 and p2:
-            progress = delta_thread_progress if edge.id in delta_edge_ids else 1.0
             draw_red_thread(
                 canvas_draw=thread_draw,
                 shadow_draw=shadow_draw,
                 p0=p0,
                 p2=p2,
                 color_hex=edge.color,
-                progress=progress,
+                progress=progress_of(edge),
                 label=edge.label,
+                label_avoid=avoid,
             )
+    return Image.alpha_composite(shadow_layer, thread_layer)
 
-    # 3. Draw Pushpins on top of threads and cards
-    for node in board_state.cumulative_nodes:
-        pin_pos = node_pin_positions.get(node.id)
-        if pin_pos:
-            pin_img = render_pushpin(color_name=node.pin_color, radius=12)
-            px = int(pin_pos[0] - pin_img.width // 2)
-            py = int(pin_pos[1] - pin_img.height // 2)
-            pin_layer.alpha_composite(pin_img, (px, py))
 
-    # 4. Composite all layers
-    # Corkboard -> Shadow (blurred) -> Thread Layer -> Card Layer -> Pin Layer
-    shadow_blurred = shadow_layer.filter(ImageFilter.GaussianBlur(radius=5.0))
-    canvas = Image.alpha_composite(canvas, shadow_blurred)
-    canvas = Image.alpha_composite(canvas, thread_layer)
-    canvas = Image.alpha_composite(canvas, card_layer)
+def render_board_image(
+    board_state: BoardState,
+    output_path: Optional[str] = None,
+    delta_thread_progress: float = 1.0,
+) -> Image.Image:
+    """
+    Renders the complete 1920x1080 Investigation Corkboard, bottom to top:
+    1. Corkboard background, blurred card shadows, rotated (and scaled) Polaroid cards, title banner.
+    2. Red threads with their shadows and tags, ABOVE the cards so a thread crossing a card stays visible.
+    3. Pushpin heads on top, covering the thread ends.
+    """
+    base, pin_layer, pin_positions, card_rects = _compose_cards(board_state)
+    delta_edge_ids = {e.id for e in board_state.delta_edges}
+    threads = _thread_layer(
+        base.size, board_state.cumulative_edges, pin_positions,
+        lambda edge: delta_thread_progress if edge.id in delta_edge_ids else 1.0,
+        card_rects,
+    )
+    canvas = Image.alpha_composite(base, threads)
     canvas = Image.alpha_composite(canvas, pin_layer)
-
-    # 5. Case Title Header Tag (Top Center Manila folder tab)
-    top_banner = ImageDraw.Draw(canvas)
-    banner_w = 460
-    banner_h = 42
-    bx = (board_state.canvas_width - banner_w) // 2
-    by = FRAME_THICKNESS + 4
-
-    top_banner.rounded_rectangle([bx, by, bx + banner_w, by + banner_h], radius=5, fill=(244, 238, 222, 235), outline=(130, 105, 65, 255), width=2)
-    b_font = get_font(size=16, bold=True, typewriter=True)
-    b_text = f"★ {board_state.title.upper()} ★"
-    btw = int(top_banner.textlength(b_text, font=b_font))
-    top_banner.text((bx + (banner_w - btw) // 2, by + 10), b_text, font=b_font, fill=(35, 30, 25))
 
     # Convert to RGB for saving / display
     final_img = canvas.convert("RGB")
@@ -911,76 +1082,20 @@ def render_board_animation_clip(
     )
 
     try:
-        # Optimization: Pre-render static base layers once so frames render in milliseconds
-        # 1. Base Canvas
-        canvas_base = generate_corkboard_background(board_state.canvas_width, board_state.canvas_height).convert("RGBA")
-        shadow_layer = Image.new("RGBA", canvas_base.size, (0, 0, 0, 0))
-        shadow_draw = ImageDraw.Draw(shadow_layer)
-        card_layer = Image.new("RGBA", canvas_base.size, (0, 0, 0, 0))
-        pin_layer = Image.new("RGBA", canvas_base.size, (0, 0, 0, 0))
-
-        node_pin_positions: Dict[str, Tuple[float, float]] = {}
-
-        for node in board_state.cumulative_nodes:
-            card_img = render_polaroid_card(node)
-            rot_deg = node.rotation_deg
-            rotated_card = card_img.rotate(rot_deg, resample=Image.Resampling.BICUBIC, expand=True)
-            cx, cy = node.x, node.y
-            paste_x = cx - rotated_card.width // 2
-            paste_y = cy - rotated_card.height // 2
-            shadow_rect = [
-                paste_x + 8,
-                paste_y + 12,
-                paste_x + rotated_card.width + 4,
-                paste_y + rotated_card.height + 6,
-            ]
-            shadow_draw.rounded_rectangle(shadow_rect, radius=8, fill=(15, 10, 5, 95))
-            card_layer.alpha_composite(rotated_card, (paste_x, paste_y))
-
-            local_dx = 0.0
-            local_dy = -(CARD_HEIGHT / 2.0) + 12.0
-            rad = math.radians(-rot_deg)
-            pin_cx = cx + (local_dx * math.cos(rad) - local_dy * math.sin(rad))
-            pin_cy = cy + (local_dx * math.sin(rad) + local_dy * math.cos(rad))
-            node_pin_positions[node.id] = (pin_cx, pin_cy)
-
-            pin_img = render_pushpin(color_name=node.pin_color, radius=12)
-            px = int(pin_cx - pin_img.width // 2)
-            py = int(pin_cy - pin_img.height // 2)
-            pin_layer.alpha_composite(pin_img, (px, py))
-
-        # Composite base background + cards (without threads)
-        shadow_blurred = shadow_layer.filter(ImageFilter.GaussianBlur(radius=5.0))
-        cork_and_cards = Image.alpha_composite(canvas_base, shadow_blurred)
-        cork_and_cards = Image.alpha_composite(cork_and_cards, card_layer)
-
-        # Header banner
-        top_banner = ImageDraw.Draw(cork_and_cards)
-        banner_w = 460
-        banner_h = 42
-        bx = (board_state.canvas_width - banner_w) // 2
-        by = FRAME_THICKNESS + 4
-        top_banner.rounded_rectangle([bx, by, bx + banner_w, by + banner_h], radius=5, fill=(244, 238, 222, 235), outline=(130, 105, 65, 255), width=2)
-        b_font = get_font(size=16, bold=True, typewriter=True)
-        b_text = f"★ {board_state.title.upper()} ★"
-        btw = int(top_banner.textlength(b_text, font=b_font))
-        top_banner.text((bx + (banner_w - btw) // 2, by + 10), b_text, font=b_font, fill=(35, 30, 25))
+        # Optimization: Pre-render static layers once so frames render in milliseconds.
+        # Same layer order as render_board_image: cards -> threads -> pins.
+        cork_and_cards, pin_layer, node_pin_positions, card_rects = _compose_cards(board_state)
 
         delta_edge_ids = {e.id for e in board_state.delta_edges}
         has_animated_threads = bool(board_state.delta_edges)
 
-        # Pre-render static non-delta threads
-        static_thread_layer = Image.new("RGBA", canvas_base.size, (0, 0, 0, 0))
-        static_thread_draw = ImageDraw.Draw(static_thread_layer)
-        static_shadow_layer = Image.new("RGBA", canvas_base.size, (0, 0, 0, 0))
-        static_shadow_draw = ImageDraw.Draw(static_shadow_layer)
-
-        for edge in board_state.cumulative_edges:
-            if edge.id not in delta_edge_ids:
-                p0 = node_pin_positions.get(edge.source_id)
-                p2 = node_pin_positions.get(edge.target_id)
-                if p0 and p2:
-                    draw_red_thread(static_thread_draw, static_shadow_draw, p0, p2, edge.color, 1.0, edge.label)
+        # Pre-render static non-delta threads onto the card board
+        static_edges = [e for e in board_state.cumulative_edges if e.id not in delta_edge_ids]
+        board_with_static_threads = Image.alpha_composite(
+            cork_and_cards,
+            _thread_layer(cork_and_cards.size, static_edges, node_pin_positions, lambda edge: 1.0, card_rects),
+        )
+        static_frame = Image.alpha_composite(board_with_static_threads, pin_layer)
 
         # Generate each frame fast
         for frame_idx in range(total_frames):
@@ -996,24 +1111,13 @@ def render_board_animation_clip(
                 else:
                     prog = 1.0
 
-                frame_thread_layer = static_thread_layer.copy()
-                frame_thread_draw = ImageDraw.Draw(frame_thread_layer)
-                frame_shadow_layer = static_shadow_layer.copy()
-                frame_shadow_draw = ImageDraw.Draw(frame_shadow_layer)
-
-                for edge in board_state.delta_edges:
-                    p0 = node_pin_positions.get(edge.source_id)
-                    p2 = node_pin_positions.get(edge.target_id)
-                    if p0 and p2:
-                        draw_red_thread(frame_thread_draw, frame_shadow_draw, p0, p2, edge.color, prog, edge.label)
-
-                frame_composite = Image.alpha_composite(cork_and_cards, frame_shadow_layer)
-                frame_composite = Image.alpha_composite(frame_composite, frame_thread_layer)
+                delta_threads = _thread_layer(
+                    cork_and_cards.size, board_state.delta_edges, node_pin_positions, lambda edge: prog, card_rects
+                )
+                frame_composite = Image.alpha_composite(board_with_static_threads, delta_threads)
                 frame_composite = Image.alpha_composite(frame_composite, pin_layer)
             else:
-                frame_composite = Image.alpha_composite(cork_and_cards, static_shadow_layer)
-                frame_composite = Image.alpha_composite(frame_composite, static_thread_layer)
-                frame_composite = Image.alpha_composite(frame_composite, pin_layer)
+                frame_composite = static_frame
 
             # Subtle camera push-in zoom (1.00 -> 1.03)
             zoom = 1.0 + 0.03 * (frame_idx / float(total_frames))

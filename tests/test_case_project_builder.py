@@ -8,6 +8,7 @@ import asyncio
 import copy
 import json
 import sys
+from itertools import combinations
 from pathlib import Path
 
 import pytest
@@ -17,7 +18,7 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from models.case_adaptation_schemas import DISCLAIMER, SceneFlag
+from models.case_adaptation_schemas import DISCLAIMER, CaseEvidence, SceneFlag
 from models.evidence_schemas import EvidenceNode
 from models.schemas import ProjectCreateRequest, Scene, SceneCreateRequest
 from services import case_project_builder, case_store, project_service
@@ -33,7 +34,7 @@ from services.case_project_builder import (
     render_board_scene,
     render_disclaimer_card,
 )
-from services.investigation_board_engine import render_polaroid_card
+from services.investigation_board_engine import card_footprint, render_polaroid_card
 from tests.case_adaptation_fakes import make_fake_llm
 from tests.test_case_worker import _drain, _start
 
@@ -119,7 +120,14 @@ def test_board_items_appear_at_first_reveal_and_have_fixed_layout(isolated_proje
 
     # Đổi ngôn ngữ không đổi chỗ thẻ: cùng một bảng ghim, chỉ khác chữ.
     en_nodes, _ = plan_board_items(plan, "en")
-    assert {n.id: (n.x, n.y, n.rotation_deg) for n in nodes} == {n.id: (n.x, n.y, n.rotation_deg) for n in en_nodes}
+    assert {n.id: (n.x, n.y, n.rotation_deg, n.metadata["card_scale"]) for n in nodes} == \
+        {n.id: (n.x, n.y, n.rotation_deg, n.metadata["card_scale"]) for n in en_nodes}
+
+
+def assert_cards_do_not_overlap(nodes):
+    boxes = {n.id: card_footprint(n) for n in nodes}
+    for (id_a, a), (id_b, b) in combinations(boxes.items(), 2):
+        assert not (a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]), f"thẻ {id_a} đè thẻ {id_b}"
 
 
 def test_board_layout_gives_every_card_its_own_slot_even_with_a_victim_card(isolated_projects_dir):
@@ -134,8 +142,35 @@ def test_board_layout_gives_every_card_its_own_slot_even_with_a_victim_card(isol
     assert len(set(positions)) == len(nodes)
     assert all(n.pinned for n in nodes)
     assert all(100 <= x <= 1820 and 150 <= y <= 930 for x, y in positions)
+    assert_cards_do_not_overlap(nodes)
     victim = next(n for n in nodes if n.node_type == "victim")
-    assert (victim.x, victim.y) == (960, 480)                # nạn nhân ở giữa bảng
+    assert 640 <= victim.x <= 1280 and victim.y <= 600       # nạn nhân ở khoảng giữa bảng, không bị đẩy xuống đáy
+
+
+def test_board_with_twenty_cards_keeps_cards_apart_in_both_languages(isolated_projects_dir, tmp_path):
+    """Vụ án nhiều bằng chứng: 20 thẻ (16 bằng chứng + 4 thực thể ở đầu mút quan hệ) không thẻ nào đè thẻ nào."""
+    plan = build_plan()
+    kinds = ["weapon", "giám định", "địa điểm", "clue", "timeline", "clue", "clue", "forensic"]
+    extra = [CaseEvidence(id=f"evd_extra_{i}", kind=kinds[i], label_vi=f"Vật chứng phụ {i}",
+                          label_en=f"Extra exhibit {i}") for i in range(8)]
+    plan.bible.evidence += extra
+    scenes = {s.order: s for s in plan.scenes}
+    scenes[6].board_reveal += ["rel_1", "rel_3"] + [e.id for e in extra[:4]]
+    scenes[7].board_reveal += ["rel_2"] + [e.id for e in extra[4:]]
+
+    vi_nodes, _ = plan_board_items(plan, "vi")
+    en_nodes, _ = plan_board_items(plan, "en")
+
+    assert len(vi_nodes) == 20
+    assert_cards_do_not_overlap(vi_nodes)
+    scales = {n.metadata["card_scale"] for n in vi_nodes}
+    assert len(scales) == 1 and 0.8 <= scales.pop() < 1.0         # thu nhỏ đều, vẫn đọc được
+    assert {n.id: (n.x, n.y, n.metadata["card_scale"]) for n in vi_nodes} == \
+        {n.id: (n.x, n.y, n.metadata["card_scale"]) for n in en_nodes}
+
+    out = render_board_scene(plan, 7, "vi", tmp_path / "board20.jpg")
+    with Image.open(out) as img:
+        assert img.size == (1920, 1080)
 
 
 def test_board_items_skip_items_never_revealed(isolated_projects_dir):

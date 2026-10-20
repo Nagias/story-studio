@@ -4,7 +4,11 @@ Unit tests for Investigation Board Engine (Corkboard, Fixed-Anchor, Cumulative S
 
 import sys
 import os
+from itertools import combinations
 from pathlib import Path
+
+import pytest
+from PIL import Image
 
 # Fix Windows console UTF-8 output
 if hasattr(sys.stdout, "reconfigure"):
@@ -30,9 +34,39 @@ from services.investigation_board_engine import (
     render_board_image,
     render_board_animation_clip,
     compute_bezier_points,
+    card_footprint,
+    title_banner_text_and_font,
+    _draw_title_banner,
+    _missing_glyphs,
     CANVAS_WIDTH,
     CANVAS_HEIGHT,
+    FRAME_THICKNESS,
 )
+
+NODE_TYPES = ["victim", "suspect", "suspect", "weapon", "forensic_report", "location", "clue", "timeline_event", "clue"]
+BANNER_BOTTOM = FRAME_THICKNESS + 4 + 42        # mép dưới băng tiêu đề
+
+
+def make_unplaced_nodes(count: int) -> list:
+    return [
+        EvidenceNode(id=f"card_{i:02d}", label=f"Thẻ số {i}", node_type=NODE_TYPES[i % len(NODE_TYPES)],
+                     x=0, y=0, pinned=False, appearance_scene_order=1 + i // 5)
+        for i in range(count)
+    ]
+
+
+def boxes_overlap(a, b) -> bool:
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def assert_cards_apart_and_inside(nodes):
+    """Vùng thẻ thật sự phủ (đúng như lúc vẽ) không chạm nhau và nằm trong mặt bần, dưới băng tiêu đề."""
+    boxes = {n.id: card_footprint(n) for n in nodes}
+    for (id_a, a), (id_b, b) in combinations(boxes.items(), 2):
+        assert not boxes_overlap(a, b), f"Thẻ {id_a} {a} đè thẻ {id_b} {b}"
+    for node_id, (x1, y1, x2, y2) in boxes.items():
+        assert x1 >= FRAME_THICKNESS and x2 <= CANVAS_WIDTH - FRAME_THICKNESS, (node_id, x1, x2)
+        assert y1 >= BANNER_BOTTOM and y2 <= CANVAS_HEIGHT - FRAME_THICKNESS, (node_id, y1, y2)
 
 
 def test_corkboard_background_generation():
@@ -161,6 +195,101 @@ def test_render_board_image_and_video(tmp_path: Path):
     assert Path(res_clip).exists()
     assert Path(res_clip).stat().st_size > 10000
     print(f"✓ test_render_board_animation_clip passed: {res_clip} ({Path(res_clip).stat().st_size} bytes)")
+
+
+# ---------------------------------------------------------------- sức chứa: nhiều thẻ vẫn không đè nhau
+
+@pytest.mark.parametrize("count", [1, 2, 3, 5, 8, 12, 13, 16, 20, 24, 30])
+def test_layout_never_overlaps_cards(count):
+    nodes = assign_fixed_anchor_layout(make_unplaced_nodes(count))
+
+    assert all(n.pinned for n in nodes)
+    assert_cards_apart_and_inside(nodes)
+    assert len({n.metadata["card_scale"] for n in nodes}) == 1      # mọi thẻ cùng một cỡ
+
+
+def test_twenty_cards_shrink_evenly_but_stay_readable():
+    few = assign_fixed_anchor_layout(make_unplaced_nodes(5))
+    many = assign_fixed_anchor_layout(make_unplaced_nodes(20))
+
+    assert {n.metadata["card_scale"] for n in few} == {1.0}             # ít thẻ: cỡ gốc
+    scale = many[0].metadata["card_scale"]
+    assert 0.8 <= scale < 1.0                                          # 20 thẻ: thu nhỏ nhưng chữ vẫn đọc được
+
+
+def test_layout_puts_early_cards_near_the_middle_and_victim_first():
+    nodes = assign_fixed_anchor_layout(make_unplaced_nodes(20))
+    victim = next(n for n in nodes if n.node_type == "victim")
+    assert abs(victim.x - 960) < 200 and abs(victim.y - 540) < 200      # nạn nhân (hiện ở cảnh 1) giữa bảng
+
+    first_scene = [n for n in nodes if n.appearance_scene_order == 1]
+    last_scene = [n for n in nodes if n.appearance_scene_order == max(m.appearance_scene_order for m in nodes)]
+    def spread(group):
+        return sum(abs(n.x - 960) + abs(n.y - 540) for n in group) / len(group)
+    assert spread(first_scene) < spread(last_scene)                    # cảnh đầu không bị dồn ra mép bảng
+
+
+def test_default_coordinates_do_not_pin_cards_on_top_of_each_other():
+    """EvidenceNode mặc định pinned=True ở (960, 540): kể cả thẻ nạn nhân cũng phải được xếp chỗ riêng."""
+    nodes = [EvidenceNode(id=f"d{i}", label=f"Thẻ {i}", node_type=t) for i, t in enumerate(NODE_TYPES)]
+    assign_fixed_anchor_layout(nodes)
+    assert_cards_apart_and_inside(nodes)
+
+
+def test_new_cards_avoid_cards_pinned_before():
+    pinned = [
+        EvidenceNode(id="old_1", label="Cũ 1", node_type="suspect", x=460, y=270, pinned=True, rotation_deg=2.0),
+        EvidenceNode(id="old_2", label="Cũ 2", node_type="victim", x=960, y=480, pinned=True, rotation_deg=-1.0),
+        EvidenceNode(id="old_3", label="Cũ 3", node_type="weapon", x=1460, y=790, pinned=True, rotation_deg=1.0),
+    ]
+    before = {n.id: (n.x, n.y) for n in pinned}
+    nodes = assign_fixed_anchor_layout(pinned + make_unplaced_nodes(10))
+
+    assert {n.id: (n.x, n.y) for n in nodes[:3]} == before            # thẻ đã ghim không bao giờ bị dời
+    assert_cards_apart_and_inside(nodes)
+
+
+# ---------------------------------------------------------------- tiêu đề
+
+def test_title_banner_uses_only_glyphs_the_font_has():
+    for title in ("Hồ sơ điều tra", "Case file", "Kỳ Án Đêm Trăng: Manh Mối Ban Đầu"):
+        text, font = title_banner_text_and_font(title)
+        assert text == " ".join(title.upper().split())
+        assert "★" not in text                                         # sao vẽ bằng đa giác, không phải chữ
+        assert _missing_glyphs(font, text) == set(), (title, _missing_glyphs(font, text))
+
+    _, font = title_banner_text_and_font("x")
+    assert _missing_glyphs(font, "A\ue000") == {"\ue000"}              # bộ dò glyph thiếu bắt được ô vuông
+
+
+def test_title_banner_draws_two_stars_around_the_title():
+    canvas = Image.new("RGBA", (CANVAS_WIDTH, CANVAS_HEIGHT), (0, 0, 0, 255))
+    _draw_title_banner(canvas, "Case file")
+    star = (153, 27, 27, 255)
+    xs = [x for x in range(CANVAS_WIDTH) for y in range(FRAME_THICKNESS, BANNER_BOTTOM + 1)
+          if canvas.getpixel((x, y)) == star]
+    assert any(x < 960 - 100 for x in xs) and any(x > 960 + 100 for x in xs)
+
+
+# ---------------------------------------------------------------- sợi chỉ nằm trên thẻ
+
+def test_thread_is_drawn_over_the_cards_it_crosses():
+    left = EvidenceNode(id="a", label="A", node_type="suspect", x=400, y=400, appearance_scene_order=1)
+    right = EvidenceNode(id="b", label="B", node_type="suspect", x=1500, y=400, appearance_scene_order=1)
+    middle = EvidenceNode(id="c", label="C", node_type="clue", x=950, y=420, appearance_scene_order=1)
+    edge = RelationEdge(id="e", source_id="a", target_id="b", appearance_scene_order=1)
+    state = BoardState(scene_order=1, title="Test", cumulative_nodes=[left, right, middle], cumulative_edges=[edge])
+
+    img = render_board_image(state)
+
+    pin_y = 400 - 310 / 2 + 12                                         # đinh ghim: giữa mép trên thẻ (không nghiêng)
+    curve = compute_bezier_points((400, pin_y), (1500, pin_y), steps=50)
+    x1, y1, x2, y2 = card_footprint(middle)
+    over_card = [(x, y) for x, y in curve if x1 + 20 < x < x2 - 20 and y1 + 20 < y < y2 - 20]
+    assert over_card, "sợi chỉ thử phải đi ngang qua thẻ ở giữa"
+    for x, y in over_card:
+        near = [img.getpixel((int(x) + dx, int(y) + dy)) for dx in (-1, 0, 1) for dy in (-2, -1, 0, 1, 2)]
+        assert any(r > 150 and g < 90 and b < 90 for r, g, b in near), f"không thấy chỉ đỏ ở {(x, y)}: {near}"
 
 
 if __name__ == "__main__":
