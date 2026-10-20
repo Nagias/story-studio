@@ -74,13 +74,19 @@ def use_llm(monkeypatch, overrides=None):
     return llm, calls
 
 
-def drain(limit: int = 100) -> int:
-    """Chạy hàng việc như worker nền (một việc mỗi lần) tới khi hết việc."""
+def drain(limit: int = 100, *, approve: bool = True) -> int:
+    """Chạy hàng việc như worker nền (một việc mỗi lần) tới khi hết việc. Vụ dừng chờ duyệt dàn ý thì duyệt luôn như
+    người dùng bấm "Duyệt" (approve=False thì để nguyên ở trạng thái chờ)."""
     ran = 0
-    while asyncio.run(case_worker.run_next_step()):
-        ran += 1
-        assert ran < limit, "hàng việc không dừng"
-    return ran
+    while True:
+        while asyncio.run(case_worker.run_next_step()):
+            ran += 1
+            assert ran < limit, "hàng việc không dừng"
+        waiting = [p.case_id for p in case_store.list_pipelines() if p.status == "review"] if approve else []
+        if not waiting:
+            return ran
+        for case_id in waiting:
+            case_worker.approve_outline(case_id)
 
 
 def analyze(client, **body) -> str:
@@ -296,6 +302,97 @@ def test_progress_error_never_contains_real_names(client, small_chunks, monkeypa
     assert progress["status"] == "failed"
     assert "Hùng" not in progress["error"] and REAL_VICTIM not in progress["error"]
     assert case_redact.MASK in progress["error"]
+
+
+def _outline_parts(view: dict) -> list[dict]:
+    return [{k: p[k] for k in ("kind", "summary_vi", "event_ids", "scene_count")} for p in view["parts"]]
+
+
+def test_outline_review_edit_and_approve_routes(client, small_chunks, monkeypatch):
+    use_llm(monkeypatch)
+    case_id = analyze(client)
+    outline_url = f"{BASE}/cases/{case_id}/outline"
+    not_yet = client.get(outline_url)
+    assert not_yet.status_code == 409 and "Chưa có dàn ý" in not_yet.json()["detail"]
+    assert client.post(f"{outline_url}/approve").status_code == 409
+
+    drain(approve=False)
+
+    progress = client.get(f"{BASE}/cases/{case_id}/progress").json()
+    assert progress == {"status": "review", "step_label": "Dàn ý xong, chờ bạn duyệt", "steps_done": 5,
+                        "steps_total": 12, "error": ""}
+    assert client.get(f"{BASE}/cases/{case_id}").status_code == 409   # chưa có kế hoạch
+    response = client.get(outline_url)
+    assert response.status_code == 200
+    view = response.json()
+    assert view["editable"] is True and view["status"] == "review"
+    assert len(view["parts"]) == 2 and len(view["timeline"]) == 12
+    assert REAL_VICTIM not in response.text and "Trịnh Quang Vũ" in response.text
+
+    parts = _outline_parts(view)
+    summary = "Những nghi vấn xoay quanh đối tác làm ăn và chiếc bật lửa bỏ lại ở hiện trường."
+    parts[1].update(kind="investigation", summary_vi=summary)
+    edited = client.put(outline_url, json={"parts": parts})
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["parts"][1]["kind"] == "investigation"
+    assert edited.json()["parts"][1]["summary_vi"] == summary
+    assert client.get(outline_url).json() == edited.json()
+
+    approved = client.post(f"{outline_url}/approve")
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "running"
+    again = client.post(f"{outline_url}/approve")
+    assert again.status_code == 409 and "đã được duyệt" in again.json()["detail"]
+    assert client.put(outline_url, json={"parts": parts}).status_code == 409
+    assert client.get(outline_url).json()["editable"] is False
+
+    drain()
+    plan = get_plan(client, case_id)
+    assert plan["parts"][1]["kind"] == "investigation" and plan["parts"][1]["summary_vi"] == summary
+
+    for method, path in (("get", ""), ("put", ""), ("post", "/approve")):
+        kwargs = {"json": {"parts": parts}} if method == "put" else {}
+        missing = getattr(client, method)(f"{BASE}/cases/case_00000000/outline{path}", **kwargs)
+        assert missing.status_code == 404, (method, path)
+
+
+def test_outline_edit_validation_and_errors_without_real_names(client, small_chunks, monkeypatch):
+    use_llm(monkeypatch)
+    case_id = analyze(client)
+    drain(approve=False)
+    outline_url = f"{BASE}/cases/{case_id}/outline"
+    before = client.get(outline_url).json()
+    parts = _outline_parts(before)
+
+    too_many = copy.deepcopy(parts)
+    too_many[0]["scene_count"] = 9
+    response = client.put(outline_url, json={"parts": too_many})
+    assert response.status_code == 400
+    assert "Nhịp 1" in response.json()["detail"] and "từ 2 đến 6 cảnh" in response.json()["detail"]
+
+    moved = copy.deepcopy(parts)
+    moved[0]["event_ids"].append(REAL_VICTIM)                       # id lạ trích lại trong thông báo lỗi
+    response = client.put(outline_url, json={"parts": moved})
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert "id sự việc không có trong dòng thời gian" in detail
+    assert REAL_VICTIM not in detail and "Hùng" not in detail and case_redact.MASK in detail
+
+    bad_kind = copy.deepcopy(parts)
+    bad_kind[0]["kind"] = "spaceship"
+    assert client.put(outline_url, json={"parts": bad_kind}).status_code == 422
+    assert client.put(outline_url, json={"parts": []}).status_code == 400
+    assert client.put(outline_url, json={"parts": parts, "supported_minutes": 0}).status_code == 422
+    too_long = client.put(outline_url, json={"parts": parts, "supported_minutes": 9})   # video chọn 8 phút
+    assert too_long.status_code == 400 and "từ 1 đến 8 phút" in too_long.json()["detail"]
+    assert client.get(outline_url).json() == before                    # bị từ chối thì không đổi gì
+
+    longer = copy.deepcopy(parts)
+    longer[0]["scene_count"], longer[1]["scene_count"] = 6, 5       # 11 cảnh: quá 9 cảnh của mức 2 phút
+    assert client.put(outline_url, json={"parts": longer}).status_code == 400
+    raised = client.put(outline_url, json={"parts": longer, "supported_minutes": 3})
+    assert raised.status_code == 200, raised.text
+    assert raised.json()["supported_minutes"] == 3 and raised.json()["total_scenes"] == {"min": 0, "max": 14}
 
 
 def test_empty_and_too_long_report(client, isolated_projects_dir):
@@ -858,6 +955,7 @@ def test_openapi_lists_the_new_routes_only(client):
                  f"{BASE}/cases/{{case_id}}/resume", f"{BASE}/cases/{{case_id}}/entities",
                  f"{BASE}/cases/{{case_id}}/scenes/{{order}}", f"{BASE}/cases/{{case_id}}/create-project",
                  f"{BASE}/render-board-scene/{{scene_id}}", f"{BASE}/jobs/{{job_id}}",
+                 f"{BASE}/cases/{{case_id}}/outline", f"{BASE}/cases/{{case_id}}/outline/approve",
                  "/api/projects/{project_id}/create-language-version"):
         assert path in paths, path
     assert f"{BASE}/fictionalize" not in paths and f"{BASE}/create-project" not in paths
@@ -873,6 +971,10 @@ def test_path_ids_validated(client):
                  f"{BASE}/cases/a%20b", f"{BASE}/jobs/bad.id", f"{BASE}/jobs/%2E%2E"):
         assert client.get(path).status_code == 400, path
     assert client.post(f"{BASE}/cases/bad.id/resume").status_code == 400
+    assert client.get(f"{BASE}/cases/bad.id/outline").status_code == 400
+    assert client.put(f"{BASE}/cases/bad.id/outline", json={"parts": []}).status_code == 400
+    assert client.post(f"{BASE}/cases/bad.id/outline/approve").status_code == 400
+    assert client.get(f"{BASE}/cases/..%2Fx/outline").status_code != 200
     assert client.put(f"{BASE}/cases/bad.id/entities", json={"updates": []}).status_code == 400
     assert client.put(f"{BASE}/cases/bad.id/scenes/3", json={"narration_vi": "x"}).status_code == 400
     assert client.post(f"{BASE}/cases/bad.id/create-project", json={"language": "vi"}).status_code == 400

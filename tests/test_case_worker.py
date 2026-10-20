@@ -4,6 +4,8 @@ Worker chạy hàng việc phân tích vụ án (spec 7.1a).
 - Mỗi lúc chỉ chạy một việc cho mọi vụ án, vụ cũ hơn trước; danh sách việc lớn dần sau dàn ý.
 - Server khởi động lại: việc đang `running` trở về `pending`, việc đã `done` không gọi LLM lại.
 - Việc hỏng thì hàng việc dừng; "Thử lại" (resume_pipeline) chạy tiếp từ đúng việc đó.
+- Dàn ý xong thì vụ dừng ở trạng thái `review` chờ người dùng duyệt (approve_outline); sửa dàn ý (edit_outline) được
+  kiểm lại bằng các quy tắc dàn ý rồi sinh lại các việc viết cảnh.
 - Lỗi ngoài dự kiến trong một việc không được làm chết vòng lặp worker.
 - LLM giả (tests/case_adaptation_fakes.py), thư mục projects tạm (isolated_projects_dir); không gọi 9router thật.
 """
@@ -26,6 +28,11 @@ from services.case_adaptation_steps import chunk_source
 from services.case_worker import (
     CaseInputError,
     CaseNotFoundError,
+    OutlineEditError,
+    OutlineStateError,
+    approve_outline,
+    edit_outline,
+    outline_view,
     pipeline_progress,
     recover_interrupted,
     resume_pipeline,
@@ -47,6 +54,8 @@ ALL_LABELS = [
     "Đang viết lời Việt, nhịp 2/2", "Đang viết lời Anh, nhịp 2/2", "Đang viết prompt hình, nhịp 2/2",
     "Đang ráp và kiểm tra",
 ]
+REVIEW_LABEL = "Dàn ý xong, chờ bạn duyệt"
+REAL_VICTIM = "Nguyễn Văn Hùng"               # tên thật của nạn nhân trong dossier.txt, tên hư cấu "Trịnh Quang Vũ"
 
 
 # ---------------------------------------------------------------- helpers
@@ -80,13 +89,19 @@ def _progress(case_id: str) -> dict:
     return pipeline_progress(_pipeline(case_id))
 
 
-def _drain(llm, limit: int = 100) -> int:
-    """Gọi run_next_step tới khi trả False (như worker); trả số việc đã chạy."""
+def _drain(llm, limit: int = 100, *, approve: bool = True) -> int:
+    """Gọi run_next_step tới khi trả False (như worker); trả số việc đã chạy. Vụ nào dừng chờ duyệt dàn ý thì duyệt
+    luôn như người dùng bấm "Duyệt" (approve=False thì để nguyên ở trạng thái chờ)."""
     ran = 0
-    while asyncio.run(run_next_step(llm=llm)):
-        ran += 1
-        assert ran < limit, "hàng việc không dừng"
-    return ran
+    while True:
+        while asyncio.run(run_next_step(llm=llm)):
+            ran += 1
+            assert ran < limit, "hàng việc không dừng"
+        waiting = [p.case_id for p in case_store.list_pipelines() if p.status == "review"] if approve else []
+        if not waiting:
+            return ran
+        for case_id in waiting:
+            approve_outline(case_id)
 
 
 async def _wait_until(predicate, timeout: float = 30.0) -> None:
@@ -97,13 +112,20 @@ async def _wait_until(predicate, timeout: float = 30.0) -> None:
 
 
 def _run_loop_until_settled(case_ids: list[str], timeout: float = 30.0) -> None:
-    """Chạy worker_loop cho tới khi mọi vụ trong `case_ids` không còn `running`, rồi dừng vòng lặp."""
+    """Chạy worker_loop cho tới khi mọi vụ trong `case_ids` không còn `running`, rồi dừng vòng lặp. Mọi vụ đã dừng mà
+    có vụ chờ duyệt dàn ý thì duyệt hết các vụ đó (như người dùng bấm "Duyệt") rồi chờ tiếp."""
 
     async def main():
         stop = asyncio.Event()
         task = asyncio.create_task(worker_loop(stop, idle_sleep=0.01))
         try:
-            await _wait_until(lambda: all(_pipeline(c).status != "running" for c in case_ids), timeout)
+            while True:
+                await _wait_until(lambda: all(_pipeline(c).status != "running" for c in case_ids), timeout)
+                waiting = [c for c in case_ids if _pipeline(c).status == "review"]
+                if not waiting:
+                    break
+                for case_id in waiting:
+                    approve_outline(case_id)
         finally:
             stop.set()
             await asyncio.wait_for(task, 5)
@@ -176,10 +198,13 @@ def test_progress_label_for_every_step_kind(isolated_projects_dir):
     labels = []
     while True:
         labels.append(_progress(case_id)["step_label"])
-        if not asyncio.run(run_next_step(llm=llm)):
+        if asyncio.run(run_next_step(llm=llm)):
+            continue
+        if _pipeline(case_id).status != "review":
             break
+        approve_outline(case_id)
 
-    assert labels[:-1] == ALL_LABELS
+    assert labels[:-1] == ALL_LABELS[:5] + [REVIEW_LABEL] + ALL_LABELS[5:]
     assert [label for _id, _n, label in seen_running] == ALL_LABELS[:-1]   # assemble không gọi LLM
     assert all(n == 1 for _id, n, _label in seen_running)
     done = _progress(case_id)
@@ -469,8 +494,10 @@ def test_one_llm_call_at_a_time(isolated_projects_dir, monkeypatch):
     _run_loop_until_settled([older, newer])
 
     assert state["peak"] == 1
-    assert owners == [older] * len(FULL_ORDER) + [newer] * len(FULL_ORDER)   # vụ cũ xong hẳn rồi mới tới vụ mới
-    assert calls == FULL_ORDER * 2
+    # Vụ cũ chạy tới dàn ý rồi chờ duyệt; trong lúc đó vụ mới chạy tiếp tới dàn ý. Duyệt cả hai thì vụ cũ viết xong
+    # hẳn rồi mới tới vụ mới.
+    assert owners == [older] * 5 + [newer] * 5 + [older] * 6 + [newer] * 6
+    assert calls == FULL_ORDER[:5] * 2 + FULL_ORDER[5:] * 2
     for case_id in (older, newer):
         assert _pipeline(case_id).status == "done"
         assert len(case_store.load_plan(case_id).scenes) == 7
@@ -512,6 +539,219 @@ def test_worker_loop_idles_and_stops(isolated_projects_dir):
         await asyncio.wait_for(task, 2)
 
     asyncio.run(main())
+
+
+# ---------------------------------------------------------------- duyệt dàn ý
+
+def _outline(case_id: str) -> dict:
+    return case_store.load_step_output(case_id, "outline")
+
+
+def _edited_parts(case_id: str, **changes) -> list[dict]:
+    """Các nhịp của dàn ý đã lưu dưới dạng gửi lên khi sửa; `changes`: {số thứ tự nhịp (0-based): {trường: giá trị}}."""
+    parts = [{k: p[k] for k in ("kind", "summary_vi", "event_ids", "scene_count")} for p in _outline(case_id)["parts"]]
+    for index, fields in changes.items():
+        parts[int(index)].update(fields)
+    return parts
+
+
+def _in_review() -> tuple[str, list[str]]:
+    case_id = _start()
+    llm, calls = make_fake_llm()
+    assert _drain(llm, approve=False) == 5
+    return case_id, calls
+
+
+def test_outline_waits_for_review_then_approve_runs_the_rest(isolated_projects_dir):
+    case_id, calls = _in_review()
+
+    assert calls == FULL_ORDER[:5]
+    pipeline = _pipeline(case_id)
+    assert pipeline.status == "review"
+    assert [s.id for s in pipeline.steps][5:] == [
+        "write_vi_p1", "write_en_p1", "write_prompts_p1", "write_vi_p2", "write_en_p2", "write_prompts_p2", "assemble",
+    ]
+    assert all(s.status == "pending" for s in pipeline.steps[5:])
+    assert _progress(case_id) == {"status": "review", "step_label": REVIEW_LABEL, "steps_done": 5,
+                                  "steps_total": 12, "error": ""}
+    llm, more_calls = make_fake_llm()
+    assert asyncio.run(run_next_step(llm=llm)) is False           # chờ duyệt: worker không chạy tiếp
+    assert more_calls == []
+
+    approved = approve_outline(case_id)
+    assert approved.status == "running"
+    assert _pipeline(case_id) == approved
+    assert _drain(llm) == 7
+    assert more_calls == FULL_ORDER[5:]
+    assert _pipeline(case_id).status == "done"
+    assert case_store.load_plan(case_id) is not None
+
+
+def test_resume_keeps_the_case_waiting_for_review(isolated_projects_dir):
+    case_id, _calls = _in_review()
+    assert resume_pipeline(case_id).status == "review"
+    assert _pipeline(case_id).status == "review"
+
+
+def test_outline_view_has_parts_timeline_with_fictional_names_and_limits(isolated_projects_dir):
+    case_id, _calls = _in_review()
+
+    view = outline_view(case_id)
+
+    assert view["status"] == "review" and view["editable"] is True
+    assert view["parts"] == _outline(case_id)["parts"]
+    assert view["supported_minutes"] == 2 and view["target_minutes"] == 8
+    assert view["total_scenes"] == {"min": 0, "max": 9}           # tư liệu chỉ đủ 2 phút: tối đa 9 cảnh
+    assert sorted(view["scene_limits"], key=int) == [str(m) for m in range(1, 9)]
+    assert view["scene_limits"]["2"] == view["total_scenes"]
+    assert view["scene_limits"]["8"] == {"min": 34, "max": 47}     # đủ 8 phút: 35–40 cảnh kể cả miễn trừ, tối đa 48
+    assert view["scenes_per_part"] == [2, 6]
+    assert "resolution" not in view["part_kinds"] and "open_questions" in view["part_kinds"]   # vụ chưa phá
+    assert view["solved"] is False
+    assert view["logline_vi"] and view["title_vi"]
+    bible = case_store.load_step_output(case_id, "aliases")
+    assert [e["id"] for e in view["timeline"]] == [e["id"] for e in bible["timeline"]]
+    text = repr(view)
+    assert REAL_VICTIM not in text and "Hùng" not in text
+    assert any("Trịnh Quang Vũ" in e["summary"] for e in view["timeline"])
+
+
+def test_edit_outline_revalidates_renumbers_and_regenerates_steps(isolated_projects_dir):
+    case_id, _calls = _in_review()
+    parts = _edited_parts(case_id)
+    hook, rest = parts[0], parts[1]
+    moved = hook["event_ids"][4:]
+    parts = [
+        {**hook, "event_ids": hook["event_ids"][:4], "scene_count": 2},
+        {"kind": "investigation", "summary_vi": f"Hai manh mối đầu tiên quanh cái chết của {REAL_VICTIM}.",
+         "event_ids": moved, "scene_count": 2},
+        rest,
+    ]
+
+    pipeline = edit_outline(case_id, parts)
+
+    assert pipeline.status == "review"
+    assert [s.id for s in pipeline.steps][5:] == [
+        "write_vi_p1", "write_en_p1", "write_prompts_p1", "write_vi_p2", "write_en_p2", "write_prompts_p2",
+        "write_vi_p3", "write_en_p3", "write_prompts_p3", "assemble",
+    ]
+    assert all(s.status == "pending" for s in pipeline.steps[5:])
+    assert _pipeline(case_id) == pipeline
+    saved = _outline(case_id)
+    assert saved["supported_minutes"] == 2                         # giữ ước lượng tư liệu của bước dàn ý
+    assert [p["id"] for p in saved["parts"]] == ["p1", "p2", "p3"]
+    assert [p["kind"] for p in saved["parts"]] == ["hook", "investigation", "open_questions"]
+    assert saved["parts"][1]["event_ids"] == moved
+    assert REAL_VICTIM not in saved["parts"][1]["summary_vi"]       # tên thật trong tóm tắt đổi sang tên hư cấu
+    assert "Trịnh Quang Vũ" in saved["parts"][1]["summary_vi"]
+    assert outline_view(case_id)["parts"] == saved["parts"]
+
+
+def test_edit_outline_is_used_by_the_writing_steps(isolated_projects_dir):
+    case_id, _calls = _in_review()
+    summary = "Những nghi vấn xoay quanh đối tác làm ăn và chiếc bật lửa bỏ lại ở hiện trường."
+    edit_outline(case_id, _edited_parts(case_id, **{"1": {"kind": "investigation", "summary_vi": summary}}))
+    approve_outline(case_id)
+    llm, calls = make_fake_llm()
+
+    _drain(llm)
+
+    assert calls == FULL_ORDER[5:]
+    plan = case_store.load_plan(case_id)
+    assert plan.parts[1].kind == "investigation" and plan.parts[1].summary_vi == summary
+    write_vi_p2 = next(p for p in llm.prompts if p.startswith("TASK: WRITE_VI p2"))
+    assert summary in write_vi_p2
+
+
+def test_edit_outline_rejected_by_outline_rules_changes_nothing(isolated_projects_dir):
+    case_id, _calls = _in_review()
+    before_pipeline, before_outline = _pipeline(case_id), _outline(case_id)
+
+    with pytest.raises(OutlineEditError) as info:
+        edit_outline(case_id, _edited_parts(case_id, **{"0": {"scene_count": 9}}))
+    message = info.value.message
+    assert "Nhịp 1 có 9 cảnh" in message and "từ 2 đến 6 cảnh" in message
+    assert len(message.splitlines()) == 2                           # mỗi lỗi một dòng: số cảnh nhịp 1, tổng số cảnh
+    for jargon in ("scene_count", "supported_minutes", "hook"):     # lời cho người dùng, không phải tên trường JSON
+        assert jargon not in message
+
+    parts = _edited_parts(case_id)
+    parts[1]["event_ids"] = parts[1]["event_ids"][:-1]              # bỏ sót một sự việc
+    with pytest.raises(OutlineEditError) as info:
+        edit_outline(case_id, parts)
+    assert "chưa nằm trong nhịp nào" in info.value.message
+
+    with pytest.raises(OutlineEditError):
+        edit_outline(case_id, [])
+    assert _pipeline(case_id) == before_pipeline and _outline(case_id) == before_outline
+
+
+def test_edit_outline_can_raise_the_minutes_the_material_supports(isolated_projects_dir):
+    """Máy ước bài chỉ đủ 2 phút (tối đa 9 cảnh). Người dùng nâng lên 3 phút thì được tới 14 cảnh; quy tắc mỗi sự việc
+    tối đa 2 cảnh vẫn giữ, nên không độn được."""
+    case_id, _calls = _in_review()
+    assert outline_view(case_id)["scene_limits"]["3"] == {"min": 0, "max": 14}
+    longer = _edited_parts(case_id, **{"0": {"scene_count": 6}, "1": {"scene_count": 5}})   # 11 cảnh
+
+    with pytest.raises(OutlineEditError) as info:
+        edit_outline(case_id, longer)                               # vẫn 2 phút: quá 9 cảnh
+    assert 'nâng ô "Bài đủ tư liệu cho' in info.value.message       # chỉ đúng ô cần sửa trên màn duyệt
+    assert "supported_minutes" not in info.value.message
+
+    edit_outline(case_id, longer, supported_minutes=3)
+
+    assert _outline(case_id)["supported_minutes"] == 3
+    view = outline_view(case_id)
+    assert view["supported_minutes"] == 3 and view["total_scenes"] == {"min": 0, "max": 14}
+    assert [p["scene_count"] for p in view["parts"]] == [6, 5]
+
+    for bad in (0, 9):                                              # 1..số phút đã chọn (8)
+        with pytest.raises(OutlineEditError) as info:
+            edit_outline(case_id, longer, supported_minutes=bad)
+        assert "từ 1 đến 8 phút" in info.value.message
+    assert _outline(case_id)["supported_minutes"] == 3
+
+
+def test_approve_regenerates_writing_steps_from_the_saved_outline(isolated_projects_dir):
+    """Máy tắt giữa lúc lưu dàn ý đã sửa và lưu hàng việc: duyệt vẫn sinh việc viết cảnh khớp dàn ý đã lưu."""
+    case_id, _calls = _in_review()
+    outline = _outline(case_id)
+    first, second = outline["parts"]
+    outline["parts"] = [{**first, "event_ids": first["event_ids"][:3], "scene_count": 2},
+                        {**first, "id": "p2", "kind": "setup", "event_ids": first["event_ids"][3:], "scene_count": 2},
+                        {**second, "id": "p3"}]
+    case_store.save_step_output(case_id, "outline", outline)
+
+    pipeline = approve_outline(case_id)
+
+    assert [s.id for s in pipeline.steps if s.kind == "write_vi"] == ["write_vi_p1", "write_vi_p2", "write_vi_p3"]
+    assert pipeline.steps[-1].id == "assemble" and pipeline.status == "running"
+
+
+def test_outline_review_only_while_waiting(isolated_projects_dir):
+    case_id = _start()
+    with pytest.raises(OutlineStateError):
+        outline_view(case_id)                                       # chưa có dàn ý
+    with pytest.raises(OutlineStateError):
+        approve_outline(case_id)
+    with pytest.raises(OutlineStateError):
+        edit_outline(case_id, [])
+
+    llm, _calls = make_fake_llm()
+    _drain(llm, approve=False)
+    parts = _edited_parts(case_id)
+    approve_outline(case_id)
+    with pytest.raises(OutlineStateError) as info:
+        approve_outline(case_id)                                   # đã duyệt rồi
+    assert "đã được duyệt" in info.value.message
+    with pytest.raises(OutlineStateError):
+        edit_outline(case_id, parts)
+    view = outline_view(case_id)                                   # sau khi duyệt vẫn xem được, không sửa được
+    assert view["status"] == "running" and view["editable"] is False
+
+    for func, args in ((outline_view, ()), (approve_outline, ()), (edit_outline, ([],))):
+        with pytest.raises(CaseNotFoundError):
+            func("case_00000000", *args)
 
 
 # ---------------------------------------------------------------- khởi động cùng app (main.py)

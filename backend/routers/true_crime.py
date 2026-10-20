@@ -8,6 +8,9 @@ Endpoints (prefix /api/true-crime):
 - POST /analyze                           lưu bài gốc, tạo hàng việc -> {case_id}. Bài rỗng 400, quá dài 413.
 - GET  /cases/{case_id}/progress          tiến độ của hàng việc (404 nếu không có vụ).
 - POST /cases/{case_id}/resume            "Thử lại": chạy tiếp từ việc bị hỏng.
+- GET  /cases/{case_id}/outline           dàn ý + dòng thời gian (tên hư cấu) cho màn duyệt (409 nếu chưa có dàn ý).
+- PUT  /cases/{case_id}/outline           sửa dàn ý đang chờ duyệt; kiểm bằng các quy tắc dàn ý (400), 409 nếu đã duyệt.
+- POST /cases/{case_id}/outline/approve   duyệt dàn ý: worker viết cảnh tiếp (409 nếu không chờ duyệt).
 - GET  /cases/{case_id}                   kế hoạch (409 nếu chưa phân tích xong).
 - PUT  /cases/{case_id}/entities          sửa tên hư cấu / thêm tên mới, áp cho cả kế hoạch, chạy lại kiểm tra.
 - PUT  /cases/{case_id}/scenes/{order}    sửa lời Việt/Anh của một cảnh, chạy lại kiểm tra.
@@ -24,7 +27,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, Field
 
-from models.case_adaptation_schemas import CaseAdaptationPlan, Lang
+from models.case_adaptation_schemas import CaseAdaptationPlan, Lang, PartKind
 from security import is_safe_id, require_safe_id, validate_path_ids
 from services import case_jobs, case_plan_edits, case_redact, case_store, case_worker
 from services.case_project_builder import LANGS, BlockingFlagsError, create_project_from_plan, render_board_scene
@@ -33,6 +36,8 @@ from services.image_service import STYLE_PRESETS
 router = APIRouter(prefix="/api/true-crime", tags=["True Crime Studio"], dependencies=[Depends(validate_path_ids)])
 
 PROGRESS_ERROR_FALLBACK = "Phân tích bị dừng. Bấm Thử lại để chạy tiếp; nếu lặp lại, xem nhật ký máy chủ."
+OUTLINE_ERROR_FALLBACK = ("Dàn ý chưa đạt quy tắc (số cảnh mỗi nhịp, mỗi sự việc thuộc đúng một nhịp, tổng số cảnh). "
+                          "Kiểm lại các nhịp rồi lưu lại.")
 MAX_VOICE_CHARS = 100
 
 
@@ -44,6 +49,19 @@ class AnalyzeRequest(BaseModel):
     raw_report: str
     target_minutes: int = Field(default=8, ge=1, le=60, description="Độ dài video mong muốn (phút)")
     visual_style: str = "neo_noir_silhouette"
+
+
+class OutlinePartEdit(BaseModel):
+    kind: PartKind
+    summary_vi: str = Field(default="", max_length=1000)
+    event_ids: list[Annotated[str, Field(max_length=64)]] = Field(default_factory=list, max_length=500)
+    scene_count: int
+
+
+class OutlineEditRequest(BaseModel):
+    parts: list[OutlinePartEdit] = Field(max_length=100)
+    supported_minutes: Optional[int] = Field(default=None, ge=1, le=60,
+                                             description="Số phút bài đủ tư liệu; để trống thì giữ ước lượng của máy")
 
 
 class EntitiesRequest(BaseModel):
@@ -100,6 +118,20 @@ async def _edit_plan(func, *args) -> CaseAdaptationPlan:
         raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
+async def _outline_call(case_id: str, func, *args):
+    """Chạy một thao tác duyệt dàn ý (case_worker) và đổi lỗi của nó thành mã HTTP. Lý do dàn ý bị từ chối có thể trích
+    id hay chữ người dùng gửi lên, nên ẩn tên thật như thông báo tiến độ."""
+    try:
+        return await asyncio.to_thread(func, case_id, *args)
+    except case_worker.CaseNotFoundError:
+        raise HTTPException(status_code=404, detail="Không tìm thấy vụ án.") from None
+    except case_worker.OutlineStateError as exc:
+        raise HTTPException(status_code=409, detail=exc.message) from None
+    except case_worker.OutlineEditError as exc:
+        detail = await asyncio.to_thread(case_redact.hide_real_names, case_id, exc.message, OUTLINE_ERROR_FALLBACK)
+        raise HTTPException(status_code=400, detail=detail) from None
+
+
 # ==============================================================================
 # PHÂN TÍCH
 # ==============================================================================
@@ -133,6 +165,31 @@ async def resume_case(case_id: str):
         pipeline = await asyncio.to_thread(case_worker.resume_pipeline, case_id)
     except case_worker.CaseNotFoundError:
         raise HTTPException(status_code=404, detail="Không tìm thấy vụ án.") from None
+    return case_worker.pipeline_progress(pipeline)
+
+
+# ==============================================================================
+# DUYỆT DÀN Ý
+# ==============================================================================
+
+@router.get("/cases/{case_id}/outline")
+async def get_outline(case_id: str):
+    """Dàn ý, dòng thời gian đã đổi tên hư cấu và giới hạn số cảnh; `editable` chỉ True khi đang chờ duyệt."""
+    return await _outline_call(case_id, case_worker.outline_view)
+
+
+@router.put("/cases/{case_id}/outline")
+async def edit_outline(case_id: str, req: OutlineEditRequest):
+    """Thay toàn bộ các nhịp của dàn ý đang chờ duyệt (đổi loại, tóm tắt, số cảnh, chuyển sự việc, thêm bớt nhịp) và,
+    nếu gửi, số phút bài đủ tư liệu. Trả dàn ý đã lưu như GET."""
+    await _outline_call(case_id, case_worker.edit_outline, [p.model_dump() for p in req.parts], req.supported_minutes)
+    return await _outline_call(case_id, case_worker.outline_view)
+
+
+@router.post("/cases/{case_id}/outline/approve")
+async def approve_outline(case_id: str):
+    """Duyệt dàn ý; worker viết cảnh tiếp. Trả tiến độ."""
+    pipeline = await _outline_call(case_id, case_worker.approve_outline)
     return case_worker.pipeline_progress(pipeline)
 
 

@@ -33,7 +33,7 @@ from services.case_adaptation_checks import (
 )
 from services.case_adaptation_llm import RETRYABLE_KINDS, LLMError
 from services.case_adaptation_steps import RETRY_NOTE
-from services.case_worker import pipeline_progress, start_analysis, worker_loop
+from services.case_worker import approve_outline, pipeline_progress, start_analysis, worker_loop
 from tests.case_adaptation_fakes import FIXTURES_DIR
 
 pytestmark = pytest.mark.skipif(
@@ -95,12 +95,15 @@ class _CallLog:
 
 
 async def _wait_for_pipeline(case_id: str) -> bool:
-    """Chạy worker cho tới khi hàng việc hết `running`. Trả True nếu quá TIMEOUT_S mà chưa xong."""
+    """Chạy worker cho tới khi hàng việc hết `running`; dàn ý xong (chờ duyệt) thì duyệt luôn như người dùng bấm
+    "Duyệt". Trả True nếu quá TIMEOUT_S mà chưa xong."""
     stop = asyncio.Event()
     task = asyncio.create_task(worker_loop(stop, idle_sleep=0.5))
     deadline = time.monotonic() + TIMEOUT_S
     try:
-        while case_store.load_pipeline(case_id).status == "running":
+        while case_store.load_pipeline(case_id).status in ("running", "review"):
+            if case_store.load_pipeline(case_id).status == "review":
+                approve_outline(case_id)
             if task.done():
                 break
             if time.monotonic() > deadline:

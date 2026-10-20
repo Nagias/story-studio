@@ -21,7 +21,9 @@ Bộ chạy một việc nhỏ của hàng việc phân tích vụ án, cùng c�
     * extract_chunk (G2): đọc một đoạn → tên, sự việc, bằng chứng, quan hệ;
     * cluster_names (G3): gộp các cách gọi khác nhau của cùng một đối tượng;
     * assign_aliases (G4): đặt tên hư cấu, văn hoá, tên tập, rồi ghép với kết quả G2 thành CaseBible;
-    * build_outline (G5): dàn ý theo nhịp; sinh ra write_vi/write_en/write_prompts cho từng nhịp, cuối cùng assemble;
+    * build_outline (G5): dàn ý theo nhịp; sinh ra write_vi/write_en/write_prompts cho từng nhịp, cuối cùng assemble,
+      và báo worker dừng chờ người dùng duyệt (StepResult.needs_review). revise_outline kiểm dàn ý người dùng sửa bằng
+      chính các quy tắc đó rồi sinh lại các việc viết cảnh; outline_review là dữ liệu cho màn duyệt;
     * write_vi, write_en, write_prompts (G6): lời Việt → lời Anh → prompt hình của một nhịp, đúng scene_count cảnh;
     * assemble (G7, không gọi LLM): chèn cảnh miễn trừ, ghép các nhịp, chuẩn hoá, check_plan rồi lưu plan.json.
 - rewrite_english: viết lại lời Anh cho vài cảnh có lời Việt mới sửa (dùng khi tạo bản tiếng Anh).
@@ -189,6 +191,7 @@ class StepFailed(Exception):
 class StepResult:
     output: dict
     new_steps: list[PipelineStep] = field(default_factory=list)
+    needs_review: bool = False      # True: worker dừng vụ ở trạng thái `review` chờ người dùng duyệt (sau dàn ý)
 
 
 # ---------------------------------------------------------------- một việc: gọi, kiểm, gọi lại
@@ -1231,6 +1234,15 @@ def _too_few_scenes_problem(total: int, n_events: int, supported: int, target_mi
 
 
 def _validate_outline(raw: Any, bible: CaseBible, target_minutes: int) -> dict:
+    problems, outline = _check_outline(raw, bible, target_minutes)
+    if problems or outline is None:
+        raise StepRejected("; ".join(problems))
+    return outline
+
+
+def _check_outline(raw: Any, bible: CaseBible, target_minutes: int) -> tuple[list[str], Optional[dict]]:
+    """Mọi quy tắc dàn ý. Trả (các lỗi, dàn ý đã chuẩn hoá); có lỗi thì dàn ý là None. Câu lỗi viết cho LLM (dùng
+    tên trường JSON); revise_outline đổi sang lời cho người dùng."""
     parsed = _OutlineOutput.model_validate(raw)
     lo, hi = target_scenes(target_minutes)
     video_cap = video_scene_cap(hi)                     # cả video, kể cả cảnh miễn trừ
@@ -1294,11 +1306,11 @@ def _validate_outline(raw: Any, bible: CaseBible, target_minutes: int) -> dict:
         problems.append(_too_few_scenes_problem(total, len(known), parsed.supported_minutes, target_minutes,
                                                 (lo, hi), video_cap))
     if problems:
-        raise StepRejected("; ".join(problems))
+        return problems, None
 
     parts = [StoryPart(id=f"p{n}", kind=kind, summary_vi=summary, event_ids=ids, scene_count=count)
              for n, (kind, summary, ids, count) in enumerate(drafts, start=1)]
-    return CaseOutline(supported_minutes=parsed.supported_minutes, parts=parts).model_dump()
+    return [], CaseOutline(supported_minutes=parsed.supported_minutes, parts=parts).model_dump()
 
 
 def _story_steps(parts: list[StoryPart]) -> list[PipelineStep]:
@@ -1321,7 +1333,94 @@ async def _run_outline(pipeline: CasePipeline, step: PipelineStep, llm: LLMCall)
         llm=llm, temperature=_TEMPERATURE_OUTLINE, timeout=STEP_TIMEOUTS["build_outline"], step_label=label,
     )
     parts = [StoryPart.model_validate(p) for p in output["parts"]]
-    return StepResult(output=output, new_steps=_story_steps(parts))
+    return StepResult(output=output, new_steps=_story_steps(parts), needs_review=True)
+
+
+# Câu lỗi của _check_outline viết cho LLM; đổi tên trường JSON sang lời thường khi trả cho người dùng.
+_USER_WORDING = (
+    (re.compile(r"có scene_count = (-?\d+);"), r"có \1 cảnh;"),
+    (re.compile(r"hoặc ước lại supported_minutes cho đúng lượng tư liệu"),
+     'hoặc nâng ô "Bài đủ tư liệu cho ... phút" nếu bạn chắc bài đủ chất liệu'),
+    (re.compile(r'"?supported_minutes"?'), "số phút tư liệu"),
+    (re.compile(r"scene_count"), "số cảnh"),
+    (re.compile(r"\(hook\)"), "(mở đầu)"),
+    (re.compile(r"nhịp hook"), "nhịp mở đầu"),
+)
+
+
+def _for_user(problem: str) -> str:
+    for pattern, replacement in _USER_WORDING:
+        problem = pattern.sub(replacement, problem)
+    return problem[:1].upper() + problem[1:]
+
+
+def revise_outline(pipeline: CasePipeline, parts: list[dict], supported_minutes: Optional[int] = None) -> StepResult:
+    """Dàn ý người dùng sửa lúc duyệt (đổi loại, tóm tắt, số cảnh, chuyển sự việc giữa các nhịp, thêm bớt nhịp, và số
+    phút bài đủ tư liệu): kiểm bằng đúng các quy tắc của _validate_outline. `supported_minutes` None thì giữ ước lượng
+    của bước dàn ý; số mới phải từ 1 tới thời lượng video đã chọn (nâng lên chỉ nới tổng số cảnh, mỗi sự việc vẫn tối
+    đa 2 cảnh nên không độn được). Trả dàn ý mới (id nhịp đánh lại p1, p2...) cùng các việc viết cảnh sinh lại. Không
+    qua thì StepRejected, lý do bằng lời thường, mỗi lỗi một dòng."""
+    label = "sửa dàn ý"
+    bible = _load_bible(pipeline, label)
+    current = _load_outline(pipeline, label)
+    minutes = current.supported_minutes if supported_minutes is None else supported_minutes
+    if minutes != current.supported_minutes and not 1 <= minutes <= pipeline.target_minutes:
+        raise StepRejected(f"Số phút tư liệu phải từ 1 đến {pipeline.target_minutes} phút (thời lượng video đã chọn).")
+    try:
+        problems, output = _check_outline({"supported_minutes": minutes, "parts": parts}, bible, pipeline.target_minutes)
+    except ValidationError as exc:
+        raise StepRejected(_schema_reason(exc)) from None
+    if problems or output is None:
+        raise StepRejected("\n".join(_for_user(p) for p in problems))
+    new_parts = [StoryPart.model_validate(p) for p in output["parts"]]
+    return StepResult(output=output, new_steps=_story_steps(new_parts))
+
+
+def outline_steps(pipeline: CasePipeline) -> list[PipelineStep]:
+    """Các việc viết cảnh (và ráp) theo dàn ý đang lưu."""
+    return _story_steps(_load_outline(pipeline, "duyệt dàn ý").parts)
+
+
+def _total_scene_limits(supported: int, target_minutes: int) -> dict[str, int]:
+    """Tổng số cảnh dàn ý được phép theo _validate_outline (không kể cảnh miễn trừ), để màn duyệt nhắc trước."""
+    lo, hi = target_scenes(target_minutes)
+    most = video_scene_cap(hi) - 1
+    if supported < target_minutes:
+        return {"min": 0, "max": min(most, supported_scene_cap(supported))}
+    return {"min": lo - 1, "max": most}
+
+
+def outline_review(pipeline: CasePipeline) -> dict:
+    """Dữ liệu cho màn duyệt dàn ý: các nhịp, dòng thời gian (tóm tắt và mốc thời gian đã đổi sang tên hư cấu như
+    trong prompt), loại nhịp dùng được, giới hạn số cảnh mỗi nhịp và cả dàn ý."""
+    label = "xem dàn ý"
+    bible = _load_bible(pipeline, label)
+    outline = _load_outline(pipeline, label)
+    forbidden = build_forbidden_names(bible, "")
+
+    def aliased(text: str) -> str:
+        return apply_aliases(text or "", forbidden, "vi")[0]
+
+    kinds = [k for k in PART_KINDS if bible.solved or k != "resolution"]
+    return {
+        "case_id": pipeline.case_id,
+        "status": pipeline.status,
+        "editable": pipeline.status == "review",
+        "target_minutes": pipeline.target_minutes,
+        "supported_minutes": outline.supported_minutes,
+        "total_scenes": _total_scene_limits(outline.supported_minutes, pipeline.target_minutes),
+        # giới hạn tổng số cảnh theo từng mức "tư liệu đủ cho N phút", để màn duyệt nhắc ngay khi người dùng đổi số đó
+        "scene_limits": {str(m): _total_scene_limits(m, pipeline.target_minutes)
+                         for m in range(1, pipeline.target_minutes + 1)},
+        "scenes_per_part": list(SCENES_PER_PART),
+        "part_kinds": kinds,
+        "solved": bible.solved,
+        "title_vi": bible.title_vi,
+        "logline_vi": bible.logline_vi,
+        "parts": [p.model_dump() for p in outline.parts],
+        "timeline": [{"id": ev.id, "order": ev.order, "time_label": aliased(ev.time_label), "summary": aliased(ev.summary)}
+                     for ev in bible.timeline],
+    }
 
 
 # ---------------------------------------------------------------- G6: viết cảnh theo nhịp
@@ -1354,6 +1453,21 @@ def _part_context(pipeline: CasePipeline, step: PipelineStep, what: str) -> _Par
 def _part_events(ctx: _PartContext) -> list[TimelineEvent]:
     by_id = {ev.id: ev for ev in ctx.bible.timeline}
     return [by_id[e] for e in ctx.part.event_ids if e in by_id]
+
+
+def _introduced_people(ctx: _PartContext) -> list[str]:
+    """Tên hư cấu tiếng Việt của người có trong sự việc các nhịp trước, theo thứ tự xuất hiện. Sự việc nhịp hook chỉ
+    mượn để gợi thì không tính: người trong đó chưa thật sự được kể."""
+    borrowed = _hook_borrowed(ctx.outline)
+    by_event = {ev.id: ev for ev in ctx.bible.timeline}
+    people = {e.id: e.alias_vi for e in ctx.bible.entities if e.kind == "person" and e.alias_vi}
+    names: list[str] = []
+    for part in ctx.outline.parts[:ctx.index]:
+        for event_id in part.event_ids:
+            if borrowed.get(event_id) == part.id or event_id not in by_event:
+                continue
+            names += [people[i] for i in by_event[event_id].entity_ids if i in people]
+    return list(dict.fromkeys(names))
 
 
 def _part_chunks(pipeline: CasePipeline, ctx: _PartContext) -> list[str]:
@@ -1454,7 +1568,8 @@ async def _run_write_vi(pipeline: CasePipeline, step: PipelineStep, llm: LLMCall
     output = await ask_validated(
         write_vi_prompt(ctx.bible, ctx.part, _part_events(ctx), _part_chunks(pipeline, ctx), prev_scenes,
                         part_position=ctx.position, revealed_ids=revealed, teaser_ids=teaser_ids,
-                        teased_ids=teased_ids),
+                        teased_ids=teased_ids, outline_parts=ctx.outline.parts,
+                        introduced_names=_introduced_people(ctx)),
         lambda raw: _validate_write_vi(raw, ctx, guard),
         llm=llm, temperature=_TEMPERATURE_VI, timeout=STEP_TIMEOUTS["write_vi"], step_label=ctx.label,
     )

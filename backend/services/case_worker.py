@@ -6,6 +6,10 @@ Worker chạy hàng việc phân tích vụ án ngay trong tiến trình server 
 - run_next_step: chạy đúng MỘT việc của vụ cũ nhất còn việc chờ. Việc kế tiếp của một vụ là việc đầu tiên chưa
   `done`, nên các việc luôn chạy theo thứ tự. Trước khi chạy: `running`, `attempts += 1`, lưu. Xong: lưu kết quả
   vào steps/<step_id>.json, đánh dấu `done`, chèn các việc mới sinh ngay sau việc vừa xong; hết việc thì vụ `done`.
+  Việc báo cần duyệt (dàn ý, StepResult.needs_review) thì vụ sang `review`: worker không chạy tiếp vụ đó.
+- outline_view / edit_outline / approve_outline: màn duyệt dàn ý. Sửa (chỉ khi `review`) được kiểm bằng chính các quy
+  tắc dàn ý, lưu đè steps/outline.json rồi sinh lại các việc viết cảnh; duyệt thì vụ về `running` (việc viết cảnh
+  được sinh lại từ dàn ý đã lưu, nên máy tắt giữa hai lần ghi khi sửa cũng không lệch).
   Hỏng (StepFailed, hoặc lỗi ngoài dự kiến như lỗi lập trình, lỗi đọc ghi đĩa): việc và vụ thành `failed`, lưu
   thông báo tiếng Việt; vụ đó dừng, các vụ khác vẫn chạy.
 - worker_loop: gọi run_next_step liên tục, hết việc thì nghỉ `idle_sleep` giây. Mọi lỗi trong một vòng đều được ghi
@@ -33,7 +37,7 @@ from models.case_adaptation_schemas import MAX_SOURCE_CHARS, CasePipeline, Pipel
 from runners.single_instance import try_lock_file, unlock_file
 from services import case_adaptation_steps, case_store
 from services.case_adaptation_llm import LLMCall
-from services.case_adaptation_steps import StepFailed, StepResult, chunk_source, initial_steps
+from services.case_adaptation_steps import StepFailed, StepRejected, StepResult, chunk_source, initial_steps
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +62,23 @@ class CaseInputError(ValueError):
 
 class CaseNotFoundError(LookupError):
     """Không có hàng việc của vụ án này."""
+
+
+class OutlineStateError(Exception):
+    """Chưa có dàn ý, hoặc dàn ý không ở trạng thái chờ duyệt (API trả 409). `message` tiếng Việt, không nêu tên."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+
+class OutlineEditError(ValueError):
+    """Dàn ý sửa không qua các quy tắc dàn ý (API trả 400). `message` có thể trích id hay chữ người dùng gửi lên nên
+    router ẩn tên thật trước khi trả."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
 
 
 def worker_disabled() -> bool:
@@ -160,6 +181,8 @@ def _finish_done(case_id: str, step_id: str, result: StepResult) -> None:
         pipeline.steps[index + 1:index + 1] = new_steps
         if all(s.status == "done" for s in pipeline.steps):
             pipeline.status = "done"
+        elif result.needs_review:
+            pipeline.status = "review"
         pipeline.updated_at = _now()
         case_store.save_pipeline(pipeline)
 
@@ -310,25 +333,106 @@ def recover_interrupted() -> int:
     return changed
 
 
+def _require_pipeline(case_id: str) -> CasePipeline:
+    pipeline = case_store.load_pipeline(case_id)
+    if pipeline is None:
+        raise CaseNotFoundError(f"Không tìm thấy vụ án {case_id}.")
+    return pipeline
+
+
 def resume_pipeline(case_id: str) -> CasePipeline:
-    """"Thử lại": việc `failed` về `pending` với attempts = 0, vụ chạy tiếp. Không có vụ thì CaseNotFoundError."""
+    """"Thử lại": việc `failed` về `pending` với attempts = 0, vụ chạy tiếp. Không có vụ thì CaseNotFoundError.
+    Vụ đang chờ duyệt dàn ý thì vẫn chờ: Thử lại không thay cho việc duyệt."""
     with _lock:
-        pipeline = case_store.load_pipeline(case_id)
-        if pipeline is None:
-            raise CaseNotFoundError(f"Không tìm thấy vụ án {case_id}.")
+        pipeline = _require_pipeline(case_id)
         for step in pipeline.steps:
             if step.status == "failed":
                 step.status = "pending"
                 step.attempts = 0
                 step.error = ""
-        pipeline.status = "done" if all(s.status == "done" for s in pipeline.steps) else "running"
+        if pipeline.status != "review":
+            pipeline.status = "done" if all(s.status == "done" for s in pipeline.steps) else "running"
         pipeline.updated_at = _now()
+        case_store.save_pipeline(pipeline)
+        return pipeline
+
+
+# ---------------------------------------------------------------- duyệt dàn ý
+
+OUTLINE_NOT_READY = "Chưa có dàn ý: phân tích chưa tới bước lập dàn ý."
+OUTLINE_APPROVED = "Dàn ý đã được duyệt và đang dùng để viết cảnh, không sửa hay duyệt lại được nữa."
+
+
+def _outline_step(pipeline: CasePipeline) -> Optional[PipelineStep]:
+    """Việc lập dàn ý nếu đã xong."""
+    return next((s for s in pipeline.steps if s.kind == "build_outline" and s.status == "done"), None)
+
+
+def _require_review(pipeline: CasePipeline) -> PipelineStep:
+    outline = _outline_step(pipeline)
+    if outline is None:
+        raise OutlineStateError(OUTLINE_NOT_READY)
+    if pipeline.status != "review":
+        raise OutlineStateError(OUTLINE_APPROVED)
+    return outline
+
+
+def _replace_story_steps(pipeline: CasePipeline, outline: PipelineStep, steps: list[PipelineStep]) -> None:
+    """Thay mọi việc sau việc lập dàn ý (khi chờ duyệt, đó là các việc viết cảnh và ráp, đều chưa chạy)."""
+    index = pipeline.steps.index(outline)
+    pipeline.steps[index + 1:] = steps
+    pipeline.updated_at = _now()
+
+
+def outline_view(case_id: str) -> dict:
+    """Dàn ý và dòng thời gian cho màn duyệt (case_adaptation_steps.outline_review); `editable` chỉ True khi đang chờ
+    duyệt. Chưa có dàn ý thì OutlineStateError."""
+    pipeline = _require_pipeline(case_id)
+    if _outline_step(pipeline) is None:
+        raise OutlineStateError(OUTLINE_NOT_READY)
+    try:
+        return case_adaptation_steps.outline_review(pipeline)
+    except StepFailed as exc:
+        raise OutlineStateError(exc.user_message) from None
+
+
+def edit_outline(case_id: str, parts: list[dict], supported_minutes: Optional[int] = None) -> CasePipeline:
+    """Sửa dàn ý đang chờ duyệt: `parts` là toàn bộ các nhịp mới ({kind, summary_vi, event_ids, scene_count}),
+    `supported_minutes` (tuỳ chọn) là số phút bài đủ tư liệu. Qua các quy tắc dàn ý thì lưu đè dàn ý và sinh lại các
+    việc viết cảnh (vụ vẫn chờ duyệt); không qua thì OutlineEditError và không đổi gì."""
+    with _lock:
+        pipeline = _require_pipeline(case_id)
+        outline = _require_review(pipeline)
+        try:
+            result = case_adaptation_steps.revise_outline(pipeline, parts, supported_minutes)
+        except StepRejected as exc:
+            raise OutlineEditError(exc.reason) from None
+        except StepFailed as exc:
+            raise OutlineStateError(exc.user_message) from None
+        case_store.save_step_output(case_id, outline.id, result.output)
+        _replace_story_steps(pipeline, outline, result.new_steps)
+        case_store.save_pipeline(pipeline)
+        return pipeline
+
+
+def approve_outline(case_id: str) -> CasePipeline:
+    """Duyệt dàn ý: sinh lại các việc viết cảnh từ dàn ý đã lưu, vụ về `running` để worker chạy tiếp."""
+    with _lock:
+        pipeline = _require_pipeline(case_id)
+        outline = _require_review(pipeline)
+        try:
+            steps = case_adaptation_steps.outline_steps(pipeline)
+        except StepFailed as exc:
+            raise OutlineStateError(exc.user_message) from None
+        _replace_story_steps(pipeline, outline, steps)
+        pipeline.status = "running"
         case_store.save_pipeline(pipeline)
         return pipeline
 
 
 # ---------------------------------------------------------------- tiến độ
 
+REVIEW_LABEL = "Dàn ý xong, chờ bạn duyệt"
 _STATIC_PHRASES = {
     "cluster_names": "gộp tên nhân vật",
     "assign_aliases": "đặt tên hư cấu",
@@ -365,6 +469,8 @@ def pipeline_progress(p: CasePipeline) -> dict:
     if p.status == "failed":
         stopped_at = failed or current
         label = f"Dừng ở bước {_step_phrase(p, stopped_at)}" if stopped_at else "Phân tích bị dừng"
+    elif p.status == "review":
+        label = REVIEW_LABEL
     elif p.status == "done" or current is None:
         label = "Đã phân tích xong"
     else:

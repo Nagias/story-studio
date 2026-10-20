@@ -7,9 +7,11 @@ Prompt LLM cho luồng chuyển thể vụ án thật thành truyện song ngữ
 - Mỗi prompt nói rõ kích thước đầu ra mong đợi (số sự việc, số cảnh, số từ), vì model hay lười và tóm gọn.
 - G5–G6 (dàn ý, viết cảnh): tóm tắt sự việc và mô tả bằng chứng đã được thay sang tên hư cấu trước khi gửi;
   riêng đoạn gốc giữ nguyên văn (có tên thật) để model bám đúng sự thật, kèm bảng tên thật → tên hư cấu.
+- Lời Việt của một nhịp thấy cả câu chuyện: logline, dàn ý mọi nhịp (đánh dấu nhịp đang viết) và nhân vật đã xuất hiện
+  ở các nhịp trước, để cài cắm, trả lời và không giới thiệu lại nhân vật.
 """
 import math
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Sequence
 
 from models.case_adaptation_schemas import CaseBible, CaseEntity, StoryPart, TimelineEvent
 from services.case_adaptation_checks import GENERIC_TERMS, apply_aliases, build_forbidden_names
@@ -391,13 +393,30 @@ Trả về đúng một JSON object theo mẫu (thay phần trong <...> bằng s
 
 # ---------------------------------------------------------------- G6: lời Việt
 
+def _story_block(bible: CaseBible, part: StoryPart, outline_parts: Sequence[StoryPart]) -> str:
+    """Logline và dàn ý tóm tắt của mọi nhịp, đánh dấu nhịp đang viết."""
+    lines = [f"- Logline: {_one_line(_aliased(bible.logline_vi, bible), 400) or '(không có)'}"]
+    if outline_parts:
+        lines.append(f"- Dàn ý cả video ({len(outline_parts)} nhịp, theo thứ tự kể):")
+        for n, p in enumerate(outline_parts, start=1):
+            current = p.id == part.id
+            mark = "►" if current else " "
+            note = "  ◄ NHỊP ĐANG VIẾT" if current else ""
+            summary = _one_line(_aliased(p.summary_vi, bible), 300) or "(không có tóm tắt)"
+            lines.append(f"  {mark} {n}. {p.kind} ({p.scene_count} cảnh): {summary}{note}")
+    return "\n".join(lines)
+
+
 def write_vi_prompt(bible: CaseBible, part: StoryPart, events: list[TimelineEvent], source_chunks: list[str],
                     prev_scenes: list[dict], *, part_position: Optional[tuple[int, int]] = None,
                     revealed_ids: Iterable[str] = (), teaser_ids: Iterable[str] = (),
-                    teased_ids: Iterable[str] = ()) -> str:
+                    teased_ids: Iterable[str] = (), outline_parts: Sequence[StoryPart] = (),
+                    introduced_names: Iterable[str] = ()) -> str:
     """- `revealed_ids`: id bằng chứng/quan hệ đã hiện ở các nhịp trước (đánh dấu trong danh sách).
     - `teaser_ids`: sự việc nhịp hook mượn của nhịp sau: chỉ được gợi, không kể trọn.
-    - `teased_ids`: sự việc của nhịp này đã được hook hé lộ: giờ mới kể đầy đủ."""
+    - `teased_ids`: sự việc của nhịp này đã được hook hé lộ: giờ mới kể đầy đủ.
+    - `outline_parts`: mọi nhịp của dàn ý (để viết có cài cắm và trả lời); nhịp `part` được đánh dấu.
+    - `introduced_names`: tên hư cấu (tiếng Việt) của nhân vật đã xuất hiện ở các nhịp trước: không giới thiệu lại."""
     n = part.scene_count
     lo, hi = VI_WORDS
     per_scene = max_events_per_scene(len(events), n)
@@ -410,8 +429,23 @@ def write_vi_prompt(bible: CaseBible, part: StoryPart, events: list[TimelineEven
     else:
         prev = "(đây là nhịp đầu tiên, ngay sau câu miễn trừ ở đầu video)"
         prev_rule = "Câu đầu tiên mở màn câu chuyện, không nhắc lại câu miễn trừ."
+    met = list(dict.fromkeys(name for name in introduced_names if name))
+    if met:
+        introduced = (", ".join(_quote(name) for name in met) + "\nNhững người này khán giả đã biết: không giới thiệu "
+                      "lại (không nhắc lại tuổi, nghề, quan hệ như lần đầu), gọi thẳng bằng tên hoặc cách gọi ngắn. Chỉ "
+                      "giới thiệu ngắn gọn người lần đầu xuất hiện trong nhịp này.")
+    elif outline_parts and outline_parts[0].id == part.id:
+        introduced = "(đây là nhịp đầu tiên: nhân vật nào xuất hiện lần đầu thì giới thiệu ngắn gọn)"
+    else:
+        introduced = "(chưa có nhân vật nào được kể ở các nhịp trước)"
     return f"""TASK: WRITE_VI {part.id}
 Việc: viết lời kể tiếng Việt cho ĐÚNG {n} cảnh của {_where(part, part_position)} ("{part.kind}") trong video chuyển thể vụ án có thật {_quote(bible.title_vi)}. Chỉ viết nhịp này, không viết các nhịp khác.
+
+TOÀN BỘ CÂU CHUYỆN (để nhịp này ăn khớp với cả video; chỉ viết nhịp đang viết):
+{_story_block(bible, part, outline_parts)}
+
+NHÂN VẬT ĐÃ XUẤT HIỆN Ở CÁC NHỊP TRƯỚC:
+{introduced}
 
 NHỊP NÀY
 - Loại nhịp: {part.kind}: {_KIND_HINTS.get(part.kind, part.kind)}.
@@ -449,6 +483,7 @@ CÁCH VIẾT
    - "image": mọi cảnh còn lại.
    Cảnh không phải "board" thì "board_reveal" là [].
 9. "covers_event_ids": id các sự việc (của nhịp này) mà lời kể của cảnh đó thật sự kể ra: mỗi cảnh có từ 1 đến {per_scene} id, chia đều cho các cảnh theo thứ tự. Gộp mọi cảnh lại phải có đủ: {event_ids}.
+10. Cài cắm và trả lời theo dàn ý cả video ở trên: chi tiết mà nhịp sau sẽ giải thích (một đồ vật, một câu nói, một điều bất thường có trong sự việc của nhịp này) thì gieo nhẹ để khán giả để ý, không nói trước lời giải hay diễn biến của nhịp sau; câu hỏi hay chi tiết các nhịp trước đã gieo thì khi tới sự việc liên quan, nhắc lại đúng chi tiết ấy và trả lời. Không giới thiệu lại nhân vật đã xuất hiện ở nhịp trước.
 
 Trả về đúng một JSON object, "scenes" có đúng {n} phần tử theo thứ tự kể:
 {{"scenes": [{{"narration_vi": "...", "visual_kind": "image", "board_reveal": [], "covers_event_ids": ["..."]}}]}}"""

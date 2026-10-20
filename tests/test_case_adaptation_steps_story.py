@@ -641,6 +641,43 @@ def test_write_vi_prompt_has_part_events_chunks_names_and_previous_scenes(isolat
     assert "CHƯA" in p2                                                  # vụ chưa phá: dặn không bịa hung thủ
 
 
+def _block(prompt: str, title: str) -> str:
+    """Khối của prompt bắt đầu bằng dòng `title`, tới dòng trống đầu tiên."""
+    return prompt.split(title, 1)[1].split("\n\n", 1)[0]
+
+
+def test_write_vi_prompt_sees_logline_whole_outline_and_characters_already_introduced(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    llm, _calls = make_fake_llm()
+    _run_pipeline(pipeline, llm, stop_after="write_vi_p2")
+    bible = _bible(pipeline)
+    outline = case_store.load_step_output(pipeline.case_id, "outline")["parts"]
+    p1, p2 = _prompt_for(llm, "WRITE_VI p1"), _prompt_for(llm, "WRITE_VI p2")
+
+    for prompt, current in ((p1, 1), (p2, 2)):
+        story = _block(prompt, "TOÀN BỘ CÂU CHUYỆN")
+        assert bible.logline_vi in story
+        for n, part in enumerate(outline, start=1):
+            line = next(l for l in story.splitlines() if part["summary_vi"] in l)
+            assert f"{n}." in line
+            assert ("ĐANG VIẾT" in line) == (n == current)               # đánh dấu đúng nhịp đang viết
+        assert REAL_NAMES[0] not in story
+    assert "cài cắm" in p1.lower() and "không giới thiệu lại" in p1.lower()
+
+    people = {e.id: e.alias_vi for e in bible.entities if e.kind == "person"}
+    by_id = {ev.id: ev for ev in bible.timeline}
+    met = [people[i] for e in outline[0]["event_ids"] for i in by_id[e].entity_ids if i in people]
+    assert met                                                           # tiền đề: nhịp 1 có nhân vật
+    introduced = _block(p2, "NHÂN VẬT ĐÃ XUẤT HIỆN Ở CÁC NHỊP TRƯỚC")
+    for alias in met:
+        assert alias in introduced
+    later = [people[i] for e in outline[1]["event_ids"] for i in by_id[e].entity_ids
+             if i in people and people[i] not in met]
+    for alias in later:
+        assert alias not in introduced                                   # chỉ người đã xuất hiện ở nhịp trước
+    assert "nhịp đầu tiên" in _block(p1, "NHÂN VẬT ĐÃ XUẤT HIỆN Ở CÁC NHỊP TRƯỚC")
+
+
 def test_write_vi_date_and_real_name_retried_then_accepted_on_last_attempt(isolated_projects_dir):
     pipeline = _new_pipeline()
     dated = copy.deepcopy(load_fixture("WRITE_VI p1"))

@@ -1,5 +1,7 @@
 /* ================= TRUE CRIME STUDIO (modal Hồ Sơ Kỳ Án, spec 7.9) =================
- * Luồng: dán vụ án -> POST /api/true-crime/analyze -> hỏi tiến độ mỗi 2 giây -> màn xem lại kế hoạch (bảng tên,
+ * Luồng: dán vụ án -> POST /api/true-crime/analyze -> hỏi tiến độ mỗi 2 giây -> dàn ý xong thì máy chủ dừng chờ
+ * duyệt (status "review"): màn duyệt dàn ý (đổi loại nhịp, số cảnh, tóm tắt, chuyển sự việc giữa các nhịp, thêm/xoá
+ * nhịp; PUT .../outline, POST .../outline/approve) -> hỏi tiến độ tiếp -> màn xem lại kế hoạch (bảng tên,
  * cảnh báo, dàn ý, lời kể Việt/Anh từng cảnh, sửa được) -> tạo dự án bản Việt -> Bước 2.
  *
  * - Mọi request đi qua tcFetch(). Lỗi HTTP ném Error(detail) với thông báo tiếng Việt của máy chủ. Không có nhánh nào
@@ -62,12 +64,17 @@ const TrueCrimeState = {
   caseId: null,          // vụ án đang theo dõi
   plan: null,            // kế hoạch máy chủ trả về sau cùng (không bao giờ bị sửa ở client)
   progress: null,        // {status, step_label, steps_done, steps_total, error}
+  outline: null,         // dàn ý máy chủ trả về khi vụ chờ duyệt (GET .../outline), không bị sửa ở client
+  outlineDraft: null,    // bản đang sửa: [{kind, summary_vi, event_ids, scene_count}]
+  outlineMinutes: null,  // bản đang sửa của "bài đủ tư liệu cho bao nhiêu phút" (supported_minutes)
+  outlineDirty: false,   // bản đang sửa khác bản đã lưu trên máy chủ
   modalOpen: false,
   pollTimer: null,
   pollInFlight: false,
   pollAgain: false,
   voicesPromise: null,
-  busy: new Set(),       // tên các hành động đang chạy: analyze, resume, entities, add-entity, create
+  busy: new Set(),       // tên các hành động đang chạy: analyze, resume, outline-save, outline-approve, entities,
+                         // add-entity, create
   queue: Promise.resolve(),
   sceneEls: new Map(),   // order -> {card, vi, en, flags, status, countVi, countEn}
   board: { nodes: [], edges: [], scale: 1, filter: 'all', lang: 'vi', hovered: null }
@@ -229,7 +236,27 @@ function tcRefreshButtons() {
   }
 
   const newCase = tcEl('btn-tc-new-case');
-  if (newCase) newCase.disabled = busy('analyze') || busy('resume') || busy('create');
+  if (newCase) {
+    newCase.disabled = busy('analyze') || busy('resume') || busy('create') || busy('outline-save') ||
+      busy('outline-approve');
+  }
+
+  const outlineBusy = busy('outline-save') || busy('outline-approve');
+  const outlineSave = tcEl('btn-tc-outline-save');
+  if (outlineSave) {
+    outlineSave.disabled = !s.outline || !s.outlineDirty || outlineBusy;
+    tcSetBusyLabel(outlineSave, busy('outline-save'), 'Đang lưu dàn ý...');
+  }
+  const outlineApprove = tcEl('btn-tc-outline-approve');
+  if (outlineApprove) {
+    outlineApprove.disabled = !s.outline || outlineBusy;
+    tcSetBusyLabel(outlineApprove, busy('outline-approve'), 'Đang duyệt...');
+  }
+  const outlineRevert = tcEl('btn-tc-outline-revert');
+  if (outlineRevert) outlineRevert.disabled = !s.outlineDirty || outlineBusy;
+  // Đang lưu hay duyệt thì khoá ô sửa, để chữ gõ thêm lúc đó không bị mất.
+  tcEl('tc-outline-parts')?.classList.toggle('pointer-events-none', outlineBusy);
+  tcEl('tc-outline-parts')?.classList.toggle('opacity-75', outlineBusy);
 
   const saveEntities = tcEl('btn-tc-save-entities');
   if (saveEntities) {
@@ -259,9 +286,10 @@ function tcRenderCreateHint() {
   let text = 'Phân tích xong và không còn cảnh bị đánh dấu thì tạo được dự án bản Việt.';
   let iconClass = 'fa-solid fa-circle-info text-slate-500';
   if (!plan && TrueCrimeState.caseId) {
-    text = TrueCrimeState.progress?.status === 'failed'
-      ? 'Phân tích bị dừng: bấm "Thử lại" để chạy tiếp từ bước bị dừng.'
-      : 'Đang phân tích; xong mới tạo được dự án.';
+    const status = TrueCrimeState.progress?.status;
+    text = status === 'failed' ? 'Phân tích bị dừng: bấm "Thử lại" để chạy tiếp từ bước bị dừng.'
+      : status === 'review' ? 'Dàn ý đang chờ bạn duyệt (cột bên phải); duyệt xong máy chủ mới viết lời kể.'
+        : 'Đang phân tích; xong mới tạo được dự án.';
   } else if (plan) {
     const flagged = tcSortedScenes(plan).filter(s => (s.flags || []).length).map(s => s.order);
     const planFlags = (plan.flags || []).length;
@@ -388,6 +416,7 @@ function tcFollowCase(caseId) {
   TrueCrimeState.caseId = caseId;
   TrueCrimeState.plan = null;
   TrueCrimeState.progress = null;
+  tcClearOutline();
   tcRememberCaseId(caseId);
   tcBuildBoard();
   tcRenderProgress();
@@ -402,6 +431,7 @@ function tcDetach() {
   TrueCrimeState.caseId = null;
   TrueCrimeState.plan = null;
   TrueCrimeState.progress = null;
+  tcClearOutline();
   tcBuildBoard();
   tcRenderProgress();
   tcRenderReview();
@@ -416,9 +446,12 @@ function tcNewCase() {
   if (!TrueCrimeState.caseId) return;
   let message = 'Giao diện sẽ thôi theo dõi vụ hiện tại (kế hoạch vẫn lưu trên máy chủ). Phân tích một vụ khác?';
   if (!TrueCrimeState.plan) {
-    message = TrueCrimeState.progress?.status === 'failed'
+    const status = TrueCrimeState.progress?.status;
+    message = status === 'failed'
       ? 'Vụ bị dừng vẫn nằm trên máy chủ, nhưng giao diện sẽ thôi theo dõi nó (không bấm Thử lại được nữa). Phân tích một vụ khác?'
-      : 'Vụ đang phân tích vẫn chạy tiếp trên máy chủ, nhưng giao diện sẽ thôi theo dõi nó. Phân tích một vụ khác?';
+      : status === 'review'
+        ? 'Vụ đang chờ duyệt dàn ý vẫn nằm trên máy chủ, nhưng giao diện sẽ thôi theo dõi nó (không duyệt tiếp được nữa, phần dàn ý chưa lưu sẽ mất). Phân tích một vụ khác?'
+        : 'Vụ đang phân tích vẫn chạy tiếp trên máy chủ, nhưng giao diện sẽ thôi theo dõi nó. Phân tích một vụ khác?';
   }
   if (!window.confirm(message)) return;
   tcDetach();
@@ -458,11 +491,17 @@ async function tcPollProgress() {
     const progress = await tcFetch(tcCaseUrl(caseId, '/progress'), { timeoutMs: TC_POLL_TIMEOUT_MS });
     if (caseId !== TrueCrimeState.caseId) return;
     TrueCrimeState.progress = progress;
+    if (progress.status !== 'review' && TrueCrimeState.outline) {
+      tcClearOutline();
+      tcRenderReview();
+    }
     tcRenderProgress();
     if (progress.status === 'running') {
       next = TC_POLL_MS;
     } else if (progress.status === 'done') {
       await tcLoadPlan(caseId);
+    } else if (progress.status === 'review') {
+      await tcLoadOutline(caseId);       // dừng hỏi, chờ người dùng duyệt dàn ý
     }
     // failed: dừng hỏi, chờ người dùng bấm "Thử lại"
   } catch (err) {
@@ -544,13 +583,14 @@ function tcRenderProgress() {
   if (bar) {
     bar.style.width = `${percent}%`;
     bar.className = 'h-full rounded-full transition-all duration-300 ' +
-      (status === 'failed' ? 'bg-amber-500' : status === 'done' ? 'bg-emerald-500' : 'bg-red-500');
+      (status === 'failed' || status === 'review' ? 'bg-amber-500' : status === 'done' ? 'bg-emerald-500' : 'bg-red-500');
   }
   const icon = tcEl('tc-progress-icon');
   if (icon) {
     icon.className = status === 'failed' ? 'fa-solid fa-triangle-exclamation text-rose-400'
       : status === 'done' ? 'fa-solid fa-circle-check text-emerald-400'
-        : 'fa-solid fa-spinner fa-spin text-amber-400';
+        : status === 'review' ? 'fa-solid fa-list-check text-amber-400'
+          : 'fa-solid fa-spinner fa-spin text-amber-400';
   }
   const error = tcEl('tc-progress-error');
   if (error) {
@@ -570,6 +610,346 @@ function tcRenderProgressNotice(message) {
   if (!error) return;
   error.textContent = message;
   error.classList.remove('hidden');
+}
+
+// ================= DUYỆT DÀN Ý =================
+// Máy chủ dừng sau bước lập dàn ý (status "review"). Người dùng sửa một bản nháp (outlineDraft); "Lưu dàn ý" gửi cả
+// bản nháp lên, máy chủ kiểm bằng đúng các quy tắc dàn ý (400 kèm lý do nếu không đạt) rồi trả dàn ý đã lưu (id nhịp
+// đánh lại p1, p2...). "Duyệt và viết cảnh" lưu bản nháp còn dở trước, rồi duyệt và hỏi tiến độ tiếp. Các chỉ dẫn số
+// cảnh trên màn này chỉ để nhắc trước; máy chủ mới là nơi quyết định.
+
+function tcOutlineCopy(parts) {
+  return (parts || []).map(p => ({
+    kind: p.kind, summary_vi: p.summary_vi || '', event_ids: [...(p.event_ids || [])], scene_count: Number(p.scene_count) || 0
+  }));
+}
+
+function tcClearOutline() {
+  TrueCrimeState.outline = null;
+  TrueCrimeState.outlineDraft = null;
+  TrueCrimeState.outlineMinutes = null;
+  TrueCrimeState.outlineDirty = false;
+  tcShowOutlineError('');
+}
+
+// keepDraft: giữ bản nháp người dùng đang sửa (chỉ cập nhật bản của máy chủ).
+function tcSetOutline(view, keepDraft = false) {
+  const s = TrueCrimeState;
+  s.outline = view;
+  if (!keepDraft || !s.outlineDraft) {
+    s.outlineDraft = tcOutlineCopy(view.parts);
+    s.outlineMinutes = view.supported_minutes;
+    s.outlineDirty = false;
+  }
+  tcRenderReview();
+}
+
+// Bản nháp gửi lên PUT .../outline.
+function tcOutlineBody() {
+  return { parts: tcOutlineCopy(TrueCrimeState.outlineDraft), supported_minutes: TrueCrimeState.outlineMinutes };
+}
+
+async function tcLoadOutline(caseId) {
+  try {
+    const view = await tcFetch(tcCaseUrl(caseId, '/outline'));
+    if (caseId !== TrueCrimeState.caseId) return;
+    tcSetOutline(view, TrueCrimeState.outlineDirty);
+  } catch (err) {
+    if (caseId !== TrueCrimeState.caseId) return;
+    if (err.status === 404) {
+      tcCaseMissing();
+      return;
+    }
+    // 409: dàn ý vừa được duyệt ở nơi khác; lỗi khác: mất kết nối... -> hỏi lại tiến độ
+    tcRenderProgressNotice(`Chưa tải được dàn ý: ${err.message}`);
+    tcSchedulePoll(TC_POLL_RETRY_MS);
+  }
+}
+
+function tcShowOutlineError(message) {
+  const box = tcEl('tc-outline-error');
+  if (!box) return;
+  box.textContent = message || '';
+  box.classList.toggle('hidden', !message);
+}
+
+function tcOutlineEvents() {
+  return new Map(((TrueCrimeState.outline && TrueCrimeState.outline.timeline) || []).map(ev => [ev.id, ev]));
+}
+
+function tcPartLabel(part, index) {
+  return `Nhịp ${index + 1}: ${TC_PART_LABELS[part.kind] || part.kind}`;
+}
+
+function tcRenderOutlineReview() {
+  const s = TrueCrimeState;
+  const view = s.outline;
+  const list = tcEl('tc-outline-parts');
+  if (!view || !list || !s.outlineDraft) return;
+  const intro = tcEl('tc-outline-intro');
+  if (intro) {
+    const maxMinutes = Math.max(Number(view.target_minutes) || 1, Number(view.supported_minutes) || 1);
+    intro.innerHTML = `
+      <div class="font-extrabold text-white text-sm">${tcEsc(view.title_vi || '(chưa có tên tập)')}</div>
+      ${view.logline_vi ? `<div class="text-slate-300">${tcEsc(view.logline_vi)}</div>` : ''}
+      <div>Máy chủ đã lập dàn ý và đang chờ bạn duyệt. Có thể đổi loại nhịp, số cảnh, tóm tắt, chuyển sự việc sang nhịp
+        khác, chèn hoặc xoá nhịp rỗng. Bấm "Duyệt và viết cảnh" để máy chủ viết lời kể (mỗi nhịp 3 lượt gọi AI).</div>
+      <label class="flex flex-wrap items-center gap-1.5 text-slate-300">Bài đủ tư liệu cho khoảng
+        <input type="number" id="tc-outline-minutes" min="1" max="${tcEsc(maxMinutes)}" step="1" value="${tcEsc(s.outlineMinutes)}"
+          class="w-14 bg-slate-950/90 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 focus:border-red-500 focus:outline-none">
+        phút (video bạn chọn ${tcEsc(view.target_minutes)} phút).</label>
+      <div class="text-[11px] text-slate-500">Máy ước số này theo lượng sự việc trong bài. Nâng lên thì được thêm cảnh,
+        nhưng mỗi sự việc vẫn tối đa 2 cảnh nên video không bị kể lặp cho đủ giờ.</div>`;
+  }
+
+  const parts = s.outlineDraft;
+  const events = tcOutlineEvents();
+  const where = new Map();                       // id sự việc -> các nhịp chứa nó
+  parts.forEach((part, i) => part.event_ids.forEach(id => where.set(id, [...(where.get(id) || []), i])));
+  const kinds = [...(view.part_kinds || [])];
+  const [minPart, maxPart] = view.scenes_per_part || [2, 6];
+
+  list.innerHTML = parts.map((part, i) => {
+    const kindOptions = (kinds.includes(part.kind) ? kinds : [part.kind, ...kinds]).map(kind =>
+      `<option value="${tcEsc(kind)}"${kind === part.kind ? ' selected' : ''}>${tcEsc(TC_PART_LABELS[kind] || kind)}</option>`
+    ).join('');
+    const rows = part.event_ids.map(id => {
+      const ev = events.get(id);
+      const owners = where.get(id) || [];
+      let badge = '';
+      if (owners.length > 1) {
+        const hookCopy = owners.some(j => parts[j].kind === 'hook' && j !== i);
+        badge = part.kind === 'hook'
+          ? '<span class="text-[10px] px-1.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30" title="Nhịp mở đầu chỉ gợi trước sự việc này; nhịp sau mới kể đầy đủ">gợi trước</span>'
+          : hookCopy
+            ? '<span class="text-[10px] px-1.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700" title="Nhịp mở đầu đã gợi trước sự việc này">đã gợi ở mở đầu</span>'
+            : '<span class="text-[10px] px-1.5 rounded-full bg-[#2d161a] text-rose-200 border border-rose-500/50">nằm ở nhiều nhịp</span>';
+      }
+      const moveOptions = parts.map((other, j) =>
+        `<option value="${j}"${j === i ? ' selected' : ''}>${j === i ? tcEsc(tcPartLabel(other, j)) : `→ ${tcEsc(tcPartLabel(other, j))}`}</option>`
+      ).join('');
+      const when = ev && ev.time_label ? `<span class="text-amber-300/80">[${tcEsc(ev.time_label)}]</span> ` : '';
+      return `
+        <li class="flex flex-wrap sm:flex-nowrap items-start gap-2 border-t border-slate-800 pt-1.5">
+          <span class="font-mono text-[10px] text-slate-500 shrink-0 pt-0.5">${tcEsc(id)}</span>
+          <span class="min-w-0 flex-1 text-slate-300 leading-relaxed">${when}${tcEsc(ev ? ev.summary : '(sự việc không có trong dòng thời gian)')} ${badge}</span>
+          <select data-tc-move-event="${tcEsc(id)}" data-from="${i}" aria-label="Chuyển sự việc ${tcEsc(id)} sang nhịp khác"
+            class="w-full sm:w-auto shrink-0 bg-slate-900 border border-slate-700 text-slate-200 text-[11px] rounded-lg px-2 py-1 focus:border-red-500">${moveOptions}</select>
+        </li>`;
+    }).join('');
+    return `
+      <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-2.5 space-y-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 text-slate-300 flex items-center justify-center text-[10px] font-bold shrink-0">${i + 1}</span>
+          <select data-tc-part-kind="${i}" aria-label="Loại nhịp ${i + 1}"
+            class="bg-slate-900 border border-slate-700 text-slate-200 text-[11px] rounded-lg px-2 py-1 focus:border-red-500">${kindOptions}</select>
+          <label class="flex items-center gap-1 text-slate-400">Số cảnh
+            <input type="number" data-tc-part-scenes="${i}" min="${minPart}" max="${maxPart}" step="1" value="${tcEsc(part.scene_count)}"
+              class="w-14 bg-slate-950/90 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 focus:border-red-500 focus:outline-none">
+          </label>
+          <span data-tc-part-hint="${i}" class="text-[10px] text-slate-500"></span>
+          <span class="flex-1"></span>
+          <button type="button" data-tc-insert-part="${i}" title="Chèn một nhịp rỗng ngay sau nhịp này, rồi chuyển sự việc vào"
+            class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 text-[10px] font-semibold transition cursor-pointer">
+            <i class="fa-solid fa-plus mr-1"></i>Chèn nhịp sau</button>
+          ${part.event_ids.length ? '' : `<button type="button" data-tc-remove-part="${i}" title="Xoá nhịp không có sự việc nào"
+            class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-rose-300 rounded-lg border border-slate-700 text-[10px] font-semibold transition cursor-pointer">
+            <i class="fa-solid fa-trash mr-1"></i>Xoá nhịp</button>`}
+        </div>
+        <textarea data-tc-part-summary="${i}" rows="2" maxlength="1000" aria-label="Tóm tắt nhịp ${i + 1}"
+          placeholder="Nhịp này kể gì (1–2 câu, dùng tên hư cấu)"
+          class="w-full bg-slate-950/90 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:border-red-500 focus:outline-none leading-relaxed resize-y">${tcEsc(part.summary_vi)}</textarea>
+        <ul class="space-y-1.5">${rows || '<li class="text-rose-300">Nhịp chưa có sự việc nào: chuyển sự việc vào, hoặc xoá nhịp.</li>'}</ul>
+      </div>`;
+  }).join('');
+  tcUpdateOutlineStatus();
+}
+
+// Cập nhật số cảnh, nhắc từng nhịp và các nút mà không vẽ lại (giữ ô đang gõ).
+function tcUpdateOutlineStatus() {
+  const s = TrueCrimeState;
+  const view = s.outline;
+  if (!view || !s.outlineDraft) return;
+  const parts = s.outlineDraft;
+  const [minPart, maxPart] = view.scenes_per_part || [2, 6];
+  parts.forEach((part, i) => {
+    const hint = document.querySelector(`#tc-outline-parts [data-tc-part-hint="${i}"]`);
+    if (!hint) return;
+    const problems = part.event_ids.length ? [] : ['chưa có sự việc'];
+    if (!(part.scene_count >= minPart && part.scene_count <= maxPart)) problems.push(`số cảnh phải từ ${minPart} đến ${maxPart}`);
+    hint.textContent = [part.event_ids.length ? `${part.event_ids.length} sự việc` : '', ...problems].filter(Boolean).join(' • ');
+    hint.className = `text-[10px] ${problems.length ? 'text-rose-300' : 'text-slate-500'}`;
+  });
+  const stats = tcEl('tc-outline-stats');
+  if (stats) {
+    const total = parts.reduce((sum, p) => sum + (Number(p.scene_count) || 0), 0);
+    const limits = (view.scene_limits || {})[String(s.outlineMinutes)] || view.total_scenes || { min: 0, max: 0 };
+    const range = limits.min ? `cần ${limits.min}–${limits.max}` : `tối đa ${limits.max}`;
+    const outside = total < limits.min || total > limits.max;
+    stats.textContent = `${parts.length} nhịp • ${total} cảnh (${range}) • +1 cảnh miễn trừ${s.outlineDirty ? ' • chưa lưu' : ''}`;
+    stats.classList.toggle('text-rose-300', outside);
+    stats.classList.toggle('text-amber-400', !outside);
+  }
+  tcRefreshButtons();
+}
+
+function tcMarkOutlineDirty() {
+  TrueCrimeState.outlineDirty = true;
+  tcShowOutlineError('');
+  tcUpdateOutlineStatus();
+}
+
+// Chuyển sự việc sang nhịp khác, chèn theo thứ tự trong dòng thời gian. Nhịp đích đã có nó (nhịp mở đầu gợi trước)
+// thì chỉ bỏ bản ở nhịp cũ.
+function tcMoveOutlineEvent(eventId, from, to) {
+  const parts = TrueCrimeState.outlineDraft;
+  if (!parts || !parts[from] || !parts[to] || from === to) return;
+  parts[from].event_ids = parts[from].event_ids.filter(id => id !== eventId);
+  const target = parts[to].event_ids;
+  if (!target.includes(eventId)) {
+    const events = tcOutlineEvents();
+    const order = id => events.get(id)?.order ?? Number.MAX_SAFE_INTEGER;
+    const at = target.findIndex(id => order(id) > order(eventId));
+    if (at < 0) target.push(eventId); else target.splice(at, 0, eventId);
+  }
+  tcMarkOutlineDirty();
+  tcRenderOutlineReview();
+}
+
+function tcOnOutlineInput(e) {
+  const parts = TrueCrimeState.outlineDraft;
+  if (!parts) return;
+  const target = e.target;
+  if (target.dataset.tcPartSummary !== undefined) {
+    const part = parts[Number(target.dataset.tcPartSummary)];
+    if (part) part.summary_vi = target.value;
+    tcMarkOutlineDirty();
+  } else if (target.dataset.tcPartScenes !== undefined) {
+    const part = parts[Number(target.dataset.tcPartScenes)];
+    if (part) part.scene_count = parseInt(target.value, 10) || 0;
+    tcMarkOutlineDirty();
+  }
+}
+
+function tcOnOutlineMinutesInput(e) {
+  if (e.target.id !== 'tc-outline-minutes' || !TrueCrimeState.outline) return;
+  const minutes = parseInt(e.target.value, 10);
+  if (!Number.isFinite(minutes)) return;          // ô đang trống giữa lúc gõ: giữ số cũ
+  TrueCrimeState.outlineMinutes = minutes;
+  tcMarkOutlineDirty();
+}
+
+function tcOnOutlineChange(e) {
+  const parts = TrueCrimeState.outlineDraft;
+  if (!parts) return;
+  const target = e.target;
+  if (target.dataset.tcPartKind !== undefined) {
+    const part = parts[Number(target.dataset.tcPartKind)];
+    if (part) part.kind = target.value;
+    tcMarkOutlineDirty();
+    tcRenderOutlineReview();                      // tên nhịp trong các ô "chuyển sang" đổi theo
+  } else if (target.dataset.tcMoveEvent !== undefined) {
+    tcMoveOutlineEvent(target.dataset.tcMoveEvent, Number(target.dataset.from), Number(target.value));
+  }
+}
+
+function tcOnOutlineClick(e) {
+  const parts = TrueCrimeState.outlineDraft;
+  if (!parts) return;
+  const insert = e.target.closest('[data-tc-insert-part]');
+  const remove = e.target.closest('[data-tc-remove-part]');
+  if (insert) {
+    const kinds = TrueCrimeState.outline?.part_kinds || [];
+    const [minPart] = TrueCrimeState.outline?.scenes_per_part || [2, 6];
+    const kind = kinds.includes('investigation') ? 'investigation' : (kinds[0] || 'investigation');
+    parts.splice(Number(insert.dataset.tcInsertPart) + 1, 0, { kind, summary_vi: '', event_ids: [], scene_count: minPart });
+  } else if (remove) {
+    const index = Number(remove.dataset.tcRemovePart);
+    if (!parts[index] || parts[index].event_ids.length || parts.length < 2) return;
+    parts.splice(index, 1);
+  } else {
+    return;
+  }
+  tcMarkOutlineDirty();
+  tcRenderOutlineReview();
+}
+
+function tcRevertOutline() {
+  const s = TrueCrimeState;
+  if (!s.outline || !s.outlineDirty) return;
+  if (!window.confirm('Bỏ mọi thay đổi chưa lưu và quay về dàn ý đang lưu trên máy chủ?')) return;
+  s.outlineDraft = tcOutlineCopy(s.outline.parts);
+  s.outlineMinutes = s.outline.supported_minutes;
+  s.outlineDirty = false;
+  tcShowOutlineError('');
+  tcRenderOutlineReview();
+}
+
+function tcOutlineRequestFailed(err, prefix) {
+  if (err.status === 404) {
+    tcCaseMissing();
+    return;
+  }
+  if (err.status === 400 || err.status === 422) {
+    tcShowOutlineError(`${prefix}:\n${err.message}`);           // máy chủ trả mỗi lỗi một dòng
+    showToast('Dàn ý chưa đạt quy tắc; xem lý do ngay dưới các nhịp.', 'warning', 6000);
+    return;
+  }
+  showToast(`${prefix}: ${tcEsc(err.message)}`, 'error', 8000);
+  if (err.status === 409) {                       // trạng thái trên máy chủ đã đổi (vd. đã duyệt ở tab khác)
+    tcClearOutline();
+    tcRenderReview();
+    tcStartPolling();
+  }
+}
+
+// Gửi bản nháp lên máy chủ. Trả true nếu đã lưu. Không tự xếp hàng (tcEnqueue): người gọi lo việc đó.
+async function tcPutOutline(caseId) {
+  const s = TrueCrimeState;
+  const body = tcOutlineBody();
+  const sent = JSON.stringify(body);
+  try {
+    const view = await tcFetch(tcCaseUrl(caseId, '/outline'), { method: 'PUT', body });
+    if (caseId !== s.caseId) return false;
+    tcShowOutlineError('');
+    tcSetOutline(view, JSON.stringify(tcOutlineBody()) !== sent);
+    return true;
+  } catch (err) {
+    if (caseId !== s.caseId) return false;
+    tcOutlineRequestFailed(err, 'Không lưu được dàn ý');
+    return false;
+  }
+}
+
+async function tcSaveOutline() {
+  const caseId = TrueCrimeState.caseId;
+  if (!caseId || !TrueCrimeState.outline) return;
+  await tcWithBusy('outline-save', () => tcEnqueue(async () => {
+    if (caseId !== TrueCrimeState.caseId || !TrueCrimeState.outlineDirty) return;
+    if (await tcPutOutline(caseId)) showToast('Đã lưu dàn ý.', 'success');
+  }));
+}
+
+async function tcApproveOutline() {
+  const caseId = TrueCrimeState.caseId;
+  if (!caseId || !TrueCrimeState.outline) return;
+  await tcWithBusy('outline-approve', () => tcEnqueue(async () => {
+    if (caseId !== TrueCrimeState.caseId) return;
+    if (TrueCrimeState.outlineDirty && !(await tcPutOutline(caseId))) return;
+    try {
+      const progress = await tcFetch(tcCaseUrl(caseId, '/outline/approve'), { method: 'POST' });
+      if (caseId !== TrueCrimeState.caseId) return;
+      TrueCrimeState.progress = progress;
+      tcClearOutline();
+      tcRenderProgress();
+      tcRenderReview();
+      tcStartPolling();
+      showToast('Đã duyệt dàn ý. Máy chủ đang viết lời kể từng nhịp; có thể đóng modal, mở lại sẽ thấy tiến độ.', 'success', 7000);
+    } catch (err) {
+      if (caseId !== TrueCrimeState.caseId) return;
+      tcOutlineRequestFailed(err, 'Không duyệt được dàn ý');
+    }
+  }));
 }
 
 // ================= MÀN XEM LẠI =================
@@ -593,7 +973,10 @@ async function tcReloadPlan() {
 
 function tcRenderReview() {
   const plan = TrueCrimeState.plan;
-  tcEl('tc-review-empty')?.classList.toggle('hidden', !!plan);
+  const reviewing = !plan && !!TrueCrimeState.outline && TrueCrimeState.progress?.status === 'review';
+  tcEl('tc-review-empty')?.classList.toggle('hidden', !!plan || reviewing);
+  tcEl('tc-outline-review')?.classList.toggle('hidden', !reviewing);
+  if (reviewing) tcRenderOutlineReview();
   tcEl('tc-review')?.classList.toggle('hidden', !plan);
   if (plan) {
     tcRenderSummary(plan);
@@ -1671,6 +2054,13 @@ function initTrueCrimeStudio() {
   on('btn-tc-analyze', 'click', tcAnalyze);
   on('btn-tc-resume', 'click', tcResume);
   on('btn-tc-new-case', 'click', tcNewCase);
+  on('tc-outline-parts', 'input', tcOnOutlineInput);
+  on('tc-outline-parts', 'change', tcOnOutlineChange);
+  on('tc-outline-parts', 'click', tcOnOutlineClick);
+  on('tc-outline-intro', 'input', tcOnOutlineMinutesInput);
+  on('btn-tc-outline-save', 'click', tcSaveOutline);
+  on('btn-tc-outline-approve', 'click', tcApproveOutline);
+  on('btn-tc-outline-revert', 'click', tcRevertOutline);
   on('btn-tc-save-entities', 'click', tcSaveEntities);
   on('btn-tc-add-entity', 'click', tcAddEntity);
   on('btn-tc-create-vi', 'click', tcCreateVietnameseProject);

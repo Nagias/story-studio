@@ -5,6 +5,7 @@ Cấu hình chung cho pytest.
 - Sao lưu và khôi phục muse_fleet_accounts.json vì nhiều test ghi vào cấu hình tài khoản.
 - Không cho test tự bật worker phân tích vụ án (STORY_STUDIO_DISABLE_CASE_WORKER).
 - Fixture isolated_projects_dir: đổi PROJECTS_DIR sang thư mục tạm để test không ghi vào projects/ thật.
+- Mọi test ghi ảnh cắt truyện tranh vào thư mục tạm (COMIC_SLICES_DIR), không vào backend/static/comic_slices.
 """
 import os
 import shutil
@@ -30,6 +31,23 @@ def _protect_fleet_accounts_config(tmp_path_factory):
     yield
     if backup is not None:
         shutil.copy2(backup, ACCOUNTS_FILE)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_comic_slices_dir(tmp_path, monkeypatch) -> Path:
+    """Ảnh cắt truyện tranh của test ghi vào thư mục tạm, không để lại thư mục rác trong backend/static/comic_slices.
+    config, comic_slicer và routers.api đều giữ bản COMIC_SLICES_DIR riêng (import theo tên) nên đổi cả ba."""
+    if str(BACKEND_DIR) not in sys.path:
+        sys.path.insert(0, str(BACKEND_DIR))
+    import config
+    from routers import api
+    from services import comic_slicer
+
+    slices = tmp_path / "comic_slices"
+    slices.mkdir()
+    for module in (config, comic_slicer, api):
+        monkeypatch.setattr(module, "COMIC_SLICES_DIR", slices)
+    return slices
 
 
 @pytest.fixture

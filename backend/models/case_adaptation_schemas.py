@@ -4,7 +4,8 @@ Schema chuyển thể vụ án thật thành truyện song ngữ Việt/Anh.
 - CaseBible: hồ sơ vụ án rút ra từ bài gốc (nhân vật, địa danh, dòng thời gian, chứng cứ).
 - StoryPart / CaseOutline: dàn ý theo nhịp. AdaptedScene: một cảnh đã viết.
 - CaseAdaptationPlan: kế hoạch hoàn chỉnh để dựng dự án.
-- CasePipeline / PipelineStep: hàng việc phân tích chạy tuần tự, lưu đĩa để chạy tiếp sau khi tắt máy.
+- CasePipeline / PipelineStep: hàng việc phân tích chạy tuần tự, lưu đĩa để chạy tiếp sau khi tắt máy; dừng ở trạng
+  thái `review` sau dàn ý để người dùng duyệt.
 """
 from typing import Literal
 
@@ -81,10 +82,13 @@ class CaseBible(BaseModel):
     setting_notes_en: str = ""
 
 
+PartKind = Literal["hook", "setup", "discovery", "investigation", "twist", "resolution", "open_questions", "epilogue"]
+
+
 class StoryPart(BaseModel):
     """Một nhịp của câu chuyện."""
     id: str
-    kind: Literal["hook", "setup", "discovery", "investigation", "twist", "resolution", "open_questions", "epilogue"]
+    kind: PartKind
     summary_vi: str
     event_ids: list[str]
     scene_count: int
@@ -152,7 +156,8 @@ class PipelineStep(BaseModel):
 
 class CasePipeline(BaseModel):
     case_id: str
-    status: Literal["running", "done", "failed"] = "running"
+    # review: dàn ý xong, chờ người dùng duyệt; worker không chạy vụ này cho tới khi được duyệt.
+    status: Literal["running", "review", "done", "failed"] = "running"
     target_minutes: int
     visual_style: str
     chunk_chars: int = 3000
