@@ -27,15 +27,6 @@ const AppState = {
     startTime: null,
     timerInterval: null
   },
-  renderState: {
-    isRendering: false,
-    renderId: null,
-    progress: 0,
-    step: 1,
-    logs: [],
-    videoUrl: null,
-    videoPath: null
-  },
   serverOnline: false,
   healthCheckInterval: null,
   comicState: {
@@ -413,7 +404,6 @@ const DOM = {
   currentProjectTitle: document.getElementById('current-project-title'),
   btnProjectDropdown: document.getElementById('btn-project-dropdown'),
   btnSaveProject: document.getElementById('btn-save-project'),
-  btnRenderVideo: document.getElementById('btn-render-video'),
   btnOpenScriptModal: document.getElementById('btn-open-script-modal'),
   navTabStoryboard: document.getElementById('nav-tab-storyboard'),
   navTabCharacter: document.getElementById('nav-tab-character'),
@@ -483,21 +473,6 @@ const DOM = {
   scriptWordCount: document.getElementById('script-word-count'),
   splitModeSelect: document.getElementById('split-mode-select'),
   splitStyleSelect: document.getElementById('split-style-select'),
-
-  // Render Modal
-  modalRenderVideo: document.getElementById('modal-render-video'),
-  btnCloseRenderModal: document.getElementById('btn-close-render-modal'),
-  btnCancelRender: document.getElementById('btn-cancel-render'),
-  btnStartRenderAction: document.getElementById('btn-start-render-action'),
-  renderStatusHeading: document.getElementById('render-status-heading'),
-  renderPercentText: document.getElementById('render-percent-text'),
-  renderProgressBar: document.getElementById('render-progress-bar'),
-  renderTimeElapsed: document.getElementById('render-time-elapsed'),
-  renderLogConsole: document.getElementById('render-log-console'),
-  renderCompletedSection: document.getElementById('render-completed-section'),
-  renderedVideoPlayer: document.getElementById('rendered-video-player'),
-  btnDownloadVideo: document.getElementById('btn-download-video'),
-  btnOpenFolder: document.getElementById('btn-open-folder'),
 
   // Character Modal
   modalCharacterEditor: document.getElementById('modal-character-editor'),
@@ -733,20 +708,6 @@ const API = {
       if (res.ok) return await res.json();
     } catch (e) {
       console.warn("API autoGenAll fallback", e);
-    }
-    return null;
-  },
-
-  async startRender(projectId, settings) {
-    try {
-      const res = await fetch(`${this.baseUrl}/projects/${projectId}/render`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
-      });
-      if (res.ok) return await res.json();
-    } catch (e) {
-      console.warn("API startRender fallback", e);
     }
     return null;
   },
@@ -2272,13 +2233,6 @@ function bindEventListeners() {
   DOM.btnProjectDropdown?.addEventListener('click', openProjectModal);
   DOM.btnCloseProjectModal?.addEventListener('click', closeProjectModal);
   DOM.btnCreateProject?.addEventListener('click', handleCreateNewProject);
-
-  // Render Modal
-  DOM.btnRenderVideo?.addEventListener('click', openRenderModal);
-  DOM.btnCloseRenderModal?.addEventListener('click', closeRenderModal);
-  DOM.btnCancelRender?.addEventListener('click', closeRenderModal);
-  DOM.btnStartRenderAction?.addEventListener('click', handleStartRenderPipeline);
-  DOM.btnOpenFolder?.addEventListener('click', handleOpenFolder);
 
   // Global Audio and Video element listeners
   DOM.globalPreviewAudio?.addEventListener('ended', onAudioPlaybackEnded);
@@ -4366,278 +4320,6 @@ function clientSideSplitScript(text, mode, style) {
   });
 }
 
-// ================= MODAL 2: RENDER VIDEO PIPELINE =================
-function openRenderModal() {
-  DOM.modalRenderVideo.classList.remove('hidden');
-  resetRenderModalState();
-}
-
-function closeRenderModal() {
-  DOM.modalRenderVideo.classList.add('hidden');
-}
-
-function resetRenderModalState() {
-  DOM.renderStatusHeading.textContent = "Sẵn sàng kết xuất video 1080p...";
-  DOM.renderPercentText.textContent = "0%";
-  DOM.renderProgressBar.style.width = "0%";
-  DOM.renderTimeElapsed.textContent = "00:00";
-  DOM.renderCompletedSection.classList.add('hidden');
-  DOM.btnStartRenderAction.classList.remove('hidden');
-
-  DOM.renderLogConsole.innerHTML = `
-    <div class="text-gray-500">> Studio FFmpeg Engine đã sẵn sàng.</div>
-    <div class="text-gray-500">> Chuẩn bị render với cấu hình: 1080p • 30fps • Ken Burns Zoom/Pan • Hardsub.</div>
-  `;
-
-  // Reset 4 steps visual
-  for (let i = 1; i <= 4; i++) {
-    updateStepVisual(i, 'pending');
-  }
-}
-
-function appendRenderLog(msg, type = 'info') {
-  const line = document.createElement('div');
-  const now = new Date().toTimeString().split(' ')[0];
-  let colorClass = 'text-gray-300';
-  if (type === 'success') colorClass = 'text-emerald-400 font-semibold';
-  if (type === 'warning') colorClass = 'text-amber-400';
-  if (type === 'step') colorClass = 'text-indigo-300 font-bold';
-
-  line.className = colorClass;
-  line.textContent = `[${now}] ${msg}`;
-  DOM.renderLogConsole.appendChild(line);
-  DOM.renderLogConsole.scrollTop = DOM.renderLogConsole.scrollHeight;
-}
-
-function updateStepVisual(stepNumber, status) {
-  const box = document.getElementById(`render-step-box-${stepNumber}`);
-  const icon = document.getElementById(`render-step-icon-${stepNumber}`);
-  if (!box || !icon) return;
-
-  if (status === 'active') {
-    box.className = 'p-2.5 rounded-xl border border-indigo-500 bg-indigo-950/60 text-indigo-200 transition shadow-lg';
-    icon.className = 'w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center mx-auto mb-1.5 text-[10px] font-bold animate-pulse';
-  } else if (status === 'done') {
-    box.className = 'p-2.5 rounded-xl border border-emerald-500/50 bg-emerald-950/40 text-emerald-300 transition';
-    icon.className = 'w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center mx-auto mb-1.5 text-[10px] font-bold';
-    icon.innerHTML = '<i class="fa-solid fa-check text-[10px]"></i>';
-  } else {
-    box.className = 'p-2.5 rounded-xl border border-gray-800 bg-[#12141f] text-gray-500 transition';
-    icon.className = 'w-6 h-6 rounded-full bg-gray-800 text-gray-400 flex items-center justify-center mx-auto mb-1.5 text-[10px] font-bold';
-    icon.textContent = stepNumber;
-  }
-}
-
-async function handleStartRenderPipeline() {
-  const project = AppState.currentProject;
-  if (!project || !project.scenes || project.scenes.length === 0) {
-    showToast("Dự án chưa có phân cảnh nào để render!", "warning");
-    return;
-  }
-
-  DOM.btnStartRenderAction.classList.add('hidden');
-  AppState.renderState.isRendering = true;
-
-  appendRenderLog("Bắt đầu tiến trình render video MP4 1080p...", "step");
-
-  const startTime = Date.now();
-  const timerInterval = setInterval(() => {
-    if (!AppState.renderState.isRendering) {
-      clearInterval(timerInterval);
-      return;
-    }
-    const elapsedSecs = Math.floor((Date.now() - startTime) / 1000);
-    const m = Math.floor(elapsedSecs / 60);
-    const s = elapsedSecs % 60;
-    DOM.renderTimeElapsed.textContent = `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
-  }, 1000);
-
-  // Check if Backend API Render is available
-  let backendRenderStarted = false;
-  if (AppState.serverOnline) {
-    try {
-      const renderRes = await API.startRender(project.id, {
-        resolution: project.resolution || '1080p',
-        ducking: project.settings?.ducking !== false,
-        hardsub: project.settings?.hardsub !== false,
-        transition: DOM.selectTransition?.value || project.transition || 'dip_to_black',
-        subtitle_style: DOM.selectSubtitleStyle?.value || project.subtitle_style || 'kinetic_pop',
-        bgm: project.settings?.bgm || 'cinematic_adventure',
-        voice: project.settings?.voice || project.voice || 'vi-VN-NamMinhNeural'
-      });
-
-      if (renderRes && renderRes.render_id) {
-        backendRenderStarted = true;
-        await trackBackendRenderProgress(renderRes.render_id);
-      }
-    } catch (e) {
-      console.warn("Backend render initiation failed, falling back to simulated pipeline", e);
-    }
-  }
-
-  if (!backendRenderStarted) {
-    // Studio client-side progress simulation
-    await simulateFourStepRenderPipeline();
-  }
-
-  AppState.renderState.isRendering = false;
-  clearInterval(timerInterval);
-}
-
-async function trackBackendRenderProgress(renderId) {
-  appendRenderLog(`Kết nối tiến trình render server [ID: ${renderId}]...`, "info");
-
-  // Attempt WebSocket connection
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}/ws/render/${renderId}`;
-
-  return new Promise((resolve) => {
-    let wsConnected = false;
-    let ws = null;
-
-    try {
-      ws = new WebSocket(wsUrl);
-      ws.onopen = () => {
-        wsConnected = true;
-        appendRenderLog("Đã kết nối luồng WebSocket thời gian thực!", "info");
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          handleRenderProgressUpdate(data);
-          if (data.status === 'completed' || data.percent >= 100) {
-            ws.close();
-            onRenderComplete(data.video_url || `/projects/${AppState.currentProject.id}/output.mp4`);
-            resolve();
-          }
-        } catch (e) {
-          console.error("Error parsing WS message", e);
-        }
-      };
-
-      ws.onerror = () => {
-        ws.close();
-        if (!wsConnected) fallbackToPolling(renderId, resolve);
-      };
-    } catch {
-      fallbackToPolling(renderId, resolve);
-    }
-
-    // Polling fallback
-    function fallbackToPolling(rId, done) {
-      appendRenderLog("Chuyển sang cơ chế Polling HTTP kiểm tra tiến trình...", "info");
-      const pollInterval = setInterval(async () => {
-        const status = await API.getRenderStatus(rId);
-        if (status) {
-          handleRenderProgressUpdate(status);
-          if (status.status === 'completed' || status.percent >= 100) {
-            clearInterval(pollInterval);
-            onRenderComplete(status.video_url || `/projects/${AppState.currentProject.id}/output.mp4`);
-            done();
-          }
-        }
-      }, 1500);
-    }
-  });
-}
-
-function handleRenderProgressUpdate(data) {
-  const percent = Math.min(100, Math.max(0, data.progress !== undefined ? data.progress : (data.percent || 0)));
-  DOM.renderPercentText.textContent = `${Math.round(percent)}%`;
-  DOM.renderProgressBar.style.width = `${percent}%`;
-
-  if (data.step) {
-    for (let s = 1; s <= 4; s++) {
-      if (s < data.step) updateStepVisual(s, 'done');
-      else if (s === data.step) updateStepVisual(s, 'active');
-      else updateStepVisual(s, 'pending');
-    }
-  }
-
-  const label = data.step_label || data.message;
-  if (label) {
-    DOM.renderStatusHeading.textContent = label;
-  }
-
-  if (Array.isArray(data.logs)) {
-    const currentLoggedCount = AppState.renderState.logs.length;
-    if (data.logs.length > currentLoggedCount) {
-      for (let i = currentLoggedCount; i < data.logs.length; i++) {
-        appendRenderLog(data.logs[i], 'info');
-        AppState.renderState.logs.push(data.logs[i]);
-      }
-    }
-  } else if (label) {
-    appendRenderLog(label, percent === 100 ? 'success' : 'info');
-  }
-}
-
-async function simulateFourStepRenderPipeline() {
-  const steps = [
-    { step: 1, name: "Kiểm tra và chuẩn bị tài nguyên (Voice & Ảnh)", startPct: 5, endPct: 25, delay: 900 },
-    { step: 2, name: "Dựng hoạt ảnh Ken Burns Zoom/Pan 1080p cho từng phân cảnh", startPct: 30, endPct: 55, delay: 1100 },
-    { step: 3, name: "Trộn âm thanh đa tầng (Voice + BGM Audio Ducking -70%)", startPct: 60, endPct: 80, delay: 900 },
-    { step: 4, name: "Mã hóa FFmpeg H.264 MP4 & In cứng phụ đề Hardsub 1080p", startPct: 85, endPct: 100, delay: 1000 }
-  ];
-
-  for (const s of steps) {
-    updateStepVisual(s.step, 'active');
-    DOM.renderStatusHeading.textContent = s.name;
-    appendRenderLog(`BƯỚC ${s.step}/4: ${s.name}`, "step");
-
-    const diff = s.endPct - s.startPct;
-    for (let p = 0; p <= diff; p += 5) {
-      const currentPct = s.startPct + p;
-      DOM.renderPercentText.textContent = `${currentPct}%`;
-      DOM.renderProgressBar.style.width = `${currentPct}%`;
-      await sleep(s.delay / (diff / 5));
-    }
-
-    updateStepVisual(s.step, 'done');
-    appendRenderLog(`Hoàn thành Bước ${s.step}!`, "info");
-  }
-
-  onRenderComplete("https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4");
-}
-
-function onRenderComplete(videoUrl) {
-  DOM.renderPercentText.textContent = "100%";
-  DOM.renderProgressBar.style.width = "100%";
-  DOM.renderStatusHeading.textContent = "Xuất video MP4 1080p hoàn tất thành công!";
-  appendRenderLog("Đã kết xuất video MP4 thành phẩm chất lượng cao!", "success");
-
-  // Show player
-  DOM.renderCompletedSection.classList.remove('hidden');
-  DOM.renderedVideoPlayer.src = videoUrl;
-  DOM.renderedVideoPlayer.play().catch(() => {});
-
-  if (AppState.serverOnline && AppState.currentProject) {
-    DOM.btnDownloadVideo.href = `/api/projects/${AppState.currentProject.id}/download`;
-  } else {
-    DOM.btnDownloadVideo.href = videoUrl;
-  }
-  DOM.btnDownloadVideo.setAttribute('download', `${AppState.currentProject?.name || 'story-video'}.mp4`);
-
-  showToast("Render video hoàn tất thành công 100%!", "success", 5000);
-}
-
-async function handleOpenFolder() {
-  const project = AppState.currentProject;
-  if (!project) return;
-
-  if (AppState.serverOnline) {
-    const res = await API.openFolder(project.id);
-    if (res && res.success) {
-      showToast("Đã mở thư mục chứa video trên máy tính!", "success");
-      return;
-    }
-  }
-
-  // Information toast
-  showToast(`Thư mục lưu trữ video: projects/${project.id}/output.mp4`, "info", 5000);
-}
-
 // ================= MODAL 3: CHARACTER CONSISTENCY =================
 function openCharacterModal() {
   const char = AppState.currentProject?.character;
@@ -4797,7 +4479,6 @@ async function handleSaveProject() {
 function closeAllModals() {
   DOM.modalScriptImporter?.classList.add('hidden');
   DOM.modalComicSlicer?.classList.add('hidden');
-  DOM.modalRenderVideo?.classList.add('hidden');
   DOM.modalCharacterEditor?.classList.add('hidden');
   DOM.modalProjectManager?.classList.add('hidden');
   document.getElementById('modal-master-storyboard')?.classList.add('hidden');
@@ -5818,10 +5499,6 @@ async function generateSceneWithMuse(index, mode = 'image') {
 window.generateSceneWithMuse = generateSceneWithMuse;
 
 // ================= UTILITIES =================
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 function escapeHtml(text) {
   if (!text) return '';
   return text
