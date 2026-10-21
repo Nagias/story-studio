@@ -12,7 +12,6 @@ from .image_service import (
 from .video_service import (
     render_scene_video,
     assemble_full_video,
-    generate_ai_video_segment,
     ensure_speedlines_asset,
     build_zoompan_filter,
     get_available_bgm_tracks,
@@ -92,7 +91,6 @@ __all__ = [
     "STYLE_PRESETS",
     "render_scene_video",
     "assemble_full_video",
-    "generate_ai_video_segment",
     "ensure_speedlines_asset",
     "build_zoompan_filter",
     "CAMERA_MOTIONS",

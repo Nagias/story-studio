@@ -18,7 +18,6 @@ from services.video_service import (
     render_scene_video,
     assemble_full_video,
     build_zoompan_filter,
-    generate_ai_video_segment,
     ensure_speedlines_asset,
     merge_srt_files,
     generate_default_bgm_track,
@@ -286,29 +285,6 @@ def test_ensure_speedlines_asset():
     asset_path = ensure_speedlines_asset()
     assert os.path.exists(asset_path)
     assert os.path.getsize(asset_path) > 1000
-
-@pytest.mark.asyncio
-async def test_generate_ai_video_segment_fallback(tmp_path):
-    """Test Cloud Video Gen Provider Interface offline fallback to FFmpeg Motion FX."""
-    img_path = str(tmp_path / "ai_seg_input.jpg")
-    vid_path = str(tmp_path / "ai_seg_output.mp4")
-    generate_mock_cinematic("Hero battle punch", "cinematic_realistic", img_path, 1)
-
-    res = await generate_ai_video_segment(
-        image_path=img_path,
-        prompt="Anime epic punch impact",
-        motion_type="action_camera_shake",
-        duration=2.5,
-        output_path=vid_path,
-        provider="auto",
-        resolution="720p",
-    )
-
-    assert os.path.exists(res["video_path"])
-    assert res["fallback_used"] is True
-    assert res["motion"] == "action_camera_shake"
-    assert res["provider"] == "ffmpeg_motion_fx"
-    assert res["duration"] == 2.5
 
 @pytest.mark.asyncio
 async def test_render_scene_video_action_fx(tmp_path):

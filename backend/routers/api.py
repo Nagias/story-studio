@@ -14,8 +14,8 @@ from starlette.background import BackgroundTask
 
 logger = logging.getLogger("story_studio.api")
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Body, Depends
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, HTTPException, BackgroundTasks, WebSocket, UploadFile, File, Form, Body, Depends
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from config import (
@@ -26,7 +26,6 @@ from config import (
     STATIC_DIR,
     ASSETS_DIR,
     DEFAULT_IMAGE_PROVIDER,
-    DEFAULT_VOICE,
 )
 from security import (
     IMAGE_EXTS,
@@ -50,26 +49,20 @@ from models.schemas import (
     ImageGenRequest,
     AutoGenRequest,
     RenderRequest,
-    RenderStatusResponse,
     OpenFolderRequest,
     ComicSliceResponse,
     ComicImportRequest,
-    ComicPanelSlice,
-    VoxScene,
     VoxScriptAnalysisRequest,
     VoxScriptAnalysisResponse,
     VoxProjectScriptRequest,
     LongVideoProduceRequest,
     CreateProjectFromScriptRequest,
     NovelIngestRequest,
-    Character,
-    PRESET_CHARACTERS,
     get_preset_characters,
     get_preset_character_by_id,
     MasterStoryboard,
     DeconstructScriptRequest,
     MasterStoryboardImportRequest,
-    SliceGridRequest,
     ThreeLayerAudioMixRequest,
     master_storyboard_to_project,
 )
@@ -81,8 +74,6 @@ from services import (
     get_available_styles,
     generate_image,
     generate_9router_gemini,
-    build_consistent_prompt,
-    build_character_anchored_prompt,
     MASTER_NEGATIVE_PROMPT,
     render_scene_video,
     assemble_full_video,
@@ -104,22 +95,14 @@ from services import (
     adapt_novel_chapter_to_us_podcast,
     PACING_CONFIGS,
     slice_comic,
-    assign_camera_motion,
-    sort_reading_order,
     slice_grid_image,
     compose_9grid_prompt,
     generate_parallax_layers,
     generate_voiced_scene_audio,
     mix_3layer_audio,
-    find_or_create_sfx,
-    append_silence_to_audio,
     generate_karaoke_ass,
-    extract_word_timestamps,
-    format_ass_time,
     deconstruct_script_async,
     deconstruct_script_offline,
-    render_parallax_scene_video,
-    assemble_master_studio_video,
     generate_youtube_thumbnail,
     generate_youtube_seo_pack,
 )

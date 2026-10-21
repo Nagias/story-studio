@@ -567,8 +567,6 @@ async def generate_speech(
         }
         target_vieneu_voice = vieneu_map.get(voice.lower(), "Mai Anh")
         worker_script = Path(__file__).resolve().parent / "vieneu_worker.py"
-        if not worker_script.exists():
-            worker_script = Path(__file__).resolve().parent.parent.parent.parent / "douyin-movie-studio" / "backend" / "services" / "vieneu_worker.py"
 
         vieneu_success = False
         vieneu_errors: List[str] = []

@@ -95,7 +95,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# Chỉ cho phép truy cập từ chính máy này; worker từ xa cần header X-Worker-Token (thêm sau CORS để chạy trước)
+# Chỉ cho phép truy cập từ chính máy này (thêm sau CORS để chạy trước)
 app.add_middleware(LocalAccessMiddleware)
 
 # Include API Router
