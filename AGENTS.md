@@ -12,7 +12,7 @@ Backend FastAPI: `backend/main.py`, API trong `backend/routers/`, logic trong `b
 - Công cụ ngoài cần có: ffmpeg/ffprobe trong PATH, `uv` (giọng VieNeu), Chrome hoặc Edge.
 
 ## Lưu ý
-- `backend/chrome_profiles/` và `backend/config/muse_fleet_accounts.json` là tài khoản Muse đã đăng nhập thật (không commit). `tests/conftest.py` chặn test tự bật Fleet Runner; riêng `test_live_browser_reality.py`, `test_launcher.py`, `*e2e*` có thể mở trình duyệt hoặc gọi dịch vụ thật: chỉ chạy khi được yêu cầu.
+- `backend/chrome_profiles/` và `backend/config/muse_fleet_accounts.json` là tài khoản Muse đã đăng nhập thật (không commit). `tests/conftest.py` chặn test tự bật Fleet Runner; riêng `*e2e*` và `*live*` gọi dịch vụ thật (Edge-TTS, 9router): chỉ chạy khi được yêu cầu.
 - `.env` chứa API key: không in ra, không chép vào code hay test.
 - Thư viện tuỳ chọn (openai, faster-whisper, av, rembg) có thể chưa cài và code tự bỏ qua: thiếu chúng không phải lỗi.
 - Trước khi sửa nhiều file, nói rõ sẽ sửa những gì; không xoá file hay dự án của người dùng khi chưa hỏi (dọn thì chuyển vào Thùng rác).
