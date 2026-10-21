@@ -25,6 +25,7 @@ from runners.muse_fleet_runner import (  # noqa: E402
     MuseFleetRunner,
     average_hash,
     clamp_video_duration,
+    max_video_seconds,
     to_jpeg_bytes,
     validate_image_bytes,
     validate_video_file,
@@ -123,6 +124,21 @@ def test_validate_video_rejects_mascot_like_clip(tmp_path):
     _make_video(real, 1280, 720, 5)
     ok, info = validate_video_file(real)
     assert ok, info
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="cần ffmpeg/ffprobe")
+def test_validate_video_rejects_old_long_clip_from_reused_chat(tmp_path):
+    # 21/10/2026: Muse không có nút New side chat, runner nhận nhầm video cũ 21s trong đoạn chat cho yêu cầu 5s
+    old = tmp_path / "old.mp4"
+    _make_video(old, 1280, 720, 21)
+    ok, info = validate_video_file(old, max_video_seconds(5))
+    assert not ok and "video cũ" in info
+    assert validate_video_file(old, max_video_seconds(10))[0] is False
+
+    ten = tmp_path / "ten.mp4"
+    _make_video(ten, 1280, 720, 10)
+    assert validate_video_file(ten, max_video_seconds(5))[0]   # Muse đôi khi trả 10s cho yêu cầu 5s
+    assert validate_video_file(ten, max_video_seconds(10))[0]
 
 
 def test_validate_video_rejects_non_video(tmp_path):

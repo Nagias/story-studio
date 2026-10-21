@@ -2035,6 +2035,15 @@ function bindEventListeners() {
     }
   });
 
+  // Nguồn ảnh: lưu vào dự án để nút tạo ảnh từng cảnh / vẽ lại toàn bộ dùng đúng nguồn đã chọn
+  DOM.selectImageProvider?.addEventListener('change', (e) => {
+    if (AppState.currentProject) {
+      AppState.currentProject.image_provider = e.target.value;
+      saveStateToLocal();
+      showToast(`Đã chọn nguồn ảnh: ${e.target.options[e.target.selectedIndex]?.text || e.target.value}`, "info");
+    }
+  });
+
   DOM.btnProduceFromBoard?.addEventListener('click', startProduceLongVideo);
   DOM.btnProduceLongVideo?.addEventListener('click', startProduceLongVideo);
 
@@ -2201,6 +2210,10 @@ function bindEventListeners() {
     }
   });
 
+  // Nút tải nhạc nền MP3 riêng (biểu tượng tải lên cạnh ô chọn nhạc)
+  DOM.bgmUploadInput?.addEventListener('change', handleBgmUpload);
+  loadBgmOptions();
+
   DOM.toggleAudioDucking?.addEventListener('change', (e) => {
     if (AppState.currentProject) {
       if (!AppState.currentProject.settings) AppState.currentProject.settings = {};
@@ -2240,7 +2253,10 @@ function bindEventListeners() {
   });
 
   // YouTube Packaging & Thumbnail Events
-  DOM.btnRefreshSeoPack?.addEventListener('click', loadCinemaYouTubePackage);
+  DOM.btnRefreshSeoPack?.addEventListener('click', async () => {
+    await loadCinemaYouTubePackage();
+    showToast(AppState.serverOnline ? "Đã tải lại gói SEO (tiêu đề, mô tả, thẻ) từ máy chủ." : "Máy chủ đang offline, chưa tải lại được gói SEO.", AppState.serverOnline ? "info" : "warning");
+  });
   DOM.btnGenerateCustomThumbnail?.addEventListener('click', handleGenerateCustomThumbnail);
   DOM.btnCopySeoTitle?.addEventListener('click', () => copyToClipboard('input-seo-title', 'Đã sao chép tiêu đề YouTube!'));
   DOM.btnCopySeoDesc?.addEventListener('click', () => copyToClipboard('textarea-seo-desc', 'Đã sao chép mô tả YouTube!'));
@@ -2424,6 +2440,7 @@ function deleteScene(index) {
     showToast("Dự án phải giữ lại ít nhất 1 phân cảnh.", "warning");
     return;
   }
+  if (!confirm(`Xóa Cảnh #${index + 1}? Lời thoại, ảnh và video đã gắn với cảnh này sẽ bị bỏ khỏi dự án.`)) return;
 
   const deletedScene = project.scenes.splice(index, 1);
   project.scenes.forEach((s, idx) => s.order = idx + 1);
@@ -2568,11 +2585,29 @@ function updateSceneKenBurns(index, effect) {
 }
 
 // ================= AI GENERATION (VOICE & IMAGE) =================
+// Cảnh đang tạo giọng/ảnh: bấm thêm lần nữa không gửi yêu cầu thứ hai (hai kết quả về lệch nhau sẽ ghi đè trạng thái)
+const SceneJobsInFlight = { voice: new Set(), image: new Set() };
+
+// Trả về true nếu tạo xong, false nếu lỗi, null nếu bỏ qua (cảnh đang tạo dở)
 async function regenerateSceneVoice(index) {
   const project = AppState.currentProject;
-  if (!project || !project.scenes[index]) return;
+  if (!project || !project.scenes[index]) return null;
 
   const scene = project.scenes[index];
+  const jobKey = scene.id || scene;
+  if (SceneJobsInFlight.voice.has(jobKey)) {
+    showToast(`Cảnh #${index + 1} đang tạo giọng đọc, chờ xong rồi bấm lại.`, "info");
+    return null;
+  }
+  SceneJobsInFlight.voice.add(jobKey);
+  try {
+    return await regenerateSceneVoiceInner(project, scene, index);
+  } finally {
+    SceneJobsInFlight.voice.delete(jobKey);
+  }
+}
+
+async function regenerateSceneVoiceInner(project, scene, index) {
   const isEn = !(/[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđĐ]/i.test(scene.text || ''));
   const fallbackVoice = isEn ? "en-US-AndrewMultilingualNeural" : "vi-VN-NamMinhNeural";
   const voice = project.settings?.voice || project.voice || fallbackVoice;
@@ -2606,13 +2641,40 @@ async function regenerateSceneVoice(index) {
 
   saveStateToLocal();
   renderSceneList();
+  return scene.status_voice === 'ready';
 }
 
+// Mã phong cách máy chủ hiểu = các lựa chọn của ô "Phong cách" ở bước 2
+function knownStylePresetIds() {
+  return new Set([...(DOM.selectProjectStyle?.options || [])].map(o => o.value));
+}
+
+// Phong cách riêng của nhân vật chỉ dùng khi là mã hợp lệ; để trống = theo phong cách dự án
+function characterStyleOverride(char) {
+  const style = char?.style || '';
+  return style && knownStylePresetIds().has(style) ? style : '';
+}
+
+// Trả về true nếu tạo xong, false nếu lỗi, null nếu bỏ qua (cảnh đang tạo dở)
 async function regenerateSceneImage(index) {
   const project = AppState.currentProject;
-  if (!project || !project.scenes[index]) return;
+  if (!project || !project.scenes[index]) return null;
 
   const scene = project.scenes[index];
+  const jobKey = scene.id || scene;
+  if (SceneJobsInFlight.image.has(jobKey)) {
+    showToast(`Cảnh #${index + 1} đang tạo ảnh, chờ xong rồi bấm lại.`, "info");
+    return null;
+  }
+  SceneJobsInFlight.image.add(jobKey);
+  try {
+    return await regenerateSceneImageInner(project, scene, index);
+  } finally {
+    SceneJobsInFlight.image.delete(jobKey);
+  }
+}
+
+async function regenerateSceneImageInner(project, scene, index) {
   const char = project.character;
 
   scene.status_image = 'generating';
@@ -2624,13 +2686,14 @@ async function regenerateSceneImage(index) {
 
   // Build combined prompt with Character Consistency
   let finalPrompt = scene.visual_prompt || scene.image_prompt || scene.text || "";
-  if (char && char.prompt) {
+  // Máy chủ tự ghép character_anchor; chỉ thêm mô tả nhân vật khi nó khác anchor (tránh lặp hai lần)
+  if (char && char.prompt && char.prompt !== project.character_anchor) {
     finalPrompt = `${char.prompt}, ${finalPrompt}`;
   }
 
   let result = null;
   if (AppState.serverOnline) {
-    result = await API.genImage(project.id, scene.id, finalPrompt, char?.style || project.style_preset, char);
+    result = await API.genImage(project.id, scene.id, finalPrompt, characterStyleOverride(char) || project.style_preset, char);
   }
 
   if (result && result.image_url) {
@@ -2657,6 +2720,7 @@ async function regenerateSceneImage(index) {
   if (AppState.selectedSceneIndex === index) {
     renderPreviewPlayer();
   }
+  return scene.status_image === 'ready';
 }
 
 // Ảnh/video tự tải lên được gửi lên server (images/{scene}.jpg, videos/{scene}_muse.mp4) để bước
@@ -2748,8 +2812,10 @@ async function attachMediaToScene(index, mediaUrl, isVideo, outputPath = '') {
     scene.status_image = 'ready';
   }
 
-  saveStateToLocal();
-  const saved = AppState.serverOnline ? await API.saveProject(project) : null;
+  // Lưu qua flushProjectSave (dùng buildServerPayload): gửi thẳng project sẽ bị máy chủ từ chối (422)
+  // khi dự án có nhân vật tự sửa trong hộp "Khóa nhân vật".
+  ProjectSync.dirty = true;
+  const saved = AppState.serverOnline ? await flushProjectSave({ silent: true }) : false;
   if (saved) {
     showToast(`Đã gắn ${isVideo ? 'video' : 'ảnh'} vào Cảnh #${index + 1} và lưu lên máy chủ.`, "success");
   } else {
@@ -2760,48 +2826,79 @@ async function attachMediaToScene(index, mediaUrl, isVideo, outputPath = '') {
   closeMuseModal();
 }
 
-async function handleAutoGenAll() {
+// Chạy lần lượt từng cảnh cho các nút "làm cả dự án": khoá nút khi đang chạy (bấm lại không chạy hai lượt),
+// và báo đúng cảnh nào lỗi thay vì luôn báo hoàn tất. runOne(i) trả về số lỗi của cảnh i.
+async function runSceneBatch(button, runOne, labels) {
   const project = AppState.currentProject;
-  if (!project || !project.scenes) return;
+  if (!project || !project.scenes || project.scenes.length === 0) return;
+  if (button && button.dataset.busy === '1') {
+    showToast(labels.busy, "info");
+    return;
+  }
+  if (labels.confirm && !confirm(labels.confirm(project.scenes.length))) return;
 
-  showToast("Bắt đầu Auto-Gen toàn bộ Voice & Ảnh cho tất cả các cảnh...", "info");
-
-  for (let i = 0; i < project.scenes.length; i++) {
-    const s = project.scenes[i];
-    if (!s.image_url || s.status_image !== 'ready') {
-      await regenerateSceneImage(i);
+  if (button) {
+    button.dataset.busy = '1';
+    button.disabled = true;
+    button.style.opacity = '0.5';
+  }
+  showToast(labels.start, "info");
+  const failed = [];
+  try {
+    for (let i = 0; i < project.scenes.length; i++) {
+      if (AppState.currentProject !== project) break; // người dùng đã mở dự án khác
+      if (await runOne(project.scenes[i], i)) failed.push(i + 1);
     }
-    if ((!s.audio_url && !s.voice_audio_url) || s.status_voice !== 'ready') {
-      await regenerateSceneVoice(i);
+  } finally {
+    if (button) {
+      delete button.dataset.busy;
+      button.disabled = false;
+      button.style.opacity = '';
     }
   }
 
   updateAssetReadiness();
-  showToast("Auto-Gen toàn bộ dự án hoàn tất!", "success");
+  const total = project.scenes.length;
+  if (failed.length) {
+    showToast(`${labels.done}: lỗi ở cảnh ${failed.map(n => '#' + n).join(', ')} (${total - failed.length}/${total} cảnh ổn). Bấm nút trên từng cảnh lỗi để thử lại.`, "warning", 9000);
+  } else {
+    showToast(`${labels.done}: xong cả ${total} cảnh!`, "success");
+  }
+}
+
+async function handleAutoGenAll() {
+  await runSceneBatch(DOM.btnAutoGenAll, async (s, i) => {
+    let errors = 0;
+    if (!s.image_url || s.status_image !== 'ready') {
+      if (await regenerateSceneImage(i) === false) errors++;
+    }
+    if ((!s.audio_url && !s.voice_audio_url) || s.status_voice !== 'ready') {
+      if (await regenerateSceneVoice(i) === false) errors++;
+    }
+    return errors;
+  }, {
+    busy: "Auto-Gen đang chạy, chờ xong đã.",
+    start: "Bắt đầu Auto-Gen Voice & Ảnh còn thiếu cho tất cả các cảnh...",
+    done: "Auto-Gen toàn bộ dự án",
+  });
 }
 
 async function handleRegenAllImages() {
-  const project = AppState.currentProject;
-  if (!project || !project.scenes || project.scenes.length === 0) return;
-
-  showToast("Đang vẽ lại toàn bộ ảnh AI theo phong cách mới...", "info");
-  for (let i = 0; i < project.scenes.length; i++) {
-    await regenerateSceneImage(i);
-  }
-  updateAssetReadiness();
-  showToast("Đã hoàn tất vẽ lại toàn bộ ảnh AI!", "success");
+  await runSceneBatch(DOM.btnRegenAllImages, async (s, i) => (await regenerateSceneImage(i) === false ? 1 : 0), {
+    busy: "Đang vẽ lại toàn bộ ảnh, chờ xong đã.",
+    confirm: n => `Vẽ lại ảnh cho cả ${n} cảnh? Ảnh hiện có sẽ bị thay (mỗi cảnh tốn 1 lượt tạo ảnh của nguồn ảnh đang chọn).`,
+    start: "Đang vẽ lại toàn bộ ảnh AI theo phong cách mới...",
+    done: "Vẽ lại toàn bộ ảnh AI",
+  });
 }
 
 async function handleRegenAllVoices() {
-  const project = AppState.currentProject;
-  if (!project || !project.scenes || project.scenes.length === 0) return;
-
-  showToast("Đang thu âm lại toàn bộ Voice cho dự án...", "info");
-  for (let i = 0; i < project.scenes.length; i++) {
-    await regenerateSceneVoice(i);
-  }
-  updateAssetReadiness();
-  showToast("Đã hoàn tất thu âm lại toàn bộ Voice!", "success");
+  await runSceneBatch(DOM.btnRegenAllVoices, async (s, i) => (await regenerateSceneVoice(i) === false ? 1 : 0), {
+    busy: "Đang thu lại toàn bộ voice, chờ xong đã.",
+    confirm: n => `Thu âm lại giọng đọc cho cả ${n} cảnh? Giọng hiện có sẽ bị thay.`,
+    start: "Đang thu âm lại toàn bộ Voice cho dự án...",
+    done: "Thu âm lại toàn bộ Voice",
+  });
 }
 
 // ================= UNIFIED AUDIO-VIDEO STUDIO PLAYER CONTROLLER =================
@@ -2813,7 +2910,8 @@ function togglePreviewPlayback() {
   }
 }
 
-function playCurrentScene() {
+// fromStart: phát lại từ 0 giây (phát toàn bộ truyện). Mặc định phát tiếp từ chỗ đang dừng/đã tua.
+function playCurrentScene({ fromStart = false } = {}) {
   const project = AppState.currentProject;
   if (!project || !project.scenes) return;
 
@@ -2856,10 +2954,13 @@ function playCurrentScene() {
 
   // 2. Đồng bộ luồng phát Voiceover Audio
   if (audioSrc) {
-    if (DOM.globalPreviewAudio.src !== audioSrc && !DOM.globalPreviewAudio.src.endsWith(audioSrc)) {
+    const sameSrc = DOM.globalPreviewAudio.src === audioSrc || DOM.globalPreviewAudio.src.endsWith(audioSrc);
+    if (!sameSrc) {
       DOM.globalPreviewAudio.src = audioSrc;
     }
-    DOM.globalPreviewAudio.currentTime = 0;
+    if (fromStart || !sameSrc || DOM.globalPreviewAudio.ended) {
+      DOM.globalPreviewAudio.currentTime = 0;
+    }
     DOM.globalPreviewAudio.play().catch(e => {
       console.warn("Audio play prevented:", e);
       showToast("Trình duyệt chặn tự động phát âm thanh. Vui lòng click tương tác.", "warning");
@@ -3016,7 +3117,7 @@ function onAudioPlaybackEnded() {
     if (project && AppState.selectedSceneIndex < project.scenes.length - 1) {
       selectScene(AppState.selectedSceneIndex + 1);
       setTimeout(() => {
-        playCurrentScene();
+        playCurrentScene({ fromStart: true });
         AppState.isPlayingAll = true;
       }, 300);
       return;
@@ -3075,7 +3176,7 @@ function togglePlayAllStory() {
     AppState.selectedSceneIndex = 0;
     selectScene(0);
     AppState.isPlayingAll = true;
-    playCurrentScene();
+    playCurrentScene({ fromStart: true });
     showToast("Đang phát toàn bộ kịch bản truyện từ Cảnh #1...", "info");
   }
 }
@@ -3140,8 +3241,91 @@ async function togglePlayVoiceSample() {
   }
 }
 
+// Bấm vào thanh tiến độ trên thẻ cảnh: chọn cảnh rồi tua giọng đọc tới đúng vị trí bấm
 function seekSceneAudio(idx, event) {
+  const bar = event?.currentTarget;
+  const rect = bar?.getBoundingClientRect?.();
+  const pct = rect && rect.width ? Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) : 0;
   selectScene(idx);
+
+  const scene = AppState.currentProject?.scenes?.[idx];
+  const audio = DOM.globalPreviewAudio;
+  const src = scene && (scene.audio_url || scene.voice_audio_url);
+  if (!audio || !src) {
+    showToast(`Cảnh #${idx + 1} chưa có giọng đọc để tua.`, "info");
+    return;
+  }
+  const seek = () => {
+    if (!audio.duration || isNaN(audio.duration)) return;
+    audio.currentTime = pct * audio.duration;
+    onAudioTimeUpdate();
+  };
+  if (audio.src !== src && !audio.src.endsWith(src)) {
+    audio.addEventListener('loadedmetadata', seek, { once: true });
+    audio.src = src;
+  } else if (audio.readyState >= 1) {
+    seek();
+  } else {
+    audio.addEventListener('loadedmetadata', seek, { once: true });
+  }
+}
+
+// Thêm các bản nhạc nền đã tải lên (custom_*) vào ô chọn nhạc, rồi chọn lại nhạc của dự án đang mở
+async function loadBgmOptions() {
+  const sel = DOM.selectBgm;
+  if (!sel) return;
+  let tracks = [];
+  try {
+    const res = await fetch(`${API.baseUrl}/bgm-tracks`);
+    if (res.ok) tracks = await res.json();
+  } catch (e) {
+    return;
+  }
+  const have = new Set([...sel.options].map(o => o.value));
+  const before = sel.querySelector('option[value="none"]');
+  (Array.isArray(tracks) ? tracks : []).forEach(t => {
+    const id = String(t?.id || '');
+    if (!/^custom_[A-Za-z0-9_-]+$/.test(id) || have.has(id)) return;
+    const label = String(t.name || id).replace(/^custom\s+/i, '').replace(/\s+[0-9a-f]{6}$/i, '');
+    sel.insertBefore(new Option(`🎵 Nhạc tải lên: ${label}`, id), before);
+    have.add(id);
+  });
+  const project = AppState.currentProject;
+  const wanted = project?.settings?.bgm || project?.bgm_track;
+  if (wanted && have.has(wanted)) sel.value = wanted;
+}
+
+async function handleBgmUpload(e) {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (!file) return;
+  const project = AppState.currentProject;
+  if (!project || project.is_demo) {
+    showToast("Hãy mở hoặc tạo một dự án trước khi tải nhạc nền.", "warning");
+    return;
+  }
+  if (!/\.mp3$/i.test(file.name)) {
+    showToast("Chỉ nhận file nhạc .mp3.", "warning");
+    return;
+  }
+  if (!AppState.serverOnline) {
+    showToast("Máy chủ đang offline nên chưa tải nhạc nền lên được.", "error", 6000);
+    return;
+  }
+  showToast(`Đang tải nhạc nền "${escapeHtml(file.name)}" lên...`, "info");
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch(`${API.baseUrl}/bgm-tracks/upload`, { method: 'POST', body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.id) throw new Error(data.detail || `HTTP ${res.status}`);
+    await loadBgmOptions();
+    DOM.selectBgm.value = data.id;
+    DOM.selectBgm.dispatchEvent(new Event('change', { bubbles: true }));
+    showToast(`Đã tải lên và chọn nhạc nền "${escapeHtml(file.name)}" cho dự án.`, "success");
+  } catch (err) {
+    showToast(`Tải nhạc nền thất bại: ${escapeHtml(String(err.message || err))}`, "error", 7000);
+  }
 }
 
 function togglePlayerFullscreen() {
@@ -3151,6 +3335,7 @@ function togglePlayerFullscreen() {
   if (!document.fullscreenElement) {
     box.requestFullscreen().catch(err => {
       console.warn("Fullscreen request error", err);
+      showToast("Trình duyệt này không cho phóng to toàn màn hình. Mở Story Studio bằng Chrome/Edge rồi bấm lại.", "warning", 6000);
     });
   } else {
     document.exitFullscreen();
@@ -3235,6 +3420,9 @@ async function loadComicSample(type) {
     }
 
     handleComicFileSelect(file);
+    // Nút mẫu ở Bước 1 dùng chung hàm này: cập nhật cả ô file và nút "Cắt khung" của Bước 1
+    if (DOM.step1ComicMode) DOM.step1ComicMode.value = type === 'strip' ? 'strip' : 'grid';
+    handleStep1ComicFileSelect(file);
     showToast(`Đã nạp ảnh mẫu: ${filename}`, "info");
   } catch (err) {
     console.error("loadComicSample failed", err);
@@ -3434,6 +3622,8 @@ async function handleImportComicToStoryboard() {
   }
 
   const clearExisting = DOM.comicClearExistingCb?.checked || false;
+  const existing = project.scenes?.length || 0;
+  if (clearExisting && existing > 0 && !confirm(`Xóa ${existing} cảnh hiện có của dự án "${project.name}" rồi thay bằng ${selectedPanels.length} khung tranh?`)) return;
 
   DOM.btnImportComicToStoryboard.disabled = true;
   DOM.btnImportComicToStoryboard.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Đang nhập vào Storyboard...';
@@ -3458,6 +3648,7 @@ async function handleImportComicToStoryboard() {
     }
 
     closeComicModal();
+    switchStep(2); // mở Bảng Đạo Diễn để thấy ngay các cảnh vừa nhập
     showToast(`Đã đưa ${res.imported_scenes_count} phân cảnh truyện tranh vào Storyboard! Bạn có thể lồng tiếng và render video ngay.`, "success", 4500);
   } catch (err) {
     console.error("handleImportComicToStoryboard error", err);
@@ -3466,6 +3657,8 @@ async function handleImportComicToStoryboard() {
     if (DOM.btnImportComicToStoryboard) {
       DOM.btnImportComicToStoryboard.disabled = false;
       DOM.btnImportComicToStoryboard.innerHTML = '<i class="fa-solid fa-layer-group mr-1.5"></i> <span>Nhập vào Storyboard (<span id="import-count-label">' + selectedPanels.length + '</span> cảnh)</span>';
+      // Ô đếm vừa được tạo lại: trỏ DOM vào ô mới, nếu không số khung đã chọn sẽ không cập nhật nữa
+      DOM.importCountLabel = document.getElementById('import-count-label');
     }
   }
 }
@@ -3776,12 +3969,24 @@ async function handleStep1ProcessComic() {
 
   const mode = DOM.step1ComicMode?.value || 'grid';
   const order = DOM.step1ComicOrder?.value || 'rtl';
-  const project = AppState.currentProject;
+  if (!AppState.serverOnline) {
+    showToast("Máy chủ đang offline nên chưa cắt được truyện tranh.", "error", 6000);
+    return;
+  }
 
   DOM.btnStep1ProcessComic.disabled = true;
   DOM.btnStep1ProcessComic.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Đang bóc tách khung tranh OpenCV...';
 
   try {
+    // Bước 1 = bắt đầu video mới: tạo dự án mới cho truyện tranh, không ghi đè cảnh của dự án đang mở
+    if (!(await flushProjectSave())) throw new Error("chưa lưu được dự án đang mở lên máy chủ");
+    const baseName = (file.name || '').replace(/\.[^.]+$/, '').trim() || 'Truyện tranh mới';
+    const project = await API.createProject(`Truyện tranh: ${baseName}`.slice(0, 60));
+    if (!project || !project.id) throw new Error("không tạo được dự án mới trên máy chủ");
+    AppState.currentProject = adoptServerProject(project);
+    rememberLastProjectId(project.id);
+    AppState.projectsList.push({ id: project.id, name: project.name, scenes_count: 0 });
+
     const result = await API.sliceComic(file, mode, order, 0.03, project.id);
     if (!result || !result.success) {
       throw new Error(result?.error || "Không thể cắt ảnh");
@@ -3789,10 +3994,11 @@ async function handleStep1ProcessComic() {
 
     // Import panels into storyboard
     const importRes = await API.importComicPanels(project.id, result.panels, true, "Khung tranh");
-    if (importRes && importRes.project) {
-      AppState.currentProject = importRes.project;
-      saveStateToLocal();
+    if (!importRes || !importRes.project) {
+      throw new Error(importRes?.detail || "chưa nhập được khung tranh vào dự án mới");
     }
+    AppState.currentProject = adoptServerProject(importRes.project);
+    rememberLastProjectId(importRes.project.id);
 
     renderFullUI();
     selectScene(0);
@@ -4438,12 +4644,15 @@ function openCharacterModal() {
   if (char) {
     DOM.editCharName.value = char.name || "";
     DOM.editCharPrompt.value = char.prompt || "";
-    DOM.editCharStyle.value = char.style || "anime";
+    // Giá trị cũ không còn hợp lệ (realistic, 3d_disney, manhwa) -> theo phong cách dự án
+    DOM.editCharStyle.value = characterStyleOverride(char);
+    if (DOM.editCharStyle.value !== characterStyleOverride(char)) DOM.editCharStyle.value = "";
     DOM.editCharNegative.value = char.negative || "";
   } else {
-    DOM.editCharName.value = AppState.currentProject?.character_anchor || "";
-    DOM.editCharPrompt.value = "";
-    DOM.editCharStyle.value = "anime";
+    // character_anchor là mô tả ngoại hình, không phải tên
+    DOM.editCharName.value = "";
+    DOM.editCharPrompt.value = AppState.currentProject?.character_anchor || "";
+    DOM.editCharStyle.value = "";
     DOM.editCharNegative.value = "";
   }
   DOM.modalCharacterEditor.classList.remove('hidden');
@@ -4464,6 +4673,8 @@ function handleSaveCharacter() {
     negative: DOM.editCharNegative.value.trim(),
     avatar: project.character?.avatar || ""
   };
+  // Mô tả ngoại hình trong hộp này chính là character_anchor máy chủ ghép vào mọi ảnh
+  project.character_anchor = project.character.prompt;
 
   saveStateToLocal();
   renderCharacterCard();
@@ -4475,6 +4686,12 @@ function handleSaveCharacter() {
 function openProjectModal() {
   DOM.modalProjectManager.classList.remove('hidden');
   renderProjectListModal();
+  // Lấy lại danh sách để số cảnh của các dự án khác là số mới nhất
+  if (AppState.serverOnline) {
+    loadProjectsList().then(() => {
+      if (!DOM.modalProjectManager.classList.contains('hidden')) renderProjectListModal();
+    }).catch(() => {});
+  }
 }
 
 function closeProjectModal() {
@@ -4495,7 +4712,7 @@ function renderProjectListModal() {
             <span>${escapeHtml(p.name)}</span>
             ${isCurrent ? '<span class="text-[10px] bg-indigo-600 text-white px-1.5 py-0.5 rounded font-semibold">Đang mở</span>' : ''}
           </div>
-          <div class="text-[10px] text-slate-500 mt-0.5">${p.scene_count || 0} phân cảnh • 1080p</div>
+          <div class="text-[10px] text-slate-500 mt-0.5">${isCurrent ? (AppState.currentProject.scenes?.length || 0) : (p.scenes_count ?? p.scene_count ?? 0)} phân cảnh • 1080p</div>
         </div>
         <div class="flex items-center gap-1.5">
           ${!isCurrent ? `
@@ -4669,19 +4886,21 @@ function initMasterStoryboardSpec() {
         if (titleLabel) titleLabel.textContent = sb.project_metadata?.title || "Master Storyboard";
         if (countLabel) countLabel.textContent = `${sb.scenes?.length || 0} cảnh`;
 
+        // Nội dung do LLM viết: luôn escape trước khi đưa vào HTML
+        const esc = v => escapeHtml(String(v ?? ''));
         cardsCont.innerHTML = (sb.scenes || []).map(sc => `
           <div class="p-2.5 bg-white rounded-lg border border-slate-200 space-y-1">
             <div class="flex items-center justify-between text-[11px] font-bold">
-              <span class="text-purple-700">Cảnh ${sc.scene_id} • ${sc.visual?.shot_type || 'Medium Shot'}</span>
+              <span class="text-purple-700">Cảnh ${esc(sc.scene_id)} • ${esc(sc.visual?.shot_type || 'Medium Shot')}</span>
               <span class="text-amber-700 font-mono bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                ${sc.visual?.generation_mode === '9_grid_composite' ? '⚡ 9-Grid' : 'Single'} • ⏱️ ${sc.estimated_duration_sec}s (Nghỉ ${sc.audio?.pause_after_sec}s)
+                ${sc.visual?.generation_mode === '9_grid_composite' ? '⚡ 9-Grid' : 'Single'} • ⏱️ ${esc(sc.estimated_duration_sec)}s (Nghỉ ${esc(sc.audio?.pause_after_sec)}s)
               </span>
             </div>
-            <div class="text-slate-800 font-medium">"${sc.audio?.voiceover_text}"</div>
+            <div class="text-slate-800 font-medium">"${esc(sc.audio?.voiceover_text)}"</div>
             <div class="text-[11px] text-slate-500 flex flex-wrap gap-2 pt-1 border-t border-slate-100">
-              <span>🔊 SFX: <b>${(sc.sound_design?.sfx_cue || []).join(', ') || 'none'}</b></span>
-              <span>🎵 BGM: <b>${sc.sound_design?.bgm_energy || 'ambient'}</b></span>
-              <span>✨ Từ khóa: <b class="text-amber-600">${(sc.subtitles?.kinetic_highlight_words || []).join(', ')}</b></span>
+              <span>🔊 SFX: <b>${esc((sc.sound_design?.sfx_cue || []).join(', ') || 'none')}</b></span>
+              <span>🎵 BGM: <b>${esc(sc.sound_design?.bgm_energy || 'ambient')}</b></span>
+              <span>✨ Từ khóa: <b class="text-amber-600">${esc((sc.subtitles?.kinetic_highlight_words || []).join(', '))}</b></span>
             </div>
           </div>
         `).join('');
@@ -4705,12 +4924,13 @@ function initMasterStoryboardSpec() {
     btnApply.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>Đang nạp vào dự án...</span>';
 
     try {
+      // Không gửi project_id: máy chủ ghi đè TOÀN BỘ dự án có id đó. Storyboard luôn được nạp thành dự án mới.
+      if (!(await flushProjectSave())) throw new Error("chưa lưu được dự án đang mở lên máy chủ");
       const resp = await fetch('/api/storyboard/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           storyboard: cachedMasterStoryboard,
-          project_id: currentProject?.id,
           title: cachedMasterStoryboard.project_metadata?.title,
         }),
       });
@@ -4719,7 +4939,7 @@ function initMasterStoryboardSpec() {
       const resData = await resp.json();
 
       closeModal();
-      showToast(`Đã nạp ${resData.scenes_count} phân cảnh vào dự án!`, "success");
+      showToast(`Đã tạo dự án mới "${escapeHtml(String(resData.title || ''))}" với ${resData.scenes_count} phân cảnh!`, "success");
 
       // Reload project
       if (resData.project_id) {
@@ -4774,8 +4994,10 @@ function initMuseCloud() {
   if (btnStartFleetCmd) {
     btnStartFleetCmd.addEventListener('click', async () => {
       const cmd = "start_muse_fleet.bat";
-      await copyTextToClipboard(cmd);
-      showToast("Đã sao chép lệnh: 'start_muse_fleet.bat'! Chạy file này trên PC này để khởi động lại Muse Fleet (server thường tự khởi động sẵn).", "success", 4000);
+      const ok = await copyTextToClipboard(cmd);
+      showToast(ok
+        ? "Đã sao chép lệnh: 'start_muse_fleet.bat'! Chạy file này trên PC này để khởi động lại Muse Fleet (server thường tự khởi động sẵn)."
+        : "Chưa chép được vào bộ nhớ tạm. Hãy chạy file start_muse_fleet.bat trong thư mục story-studio.", ok ? "success" : "warning", 5000);
     });
   }
 
@@ -4783,8 +5005,10 @@ function initMuseCloud() {
   if (btnSetupAccountsCmd) {
     btnSetupAccountsCmd.addEventListener('click', async () => {
       const cmd = "setup_muse_accounts.bat";
-      await copyTextToClipboard(cmd);
-      showToast("Đã sao chép lệnh: 'setup_muse_accounts.bat'! Chạy file này để đăng nhập lần đầu cho 10 tài khoản.", "success", 4000);
+      const ok = await copyTextToClipboard(cmd);
+      showToast(ok
+        ? "Đã sao chép lệnh: 'setup_muse_accounts.bat'! Chạy file này để đăng nhập lần đầu cho 10 tài khoản."
+        : "Chưa chép được vào bộ nhớ tạm. Hãy chạy file setup_muse_accounts.bat trong thư mục story-studio.", ok ? "success" : "warning", 5000);
     });
   }
 
@@ -4954,7 +5178,7 @@ function renderMuseFleetAccountRow(acc, kind, activeId) {
       </div>
       <div class="flex items-center gap-1.5 shrink-0">
         ${museFleetStatusBadge(acc)}
-        <button type="button" class="btn-muse-copy-setup w-6 h-6 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] flex items-center justify-center transition cursor-pointer" data-account-id="${escapeHtml(aid)}" title="Chép lệnh đăng nhập: python backend/runners/muse_fleet_runner.py --setup ${escapeHtml(aid)}">
+        <button type="button" class="btn-muse-copy-setup w-6 h-6 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] flex items-center justify-center transition cursor-pointer" data-account-id="${escapeHtml(aid)}" title="Chép lệnh đăng nhập: ${escapeHtml(museSetupCommand(aid))}">
           <i class="fa-solid fa-key"></i>
         </button>
         <button type="button" class="btn-muse-set-default px-2 py-0.5 ${setBtnCls} rounded-lg text-[10px] font-bold transition shadow-xs" data-account-id="${escapeHtml(aid)}" data-mode="${kind}" ${isActive ? 'disabled' : ''}>
@@ -5034,11 +5258,16 @@ async function loadMuseAccountsUI() {
   }
 }
 
+// Lệnh đăng nhập 1 tài khoản Muse, chạy trong thư mục story-studio (dùng Python của .venv, có sẵn Playwright)
+function museSetupCommand(accountId) {
+  return `.venv\\Scripts\\python.exe backend\\runners\\muse_fleet_runner.py --setup ${accountId}`;
+}
+
 async function handleMuseFleetAccountClick(e) {
   const setupBtn = e.target.closest('.btn-muse-copy-setup');
   if (setupBtn) {
     const aid = setupBtn.getAttribute('data-account-id');
-    const cmd = `python backend/runners/muse_fleet_runner.py --setup ${aid}`;
+    const cmd = museSetupCommand(aid);
     const ok = await copyTextToClipboard(cmd);
     showToast(ok
       ? `Đã chép lệnh đăng nhập ${aid}. Chạy trong thư mục story-studio trên PC này (hoặc dùng setup_muse_accounts.bat).`
@@ -5058,7 +5287,7 @@ async function handleMuseFleetAccountClick(e) {
     return;
   }
   if (acc && !acc.has_profile) {
-    showToast(`Tài khoản ${aid} chưa đăng nhập. Chạy: python backend/runners/muse_fleet_runner.py --setup ${aid}`, "warning", 6000);
+    showToast(`Tài khoản ${aid} chưa đăng nhập. Chạy: ${museSetupCommand(aid)}`, "warning", 6000);
     return;
   }
 

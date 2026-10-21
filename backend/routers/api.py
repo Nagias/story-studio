@@ -1,8 +1,10 @@
 import asyncio
 import logging
 import os
+import re
 import shutil
 import subprocess
+import unicodedata
 import uuid
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -410,6 +412,38 @@ async def get_bgm_file(filename: str):
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="BGM file not found.")
     return FileResponse(file_path, media_type="audio/mpeg")
+
+MAX_BGM_UPLOAD_BYTES = 50 * 1024 * 1024
+
+
+@router.post("/bgm-tracks/upload")
+async def upload_bgm_track(file: UploadFile = File(...)):
+    """Nhận file MP3 nhạc nền riêng, lưu vào assets/bgm với tên an toàn; trả về ID để chọn khi dựng video."""
+    safe_upload_name(file.filename, {".mp3"}, prefix="custom")  # chỉ nhận .mp3
+    content = await read_upload_limited(file, max_bytes=MAX_BGM_UPLOAD_BYTES)
+    if not content:
+        raise HTTPException(status_code=400, detail="File nhạc trống.")
+    # MP3 thật bắt đầu bằng thẻ ID3 hoặc khung MPEG (11 bit đầu đều là 1)
+    if not (content[:3] == b"ID3" or (len(content) > 1 and content[0] == 0xFF and (content[1] & 0xE0) == 0xE0)):
+        raise HTTPException(status_code=400, detail="File không phải MP3 hợp lệ.")
+
+    # Tên file = custom_<tên gốc không dấu>_<mã ngẫu nhiên>: vừa là ID an toàn, vừa đọc được
+    stem = unicodedata.normalize("NFKD", Path(file.filename or "").stem.replace("đ", "d").replace("Đ", "D"))
+    slug = re.sub(r"[^a-z0-9]+", "_", stem.encode("ascii", "ignore").decode().lower()).strip("_")[:30] or "nhac"
+    track_id = f"custom_{slug}_{uuid.uuid4().hex[:6]}"
+    require_safe_id(track_id, "bgm_track")
+    target = BGM_DIR / f"{track_id}.mp3"
+    if not is_within(target, BGM_DIR):
+        raise HTTPException(status_code=400, detail="Tên file nhạc không hợp lệ.")
+    BGM_DIR.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(content)
+    return {
+        "success": True,
+        "id": track_id,
+        "name": slug.replace("_", " "),
+        "filename": target.name,
+        "url": f"/api/bgm/{target.name}",
+    }
 
 @router.post("/open-folder")
 async def open_folder(req: OpenFolderRequest):

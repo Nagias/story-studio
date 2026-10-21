@@ -43,3 +43,6 @@ backend/config/*.tmp
 # Worktree của Claude Code và workspace của superpowers (không commit)
 .claude/worktrees/
 .superpowers/
+
+# Nhạc nền người dùng tự tải lên (nút tải nhạc ở Bước 2)
+backend/assets/bgm/custom_*.mp3

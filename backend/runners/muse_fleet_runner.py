@@ -464,7 +464,12 @@ def probe_video(path: Path) -> Optional[Dict[str, float]]:
         return None
 
 
-def validate_video_file(path: Path) -> Tuple[bool, str]:
+def max_video_seconds(requested: int) -> float:
+    """Clip Muse thật dài 5s hoặc 10s; dài quá gấp đôi mức yêu cầu là video cũ có sẵn trong đoạn chat."""
+    return requested * 2 + 0.5
+
+
+def validate_video_file(path: Path, max_seconds: Optional[float] = None) -> Tuple[bool, str]:
     head = path.read_bytes()[:16]
     if not (head[4:8] == b"ftyp" or head.startswith(b"\x1a\x45\xdf\xa3")):
         return False, "không phải file video MP4/WebM"
@@ -475,6 +480,8 @@ def validate_video_file(path: Path) -> Tuple[bool, str]:
     w, h, dur = info["width"], info["height"], info["duration"]
     if dur < MIN_VIDEO_SECONDS:
         return False, f"video quá ngắn {dur:.1f}s"
+    if max_seconds and dur > max_seconds:
+        return False, f"video dài {dur:.1f}s, quá {max_seconds:.1f}s so với thời lượng yêu cầu (có thể là video cũ trong đoạn chat)"
     if min(w, h) < MIN_VIDEO_SIDE:
         return False, f"độ phân giải quá thấp {int(w)}x{int(h)}"
     if w <= h * 1.1:
@@ -1039,11 +1046,34 @@ class MuseFleetRunner:
                     raise TaskFailure("SESSION_EXPIRED", f"Tài khoản {acc.account_id} cần đăng nhập lại (chạy setup_muse_accounts.bat)")
                 raise TaskFailure("INPUT_NOT_FOUND", "Không tìm thấy ô nhập chat của Muse (giao diện có thể đã đổi)")
 
+            # Video: link CDN đôi khi chỉ thấy qua network. Ghi lại cả video tải TRƯỚC khi gửi prompt
+            # (video cũ của đoạn chat) để không nhận nhầm chúng là kết quả mới.
+            net_candidates: List[str] = []
+            pre_net: set = set()
+            submitted = {"v": False}
+            if kind == "video":
+                def on_response(response):
+                    try:
+                        ctype = (response.headers.get("content-type") or "").lower()
+                        url = response.url
+                        if "video/mp4" not in ctype:
+                            return
+                        if not submitted["v"]:
+                            pre_net.add(url)
+                        elif url not in pre_net and url not in net_candidates:
+                            net_candidates.append(url)
+                    except Exception:
+                        pass
+                page.on("response", on_response)
+
             # Mở đoạn chat mới để không lẫn với kết quả cũ
             if await self._open_new_chat(page):
                 input_el = await self._find_chat_input(page, 10000) or input_el
             else:
                 logger.warning(f"[{acc.account_id}] Không thấy nút New side chat, dùng đoạn chat hiện tại")
+                # Cuộn hết đoạn chat cũ và chờ media cũ tải xong, để bước đánh dấu bên dưới thấy hết chúng
+                await page.evaluate("() => document.querySelectorAll('[role=log]').forEach(l => { l.scrollTop = l.scrollHeight; })")
+                await page.wait_for_timeout(3000)
 
             if attach_path:
                 await self.update_task_progress(task_id, 35, "attaching", "Đính kèm ảnh...")
@@ -1051,6 +1081,9 @@ class MuseFleetRunner:
 
             # Đánh dấu media đang có trên trang (kể cả ảnh vừa đính kèm, avatar mascot) để loại trừ
             pre_srcs = await page.evaluate(MARK_EXISTING_MEDIA_JS)
+            requested_sec = clamp_video_duration((task.get("parameters") or {}).get("duration")
+                                                 or (task.get("parameters") or {}).get("duration_sec")
+                                                 or task.get("duration") or 5)
 
             if kind == "video":
                 prompt = MusePromptFormatter.format_video_prompt(task, has_input_image=bool(attach_path))
@@ -1061,25 +1094,13 @@ class MuseFleetRunner:
             await self.update_task_progress(task_id, 45, "prompting", "Gửi prompt lên Muse...")
             await input_el.fill(prompt)
             await page.wait_for_timeout(500)
+            pre_net.update(pre_srcs)
+            submitted["v"] = True
             await self._submit_prompt(page, input_el, prompt)
             logger.info(f"[{acc.account_id}] Đã gửi prompt, chờ Muse tạo {kind} (tối đa {MEDIA_WAIT_SEC[kind]}s)...")
             await self.update_task_progress(task_id, 60, "generating", f"Muse đang tạo {kind}...")
 
-            # Video: link CDN đôi khi chỉ thấy qua network -> nhận thêm ứng viên từ response video sau khi gửi
-            net_candidates: List[str] = []
-            pre_set = set(pre_srcs)
-            if kind == "video":
-                def on_response(response):
-                    try:
-                        ctype = (response.headers.get("content-type") or "").lower()
-                        url = response.url
-                        if "video/mp4" in ctype and url not in pre_set and url not in net_candidates:
-                            net_candidates.append(url)
-                    except Exception:
-                        pass
-                page.on("response", on_response)
-
-            ext = ".mp4" if kind == "video" else ".jpg"
+            ext =".mp4" if kind == "video" else ".jpg"
             dest_file = OUTPUTS_DIR / f"{task_id}{ext}"
             rejected: set = set()
             seen_count: Dict[str, int] = {}
@@ -1108,7 +1129,7 @@ class MuseFleetRunner:
                             dest_file.write_bytes(to_jpeg_bytes(data, aspect))
                     else:
                         dest_file.write_bytes(data)
-                        ok, info = validate_video_file(dest_file)
+                        ok, info = validate_video_file(dest_file, max_video_seconds(requested_sec))
                         if not ok:
                             dest_file.unlink(missing_ok=True)
                     if ok:

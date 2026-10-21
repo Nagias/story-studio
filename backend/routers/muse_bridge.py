@@ -662,9 +662,13 @@ async def get_bridge_status():
             gallery_items.append(item)
 
     # If gallery is short, also include any media files in MUSE_OUTPUTS_DIR
+    # (bỏ qua file đã hiện qua lịch sử task: file tên task_xxx.jpg trùng task_id task_xxx)
+    shown_urls = {it.get("media_url") for it in gallery_items}
     for f in sorted(MUSE_OUTPUTS_DIR.glob("*.*"), key=lambda x: x.stat().st_mtime, reverse=True):
         if f.suffix.lower() in (".jpg", ".jpeg", ".png", ".mp4"):
             file_key = f.name
+            if f.stem in seen_ids or f"/static/muse_outputs/{f.name}" in shown_urls:
+                continue
             if file_key not in seen_ids:
                 seen_ids.add(file_key)
                 is_vid = f.suffix.lower() == ".mp4"

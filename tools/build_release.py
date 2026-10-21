@@ -119,6 +119,9 @@ def collect_files() -> list[str]:
             rel = p.relative_to(ROOT).as_posix()
             if "__pycache__" in rel.split("/") or rel.endswith((".pyc", ".pyo")):
                 continue
+            # Nhạc nền người dùng tự tải lên (nút tải nhạc ở Bước 2) là dữ liệu riêng, không đóng gói
+            if rel.startswith("backend/assets/bgm/custom_"):
+                continue
             files.add(rel)
     return sorted(files)
 

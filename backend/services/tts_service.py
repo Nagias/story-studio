@@ -658,7 +658,11 @@ async def generate_speech(
     word_timings: List[Dict[str, Any]] = []
     last_err = None
 
-    for attempt in range(3):
+    # Dịch vụ Edge-TTS đôi khi trả "No audio was received" từng đợt (đo 21/10/2026: vài giây tới khoảng 1 phút) rồi tự hết:
+    # thử lại 6 lần, chờ 1-2-4-8-15 giây (cả lượt ~1 phút) thay vì bỏ cuộc sau 1,5 giây.
+    retry_delays = (1, 2, 4, 8, 15)
+    max_attempts = len(retry_delays) + 1
+    for attempt in range(max_attempts):
         try:
             communicate = edge_tts.Communicate(
                 text=clean_text,
@@ -686,13 +690,14 @@ async def generate_speech(
 
             if len(audio_bytes) > 0:
                 break
+            last_err = RuntimeError("0 bytes audio")
         except Exception as e:
             last_err = e
-            logger.warning(f"Edge-TTS attempt {attempt + 1} failed ({e}), retrying...")
-            if attempt < 2:
-                await asyncio.sleep(0.5 * (attempt + 1))
-            else:
-                raise RuntimeError(f"Edge-TTS audio synthesis failed for voice '{voice}': {last_err}") from last_err
+        if attempt < max_attempts - 1:
+            logger.warning(f"Edge-TTS attempt {attempt + 1}/{max_attempts} failed ({last_err}), retrying...")
+            await asyncio.sleep(retry_delays[attempt])
+        else:
+            raise RuntimeError(f"Edge-TTS audio synthesis failed for voice '{voice}' after {max_attempts} attempts: {last_err}") from last_err
 
     if len(audio_bytes) == 0:
         err_msg = f"Edge-TTS synthesis returned 0 bytes for voice '{voice}'"
