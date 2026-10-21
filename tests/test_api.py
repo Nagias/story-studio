@@ -95,6 +95,7 @@ async def test_post_split_script():
             assert "image_prompt" in sc
             assert "camera_motion" in sc
 
+@pytest.mark.live  # thu giọng Edge-TTS thật
 @pytest.mark.asyncio
 async def test_project_crud_and_render_flow():
     """Verify complete CRUD flow: Create project, add scenes, and invoke render pipeline."""

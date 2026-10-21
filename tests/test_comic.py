@@ -159,6 +159,7 @@ async def test_api_comic_slice_and_import():
         # Cleanup
         delete_project(test_proj_id)
 
+@pytest.mark.live  # produce-long-video thật: 9router, ảnh, Edge-TTS
 @pytest.mark.asyncio
 async def test_api_produce_long_video_endpoint():
     """Verify POST /api/projects/{id}/produce-long-video initiates MoneyPrinterTurbo stepper pipeline."""

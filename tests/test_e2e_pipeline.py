@@ -6,6 +6,9 @@ import sys
 import pytest
 from pathlib import Path
 
+# Thu giọng Edge-TTS thật và dựng video ffmpeg đầy đủ
+pytestmark = pytest.mark.live
+
 # Ensure safe console output encoding on Windows
 if sys.stdout:
     try:

@@ -36,10 +36,13 @@ from services.case_adaptation_steps import RETRY_NOTE
 from services.case_worker import approve_outline, pipeline_progress, start_analysis, worker_loop
 from tests.case_adaptation_fakes import FIXTURES_DIR
 
-pytestmark = pytest.mark.skipif(
-    os.getenv("STORY_STUDIO_LIVE") != "1",
-    reason="Test gọi 9router thật; đặt STORY_STUDIO_LIVE=1 để chạy.",
-)
+pytestmark = [
+    pytest.mark.live,
+    pytest.mark.skipif(
+        os.getenv("STORY_STUDIO_LIVE") != "1",
+        reason="Test gọi 9router thật; đặt STORY_STUDIO_LIVE=1 để chạy.",
+    ),
+]
 
 DOSSIER = (FIXTURES_DIR / "dossier.txt").read_text(encoding="utf-8")
 TARGET_MINUTES = 8

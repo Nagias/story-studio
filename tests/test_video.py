@@ -128,6 +128,7 @@ def test_merge_srt_files(tmp_path):
     assert "Lời thoại cảnh 1" in content
     assert "Lời thoại cảnh 2" in content
 
+@pytest.mark.live  # thu giọng Edge-TTS thật
 @pytest.mark.asyncio
 async def test_render_scene_video_zoom_in(tmp_path):
     """Test rendering a scene video with zoom_in Ken Burns effect and verify ffprobe streams."""
@@ -171,6 +172,7 @@ async def test_render_scene_video_zoom_in(tmp_path):
     duration = float(probe["format"]["duration"])
     assert duration > 1.0, f"Video duration too short: {duration}s"
 
+@pytest.mark.live  # thu giọng Edge-TTS thật
 @pytest.mark.asyncio
 async def test_render_scene_video_pan_left(tmp_path):
     """Test rendering a scene video with pan_left camera motion."""
@@ -214,6 +216,7 @@ def test_bgm_procedural_generation(tmp_path):
         dur = float(probe["format"]["duration"])
         assert dur >= 29.0, f"Expected 30s BGM, got {dur}s"
 
+@pytest.mark.live  # thu giọng Edge-TTS thật
 @pytest.mark.asyncio
 async def test_assemble_full_video_with_ducking_and_hardsub(tmp_path):
     """Test assembling multi-scene movie with BGM ducking (sidechaincompress) and hardsub subtitles."""

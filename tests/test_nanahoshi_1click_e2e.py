@@ -8,6 +8,9 @@ import pytest
 from pathlib import Path
 from httpx import AsyncClient, ASGITransport
 
+# Gọi 9router (chia cảnh) và Edge-TTS thật
+pytestmark = pytest.mark.live
+
 # Ensure UTF-8 console output on Windows
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     try:

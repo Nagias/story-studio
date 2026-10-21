@@ -305,6 +305,7 @@ async def test_tts_empty_text_error(tmp_path):
 # 5. INTEGRATION TESTS: Smart Routing (English Text -> Vietnamese Voice)
 # ==============================================================================
 
+@pytest.mark.live  # Edge-TTS thật
 @pytest.mark.asyncio
 async def test_english_text_routed_from_vietnamese_voice(tmp_path):
     """
@@ -364,6 +365,7 @@ async def test_english_text_routed_from_vietnamese_voice(tmp_path):
 # 6. INTEGRATION TESTS: Real Audio Synthesis with Edge-TTS and VieNeu fallback
 # ==============================================================================
 
+@pytest.mark.live  # Edge-TTS thật
 @pytest.mark.asyncio
 async def test_tts_vietnamese_namminh_with_cleaning(tmp_path):
     """
@@ -395,6 +397,7 @@ async def test_tts_vietnamese_namminh_with_cleaning(tmp_path):
     assert "Người dẫn chuyện" not in srt_content, "Speaker prefix leaked into subtitles!"
 
 
+@pytest.mark.live  # Edge-TTS thật
 @pytest.mark.asyncio
 async def test_tts_vietnamese_hoaimy(tmp_path):
     """Test generating Vietnamese speech with vi-VN-HoaiMyNeural."""
@@ -421,6 +424,7 @@ async def test_tts_vietnamese_hoaimy(tmp_path):
     assert validate_srt_content(srt_content, "Hoài My"), "Invalid SRT subtitle format or content"
 
 
+@pytest.mark.live  # Edge-TTS thật
 @pytest.mark.asyncio
 async def test_tts_english_andrew(tmp_path):
     """Test generating English speech with en-US-AndrewMultilingualNeural."""
@@ -446,6 +450,7 @@ async def test_tts_english_andrew(tmp_path):
     assert validate_srt_content(srt_content, "Andrew"), "Invalid SRT subtitle format or content"
 
 
+@pytest.mark.live  # Edge-TTS thật
 @pytest.mark.asyncio
 async def test_tts_english_ava(tmp_path):
     """Test generating English speech with en-US-AvaMultilingualNeural."""
@@ -472,6 +477,7 @@ async def test_tts_english_ava(tmp_path):
     assert validate_srt_content(srt_content, "Ava"), "Invalid SRT subtitle format or content"
 
 
+@pytest.mark.live  # bật server VieNeu thật (uv), rơi về Edge-TTS
 @pytest.mark.asyncio
 async def test_tts_vietnamese_vieneu_maianh_or_fallback(tmp_path):
     """

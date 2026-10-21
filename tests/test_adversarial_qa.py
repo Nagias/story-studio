@@ -884,6 +884,7 @@ async def test_adversarial_motion_fx_manga_speedlines(tmp_path):
 # SECTION 6: MoneyPrinterTurbo Stepper Long Video Production Pipeline E2E
 # ==============================================================================
 
+@pytest.mark.live  # 9router chia cảnh + Edge-TTS thật
 @pytest.mark.asyncio
 async def test_adversarial_produce_long_video_pipeline(tmp_path):
     """
