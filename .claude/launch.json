@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "story-studio-8010",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": ["-X", "utf8", "-m", "uvicorn", "main:app", "--app-dir", "backend", "--host", "127.0.0.1", "--port", "8010"],
+      "env": {
+        "STORY_STUDIO_PORT": "8010",
+        "STORY_STUDIO_DISABLE_CASE_WORKER": "1",
+        "STORY_STUDIO_DISABLE_FLEET_AUTOSTART": "1"
+      },
+      "port": 8010
+    }
+  ]
+}
