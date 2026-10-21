@@ -16,9 +16,6 @@ echo.
 if exist "%~dp0.venv\Scripts\python.exe" (
     set "PYTHON_EXE=%~dp0.venv\Scripts\python.exe"
     echo [*] Sử dụng Virtual Environment: .venv
-) else if exist "%~dp0projects\story-studio\.venv\Scripts\python.exe" (
-    set "PYTHON_EXE=%~dp0projects\story-studio\.venv\Scripts\python.exe"
-    echo [*] Sử dụng Virtual Environment: projects\story-studio\.venv
 ) else (
     set "PYTHON_EXE=python"
 )

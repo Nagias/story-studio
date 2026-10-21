@@ -10,8 +10,6 @@ cd /d "%~dp0"
 :: 1. Xác định đường dẫn Python (.venv hoặc Python hệ thống)
 if exist "%~dp0.venv\Scripts\python.exe" (
     set "PYTHON_EXE=%~dp0.venv\Scripts\python.exe"
-) else if exist "%~dp0projects\story-studio\.venv\Scripts\python.exe" (
-    set "PYTHON_EXE=%~dp0projects\story-studio\.venv\Scripts\python.exe"
 ) else (
     set "PYTHON_EXE=python"
 )
