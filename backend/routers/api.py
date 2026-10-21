@@ -956,7 +956,8 @@ async def api_generate_thumbnail(project_id: str, data: Dict[str, Any] = Body(de
     custom_subtext = data.get("custom_subtext")
     badge_text = data.get("badge_text")
 
-    res = generate_youtube_thumbnail(
+    res = await asyncio.to_thread(  # PIL vẽ ảnh: chạy ở luồng phụ để server không khựng
+        generate_youtube_thumbnail,
         project=project,
         scene_index=scene_index,
         custom_headline=custom_headline,
@@ -983,7 +984,7 @@ async def get_project_thumbnail(project_id: str):
     thumb_file = PROJECTS_DIR / project_id / "renders" / "thumbnail.jpg"
     if not thumb_file.exists():
         # Generate on the fly if not exists
-        generate_youtube_thumbnail(project=project)
+        await asyncio.to_thread(generate_youtube_thumbnail, project=project)
 
     if not thumb_file.exists():
         raise HTTPException(status_code=404, detail="Thumbnail could not be generated.")
@@ -1357,7 +1358,7 @@ async def execute_full_render(project_id: str, render_id: str, options: RenderRe
 
         # Auto-generate YouTube Thumbnail and SEO pack
         try:
-            t_res = generate_youtube_thumbnail(project)
+            t_res = await asyncio.to_thread(generate_youtube_thumbnail, project)
             project.thumbnail_path = t_res["thumbnail_path"]
             project.thumbnail_url = t_res["thumbnail_url"]
         except Exception as e:
@@ -1725,7 +1726,7 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
 
         # Auto-generate YouTube Thumbnail and SEO pack
         try:
-            t_res = generate_youtube_thumbnail(project)
+            t_res = await asyncio.to_thread(generate_youtube_thumbnail, project)
             project.thumbnail_path = t_res["thumbnail_path"]
             project.thumbnail_url = t_res["thumbnail_url"]
         except Exception as e:
@@ -1878,7 +1879,8 @@ async def slice_comic_endpoint(
             out_dir.mkdir(parents=True, exist_ok=True)
             url_prefix = f"/api/comic/media/{session_id}"
 
-        result = slice_comic(
+        result = await asyncio.to_thread(  # OpenCV trên ảnh lớn mất vài giây: luồng phụ
+            slice_comic,
             image_input=content,
             output_dir=out_dir,
             mode=mode,
