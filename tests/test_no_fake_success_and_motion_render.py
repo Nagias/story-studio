@@ -310,6 +310,7 @@ async def test_vieneu_failure_reason_is_reported(tmp_path, monkeypatch):
     monkeypatch.setattr(tts_service, "ensure_vieneu_server", no_server)
     monkeypatch.setattr(tts_service.asyncio, "create_subprocess_exec", fake_exec)
     monkeypatch.setattr(tts_service.edge_tts, "Communicate", FakeCommunicate)
+    monkeypatch.setattr(tts_service, "get_audio_duration", lambda path: 1.5)  # file mp3 ở đây là giả
 
     res = await tts_service.generate_speech("Đêm mưa tháng mười.", voice="vieneu-MaiAnh",
                                             output_audio_path=str(tmp_path / "a.mp3"))
@@ -457,6 +458,8 @@ def captured_ffmpeg(monkeypatch):
     monkeypatch.setattr(video_service.asyncio, "create_subprocess_exec", fake_exec)
     monkeypatch.setattr(video_service.subprocess, "run",
                         lambda *a, **k: SimpleNamespace(stdout="", returncode=0))
+    # ffmpeg/ffprobe đều là giả: thời lượng cũng phải giả rõ ràng (hàm thật nay báo lỗi thay vì đoán 3 giây)
+    monkeypatch.setattr(video_service, "get_audio_duration", lambda path: 3.0)
     return calls
 
 
