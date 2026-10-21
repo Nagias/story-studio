@@ -3,10 +3,8 @@ import base64
 import json
 import logging
 import os
-import re
 import shutil
 import socket
-import sys
 import time
 import urllib.parse
 import uuid
@@ -14,7 +12,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query, Request, Depends
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from config import PROJECTS_DIR, STATIC_DIR
@@ -205,27 +203,18 @@ def find_account(account_id: Optional[str]) -> Optional[Dict[str, Any]]:
 def ensure_local_fleet_runner():
     """Tự động kích hoạt cụm Fleet Runner chạy ngầm trên Windows PC nếu chưa chạy (Single Instance Guard)."""
     global fleet_runner_proc
-    from runners.single_instance import autostart_disabled, is_runner_running
-    if autostart_disabled() or is_runner_running():
-        return  # Đã có runner giữ file lock (hoặc đang chạy test) -> tuyệt đối không spawn thêm
+    from config import PORT
+    from runners import autostart
     if fleet_runner_proc is not None and fleet_runner_proc.poll() is None:
         return  # vừa spawn, runner chưa kịp lấy lock
-
-    import subprocess
-    runner_script = BACKEND_DIR / "runners" / "muse_fleet_runner.py"
-    if runner_script.exists():
-        try:
-            creationflags = 0
-            if sys.platform == "win32":
-                creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-            fleet_runner_proc = subprocess.Popen(
-                [sys.executable, str(runner_script), "--daemon", "--concurrency", "2"],
-                cwd=str(BACKEND_DIR.parent),
-                creationflags=creationflags,
-            )
-            logger.info("Automatically spawned local Fleet Runner daemon (Concurrency: 2)")
-        except Exception as e:
-            logger.warning(f"Could not auto-spawn local fleet runner: {e}")
+    try:
+        proc = autostart.start_fleet_runner_daemon(PORT)
+    except OSError as e:
+        logger.warning(f"Không bật được Fleet Runner: {e}")
+        return
+    if proc is not None:
+        fleet_runner_proc = proc
+        logger.info("Đã bật Fleet Runner chạy ngầm (gọi về %s)", autostart.runner_url(PORT))
 
 
 def is_account_online(account_id: Optional[str]) -> bool:

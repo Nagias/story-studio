@@ -75,27 +75,19 @@ def existing_server(host: str, port: int) -> Optional[str]:
 
 
 def start_fleet_runner_daemon():
-    """Tự động khởi động Fleet Runner ngầm cùng Web Server để xử lý các tác vụ Muse."""
-    runner_script = STORY_STUDIO_DIR / "backend" / "runners" / "muse_fleet_runner.py"
-    from runners.single_instance import is_runner_running
-    if is_runner_running():
-        print("[*] Meta Muse Fleet Runner is already running")
+    """Bật Fleet Runner ngầm cùng web server (qua runners/autostart: tôn trọng công tắc tắt, theo đúng cổng)."""
+    from runners import autostart, single_instance
+    if single_instance.autostart_disabled():
+        print("[*] Fleet Runner: tắt tự bật (STORY_STUDIO_DISABLE_FLEET_AUTOSTART=1)")
         return
-
-    if runner_script.exists():
-        try:
-            import subprocess
-            creationflags = 0
-            if sys.platform == "win32":
-                creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-            subprocess.Popen(
-                [sys.executable, str(runner_script), "--daemon", "--concurrency", "2"],
-                cwd=str(STORY_STUDIO_DIR),
-                creationflags=creationflags,
-            )
-            print("[*] Automatically started Meta Muse Fleet Runner Daemon (Concurrency: 2)")
-        except Exception as e:
-            print(f"[!] Warning: Could not start Fleet Runner daemon: {e}")
+    if single_instance.is_runner_running():
+        print("[*] Fleet Runner đang chạy sẵn")
+        return
+    try:
+        if autostart.start_fleet_runner_daemon(PORT):
+            print(f"[*] Đã bật Fleet Runner chạy ngầm (2 luồng, gọi về {autostart.runner_url(PORT)})")
+    except OSError as e:
+        print(f"[!] Không bật được Fleet Runner: {e}")
 
 def main():
     url = f"http://localhost:{PORT}"

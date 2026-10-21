@@ -33,7 +33,7 @@ Dữ liệu mẫu có sẵn (không xoá, không sửa khi thử):
 
 | Việc | Cách |
 |---|---|
-| Chạy app thật | `run.bat` → `run.py`: kiểm tra cổng (`existing_server()`), tự bật Fleet Runner (`start_fleet_runner_daemon()`), mở `http://localhost:8000` |
+| Chạy app thật | `run.bat` → `run.py`: kiểm tra cổng (`existing_server()`), tự bật Fleet Runner (`start_fleet_runner_daemon()` → `backend/runners/autostart.py`, nơi duy nhất bật runner; tắt bằng `STORY_STUDIO_DISABLE_FLEET_AUTOSTART=1`), mở `http://localhost:8000` |
 | Server thử để kiểm chứng (không đụng server 8000) | `.claude/launch.json` cấu hình `story-studio-8010`: cổng 8010, tắt hàng việc phân tích (`STORY_STUDIO_DISABLE_CASE_WORKER=1`) và tự bật Fleet Runner (`STORY_STUDIO_DISABLE_FLEET_AUTOSTART=1`). Mở bằng `preview_start` của trình duyệt trong app. Lưu ý: server thử vẫn đọc ghi `projects/` thật |
 | Mở thẳng một dự án | `?project_id=<id>` (`initApp()`) |
 | Mở thẳng cửa sổ Muse | `#muse`, `?mode=muse` hoặc `?view=muse` |
@@ -211,7 +211,7 @@ Dùng được qua `/docs` (Swagger) hoặc test; sửa tới thì nhớ không 
 |---|---|---|
 | Web server | `127.0.0.1:8000` (`STORY_STUDIO_PORT`) | `run.py` không bật server thứ hai nếu cổng đã có Story Studio |
 | Hàng việc phân tích vụ án | chạy trong server, khoá `projects/_cases/.worker.lock` | bật server là chạy tiếp vụ dở (**LLM**), trừ khi `STORY_STUDIO_DISABLE_CASE_WORKER=1` |
-| Fleet Runner | tiến trình Python riêng, khoá `backend/runners/.fleet_runner.lock`, log `backend/muse_fleet_runner.log` | mặc định gọi tới `127.0.0.1:8000` (`--url`), không theo `STORY_STUDIO_PORT` |
+| Fleet Runner | tiến trình Python riêng, khoá `backend/runners/.fleet_runner.lock`, log `backend/muse_fleet_runner.log` | gọi về cổng server qua `--url` (`runner_url()` theo `STORY_STUDIO_PORT`); chạy tay bằng `start_muse_fleet.bat` thì mặc định cổng 8000 |
 | 9router | `127.0.0.1:20128` | chương trình ngoài |
 | Server VieNeu | `127.0.0.1:5005` | tự bật qua `uv`, không tự tắt |
 | Dự án | `projects/<proj_id>/project.json` + `images/`, `videos/`, `audio/`, `renders/` | ghi qua `project_service.py` (còn chỗ ghi thẳng, xem `CLAUDE.md` mục đường cấm) |
