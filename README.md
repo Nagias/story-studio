@@ -29,7 +29,7 @@ Chạy `run.bat`. Trình duyệt tự mở http://localhost:8000; Fleet Runner (
 Dự án và video bạn tạo nằm trong thư mục `projects/`.
 
 ## Dành cho người phát triển
-- Phiên bản thư viện được ghim trong `backend/requirements.txt` (đã chạy ổn trên Python 3.14). Chạy test: cài thêm `backend/requirements-dev.txt` rồi chạy bộ offline `.venv\Scripts\python.exe -m pytest tests -q --ignore-glob="*e2e*" --ignore-glob="*live*"` (bỏ các test gọi dịch vụ thật).
+- Phiên bản thư viện được ghim trong `backend/requirements.txt` (đã chạy ổn trên Python 3.14). Chạy test: cài thêm `backend/requirements-dev.txt` rồi `.venv\Scripts\python.exe -m pytest -q` (mặc định bỏ test gọi dịch vụ thật; chạy chúng bằng `-m live`). Kiểm tra trước khi commit: `.venv\Scripts\python.exe tools\check.py` (cài hook tự chạy: `tools\check.py --install-hook`).
 - Giao diện dùng Tailwind build sẵn (`backend/static/tailwind.css`, không cần internet). Thêm class Tailwind mới trong `index.html`/`app.js` thì build lại (cần Node.js):
 
 ```bat

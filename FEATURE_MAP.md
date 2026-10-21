@@ -225,13 +225,15 @@ Dùng được qua `/docs` (Swagger) hoặc test; sửa tới thì nhớ không 
 | Dự án, đồng bộ, lưu | `tests/test_api.py`, `tests/test_project_sync.py` |
 | Chia cảnh (LLM, offline, bài dài) | `tests/test_script_splitter_long_text.py`, `tests/test_scene_analysis_fallback_reason.py`, `tests/test_vox_narrative.py` |
 | Ảnh, nhân vật | `tests/test_image.py`, `tests/test_character_consistency.py` |
-| Giọng | `tests/test_tts.py` (một số test gọi Edge-TTS thật, một test bật VieNeu), `tests/test_ui_scan_fixes.py` |
+| Giọng | `tests/test_tts.py` (6 test gắn cờ `live`: Edge-TTS thật, một test bật VieNeu), `tests/test_ui_scan_fixes.py` |
 | Dựng video | `tests/test_video.py`, `tests/test_no_fake_success_and_motion_render.py`, `tests/test_youtube_studio_v2_improvements.py`, `tests/test_adversarial_qa.py` |
-| Truyện tranh | `tests/test_comic.py` (có test gọi produce-long-video thật: **LLM**, **Ảnh trả phí**) |
+| Truyện tranh | `tests/test_comic.py` (test gọi produce-long-video thật gắn cờ `live`: **LLM**, **Ảnh trả phí**) |
 | 9-Grid / Master Storyboard | `tests/test_youtube_storyboard_spec.py` |
 | Muse | `tests/test_muse_fleet_routing.py`, `tests/test_muse_fleet_runner.py`, `tests/test_muse_fleet_runner_media.py`, `tests/test_muse_fleet_runner_integration.py` |
 | True crime | `tests/test_case_*.py`, `tests/test_true_crime_router.py`, `tests/test_true_crime_e2e.py` (offline dù tên có e2e), `tests/test_investigation_board.py` |
 | Chạy một server, mở thư mục, bảo mật | `tests/test_run_single_server.py`, `tests/test_open_folder.py`, `tests/test_gate_gout_regressions.py` |
-| Gọi dịch vụ thật (chỉ chạy khi được yêu cầu) | `tests/test_e2e_pipeline.py`, `tests/test_nanahoshi_1click_e2e.py`, `tests/test_case_adaptation_live.py` (cần `STORY_STUDIO_LIVE=1`) |
+| Đường cấm, tài liệu khớp code | `tests/test_architecture.py`, `tests/test_feature_map.py` (chạy cả trong hook trước commit) |
+| Gọi dịch vụ thật (cờ `live`, chỉ chạy khi được yêu cầu: `pytest -m live`) | 19 test: `tests/test_e2e_pipeline.py`, `tests/test_nanahoshi_1click_e2e.py`, `tests/test_case_adaptation_live.py` (cần thêm `STORY_STUDIO_LIVE=1`) và 12 test lẻ trong `tests/test_tts.py`, `tests/test_video.py`, `tests/test_api.py`, `tests/test_comic.py`, `tests/test_adversarial_qa.py` |
 
+Test không gắn cờ `live` mà gọi mạng, 9router, VieNeu hay server 8000 thì bị `tests/conftest.py` chặn và báo lỗi.
 Giao diện chưa có test tự động: kiểm bằng server thử 8010 + trình duyệt (mục 1).

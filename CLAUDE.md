@@ -35,13 +35,17 @@ Cách đọc các nhãn trong file:
 | Chạy app | `run.bat` (hoặc `.venv\Scripts\python.exe run.py`), mở `http://localhost:8000`. Tự bật Fleet Runner |
 | Python | luôn `.venv\Scripts\python.exe` (Python 3.14), không dùng `python` hệ thống; in tiếng Việt thì thêm `-X utf8` |
 | Cài thư viện | `.venv\Scripts\python.exe -m pip install -r backend\requirements-dev.txt` (phiên bản đã ghim); Playwright thêm `.venv\Scripts\python.exe -m playwright install chromium` |
+| Kiểm tra nhanh (hook tự chạy mỗi lần commit) | `.venv\Scripts\python.exe tools\check.py`: Ruff so với mốc, cú pháp JS, test kiến trúc, test FEATURE_MAP (khoảng 15 giây) |
+| Kiểm tra đầy đủ (trước khi gộp `master`) | `.venv\Scripts\python.exe tools\check.py --full`: thêm cả bộ test mặc định |
+| Cài hook trước commit (một lần mỗi bản sao repo) | `.venv\Scripts\python.exe tools\check.py --install-hook`. Không bỏ qua hook bằng `--no-verify` |
 | Test một file | `.venv\Scripts\python.exe -m pytest tests\test_xxx.py -q` |
-| Bộ test offline | `.venv\Scripts\python.exe -m pytest tests -q --ignore-glob="*e2e*" --ignore-glob="*live*"` (667 test, khoảng 7–9 phút ngày 21/10/2026; vài test vẫn gọi Edge-TTS/9router thật nếu đang chạy) |
-| Test gọi dịch vụ thật | chỉ khi được yêu cầu: `tests/test_e2e_pipeline.py`, `tests/test_nanahoshi_1click_e2e.py`, `tests/test_case_adaptation_live.py` (cần `STORY_STUDIO_LIVE=1`) |
+| Bộ test mặc định (offline) | `.venv\Scripts\python.exe -m pytest -q` (`pytest.ini` bỏ qua test cờ `live`; test không gắn cờ mà gọi mạng, 9router, VieNeu hay server 8000 thì bị chặn và báo lỗi; còn dự án rác trong `projects/` thì báo lỗi) |
+| Test gọi dịch vụ thật | chỉ khi được yêu cầu: `.venv\Scripts\python.exe -m pytest -m live -q` (Edge-TTS, 9router, VieNeu); riêng `tests/test_case_adaptation_live.py` cần thêm `STORY_STUDIO_LIVE=1` |
+| Sửa bớt lỗi Ruff cũ | sửa xong chạy `.venv\Scripts\python.exe tools\check.py --shrink-ruff-baseline` để hạ mốc `tools/ruff_baseline.json`. Không có lệnh nâng mốc |
 | Kiểm giao diện | server thử cổng 8010 theo `.claude/launch.json` (tắt hàng việc phân tích và tự bật Fleet Runner), mở bằng trình duyệt trong app, dùng dự án thử `?project_id=proj_ea5b04db`. Không khởi động lại server 8000 đang dùng chung |
 | Build CSS | thêm class Tailwind mới: `cd tools\tailwind`, `npm install --cache .npm-cache`, `npm run build` → `backend/static/tailwind.css` |
 | Đóng gói bán | `.venv\Scripts\python.exe tools\build_release.py` → `dist/` (lấy theo danh sách cho phép, tự chặn bí mật) |
-| Lint, kiểm kiểu, CI | **chưa có** |
+| Lint | Ruff (`ruff.toml`), chạy qua `tools/check.py`. Kiểm kiểu dữ liệu và CI trên GitHub: chưa có |
 
 Công cụ ngoài: ffmpeg/ffprobe trong PATH, `uv` (giọng VieNeu), Chrome hoặc Edge, 9router ở `127.0.0.1:20128`.
 
@@ -65,7 +69,13 @@ Nơi ghi từng loại dữ liệu (hiện tại):
 
 ## 5. Đường cấm — [Đề xuất của agent — chưa duyệt]
 
-Lập từ đợt rà soát 21/10/2026. Hiện **chưa có máy kiểm tự động** cho các dòng này; theo nguyên tắc 2.1, mỗi dòng cần thành test hoặc lint (đề xuất ở bước 4). Cột cuối liệt kê chỗ còn vi phạm để agent **không chép theo**; sửa chúng là việc riêng.
+Lập từ đợt rà soát 21/10/2026. Cột cuối liệt kê chỗ còn vi phạm để agent **không chép theo**; sửa chúng là việc riêng.
+
+Máy kiểm tự động (chạy trong `tools/check.py` và hook trước commit):
+- dòng 1, 5, 6, 7, 10, 13, 14: `tests/test_architecture.py` (vi phạm cũ ghi thành ngoại lệ đếm đúng số lần);
+- dòng 2 (phần `except: pass`) và 8 (phần `open`, `subprocess` trong hàm async): Ruff, so với mốc `tools/ruff_baseline.json`;
+- dòng 11 (phần gọi mạng và dự án rác): `tests/conftest.py`;
+- dòng 3, 4, 9, 12 và phần còn lại của dòng 2, 8, 11: **chưa có máy kiểm**, dựa vào người duyệt.
 
 | # | Mẫu cấm | Làm thay | Vì sao | Còn vi phạm ở |
 |---|---|---|---|---|
@@ -82,7 +92,7 @@ Lập từ đợt rà soát 21/10/2026. Hiện **chưa có máy kiểm tự đ�
 | 11 | Test ghi vào `projects/` thật, gọi LLM/Muse/Edge-TTS thật mà không gắn cờ, bật trình duyệt hay Fleet Runner | `tmp_path`, fixture `isolated_projects_dir`, LLM giả (`tests/case_adaptation_fakes.py`); test thật đặt tên `*_live*` và cần `STORY_STUDIO_LIVE=1` | mất dữ liệu, tốn quota, đụng tài khoản thật | `tests/test_api.py` (xoá dự án `default_preview`), `tests/test_comic.py`, 9 file ghi `projects/` |
 | 12 | Xoá vĩnh viễn dữ liệu người dùng (`shutil.rmtree`, `unlink`) | chuyển vào Thùng rác, hoặc hỏi trước | không lấy lại được | `project_service.delete_project()`, `clear_all_gallery()` |
 | 13 | `services/` import từ `routers/` | đưa phần dùng chung xuống `services/` | vòng phụ thuộc; import kéo theo ghi file cấu hình | `image_service.py` (import `routers.muse_bridge`) |
-| 14 | Đường dẫn tuyệt đối của máy này, hay trỏ sang dự án khác | đường dẫn từ `config.py` | hỏng trên máy khách; `tools/build_release.py` chặn | `thumbnail_service.py` (`C:\Windows\Fonts`) |
+| 14 | Đường dẫn tuyệt đối của máy này, hay trỏ sang dự án khác | đường dẫn từ `config.py` | hỏng trên máy khách; `tools/build_release.py` chặn | `thumbnail_service.py` (`C:\Windows\Fonts`); vài chuỗi hợp lệ có ghi lý do trong `tests/test_architecture.py` |
 
 Code mới nên theo mẫu của mảng true-crime (mục 4), không theo mảng cũ.
 
@@ -96,13 +106,13 @@ Code mới nên theo mẫu của mảng true-crime (mục 4), không theo mảng
 - **Nhánh:** repo chưa có remote, nhánh chính tên `master` (là "main" trong quy tắc trên). Mỗi việc một nhánh mới từ `master`, tên tiếng Việt không dấu. Commit trên nhánh; chỉ gộp vào `master` khi chủ dự án đồng ý; không push lên đâu khi chưa được bảo.
 - **Trước khi sửa:** tra `FEATURE_MAP.md`; nói rõ sẽ sửa những file nào; việc dài thì ghi checklist vào `TASKS.md` và tick khi xong.
 - **Bằng chứng tối thiểu:**
-  - test liên quan và bộ offline, ghi số đạt/lỗi và thời gian;
+  - test liên quan và `tools/check.py --full`, ghi số đạt/lỗi và thời gian;
   - đổi giao diện: mở server thử 8010, bấm đúng phần tử ghi trong `FEATURE_MAP.md`, xem console và log server;
   - đổi giọng, ảnh, video: mở hoặc nghe file thật, không chỉ nhìn mã thoát hay dung lượng file;
   - ghi kết quả vào `TASKS.md`.
 
   Chưa có bằng chứng thì báo "chưa kiểm chứng", không báo "xong".
-- **Sau khi chạy test:** so danh sách `projects/` trước và sau, không để lại dự án rác.
+- **Sau khi chạy test:** bộ test tự báo dự án rác; chạy test lẻ bằng cách khác thì tự so danh sách `projects/` trước và sau.
 - **Dữ liệu cần giữ:**
   - Không sửa hay xoá 3 mục MẪU: `proj_crime_52c3a5e8`, `proj_crime_8329b12d`, `_cases/case_7dcf6158`. Dự án để thử là `proj_ea5b04db`.
   - Dọn thì chuyển vào Thùng rác, chỉ khi đã được duyệt.
