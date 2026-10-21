@@ -73,7 +73,6 @@ def save_project(project: Project) -> None:
     project.updated_at = datetime.utcnow().isoformat()
     safe_files.write_text_atomic(_get_project_json_path(project.id), project.model_dump_json(indent=2))
 
-_save_project = save_project  # tên cũ, chỉ dùng trong module này
 
 def _read_project_json(json_path: Path, project_id: str) -> Optional[Dict[str, Any]]:
     """Dữ liệu JSON của dự án, None nếu chưa có file; file có mà hỏng thì ProjectUnreadableError."""
@@ -173,7 +172,7 @@ def create_project(data: ProjectCreateRequest) -> Project:
         created_at=now,
         updated_at=now,
     )
-    _save_project(project)
+    save_project(project)
     return project
 
 def update_project(project_id: str, data: ProjectUpdateRequest) -> Optional[Project]:
@@ -230,7 +229,7 @@ def update_project(project_id: str, data: ProjectUpdateRequest) -> Optional[Proj
             else:
                 setattr(project, key, value)
 
-    _save_project(project)
+    save_project(project)
     return project
 
 def delete_project(project_id: str) -> bool:
@@ -264,7 +263,7 @@ def add_scene(project_id: str, data: SceneCreateRequest) -> Optional[Scene]:
     )
 
     project.scenes.append(scene)
-    _save_project(project)
+    save_project(project)
     return scene
 
 def update_scene(project_id: str, scene_id: str, updates: SceneUpdateRequest) -> Optional[Scene]:
@@ -287,7 +286,7 @@ def update_scene(project_id: str, scene_id: str, updates: SceneUpdateRequest) ->
         if v is not None and hasattr(target_scene, k):
             setattr(target_scene, k, v)
 
-    _save_project(project)
+    save_project(project)
     return target_scene
 
 def delete_scene(project_id: str, scene_id: str) -> bool:
@@ -306,7 +305,7 @@ def delete_scene(project_id: str, scene_id: str) -> bool:
     for idx, s in enumerate(project.scenes, start=1):
         s.order = idx
 
-    _save_project(project)
+    save_project(project)
     return True
 
 def reorder_scenes(project_id: str, scene_ids: List[str]) -> Optional[List[Scene]]:
@@ -331,7 +330,7 @@ def reorder_scenes(project_id: str, scene_ids: List[str]) -> Optional[List[Scene
             new_scenes.append(s)
 
     project.scenes = new_scenes
-    _save_project(project)
+    save_project(project)
     return project.scenes
 
 def get_scene_media_paths(project_id: str, scene_id: str) -> Dict[str, Path]:
