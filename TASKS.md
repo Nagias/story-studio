@@ -177,3 +177,10 @@ Giữ: T4b (8 dự án thử 4–16/10), "ZZ Thử Muse", 3 mục MẪU. Mỗi m
 - [x] T1–T3, T4a chuyển vào Thùng rác: 24 thư mục comic_slices, 2 evidence_boards, `output/`, `public/`, `dist/`, 4 dự án Nhũ Cô cũ (33 mục)
 - [x] Cuối đợt: bộ offline (`pytest tests -q --ignore-glob="*e2e*" --ignore-glob="*live*"`) **667 pass, 0 fail**, 7 phút (mốc 668 trừ 1 test của hàm đã xoá); không sinh dự án hay comic_slices mới. Giao diện trên server thử cổng 8010 (`.claude/launch.json`, tắt worker và Fleet Runner tự bật): 4 bước chuyển đúng, 7 cửa sổ chính mở/đóng được, console không lỗi, không có 404/500, bấm Bước 4 chỉ gọi `/seo-pack` một lần; 3 `project.json` (ZZ Thử Muse, 2 MẪU) không bị ghi
 - Còn lại, chưa làm vì ngoài danh sách: endpoint `/upload-reference-image`, `/auto-gen`, `muse-cloud/generate-all-images|videos` không còn ai gọi; hàm chỉ test dùng: `grid_slicer.slice_grid_image`, `generate_parallax_layers`, `audio_engine.mix_3layer_audio`; `generate_voiced_scene_audio` không ai dùng; `muse_bridge.py` còn import thừa `re`, `JSONResponse`; `config.DEFAULT_RESOLUTION` không ai dùng
+
+# TASKS — CLAUDE.md và FEATURE_MAP.md (2026-10-21, bước 3, nhánh `tai-lieu-agent`)
+- [x] FEATURE_MAP.md: điều kiện ban đầu, cách mở app/server thử, từng màn và cửa sổ (id, hàm, endpoint, chỗ tốn quota), 5 luồng xuyên suốt, chức năng chỉ có API, tiến trình nền, test theo tính năng. Kiểm bằng script: 205 id, 109 hàm, 93 endpoint, 65 đường dẫn đều có thật trong code
+- [x] CLAUDE.md: mục đích (để trống cho chủ dự án), nguyên tắc nguyên văn (Dune, tư duy, tra FEATURE_MAP), lệnh, kiến trúc hiện tại, 14 đường cấm (đề xuất, chưa duyệt), quy tắc làm việc (nguyên văn + đề xuất làm dày), bảng định tuyến (cột quy trình để trống). Nguyên văn kiểm khớp từng chữ với tin nhắn của chủ dự án
+- [x] AGENTS.md chỉ còn trỏ sang CLAUDE.md (nội dung cũ đã gộp vào CLAUDE.md mục 3 và 6)
+- [x] `.claude/launch.json`: server thử cổng 8010 tắt hàng việc phân tích và tự bật Fleet Runner
+- [ ] Chủ dự án: viết mục 1 (mục đích), duyệt mục 5 (đường cấm) và phần làm dày ở mục 6, điền cột quy trình mục 7
