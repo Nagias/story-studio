@@ -19,7 +19,6 @@ backend/static/reference_images/
 comic_slices/
 output/
 public/
-qa_test_report.json
 *.log*
 backend/runners/.fleet_runner.lock
 backend/runners/.work/

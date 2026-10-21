@@ -6,7 +6,7 @@ Backend FastAPI: `backend/main.py`, API trong `backend/routers/`, logic trong `b
 - Chạy: `run.bat` (hoặc `.venv\Scripts\python.exe run.py`), mở http://localhost:8000.
 - Python: luôn dùng `.venv\Scripts\python.exe` (Python 3.14), không dùng `python` của hệ thống.
 - Cài thư viện: `.venv\Scripts\python.exe -m pip install -r backend\requirements-dev.txt` (phiên bản đã ghim); Playwright cần thêm `.venv\Scripts\python.exe -m playwright install chromium`.
-- Test một file: `.venv\Scripts\python.exe -m pytest tests\test_xxx.py -q`. Cả bộ kèm báo cáo QA: `.venv\Scripts\python.exe run_all_tests.py`.
+- Test một file: `.venv\Scripts\python.exe -m pytest tests\test_xxx.py -q`. Bộ offline (khoảng 9 phút; vài test vẫn gọi Edge-TTS/9router thật nếu đang chạy): `.venv\Scripts\python.exe -m pytest tests -q --ignore-glob="*e2e*" --ignore-glob="*live*"`.
 - Giao diện dùng `backend/static/tailwind.css` build sẵn (không dùng CDN). Thêm class Tailwind mới thì build lại: `cd tools\tailwind`, `npm install --cache .npm-cache`, `npm run build`.
 - Đóng gói bán: `.venv\Scripts\python.exe tools\build_release.py` (chỉ lấy file trong danh sách cho phép, tự kiểm tra không lọt bí mật).
 - Công cụ ngoài cần có: ffmpeg/ffprobe trong PATH, `uv` (giọng VieNeu), Chrome hoặc Edge.
