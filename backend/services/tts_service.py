@@ -480,6 +480,13 @@ def generate_readable_srt(word_timings: List[Dict[str, Any]], fallback_text: str
 
     return "\n".join(srt_lines) + "\n"
 
+def _nudge_rate(rate: str, delta: int) -> str:
+    """Cộng `delta` % vào tốc độ đọc dạng Edge-TTS ("+0%", "-10%"); giá trị lạ thì coi là +0%."""
+    m = re.fullmatch(r"\s*([+-]?\d+)\s*%\s*", rate or "")
+    base = int(m.group(1)) if m else 0
+    return f"{base + delta:+d}%"
+
+
 async def generate_speech(
     text: str,
     voice: str = "vi-VN-NamMinhNeural",
@@ -658,16 +665,20 @@ async def generate_speech(
     word_timings: List[Dict[str, Any]] = []
     last_err = None
 
-    # Dịch vụ Edge-TTS đôi khi trả "No audio was received" từng đợt (đo 21/10/2026: vài giây tới khoảng 1 phút) rồi tự hết:
-    # thử lại 6 lần, chờ 1-2-4-8-15 giây (cả lượt ~1 phút) thay vì bỏ cuộc sau 1,5 giây.
+    # Edge-TTS trả "No audio was received" theo hai kiểu (đo 21/10/2026):
+    # - từng đợt vài giây tới ~1 phút với mọi câu -> chờ 1-2-4-8-15 giây giữa các lần thử;
+    # - cố định với đúng một yêu cầu (vd "Ánh mắt kiên định của chàng không hề nao núng." lỗi 5/5 lần) trong khi
+    #   chỉ cần nhích tốc độ đọc 1-2% là đọc được 5/5 -> từ lần thử thứ hai đổi nhẹ tốc độ (tai không nhận ra).
     retry_delays = (1, 2, 4, 8, 15)
+    rate_nudges = (0, 1, 2, -1, 3, 0)
     max_attempts = len(retry_delays) + 1
     for attempt in range(max_attempts):
+        attempt_rate = _nudge_rate(rate, rate_nudges[attempt])
         try:
             communicate = edge_tts.Communicate(
                 text=clean_text,
                 voice=voice,
-                rate=rate,
+                rate=attempt_rate,
                 pitch=pitch,
                 boundary="WordBoundary",
             )

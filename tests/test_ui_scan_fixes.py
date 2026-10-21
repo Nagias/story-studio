@@ -73,6 +73,34 @@ def test_edge_tts_gives_up_after_six_attempts(monkeypatch, tmp_path, no_wait):
     assert no_wait == [1, 2, 4, 8, 15]
 
 
+def test_edge_tts_nudges_rate_when_one_request_always_fails(monkeypatch, tmp_path, no_wait):
+    # Dịch vụ lỗi cố định với đúng yêu cầu gốc (tốc độ +0%), đổi tốc độ 1% là đọc được
+    rates = []
+
+    class StickyFailCommunicate:
+        def __init__(self, text, voice, rate="+0%", **kwargs):
+            self.rate = rate
+
+        async def stream(self):
+            rates.append(self.rate)
+            if self.rate == "+0%":
+                raise RuntimeError("No audio was received. Please verify that your parameters are correct.")
+            yield {"type": "audio", "data": b"\xff\xfb" * 100}
+
+    monkeypatch.setattr(tts.edge_tts, "Communicate", StickyFailCommunicate)
+    res = asyncio.run(tts.generate_speech("Ánh mắt kiên định của chàng không hề nao núng.", voice="vi-VN-HoaiMyNeural",
+                                          output_audio_path=str(tmp_path / "a.mp3")))
+    assert rates == ["+0%", "+1%"]
+    assert Path(res["audio_path"]).stat().st_size > 0
+
+
+def test_nudge_rate_keeps_user_rate():
+    assert tts._nudge_rate("+0%", 1) == "+1%"
+    assert tts._nudge_rate("-10%", 2) == "-8%"
+    assert tts._nudge_rate("+5%", -1) == "+4%"
+    assert tts._nudge_rate("lạ", 1) == "+1%"
+
+
 # ---------------- Tải nhạc nền riêng ----------------
 
 @pytest.fixture
