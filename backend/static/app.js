@@ -295,20 +295,10 @@ Thanh kiếm chém xuống, nguồn năng lượng thần thánh quét sạch m�
 Hải cầm chiếc đèn pin chập chờn bước lên bậc cầu thang gỗ kêu cót két từng hồi.
 Ở góc phòng áp mái, chiếc gương cổ phủ khăn đen bất ngờ rơi xuống, để lộ bóng một người phụ nữ mặc áo trắng đang mỉm cười.
 Tiếng chuông đồng hồ điểm mười hai tiếng vang vọng, cánh cửa sổ bật tung trước cơn gió lốc rít gào.`,
-  scifi: `Năm 2145, trạm thám hiểm vũ trụ Horizon nhận được tín hiệu cầu cứu từ một tiểu hành tinh lạ ở rìa Thái Dương Hệ.
-Chỉ huy Alex cùng đội trinh sát bước xuống bề mặt hành tinh phủ đầy tinh thể phát quang màu tím biếc.
-Bên dưới lớp băng vĩnh cửu, một cấu trúc kim tự tháp cơ khí khổng lồ đang từ từ thức giấc và phát ra năng lượng lượng tử cực mạnh.
-Toàn bộ hệ thống cảm biến của tàu mẹ bắt đầu báo động đỏ: Người ngoài hành tinh đã thức tỉnh.`
 };
 
 // ================= DOM ELEMENTS =================
 const DOM = {
-  // Stepper Navigation
-  stepNav1: document.getElementById('step-nav-1'),
-  stepNav2: document.getElementById('step-nav-2'),
-  stepNav3: document.getElementById('step-nav-3'),
-  stepNav4: document.getElementById('step-nav-4'),
-
   // 4-Step Views
   stepView1: document.getElementById('step-view-1'),
   stepView2: document.getElementById('step-view-2'),
@@ -405,9 +395,6 @@ const DOM = {
   btnProjectDropdown: document.getElementById('btn-project-dropdown'),
   btnSaveProject: document.getElementById('btn-save-project'),
   btnOpenScriptModal: document.getElementById('btn-open-script-modal'),
-  navTabStoryboard: document.getElementById('nav-tab-storyboard'),
-  navTabCharacter: document.getElementById('nav-tab-character'),
-  navTabSettings: document.getElementById('nav-tab-settings'),
 
   // Left Panel Scene List
   sceneListContainer: document.getElementById('scene-list-container'),
@@ -493,7 +480,6 @@ const DOM = {
 
   // Comic Slicer Modal & Controls
   btnOpenComicModal: document.getElementById('btn-open-comic-modal'),
-  btnOpenComicModalSub: document.getElementById('btn-open-comic-modal-sub'),
   modalComicSlicer: document.getElementById('modal-comic-slicer'),
   btnCloseComicModal: document.getElementById('btn-close-comic-modal'),
   btnCancelComicModal: document.getElementById('btn-cancel-comic-modal'),
@@ -699,19 +685,6 @@ const API = {
     }
   },
 
-  async autoGenAll(projectId) {
-    try {
-      const res = await fetch(`${this.baseUrl}/projects/${projectId}/auto-gen`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      if (res.ok) return await res.json();
-    } catch (e) {
-      console.warn("API autoGenAll fallback", e);
-    }
-    return null;
-  },
-
   async getRenderStatus(renderId) {
     try {
       const res = await fetch(`${this.baseUrl}/render-status/${renderId}`);
@@ -874,36 +847,6 @@ const API = {
       if (res.ok) return await res.json();
       return null;
     } catch (e) {
-      return null;
-    }
-  },
-
-  async triggerMuseGenAllImages(projectId, stylePreset) {
-    try {
-      const res = await fetch(`${this.baseUrl}/projects/${projectId}/muse-cloud/generate-all-images`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ style_preset: stylePreset })
-      });
-      if (res.ok) return await res.json();
-      return null;
-    } catch (e) {
-      console.error("API triggerMuseGenAllImages failed", e);
-      return null;
-    }
-  },
-
-  async triggerMuseGenAllVideos(projectId) {
-    try {
-      const res = await fetch(`${this.baseUrl}/projects/${projectId}/muse-cloud/generate-all-videos`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      });
-      if (res.ok) return await res.json();
-      return null;
-    } catch (e) {
-      console.error("API triggerMuseGenAllVideos failed", e);
       return null;
     }
   },
@@ -1841,12 +1784,6 @@ function renderSettings() {
 
 // ================= EVENT LISTENERS =================
 function bindEventListeners() {
-  // Stepper Navigation Tabs
-  DOM.stepNav1?.addEventListener('click', () => switchStep(1));
-  DOM.stepNav2?.addEventListener('click', () => switchStep(2));
-  DOM.stepNav3?.addEventListener('click', () => switchStep(3));
-  DOM.stepNav4?.addEventListener('click', () => switchStep(4));
-
   // Step 1 Event Listeners
   DOM.step1ScriptTextarea?.addEventListener('input', handleStep1ScriptInput);
   DOM.btnStep1ProcessScript?.addEventListener('click', handleStep1ProcessScript);
@@ -1905,10 +1842,6 @@ function bindEventListeners() {
         if (DOM.step1CharName) DOM.step1CharName.value = "Chiến Binh Titus (Quân Đoàn La Mã)";
         if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Roman legionary soldier, polished iron lorica segmentata, bronze galea helmet with red crest, curved red scutum shield with golden bull, pilum spear";
         if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "roman_legionary_epic";
-      } else if (val === 'spartan_leon') {
-        if (DOM.step1CharName) DOM.step1CharName.value = "Dũng Tướng Leon (Sparta)";
-        if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Spartan hoplite champion, sculpted bronze muscle cuirass, Corinthian helmet with plume, circular bronze hoplon shield with Lambda, ash-wood dory spear";
-        if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "spartan_mythic_warrior";
       } else if (val === 'kingdom_shin') {
         if (DOM.step1CharName) DOM.step1CharName.value = "Tướng Quân Shin (Kingdom)";
         if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Young warrior general, pale blue scale lamellar armor, messy black ponytail, massive broadsword carried on back, determined battle smirk";
@@ -2037,17 +1970,11 @@ function bindEventListeners() {
     }
   });
 
-  // Navigation Tabs (Legacy compatibility)
-  DOM.navTabStoryboard?.addEventListener('click', () => switchTab('storyboard'));
-  DOM.navTabCharacter?.addEventListener('click', () => openCharacterModal());
-  DOM.navTabSettings?.addEventListener('click', () => scrollToSettings());
-
   // Save Project
   DOM.btnSaveProject?.addEventListener('click', handleSaveProject);
 
   // Comic Slicer Modal Actions
   DOM.btnOpenComicModal?.addEventListener('click', openComicModal);
-  DOM.btnOpenComicModalSub?.addEventListener('click', openComicModal);
   DOM.btnCloseComicModal?.addEventListener('click', closeComicModal);
   DOM.btnCancelComicModal?.addEventListener('click', closeComicModal);
   DOM.btnResetComic?.addEventListener('click', resetComicModal);
@@ -2099,7 +2026,6 @@ function bindEventListeners() {
 
   // Script Modal Actions
   DOM.btnOpenScriptModal?.addEventListener('click', openScriptModal);
-  document.getElementById('btn-open-script-modal-sub')?.addEventListener('click', openScriptModal);
   DOM.btnCloseScriptModal?.addEventListener('click', closeScriptModal);
   DOM.btnCancelScriptModal?.addEventListener('click', closeScriptModal);
   DOM.btnSubmitScriptSplit?.addEventListener('click', handleSubmitScriptSplit);
@@ -2145,18 +2071,6 @@ function bindEventListeners() {
       renderSceneList();
       saveStateToLocal();
       showToast(`Đã đổi giọng thuyết minh: ${e.target.value}`, "info");
-    }
-  });
-
-  const btnQuickVoice = document.getElementById('btn-quick-voice-toggle');
-  btnQuickVoice?.addEventListener('click', () => {
-    if (DOM.selectVoice) {
-      DOM.selectVoice.focus();
-      DOM.selectVoice.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      DOM.selectVoice.classList.add('ring-2', 'ring-indigo-500', 'bg-indigo-50');
-      setTimeout(() => {
-        DOM.selectVoice.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-50');
-      }, 1500);
     }
   });
 
@@ -2271,27 +2185,6 @@ function handleGlobalKeydown(e) {
     handleSaveProject();
   } else if (e.key === 'Escape') {
     closeAllModals();
-  }
-}
-
-function switchTab(tab) {
-  document.querySelectorAll('.nav-tab').forEach(b => {
-    b.classList.remove('bg-indigo-600', 'text-white', 'shadow-sm');
-    b.classList.add('text-gray-400');
-  });
-
-  if (tab === 'storyboard') {
-    DOM.navTabStoryboard.classList.add('bg-indigo-600', 'text-white', 'shadow-sm');
-    DOM.navTabStoryboard.classList.remove('text-gray-400');
-  }
-}
-
-function scrollToSettings() {
-  const card = document.getElementById('audio-settings-card');
-  if (card) {
-    card.scrollIntoView({ behavior: 'smooth' });
-    card.classList.add('ring-2', 'ring-emerald-500');
-    setTimeout(() => card.classList.remove('ring-2', 'ring-emerald-500'), 1500);
   }
 }
 
@@ -2927,34 +2820,6 @@ function playCurrentScene({ fromStart = false } = {}) {
     // Có video nhưng chưa có voice: dùng thời lượng video để đếm nhịp
     const dur = scene.duration || (DOM.previewVideoElem?.duration) || 5;
     fallbackTimer(dur);
-  }
-}
-
-function simulateSpeechFallback(text, duration = 5) {
-  if (AppState.playbackTimer) clearTimeout(AppState.playbackTimer);
-
-  let speechUsed = false;
-  if ('speechSynthesis' in window && text) {
-    try {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'vi-VN';
-      utterance.rate = 1.0;
-      utterance.onend = () => {
-        if (!AppState.isPlayingAll) pausePlayback();
-      };
-      utterance.onerror = () => {
-        fallbackTimer(duration);
-      };
-      window.speechSynthesis.speak(utterance);
-      speechUsed = true;
-    } catch {
-      speechUsed = false;
-    }
-  }
-
-  if (!speechUsed) {
-    fallbackTimer(duration);
   }
 }
 
@@ -4266,60 +4131,6 @@ async function handleSubmitScriptSplit() {
   DOM.btnSubmitScriptSplit.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> <span>Tự động phân tích & tạo Storyboard</span>';
 }
 
-function clientSideSplitScript(text, mode, style) {
-  let chunks = [];
-
-  if (mode === 'paragraph') {
-    chunks = text.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean);
-  } else if (mode === 'sentences') {
-    const rawSentences = text.match(/[^.!?]+[.!?]+/g) || [text];
-    // Group into 2 sentences per scene
-    for (let i = 0; i < rawSentences.length; i += 2) {
-      chunks.push((rawSentences[i] + ' ' + (rawSentences[i + 1] || '')).trim());
-    }
-  } else {
-    // Smart split by sentence punctuation or line break
-    const lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean);
-    chunks = lines.length > 0 ? lines : [text];
-  }
-
-  if (chunks.length === 0) chunks = [text];
-
-  const kbEffects = ['zoom_in', 'pan_left', 'zoom_out', 'pan_right'];
-
-  return chunks.map((chunk, idx) => {
-    const dur = Math.max(4.5, parseFloat((chunk.split(/\s+/).length / 2.8).toFixed(1)));
-    const kb = kbEffects[idx % kbEffects.length];
-    const promptKeywords = chunk.substring(0, 80).replace(/["'\n]/g, ' ');
-    const visualPrompt = `${style} cinematic style, scene depicting: ${promptKeywords}, 8k ultra detailed, dramatic lighting`;
-    const encodedPrompt = encodeURIComponent(visualPrompt);
-
-    const dummyScene = {
-      order: idx + 1,
-      text: chunk,
-      image_prompt: visualPrompt
-    };
-    const sceneSvg = generateSceneVisualSvg(dummyScene, { style_preset: style }, idx);
-
-    return {
-      id: `scene-${Date.now()}-${idx}`,
-      order: idx + 1,
-      duration: dur,
-      text: chunk,
-      visual_prompt: visualPrompt,
-      image_prompt: visualPrompt,
-      image_url: sceneSvg,
-      audio_url: "",
-      voice_audio_url: "",
-      camera_motion: kb,
-      ken_burns: kb,
-      status_voice: "ready",
-      status_image: "ready",
-      status: "ready"
-    };
-  });
-}
-
 // ================= MODAL 3: CHARACTER CONSISTENCY =================
 function openCharacterModal() {
   const char = AppState.currentProject?.character;
@@ -5225,137 +5036,6 @@ function renderMuseGalleryItems(items) {
       }
     });
   });
-}
-
-async function handleMuseGenAllImages() {
-  const project = AppState.currentProject;
-  if (!project || !project.scenes || project.scenes.length === 0) {
-    showToast("Dự án chưa có phân cảnh nào để tạo ảnh!", "warning");
-    return;
-  }
-
-  if (AppState.museCloud.status === 'offline') {
-    showToast("Muse Fleet chưa có tài khoản nào online! Mở bảng Muse Fleet để xem trạng thái tài khoản ảnh.", "error", 4500);
-    return;
-  }
-  if (museKindOnline('image') === false) {
-    showToast("Chưa có tài khoản ảnh nào online — tác vụ sẽ chờ trong hàng đợi.", "warning", 4500);
-  }
-
-  AppState.museCloud.isProcessing = true;
-  if (DOM.museProgressCard) DOM.museProgressCard.classList.remove('hidden');
-  if (DOM.museProgressTitle) DOM.museProgressTitle.textContent = `Chuẩn bị đẩy ${project.scenes.length} phân cảnh lên Muse Fleet (tài khoản ảnh)...`;
-  if (DOM.museProgressPercent) DOM.museProgressPercent.textContent = "5%";
-  if (DOM.museProgressBarFill) DOM.museProgressBarFill.style.width = "5%";
-
-  // Render initial scene chips
-  if (DOM.museSceneChips) {
-    DOM.museSceneChips.innerHTML = project.scenes.map((sc, i) => `
-      <span id="muse-chip-scene-${i}" class="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-        Cảnh #${i+1} (Chờ)
-      </span>
-    `).join('');
-  }
-
-  showToast(`Bắt đầu tạo ${project.scenes.length} ảnh 2K qua Muse Fleet (tài khoản ảnh)...`, "info");
-
-  try {
-    const stylePreset = DOM.selectProjectStyle?.value || project.style_preset || 'manga_murata_battle';
-    const res = await API.triggerMuseGenAllImages(project.id, stylePreset);
-
-    if (res && res.success) {
-      showToast(res.message || "Đã đưa các tác vụ vào hàng đợi Muse (tài khoản ảnh) thành công!", "success");
-    } else {
-      // Fallback: Dispatch task by task via createMuseBridgeTask (image account only; omitted when none is active)
-      const activeImgId = getActiveMuseAccountId('image');
-      for (let i = 0; i < project.scenes.length; i++) {
-        const sc = project.scenes[i];
-        const taskPayload = withMuseAccount({
-          project_id: project.id,
-          scene_id: sc.id || `scene_${i+1}`,
-          mode: "text-to-image",
-          prompt: sc.visual_prompt || sc.image_prompt || sc.text,
-          negative_prompt: sc.negative_prompt || "",
-          parameters: {
-            resolution: "2K",
-            aspect_ratio: "16:9",
-            style_preset: stylePreset,
-          }
-        }, activeImgId);
-        await API.createMuseBridgeTask(taskPayload);
-        const chip = document.getElementById(`muse-chip-scene-${i}`);
-        if (chip) {
-          chip.className = "px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-amber-50 text-amber-700 border border-amber-300 animate-pulse";
-          chip.textContent = `Cảnh #${i+1} (Đang vẽ)`;
-        }
-      }
-    }
-  } catch (err) {
-    console.error("handleMuseGenAllImages error", err);
-    showToast("Lỗi gửi tác vụ tới Muse: " + err.message, "error");
-  } finally {
-    setTimeout(() => {
-      AppState.museCloud.isProcessing = false;
-      renderSceneList();
-    }, 4000);
-  }
-}
-
-async function handleMuseGenAllVideos() {
-  const project = AppState.currentProject;
-  if (!project || !project.scenes || project.scenes.length === 0) {
-    showToast("Dự án chưa có phân cảnh nào để tạo video!", "warning");
-    return;
-  }
-
-  if (AppState.museCloud.status === 'offline') {
-    showToast("Muse Fleet chưa có tài khoản nào online! Mở bảng Muse Fleet để xem trạng thái tài khoản video.", "error", 4500);
-    return;
-  }
-  if (museKindOnline('video') === false) {
-    showToast("Chưa có tài khoản video nào online — tác vụ sẽ chờ trong hàng đợi.", "warning", 4500);
-  }
-
-  AppState.museCloud.isProcessing = true;
-  if (DOM.museProgressCard) DOM.museProgressCard.classList.remove('hidden');
-  if (DOM.museProgressTitle) DOM.museProgressTitle.textContent = `Bắt đầu sinh video chuyển động 5s/10s cho ${project.scenes.length} cảnh...`;
-  if (DOM.museProgressPercent) DOM.museProgressPercent.textContent = "10%";
-  if (DOM.museProgressBarFill) DOM.museProgressBarFill.style.width = "10%";
-
-  try {
-    const activeVidId = getActiveMuseAccountId('video');
-    const vidLabel = activeVidId ? `tài khoản video ${activeVidId}` : 'tài khoản video';
-    const res = await API.triggerMuseGenAllVideos(project.id);
-    if (res && res.success) {
-      showToast(res.message || `Đã gửi yêu cầu tạo video chuyển động tới Muse (${vidLabel})!`, "success");
-    } else {
-      // Fallback: Dispatch task by task (video account only; omitted when none is active)
-      for (let i = 0; i < project.scenes.length; i++) {
-        const sc = project.scenes[i];
-        const taskPayload = withMuseAccount({
-          project_id: project.id,
-          scene_id: sc.id || `scene_${i+1}`,
-          mode: "image-to-video",
-          prompt: sc.visual_prompt || sc.text,
-          input_image_url: sc.image_url || null,
-          parameters: {
-            duration_sec: 5,
-            fps: 24,
-            aspect_ratio: "16:9",
-          }
-        }, activeVidId);
-        await API.createMuseBridgeTask(taskPayload);
-      }
-      showToast(`Đã đưa tác vụ tạo video chuyển động vào hàng đợi Muse (${vidLabel})!`, "success");
-    }
-  } catch (err) {
-    console.error("handleMuseGenAllVideos error", err);
-    showToast("Lỗi gửi tác vụ tạo video: " + err.message, "error");
-  } finally {
-    setTimeout(() => {
-      AppState.museCloud.isProcessing = false;
-    }, 4000);
-  }
 }
 
 async function generateSceneWithMuse(index, mode = 'image') {
