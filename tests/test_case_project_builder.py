@@ -505,7 +505,7 @@ def prepare_source_media(project):
     project.thumbnail_path = str(root / "renders" / "thumb.jpg")
     project.thumbnail_url = f"/api/projects/{project.id}/media/renders/thumb.jpg"
     project.seo_title, project.seo_description, project.seo_tags = "Tiêu đề SEO", "Mô tả SEO", ["a"]
-    project_service._save_project(project)
+    project_service.save_project(project)
     return project_service.get_project(project.id)
 
 
@@ -583,7 +583,7 @@ def test_language_version_uses_given_voice_and_settings_voice(isolated_projects_
     source = make_vi_project(plan)
     saved = project_service.get_project(source.id)
     saved.settings = {"voice": VI_VOICE, "bgm": "x"}     # giao diện ưu tiên settings.voice hơn project.voice
-    project_service._save_project(saved)
+    project_service.save_project(saved)
 
     new, _ = run(create_language_version(source.id, "en", "en-GB-RyanNeural"))
 
@@ -610,7 +610,7 @@ def test_language_version_rewrites_changed_scenes(isolated_projects_dir):
     new_vi = "Vài ngày sau, một nhân viên cảng đến trình ra cuốn sổ ghi tay người ra vào cổng đêm đó."
     new_order = len(saved.scenes) + 1
     saved.scenes.append(Scene(id=f"scene_{new_order:03d}", order=new_order, text=new_vi))     # cảnh thêm sau khi tạo dự án
-    project_service._save_project(saved)
+    project_service.save_project(saved)
 
     llm, calls = make_fake_llm({"REWRITE_EN": {"scenes": [
         {"order": 3, "narration_en": REWRITE_3},
@@ -641,7 +641,7 @@ def test_language_version_rewritten_text_gets_aliases_and_blocks_real_names(isol
     source = make_vi_project(plan)
     saved = project_service.get_project(source.id)
     scene_by_order(saved, 4).text = "Câu đã sửa của cảnh bốn, kể lại diễn biến bằng lời mới."
-    project_service._save_project(saved)
+    project_service.save_project(saved)
 
     seen = []
 
@@ -681,7 +681,7 @@ def test_language_version_rewritten_text_with_exact_date_is_blocked_without_nami
     source = make_vi_project(plan)
     saved = project_service.get_project(source.id)
     scene_by_order(saved, 4).text = "Câu đã sửa của cảnh bốn, kể lại diễn biến bằng lời mới."
-    project_service._save_project(saved)
+    project_service.save_project(saved)
 
     async def dated(bible, items, *, llm=None, target_minutes=None, total_scenes=None):
         return {4: "On October 7, 2014 the loading yard lay silent under the rain while nobody yet knew who had been "
@@ -757,7 +757,7 @@ def test_language_version_rejects_plain_project(isolated_projects_dir):
     project_service.add_scene(plain.id, SceneCreateRequest(text="Một cảnh", metadata={"case_id": "case_x"}))
     saved = project_service.get_project(plain.id)
     saved.metadata["case_id"] = "case_x"
-    project_service._save_project(saved)
+    project_service.save_project(saved)
     with pytest.raises(LanguageVersionError, match="Dự án này không được tạo từ kế hoạch chuyển thể."):
         run(create_language_version(plain.id, "en"))
 
@@ -767,7 +767,7 @@ def test_language_version_needs_the_saved_plan(isolated_projects_dir):
     source = make_vi_project(plan)
     saved = project_service.get_project(source.id)
     saved.metadata["case_id"] = "case_khongco1"
-    project_service._save_project(saved)
+    project_service.save_project(saved)
 
     with pytest.raises(LanguageVersionError, match="kế hoạch"):
         run(create_language_version(source.id, "en"))
@@ -801,7 +801,7 @@ def test_language_version_to_vietnamese_reuses_plan_text_but_cannot_rewrite(isol
     # Cảnh tiếng Anh bị sửa thì chưa có đường viết lại sang tiếng Việt: báo rõ, không im lặng giữ lời cũ.
     saved = project_service.get_project(en_project.id)
     scene_by_order(saved, 3).text = "A line the user rewrote by hand in English."
-    project_service._save_project(saved)
+    project_service.save_project(saved)
     with pytest.raises(LanguageVersionError, match="3"):
         run(create_language_version(en_project.id, "vi"))
 
@@ -811,7 +811,7 @@ def test_language_version_failure_of_rewrite_leaves_no_new_project(isolated_proj
     source = make_vi_project(plan)
     saved = project_service.get_project(source.id)
     scene_by_order(saved, 3).text = "Một lời Việt mới cho cảnh ba, được sửa tay sau khi tạo dự án."
-    project_service._save_project(saved)
+    project_service.save_project(saved)
 
     bad = {"scenes": [{"order": 3, "narration_en": "Too short."}]}
     llm, calls = make_fake_llm({"REWRITE_EN": bad})
@@ -830,7 +830,7 @@ def test_language_version_whitespace_only_edit_is_not_a_rewrite(isolated_project
     saved = project_service.get_project(source.id)
     scene = scene_by_order(saved, 3)
     scene.text = "  " + scene.text.replace(" ", "  ", 2) + "\n"        # giao diện có thể tự chuẩn hoá khoảng trắng
-    project_service._save_project(saved)
+    project_service.save_project(saved)
     llm, calls = make_fake_llm()
 
     new, rewritten = run(create_language_version(source.id, "en", llm=llm))
@@ -843,7 +843,7 @@ def test_language_version_disclaimer_is_always_the_fixed_sentence(isolated_proje
     source = make_vi_project(plan)
     saved = project_service.get_project(source.id)
     scene_by_order(saved, 1).text = "Lời miễn trừ bị sửa tay."
-    project_service._save_project(saved)
+    project_service.save_project(saved)
     llm, calls = make_fake_llm()
 
     new, rewritten = run(create_language_version(source.id, "en", llm=llm))

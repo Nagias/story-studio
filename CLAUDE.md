@@ -61,7 +61,7 @@ Nơi ghi từng loại dữ liệu (hiện tại):
 
 | Dữ liệu | Ở đâu | Nơi ghi đúng | Chỗ còn ghi tắt |
 |---|---|---|---|
-| Dự án | `projects/<proj_id>/project.json` + `images/`, `videos/`, `audio/`, `renders/` | `services/project_service.py` | `routers/api.py` (`api_import_master_storyboard()` ghi thẳng; 3 chỗ gọi `_save_project()`), `services/case_project_builder.py` (gọi `_save_project()`) |
+| Dự án | `projects/<proj_id>/project.json` + `images/`, `videos/`, `audio/`, `renders/` | `project_service.save_project()` (ghi an toàn qua `services/safe_files.py`); file hỏng thì `get_project()` báo `ProjectUnreadableError`, API trả 409 | — (gom xong 22/10/2026). Còn thiếu khoá: hai nơi cùng đọc-sửa-ghi một dự án thì bản lưu sau thắng |
 | Vụ án true-crime | `projects/_cases/<case_id>/` | `services/case_store.py` (ghi an toàn) | — |
 | Tài khoản Muse | `backend/config/muse_fleet_accounts.json` | `routers/muse_bridge.py` và Fleet Runner (hai nơi) | — |
 | Ảnh/video Muse | `backend/static/muse_outputs/` + bản sao trong dự án | `complete_task()` | — |
@@ -79,8 +79,8 @@ Máy kiểm tự động (chạy trong `tools/check.py` và hook trước commit
 
 | # | Mẫu cấm | Làm thay | Vì sao | Còn vi phạm ở |
 |---|---|---|---|---|
-| 1 | Ghi `projects/<proj_id>/project.json` ngoài `project_service`, gọi `_save_project()` từ module khác | gọi hàm công khai của `project_service` | nhiều nơi cùng ghi, không khoá, ghi thẳng: ghi dở là hỏng file | xem bảng mục 4 |
-| 2 | Bắt lỗi rồi trả `None` hay `pass`, khiến "lỗi" thành "không có" | để lỗi nổi lên, hoặc ghi log và báo rõ | `get_project()` trả `None` khi file hỏng → lần lưu sau ghi đè thành dự án rỗng | `project_service.get_project()`, `list_projects()` |
+| 1 | Ghi `projects/<proj_id>/project.json` ở ngoài `project_service` (mở file ghi thẳng) | `project_service.save_project()` | nhiều nơi cùng ghi, ghi thẳng: ghi dở là hỏng file | — |
+| 2 | Bắt lỗi rồi trả `None` hay `pass`, khiến "lỗi" thành "không có" | để lỗi nổi lên, hoặc ghi log và báo rõ | từng gặp: `get_project()` trả `None` khi file hỏng → lần lưu sau ghi đè thành dự án rỗng (đã sửa 22/10/2026) | các chỗ `try/except: pass` còn trong mốc Ruff (`tools/ruff_baseline.json`, luật S110) |
 | 3 | "Thành công giả": giá trị bịa, link mẫu, mock báo xong, nhánh chỉ có `pass` | báo lỗi rõ hoặc đánh dấu thất bại | người dùng và agent tưởng đã xong | `tts_service.get_audio_duration()` (thiếu ffprobe thì coi là 3 giây), `import_comic_panels_to_storyboard()` (chép ảnh lỗi vẫn gán ảnh) |
 | 4 | Âm thầm chuyển sang dịch vụ tính tiền khi dịch vụ miễn phí lỗi | ghi lý do và hiện cho người dùng thấy | tốn tiền mà không ai biết | `image_service.generate_image()` (Muse lỗi rơi sang 9router) |
 | 5 | Viết thêm client gọi 9router/LLM | dùng `services/case_adaptation_llm.py` (có thử lại, chờ khi 9router bận) | đang có 4 client, chỉ 1 biết thử lại | `script_splitter.py`, `storyboard_engine.py` |
