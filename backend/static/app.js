@@ -3468,7 +3468,11 @@ async function handleImportComicToStoryboard() {
 
     closeComicModal();
     switchStep(2); // mở Bảng Đạo Diễn để thấy ngay các cảnh vừa nhập
-    showToast(`Đã đưa ${res.imported_scenes_count} phân cảnh truyện tranh vào Storyboard! Bạn có thể lồng tiếng và render video ngay.`, "success", 4500);
+    if (res.failed_panels > 0) {
+      showToast(`Đã đưa ${res.imported_scenes_count} phân cảnh vào Storyboard, nhưng ${res.failed_panels} khung không chép được ảnh (đánh dấu "Lỗi ảnh").`, "warning", 8000);
+    } else {
+      showToast(`Đã đưa ${res.imported_scenes_count} phân cảnh truyện tranh vào Storyboard! Bạn có thể lồng tiếng và render video ngay.`, "success", 4500);
+    }
   } catch (err) {
     console.error("handleImportComicToStoryboard error", err);
     showToast(`Lỗi nhập phân cảnh: ${err.message || err}`, "error");
@@ -3822,7 +3826,11 @@ async function handleStep1ProcessComic() {
     renderFullUI();
     selectScene(0);
     switchStep(2);
-    showToast(`Đã bóc tách & nhập ${result.total_panels} khung tranh vào Bảng Đạo Diễn!`, "success", 4500);
+    if (importRes?.failed_panels > 0) {
+      showToast(`Đã nhập ${result.total_panels} khung tranh, nhưng ${importRes.failed_panels} khung không chép được ảnh (đánh dấu "Lỗi ảnh").`, "warning", 8000);
+    } else {
+      showToast(`Đã bóc tách & nhập ${result.total_panels} khung tranh vào Bảng Đạo Diễn!`, "success", 4500);
+    }
   } catch (err) {
     console.error("handleStep1ProcessComic error", err);
     showToast("Lỗi cắt ảnh truyện tranh: " + (err.message || err), "error");

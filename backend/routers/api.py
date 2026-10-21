@@ -2115,6 +2115,7 @@ async def import_comic_panels_to_storyboard(
         project.scenes = []
 
     imported_scenes = []
+    failed_panels = 0
     p_images_dir = PROJECTS_DIR / project_id / "images"
     p_images_dir.mkdir(parents=True, exist_ok=True)
 
@@ -2131,19 +2132,31 @@ async def import_comic_panels_to_storyboard(
         # Target destination in project images folder
         dst_image_path = p_images_dir / f"{scene_id}.jpg"
 
-        if src_image_path and os.path.exists(src_image_path):
-            resolved_src = Path(src_image_path).resolve()
-            allowed_roots = [COMIC_SLICES_DIR.resolve(), (PROJECTS_DIR / project_id).resolve(), STATIC_DIR.resolve()]
-            if any(resolved_src.is_relative_to(root) for root in allowed_roots):
-                try:
-                    shutil.copy2(resolved_src, dst_image_path)
-                except Exception:
-                    pass
-            else:
-                logger.warning(f"Blocked unauthorized file copy in comic import: {src_image_path}")
-        
-        image_url = f"/api/projects/{project_id}/media/images/{scene_id}.jpg"
+        # Khung không chép được ảnh thì đánh dấu "Lỗi ảnh" (status_image="error"), không trỏ vào file không có
+        image_error = None
+        src_name = Path(str(src_image_path)).name if src_image_path else "(không có đường dẫn)"
+        if not src_image_path or not os.path.exists(src_image_path):
+            image_error = f"Không thấy ảnh khung tranh {src_name}"
+        elif not is_within(src_image_path, COMIC_SLICES_DIR, PROJECTS_DIR / project_id, STATIC_DIR):
+            logger.warning(f"Blocked unauthorized file copy in comic import: {src_image_path}")
+            image_error = f"Ảnh {src_name} nằm ngoài thư mục cho phép"
+        else:
+            try:
+                shutil.copy2(Path(src_image_path).resolve(), dst_image_path)
+            except OSError as e:
+                image_error = f"Chép ảnh {src_name} thất bại: {e}"
+        if image_error:
+            failed_panels += 1
+
         scene_text = panel.get("custom_text") or f"{req.text_prefix or 'Khung tranh'} #{idx}"
+        metadata = {
+            "source": "comic_slicer",
+            "aspect_ratio": ar,
+            "bbox": panel.get("bbox", {}),
+            "is_wide": panel.get("is_wide", False),
+        }
+        if image_error:
+            metadata["image_error"] = image_error
 
         new_scene = Scene(
             id=scene_id,
@@ -2151,15 +2164,11 @@ async def import_comic_panels_to_storyboard(
             text=scene_text,
             image_prompt=f"Comic panel #{idx} (Aspect Ratio: {ar:.2f})",
             camera_motion=camera_motion,
-            image_path=str(dst_image_path),
-            image_url=image_url,
-            status="imaged",
-            metadata={
-                "source": "comic_slicer",
-                "aspect_ratio": ar,
-                "bbox": panel.get("bbox", {}),
-                "is_wide": panel.get("is_wide", False),
-            }
+            image_path=None if image_error else str(dst_image_path),
+            image_url=None if image_error else f"/api/projects/{project_id}/media/images/{scene_id}.jpg",
+            status="draft" if image_error else "imaged",
+            status_image="error" if image_error else "ready",
+            metadata=metadata,
         )
 
         project.scenes.append(new_scene)
@@ -2173,6 +2182,7 @@ async def import_comic_panels_to_storyboard(
         "success": True,
         "project_id": project_id,
         "imported_scenes_count": len(imported_scenes),
+        "failed_panels": failed_panels,
         "total_scenes": len(updated_proj.scenes) if updated_proj else 0,
         "project": updated_proj,
     }
