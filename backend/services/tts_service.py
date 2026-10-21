@@ -301,31 +301,42 @@ def get_available_voices() -> List[Dict[str, Any]]:
     return AVAILABLE_VOICES
 
 
+class MediaDurationError(RuntimeError):
+    """Không đo được thời lượng file âm thanh/video (thiếu ffprobe, file không có hoặc hỏng)."""
+
+
 def get_audio_duration(file_path: str) -> float:
-    """Get accurate audio duration in seconds using ffprobe."""
+    """Thời lượng (giây) đo bằng ffprobe, dự phòng bằng PyAV nếu có cài.
+
+    Không đo được thì báo MediaDurationError kèm lý do. Không trả số đoán: trước đây trả 3,0 giây như thể đã đo,
+    làm video bị cắt hoặc kéo sai độ dài mà không ai biết.
+    """
+    reasons = []
+    cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+           "-of", "default=noprint_wrappers=1:nokey=1", str(file_path)]
     try:
-        cmd = [
-            "ffprobe",
-            "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(file_path)
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         val = result.stdout.strip()
-        if val:
+        if result.returncode == 0 and val and val != "N/A":
             return round(float(val), 3)
-    except Exception as e:
-        # Fallback to PyAV if available
+        reasons.append(f"ffprobe: {(result.stderr or val or 'không có thời lượng').strip()[:200]}")
+    except FileNotFoundError:
+        reasons.append("không tìm thấy ffprobe trong PATH")
+    except (subprocess.TimeoutExpired, ValueError) as e:
+        reasons.append(f"ffprobe: {e}")
+    try:
+        import av
+    except ImportError:
+        pass
+    else:
         try:
-            import av
             with av.open(file_path) as container:
-                duration = float(container.duration) / 1000000.0
-                return round(duration, 3)
-        except Exception:
-            pass
-    # Worst case approximation based on file size or default 3.0s
-    return 3.0
+                if container.duration:
+                    return round(float(container.duration) / 1000000.0, 3)
+                reasons.append("PyAV: file không có thời lượng")
+        except Exception as e:  # PyAV ném nhiều loại lỗi riêng tuỳ định dạng
+            reasons.append(f"PyAV: {e}")
+    raise MediaDurationError(f"Không đo được thời lượng {Path(file_path).name}: {'; '.join(reasons)}")
 
 
 def normalize_narration_text(text: str) -> str:

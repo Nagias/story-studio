@@ -1,5 +1,7 @@
 import os
 import re
+import shutil
+import subprocess
 import sys
 import pytest
 from pathlib import Path
@@ -278,10 +280,23 @@ def test_fallback_srt_generator():
     assert "Xin chào thế giới" in cue
 
 
-def test_get_audio_duration_accuracy(tmp_path):
-    """Verify get_audio_duration returns fallback on non-existent file."""
-    dur = get_audio_duration(str(tmp_path / "non_existent.mp3"))
-    assert dur == 3.0
+def test_get_audio_duration_fails_loudly_instead_of_guessing(tmp_path):
+    """Không đo được thì báo lỗi rõ, không trả số đoán (trước đây trả 3,0 giây như thể đã đo)."""
+    from services.tts_service import MediaDurationError
+    with pytest.raises(MediaDurationError, match="non_existent.mp3"):
+        get_audio_duration(str(tmp_path / "non_existent.mp3"))
+    broken = tmp_path / "broken.mp3"
+    broken.write_bytes(b"not audio at all")
+    with pytest.raises(MediaDurationError):
+        get_audio_duration(str(broken))
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="cần ffmpeg để tạo file âm thanh mẫu")
+def test_get_audio_duration_measures_real_file(tmp_path):
+    out = tmp_path / "silence.mp3"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=22050:cl=mono", "-t", "2",
+                    "-q:a", "9", str(out)], check=True, timeout=60)
+    assert abs(get_audio_duration(str(out)) - 2.0) < 0.15
 
 
 @pytest.mark.asyncio

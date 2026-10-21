@@ -71,10 +71,15 @@ def extract_word_timestamps(
             logger.debug(f"faster-whisper not available or failed ({e}); falling back to phonetic alignment.")
 
     # High-precision proportional fallback
-    total_dur = 3.5
+    measured = None
     if audio_p and audio_p.exists():
-        from services.tts_service import get_audio_duration
-        total_dur = get_audio_duration(str(audio_p)) or 3.5
+        from services.tts_service import MediaDurationError, get_audio_duration
+        try:
+            measured = get_audio_duration(str(audio_p))
+        except MediaDurationError as e:
+            logger.warning(f"Phụ đề karaoke: {e}; ước lượng thời lượng theo số chữ")
+    if measured:
+        total_dur = measured
     elif fallback_duration and fallback_duration > 0:
         total_dur = fallback_duration
     else:
