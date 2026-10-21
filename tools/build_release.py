@@ -51,7 +51,6 @@ WHITELIST_GLOBS = [
     "backend/models/**/*.py",
     "backend/runners/*.py",
     "backend/static/demo_images/scene_*.jpg",
-    "backend/static/demo_images/style_*.jpg",
     "backend/static/voice_samples/*",
     "backend/static/test_comic/test_*.jpg",  # ảnh mẫu cho nút "dùng thử" ở tab cắt truyện (app.js loadComicSample)
     "backend/assets/**/*",

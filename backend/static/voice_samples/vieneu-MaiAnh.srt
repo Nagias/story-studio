@@ -1,4 +1,0 @@
-1
-00:00:00,000 --> 00:00:04,000
-Xin chào, tôi là Mai Anh, giọng đọc truyền cảm AI thế hệ mới.
-

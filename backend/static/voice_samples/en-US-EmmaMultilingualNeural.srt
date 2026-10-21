@@ -1,4 +1,0 @@
-1
-00:00:00,050 --> 00:00:04,237
-Hello, I am Emma, an expressive and eloquent narrator voice.
-
