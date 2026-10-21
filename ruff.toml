@@ -1,0 +1,20 @@
+# Lint Python bằng Ruff. Cổng kiểm thật là `tools/check.py`: nó so kết quả với `tools/ruff_baseline.json`
+# (lỗi có từ trước được ghi số lượng theo từng file và luật). Lỗi mới thì chặn; sửa bớt lỗi cũ thì chạy
+# `tools/check.py --shrink-ruff-baseline` để hạ mốc. Không có lệnh nâng mốc: thêm ngoại lệ là việc phải được duyệt.
+target-version = "py314"
+src = ["backend", "."]
+extend-exclude = [".cache", ".superpowers", "projects", "tools/tailwind"]
+
+[lint]
+select = [
+    "E9",        # lỗi cú pháp
+    "F",         # pyflakes: import thừa, tên chưa khai báo, biến không dùng, định nghĩa trùng
+    "W605",      # chuỗi thoát sai (Python sắp báo lỗi)
+    "S110",      # try/except chỉ có pass: nuốt lỗi (CLAUDE.md đường cấm 2)
+    "ASYNC210",  # gọi HTTP chặn trong hàm async (đường cấm 8)
+    "ASYNC220",  # tạo tiến trình con chặn trong hàm async
+    "ASYNC221",
+    "ASYNC222",
+    "ASYNC230",  # open() chặn trong hàm async
+    "ASYNC251",  # time.sleep trong hàm async
+]

@@ -1,0 +1,144 @@
+{
+ "backend/routers/api.py": {
+  "ASYNC220": 1,
+  "ASYNC230": 2,
+  "S110": 1
+ },
+ "backend/routers/muse_bridge.py": {
+  "ASYNC230": 1,
+  "F401": 2,
+  "S110": 3
+ },
+ "backend/runners/muse_fleet_runner.py": {
+  "ASYNC230": 1,
+  "S110": 4
+ },
+ "backend/services/__init__.py": {
+  "F401": 2
+ },
+ "backend/services/audio_engine.py": {
+  "F401": 5,
+  "S110": 2
+ },
+ "backend/services/grid_slicer.py": {
+  "F401": 4
+ },
+ "backend/services/image_service.py": {
+  "ASYNC230": 2,
+  "F401": 3
+ },
+ "backend/services/investigation_board_engine.py": {
+  "F401": 3,
+  "F841": 1,
+  "S110": 1
+ },
+ "backend/services/project_service.py": {
+  "F401": 2,
+  "S110": 1
+ },
+ "backend/services/script_splitter.py": {
+  "F401": 1,
+  "F841": 1
+ },
+ "backend/services/storyboard_engine.py": {
+  "F401": 4
+ },
+ "backend/services/subtitle_engine.py": {
+  "F401": 3,
+  "S110": 1,
+  "W605": 1
+ },
+ "backend/services/thumbnail_service.py": {
+  "F401": 3,
+  "F841": 2,
+  "S110": 2
+ },
+ "backend/services/tts_service.py": {
+  "ASYNC220": 1,
+  "ASYNC230": 5,
+  "F841": 1,
+  "S110": 3
+ },
+ "backend/services/video_service.py": {
+  "ASYNC221": 1,
+  "ASYNC230": 1,
+  "F541": 2,
+  "S110": 2
+ },
+ "backend/services/vieneu_server.py": {
+  "S110": 1
+ },
+ "backend/services/vieneu_worker.py": {
+  "F401": 1,
+  "S110": 3
+ },
+ "run.py": {
+  "S110": 3
+ },
+ "tests/test_adversarial_qa.py": {
+  "ASYNC230": 2,
+  "F401": 12,
+  "F841": 2
+ },
+ "tests/test_api.py": {
+  "F401": 1,
+  "F841": 1
+ },
+ "tests/test_case_adaptation_steps_bible.py": {
+  "F401": 1
+ },
+ "tests/test_case_project_builder.py": {
+  "F401": 1
+ },
+ "tests/test_character_consistency.py": {
+  "F401": 6
+ },
+ "tests/test_comic.py": {
+  "F401": 3
+ },
+ "tests/test_e2e_pipeline.py": {
+  "ASYNC230": 1,
+  "F401": 3,
+  "S110": 2
+ },
+ "tests/test_gate_gout_regressions.py": {
+  "F401": 7,
+  "S110": 1
+ },
+ "tests/test_investigation_board.py": {
+  "F401": 1
+ },
+ "tests/test_muse_fleet_runner.py": {
+  "F401": 5
+ },
+ "tests/test_muse_fleet_runner_integration.py": {
+  "F401": 8
+ },
+ "tests/test_nanahoshi_1click_e2e.py": {
+  "F401": 9,
+  "S110": 2
+ },
+ "tests/test_true_crime_e2e.py": {
+  "F811": 3
+ },
+ "tests/test_tts.py": {
+  "ASYNC230": 4,
+  "F401": 1,
+  "S110": 2
+ },
+ "tests/test_video.py": {
+  "F401": 3
+ },
+ "tests/test_vox_narrative.py": {
+  "F401": 6
+ },
+ "tests/test_youtube_storyboard_spec.py": {
+  "F401": 15
+ },
+ "tests/test_youtube_studio_v2_improvements.py": {
+  "F401": 7
+ },
+ "tools/build_release.py": {
+  "S110": 1
+ }
+}
