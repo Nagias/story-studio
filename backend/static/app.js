@@ -3056,7 +3056,7 @@ async function togglePlayVoiceSample() {
   } catch (err) {
     console.error("Play voice sample failed", err);
     resetVoiceSampleButtonState();
-    showToast("Lỗi nghe thử giọng: " + (err.message || err), "error");
+    showToast("Lỗi nghe thử giọng: " + escapeHtml(err.message || err), "error");
   }
 }
 
@@ -3242,7 +3242,7 @@ async function loadComicSample(type) {
     // Nút mẫu ở Bước 1 dùng chung hàm này: cập nhật cả ô file và nút "Cắt khung" của Bước 1
     if (DOM.step1ComicMode) DOM.step1ComicMode.value = type === 'strip' ? 'strip' : 'grid';
     handleStep1ComicFileSelect(file);
-    showToast(`Đã nạp ảnh mẫu: ${filename}`, "info");
+    showToast(`Đã nạp ảnh mẫu: ${escapeHtml(filename)}`, "info");
   } catch (err) {
     console.error("loadComicSample failed", err);
     showToast("Không tìm thấy file ảnh mẫu trên máy chủ", "warning");
@@ -3302,7 +3302,7 @@ async function handleStartSlice() {
     if (DOM.comicSliceLoading) DOM.comicSliceLoading.classList.add('hidden');
     if (DOM.comicUploadSection) DOM.comicUploadSection.classList.remove('hidden');
     if (DOM.btnStartSlice) DOM.btnStartSlice.disabled = false;
-    showToast(`Lỗi cắt ảnh: ${err.message || err}`, "error");
+    showToast(`Lỗi cắt ảnh: ${escapeHtml(err.message || err)}`, "error");
   }
 }
 
@@ -3475,7 +3475,7 @@ async function handleImportComicToStoryboard() {
     }
   } catch (err) {
     console.error("handleImportComicToStoryboard error", err);
-    showToast(`Lỗi nhập phân cảnh: ${err.message || err}`, "error");
+    showToast(`Lỗi nhập phân cảnh: ${escapeHtml(err.message || err)}`, "error");
   } finally {
     if (DOM.btnImportComicToStoryboard) {
       DOM.btnImportComicToStoryboard.disabled = false;
@@ -3603,7 +3603,7 @@ async function handleGenerateCustomThumbnail() {
       showToast("Không thể tạo Thumbnail", "error");
     }
   } catch (err) {
-    showToast("Lỗi tạo Thumbnail: " + (err.message || err), "error");
+    showToast("Lỗi tạo Thumbnail: " + escapeHtml(err.message || err), "error");
   } finally {
     if (DOM.btnGenerateCustomThumbnail) {
       DOM.btnGenerateCustomThumbnail.disabled = false;
@@ -3648,7 +3648,7 @@ function handleCharRefFileSelect(file) {
     if (DOM.step1CharRefPreviewCard) DOM.step1CharRefPreviewCard.classList.remove('hidden');
     if (DOM.step1CharRefDropzone) DOM.step1CharRefDropzone.classList.add('hidden');
     if (DOM.step1CharRefUrl) DOM.step1CharRefUrl.value = '';
-    showToast(`Đã nạp ảnh tham chiếu nhân vật: ${file.name}`, "success");
+    showToast(`Đã nạp ảnh tham chiếu nhân vật: ${escapeHtml(file.name)}`, "success");
   };
   reader.onerror = () => {
     showToast("Không thể đọc file ảnh tham chiếu!", "error");
@@ -3762,7 +3762,7 @@ async function handleStep1ProcessScript() {
     }
   } catch (err) {
     console.error("handleStep1ProcessScript error", err);
-    showToast("Lỗi phân tích kịch bản: " + (err.message || err), "error");
+    showToast("Lỗi phân tích kịch bản: " + escapeHtml(err.message || err), "error");
   } finally {
     if (DOM.btnStep1ProcessScript) {
       DOM.btnStep1ProcessScript.disabled = false;
@@ -3833,7 +3833,7 @@ async function handleStep1ProcessComic() {
     }
   } catch (err) {
     console.error("handleStep1ProcessComic error", err);
-    showToast("Lỗi cắt ảnh truyện tranh: " + (err.message || err), "error");
+    showToast("Lỗi cắt ảnh truyện tranh: " + escapeHtml(err.message || err), "error");
   } finally {
     if (DOM.btnStep1ProcessComic) {
       DOM.btnStep1ProcessComic.disabled = false;
@@ -3969,7 +3969,7 @@ async function startProduceLongVideo() {
     updateProducerStageUI(1, 100, `Lỗi sản xuất: ${err.message || err}`, [
       `LỖI: ${err.message || err}`
     ]);
-    showToast(`Lỗi sản xuất: ${err.message || err}`, "error");
+    showToast(`Lỗi sản xuất: ${escapeHtml(err.message || err)}`, "error");
   }
 }
 
@@ -4031,7 +4031,7 @@ function listenToProduceProgress(renderId) {
       }
       if (pollInterval) clearInterval(pollInterval);
       const errMsg = data.error || 'Quy trình sản xuất video dài thất bại!';
-      showToast(`❌ LỖI SẢN XUẤT: ${errMsg}`, "error", 6000);
+      showToast(`❌ LỖI SẢN XUẤT: ${escapeHtml(errMsg)}`, "error", 6000);
       if (DOM.producerStatusText) {
         DOM.producerStatusText.textContent = `Thất bại: ${errMsg}`;
         DOM.producerStatusText.className = "text-xs font-bold text-rose-600 truncate";
@@ -4410,7 +4410,7 @@ function initMasterStoryboardSpec() {
       showToast("Phân rã Master Storyboard thành công!", "success");
     } catch (err) {
       console.error(err);
-      showToast("Lỗi phân rã kịch bản: " + err.message, "error");
+      showToast("Lỗi phân rã kịch bản: " + escapeHtml(err.message), "error");
     } finally {
       btnDeconstruct.disabled = false;
       btnDeconstruct.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> <span>Phân rã Master Storyboard</span>';
@@ -4448,7 +4448,7 @@ function initMasterStoryboardSpec() {
       }
     } catch (err) {
       console.error(err);
-      showToast("Lỗi nạp storyboard: " + err.message, "error");
+      showToast("Lỗi nạp storyboard: " + escapeHtml(err.message), "error");
     } finally {
       btnApply.disabled = false;
       btnApply.innerHTML = '<i class="fa-solid fa-check"></i> <span>Nạp vào Dự Án & Bắt đầu Dựng</span>';
@@ -4783,18 +4783,18 @@ async function handleMuseFleetAccountClick(e) {
   const kindLabel = mode === 'video' ? 'video' : 'ảnh';
   const acc = cachedMuseAccounts.find(a => a.account_id === aid);
   if (acc && museAccountKind(acc) !== mode) {
-    showToast(`${aid} không phải tài khoản ${kindLabel}.`, "error");
+    showToast(`${escapeHtml(aid)} không phải tài khoản ${kindLabel}.`, "error");
     return;
   }
   if (acc && !acc.has_profile) {
-    showToast(`Tài khoản ${aid} chưa đăng nhập. Chạy: ${museSetupCommand(aid)}`, "warning", 6000);
+    showToast(`Tài khoản ${escapeHtml(aid)} chưa đăng nhập. Chạy: ${escapeHtml(museSetupCommand(aid))}`, "warning", 6000);
     return;
   }
 
   btn.disabled = true;
   const res = await API.switchMuseAccount(mode, aid);
   if (res && res.success) {
-    showToast(`Đã đặt ${aid} làm tài khoản ${kindLabel} mặc định.`, "success");
+    showToast(`Đã đặt ${escapeHtml(aid)} làm tài khoản ${kindLabel} mặc định.`, "success");
     if (applyMuseFleetAccounts(res)) {
       renderMuseFleetAccounts(true);
       updateMuseFleetIndicators();
@@ -4802,7 +4802,7 @@ async function handleMuseFleetAccountClick(e) {
       await loadMuseAccountsUI();
     }
   } else {
-    showToast((res && res.detail) || `Không thể đổi tài khoản ${kindLabel} mặc định.`, "error", 5000);
+    showToast(escapeHtml(res?.detail || `Không thể đổi tài khoản ${kindLabel} mặc định.`), "error", 5000);
     btn.disabled = false;
   }
 }
@@ -4974,37 +4974,37 @@ function renderMuseGalleryItems(items) {
     const isVideo = item.media_type === 'video' || (item.media_url && item.media_url.endsWith('.mp4'));
     const rawUrl = item.media_url || item.file_url || '';
     const mediaUrl = (rawUrl && !rawUrl.endsWith('/') && !rawUrl.includes('None')) ? rawUrl : '/static/demo_images/scene_1.jpg';
-    const downloadUrl = item.download_url || (item.task_id ? `/api/muse-bridge/download/${item.task_id}` : mediaUrl);
+    const downloadUrl = item.download_url || (item.task_id ? `/api/muse-bridge/download/${escapeHtml(item.task_id)}` : mediaUrl);
     const sceneId = item.scene_id || `Cảnh #${idx + 1}`;
     const taskId = item.task_id || '';
     
     return `
-      <div id="gallery-card-${taskId || idx}" class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs hover:shadow-md transition flex flex-col group">
+      <div id="gallery-card-${escapeHtml(taskId || idx)}" class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs hover:shadow-md transition flex flex-col group">
         <div class="relative aspect-video bg-slate-900 overflow-hidden flex items-center justify-center">
           ${isVideo ? `
-            <video src="${mediaUrl}" class="w-full h-full object-cover" controls preload="metadata"></video>
+            <video src="${escapeHtml(mediaUrl)}" class="w-full h-full object-cover" controls preload="metadata"></video>
           ` : `
-            <img src="${mediaUrl}" alt="${sceneId}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" onerror="this.onerror=null;this.src='/static/demo_images/scene_1.jpg'">
+            <img src="${escapeHtml(mediaUrl)}" alt="${escapeHtml(sceneId)}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" onerror="this.onerror=null;this.src='/static/demo_images/scene_1.jpg'">
           `}
           <span class="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-black/70 backdrop-blur-md text-[10px] font-mono font-bold text-white border border-white/20">
             ${isVideo ? '🎬 Muse 5s' : '💎 Muse 2K'}
           </span>
           <span class="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/60 text-[9px] font-mono text-emerald-300">
-            ${sceneId}
+            ${escapeHtml(sceneId)}
           </span>
         </div>
         <div class="p-2.5 flex items-center justify-between text-xs gap-1.5 flex-wrap">
-          <span class="font-bold text-slate-800 text-[11px] truncate flex-1 min-w-[100px]" title="${sceneId}">${sceneId}</span>
+          <span class="font-bold text-slate-800 text-[11px] truncate flex-1 min-w-[100px]" title="${escapeHtml(sceneId)}">${escapeHtml(sceneId)}</span>
           <div class="flex items-center gap-1 shrink-0">
-            <button type="button" class="btn-attach-to-scene px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer" data-media-url="${mediaUrl}" data-is-video="${isVideo ? 'true' : 'false'}" data-output-path="${item.output_path || ''}" title="Gắn tệp này trực tiếp vào Cảnh #${AppState.selectedSceneIndex + 1}">
+            <button type="button" class="btn-attach-to-scene px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer" data-media-url="${escapeHtml(mediaUrl)}" data-is-video="${isVideo ? 'true' : 'false'}" data-output-path="${escapeHtml(item.output_path || '')}" title="Gắn tệp này trực tiếp vào Cảnh #${AppState.selectedSceneIndex + 1}">
               <i class="fa-solid fa-thumbtack text-[10px]"></i>
               <span>Gắn Cảnh #${AppState.selectedSceneIndex + 1}</span>
             </button>
-            <a href="${downloadUrl}" download="${sceneId}${isVideo ? '.mp4' : '.jpg'}" class="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs" title="Tải file về máy tính">
+            <a href="${escapeHtml(downloadUrl)}" download="${escapeHtml(sceneId)}${isVideo ? '.mp4' : '.jpg'}" class="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs" title="Tải file về máy tính">
               <i class="fa-solid fa-download"></i>
               <span class="hidden sm:inline">Tải</span>
             </a>
-            <button type="button" class="btn-delete-gallery-item px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer" data-task-id="${taskId}" title="Xóa tệp media này">
+            <button type="button" class="btn-delete-gallery-item px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer" data-task-id="${escapeHtml(taskId)}" title="Xóa tệp media này">
               <i class="fa-solid fa-trash-can"></i>
             </button>
           </div>
@@ -5079,7 +5079,7 @@ async function generateSceneWithMuse(index, mode = 'image') {
     return;
   }
 
-  showToast(`Đang gửi yêu cầu tạo ${isVideo ? 'video chuyển động' : 'ảnh 2K'} qua Muse (${accLabel}) cho Cảnh #${index + 1}...`, "info");
+  showToast(`Đang gửi yêu cầu tạo ${isVideo ? 'video chuyển động' : 'ảnh 2K'} qua Muse (${escapeHtml(accLabel)}) cho Cảnh #${index + 1}...`, "info");
 
   if (isVideo) {
     scene.status_video = 'generating';
@@ -5128,7 +5128,7 @@ async function generateSceneWithMuse(index, mode = 'image') {
     const res = await API.createMuseBridgeTask(taskPayload);
     const taskId = res && (res.task?.task_id || res.task_id);
     if (taskId) {
-      showToast(`Đã đưa Cảnh #${index + 1} vào hàng đợi Muse (${accLabel})! Đang xử lý...`, "success");
+      showToast(`Đã đưa Cảnh #${index + 1} vào hàng đợi Muse (${escapeHtml(accLabel)})! Đang xử lý...`, "success");
       
       // Auto-poll task completion and update project/scene dynamically
       // Muse: ảnh ~45s, video 5s ~75s (tối đa vài phút khi hàng đợi bận)
@@ -5163,7 +5163,7 @@ async function generateSceneWithMuse(index, mode = 'image') {
             // Không tự thay bằng video Ken Burns dựng từ ảnh: báo đúng là Muse thất bại
             const errText = escapeHtml(String(t.error || 'Lỗi server'));
             const hint = isVideo ? ' Cảnh vẫn dùng ảnh tĩnh (Ken Burns) khi dựng video.' : '';
-            showToast(`Cảnh #${index + 1}: Muse tạo ${isVideo ? 'video' : 'ảnh'} thất bại (${errText}).${hint}`, "error", 8000);
+            showToast(`Cảnh #${index + 1}: Muse tạo ${isVideo ? 'video' : 'ảnh'} thất bại (${escapeHtml(errText)}).${hint}`, "error", 8000);
             if (isVideo) scene.status_video = 'error';
             else scene.status_image = 'error';
             renderSceneList();
@@ -5172,13 +5172,13 @@ async function generateSceneWithMuse(index, mode = 'image') {
       }, 2500);
     } else {
       const errText = escapeHtml(String(res?.detail || 'máy chủ không nhận task'));
-      showToast(`Không thể gửi task tới Muse Fleet (${kindLabel}): ${errText}`, "error", 7000);
+      showToast(`Không thể gửi task tới Muse Fleet (${kindLabel}): ${escapeHtml(errText)}`, "error", 7000);
       if (isVideo) scene.status_video = 'error';
       else scene.status_image = 'error';
       renderSceneList();
     }
   } catch (err) {
-    showToast("Lỗi gửi task: " + err.message, "error");
+    showToast("Lỗi gửi task: " + escapeHtml(err.message), "error");
     if (isVideo) scene.status_video = 'idle';
     else scene.status_image = 'idle';
     renderSceneList();
@@ -5188,8 +5188,8 @@ window.generateSceneWithMuse = generateSceneWithMuse;
 
 // ================= UTILITIES =================
 function escapeHtml(text) {
-  if (!text) return '';
-  return text
+  if (text === null || text === undefined) return '';
+  return String(text)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")

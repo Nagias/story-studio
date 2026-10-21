@@ -180,6 +180,44 @@ def test_no_machine_specific_paths():
              actual, ALLOWED_ABSOLUTE_PATHS)
 
 
+# --- Đường cấm 9: thông báo (toast) không chèn chữ từ máy chủ/người dùng chưa lọc -----------------------------------
+_UNTRUSTED_IN_TOAST = re.compile(r"err\.message|\.detail\b|errText|errMsg|file\.name|\baid\b|accLabel")
+
+
+def _strip_escaped_calls(line: str) -> str:
+    """Bỏ mọi đoạn escapeHtml(...)/tcEsc(...) (đếm ngoặc cân bằng, lồng bao nhiêu lớp cũng được)."""
+    out, i = [], 0
+    while i < len(line):
+        m = re.compile(r"\b(escapeHtml|tcEsc)\(").search(line, i)
+        if not m:
+            out.append(line[i:])
+            break
+        out.append(line[i:m.start()])
+        depth, j = 0, m.end() - 1
+        while j < len(line):
+            depth += {"(": 1, ")": -1}.get(line[j], 0)
+            j += 1
+            if depth == 0:
+                break
+        i = j
+    return "".join(out)
+
+
+def _unescaped_toasts(source: str) -> list:
+    found = []
+    for no, line in enumerate(source.splitlines(), 1):
+        if "showToast(" in line and _UNTRUSTED_IN_TOAST.search(_strip_escaped_calls(line)):
+            found.append((no, line.strip()))
+    return found
+
+
+def test_toasts_escape_untrusted_text():
+    problems = [f"  {name}:{no}: {text[:140]}" for name in ("app.js", "true_crime.js")
+                for no, text in _unescaped_toasts((STATIC / name).read_text(encoding="utf-8"))]
+    assert not problems, ("Đường cấm 9: showToast() hiển thị HTML; chữ từ lỗi, máy chủ hay máy người dùng phải qua "
+                          "escapeHtml()/tcEsc():\n" + "\n".join(problems))
+
+
 # --- Đường cấm 10: một sự kiện click không gắn hai lần ---------------------------------------------------------------
 def _inline_click_ids(html: str) -> set:
     ids = set()
