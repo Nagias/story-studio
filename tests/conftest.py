@@ -4,7 +4,7 @@ Cấu hình chung cho pytest.
 - Không cho test tự khởi động Fleet Runner thật (tránh mở profile Chrome và gửi prompt lên tài khoản Muse thật).
 - Sao lưu và khôi phục muse_fleet_accounts.json vì nhiều test ghi vào cấu hình tài khoản.
 - Không cho test tự bật worker phân tích vụ án (STORY_STUDIO_DISABLE_CASE_WORKER).
-- Fixture isolated_projects_dir: đổi PROJECTS_DIR sang thư mục tạm để test không ghi vào projects/ thật.
+- Mọi test ghi dự án vào thư mục tạm (đổi PROJECTS_DIR ở mọi module); fixture isolated_projects_dir trả đường dẫn đó.
 - Mọi test ghi ảnh cắt truyện tranh vào thư mục tạm (COMIC_SLICES_DIR), không vào backend/static/comic_slices.
 - Test không gắn cờ `live` không được gọi mạng hay dịch vụ thật trên máy (9router, VieNeu, server 8000): gọi là bị chặn
   và test báo lỗi. Test cần dịch vụ thật thì gắn `@pytest.mark.live` (chạy bằng `pytest -m live`).
@@ -150,33 +150,36 @@ def _protect_fleet_accounts_config(tmp_path_factory):
         shutil.copy2(backup, ACCOUNTS_FILE)
 
 
-@pytest.fixture(autouse=True)
-def _isolated_comic_slices_dir(tmp_path, monkeypatch) -> Path:
-    """Ảnh cắt truyện tranh của test ghi vào thư mục tạm, không để lại thư mục rác trong backend/static/comic_slices.
-    config, comic_slicer và routers.api đều giữ bản COMIC_SLICES_DIR riêng (import theo tên) nên đổi cả ba."""
-    if str(BACKEND_DIR) not in sys.path:
-        sys.path.insert(0, str(BACKEND_DIR))
-    import config
-    from routers import api
-    from services import comic_slicer
+REAL_PROJECTS_DIR = PROJECTS_ROOT.resolve()
+REAL_COMIC_SLICES_DIR = (BACKEND_DIR / "static" / "comic_slices").resolve()
 
-    slices = tmp_path / "comic_slices"
+
+def _redirect_everywhere(monkeypatch, attr: str, real: Path, new: Path) -> None:
+    """Nhiều module giữ bản sao riêng của đường dẫn (`from config import PROJECTS_DIR`), kể cả file test:
+    đổi ở MỌI module đã nạp đang trỏ vào thư mục thật."""
+    for module in list(sys.modules.values()):
+        namespace = getattr(module, "__dict__", None)
+        value = namespace.get(attr) if isinstance(namespace, dict) else None
+        if isinstance(value, Path) and value.resolve() == real:
+            monkeypatch.setattr(module, attr, new)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_data_dirs(tmp_path, monkeypatch) -> Path:
+    """Mọi test (kể cả cờ live) ghi dự án và ảnh cắt truyện tranh vào thư mục tạm, không bao giờ vào projects/ hay
+    backend/static/comic_slices thật. Module nạp sau đó lấy đường dẫn từ config (đã đổi) nên cũng thấy thư mục tạm."""
+    import main  # noqa: F401 — nạp mọi module backend để đổi hết các bản sao đường dẫn
+
+    projects = tmp_path / "isolated_projects"   # tên riêng: vài test tự tạo tmp_path/"projects" của mình
+    projects.mkdir()
+    slices = tmp_path / "isolated_comic_slices"
     slices.mkdir()
-    for module in (config, comic_slicer, api):
-        monkeypatch.setattr(module, "COMIC_SLICES_DIR", slices)
-    return slices
+    _redirect_everywhere(monkeypatch, "PROJECTS_DIR", REAL_PROJECTS_DIR, projects)
+    _redirect_everywhere(monkeypatch, "COMIC_SLICES_DIR", REAL_COMIC_SLICES_DIR, slices)
+    return projects
 
 
 @pytest.fixture
-def isolated_projects_dir(tmp_path, monkeypatch) -> Path:
-    """Thư mục projects tạm: mọi code đọc PROJECTS_DIR qua project_service/config đều thấy thư mục này."""
-    if str(BACKEND_DIR) not in sys.path:
-        sys.path.insert(0, str(BACKEND_DIR))
-    import config
-    from services import project_service
-
-    projects = tmp_path / "projects"
-    projects.mkdir()
-    monkeypatch.setattr(project_service, "PROJECTS_DIR", projects)
-    monkeypatch.setattr(config, "PROJECTS_DIR", projects)
-    return projects
+def isolated_projects_dir(_isolated_data_dirs) -> Path:
+    """Thư mục projects tạm của test (mọi test đều đã được cô lập; fixture này để test lấy đường dẫn)."""
+    return _isolated_data_dirs
