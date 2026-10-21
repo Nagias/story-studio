@@ -43,6 +43,22 @@ from models.case_adaptation_schemas import CaseAdaptationPlan, CaseBible, Lang, 
 from services.case_fictionalizer import AnonymizerShield
 
 
+# ---------------------------------------------------------------- thời lượng lời kể
+
+# Tốc độ đọc đo bằng giọng Edge khi chạy thật vụ Nhũ Cô (21/10): lời Việt 229 chữ/phút, lời Anh 133 chữ/phút (VieNeu
+# MaiAnh đo 218–234 tuỳ bài). Dùng để đổi lời kể ra số phút video (số chữ mỗi cảnh ở các bước viết, cảnh báo thời lượng).
+VI_WORDS_PER_MINUTE = 229
+EN_WORDS_PER_MINUTE = 133
+# Lời kể cả video đọc lâu hơn số phút đã chọn quá tỉ lệ này thì màn xem lại cảnh báo.
+DURATION_WARN_RATIO = 1.15
+
+
+def speech_minutes(texts: Iterable[str], lang: Lang) -> float:
+    """Số phút đọc hết các đoạn lời kể `texts` (đếm từ theo khoảng trắng, tốc độ đọc đã đo của `lang`)."""
+    rate = VI_WORDS_PER_MINUTE if lang == "vi" else EN_WORDS_PER_MINUTE
+    return sum(len(str(t or "").split()) for t in texts) / rate
+
+
 # ---------------------------------------------------------------- fold
 
 @lru_cache(maxsize=8192)
@@ -748,7 +764,8 @@ def check_plan(plan: CaseAdaptationPlan, source_text: str) -> CaseAdaptationPlan
           đứng trước trong bảng tên, cảnh báo nêu cảnh và tên hư cấu đã dùng, không nêu tên thật;
         * con số nhận dạng lấy từ bài gốc (số nhà, biển số...) còn trong lời kể hay prompt;
         * tên hư cấu dạng tiếng Việt trong lời Anh;
-        * lời trích trong ngoặc kép không có nguyên văn trong bài gốc (chỉ so khi lời kể cùng ngôn ngữ với bài).
+        * lời trích trong ngoặc kép không có nguyên văn trong bài gốc (chỉ so khi lời kể cùng ngôn ngữ với bài);
+        * lời kể bản Việt hay bản Anh đọc lâu hơn số phút đã chọn quá DURATION_WARN_RATIO (tính cả cảnh miễn trừ).
     - Cảnh `disclaimer` không bị quét.
     """
     new = plan.model_copy(deep=True)
@@ -859,6 +876,16 @@ def check_plan(plan: CaseAdaptationPlan, source_text: str) -> CaseAdaptationPlan
     for ev in bible.evidence:
         if ev.id not in revealed:
             warn(f"Bằng chứng '{ev.id}' ({ev.label_vi}) chưa hiện ra trên bảng điều tra ở cảnh nào.")
+
+    # --- thời lượng: số chữ mỗi cảnh đã giới hạn ở các bước viết, nhưng người dùng sửa lời hay dàn ý nhiều cảnh vẫn có
+    # thể làm cả video dài hơn số phút đã chọn; báo để rút gọn
+    for lang, label in (("vi", "bản Việt"), ("en", "bản Anh")):
+        minutes = speech_minutes((getattr(s, f"narration_{lang}") for s in new.scenes), lang)
+        if new.target_minutes and minutes > new.target_minutes * DURATION_WARN_RATIO:
+            rate = VI_WORDS_PER_MINUTE if lang == "vi" else EN_WORDS_PER_MINUTE
+            shown = f"{minutes:.1f}".replace(".", ",")
+            warn(f"Lời kể {label} đọc mất khoảng {shown} phút (khoảng {rate} từ mỗi phút), dài hơn video "
+                 f"{new.target_minutes} phút đã chọn; hãy rút gọn lời ở các cảnh dài.")
 
     new.warnings = warnings
     new.check_warnings = check_warnings

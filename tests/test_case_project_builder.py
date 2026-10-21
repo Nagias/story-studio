@@ -643,7 +643,10 @@ def test_language_version_rewritten_text_gets_aliases_and_blocks_real_names(isol
     scene_by_order(saved, 4).text = "Câu đã sửa của cảnh bốn, kể lại diễn biến bằng lời mới."
     project_service._save_project(saved)
 
-    async def leaky(bible, items, *, llm=None, target_minutes=None):
+    seen = []
+
+    async def leaky(bible, items, *, llm=None, target_minutes=None, total_scenes=None):
+        seen.append((target_minutes, total_scenes))
         return {4: "Nguyen Van Hung lay still in the loading yard while the rain kept falling on the silent containers "
                    "and nobody yet knew who had been standing beside him in the dark."}
 
@@ -652,13 +655,14 @@ def test_language_version_rewritten_text_gets_aliases_and_blocks_real_names(isol
     # Tên thật đã có tên hư cấu: tự thay, không chặn.
     new, rewritten = run(create_language_version(source.id, "en"))
     assert rewritten == [4]
+    assert seen == [(plan.target_minutes, len(plan.scenes))]          # lời Anh viết lại theo thời lượng và số cảnh
     text = scene_by_order(new, 4).text
     assert "Nguyen Van Hung" not in text and "Trinh Quang Vu lay still" in text
 
     # Tên chỉ regex bắt được trên bài gốc (chưa có tên hư cấu): chặn, và thông báo không nêu tên thật.
     case_store.save_source(plan.case_id, case_store.load_source(plan.case_id) + "\nÔng Hoàng Minh Tuấn là tài xế xe tải.")
 
-    async def leaky_unknown(bible, items, *, llm=None, target_minutes=None):
+    async def leaky_unknown(bible, items, *, llm=None, target_minutes=None, total_scenes=None):
         return {4: "Hoang Minh Tuan watched the yard from his truck while the rain kept falling and nobody noticed "
                    "him there, parked in the dark beside the silent containers all night long."}
 
@@ -679,7 +683,7 @@ def test_language_version_rewritten_text_with_exact_date_is_blocked_without_nami
     scene_by_order(saved, 4).text = "Câu đã sửa của cảnh bốn, kể lại diễn biến bằng lời mới."
     project_service._save_project(saved)
 
-    async def dated(bible, items, *, llm=None, target_minutes=None):
+    async def dated(bible, items, *, llm=None, target_minutes=None, total_scenes=None):
         return {4: "On October 7, 2014 the loading yard lay silent under the rain while nobody yet knew who had been "
                    "standing beside the victim in the dark, parked between the silent containers all night long."}
 

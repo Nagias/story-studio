@@ -22,7 +22,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 from models.case_adaptation_schemas import DISCLAIMER, MAX_ATTEMPTS, TARGET_SCENES, CaseBible, CaseEntity, CasePipeline
 from services import case_store
-from services.case_adaptation_checks import fold, has_blocking_flags
+from services.case_adaptation_checks import check_plan, fold, has_blocking_flags
 from services.case_adaptation_llm import LLMError
 from services.case_adaptation_prompts import outline_prompt
 from services.case_adaptation_steps import (
@@ -1114,3 +1114,43 @@ def test_open_question_must_differ_from_the_previous_part(isolated_projects_dir)
     assert 'không mở đầu câu hỏi bằng "Liệu"' in prompt
     assert _last_question("Trời mưa. Ai đã đứng đó?") == "Ai đã đứng đó?"
     assert _last_question("Trời mưa.") == ""
+
+
+# ---------------------------------------------------------------- số chữ theo số cảnh thật của dàn ý, cảnh báo thời lượng
+
+def test_scene_budget_follows_outline_scene_count_without_padding():
+    from services.case_adaptation_steps import scene_budget
+    base = scene_budget(8)                                               # 35–40 cảnh: ~12,8 giây mỗi cảnh
+    assert base.seconds == pytest.approx(12.8)
+    many = scene_budget(8, total_scenes=45)                              # dàn ý 45 cảnh: mỗi cảnh ngắn lại
+    assert many.seconds == pytest.approx(480 / 45) and many.vi_limit[1] < base.vi_limit[1]
+    assert scene_budget(8, total_scenes=20).seconds == pytest.approx(12.8)   # dàn ý ít cảnh: giữ mức chuẩn, không độn
+    assert scene_budget(8, total_scenes=12, supported_minutes=2).seconds == pytest.approx(10.0)  # bài chỉ đủ 2 phút
+
+
+def test_write_steps_budget_shrinks_when_outline_has_more_scenes_than_minutes_allow(isolated_projects_dir):
+    # Video 2 phút (9–10 cảnh, ~12,6 giây mỗi cảnh) nhưng dàn ý 11 cảnh + cảnh miễn trừ = 12 cảnh:
+    # 120 giây / 12 = 10 giây mỗi cảnh, để cả video vẫn khoảng 2 phút.
+    outline = copy.deepcopy(load_fixture("OUTLINE"))
+    outline["parts"][0]["scene_count"], outline["parts"][1]["scene_count"] = 5, 6
+    llm, _calls = make_fake_llm({"OUTLINE": outline})
+    with pytest.raises(StepFailed):                                      # fixture lời Việt chỉ có 3 cảnh: bị loại
+        _run_pipeline(_new_pipeline(target_minutes=2), llm, stop_after="write_vi_p1")
+    assert "khoảng 10 giây đọc" in _prompt_for(llm, "WRITE_VI p1")
+
+
+def test_plan_warns_when_narration_is_longer_than_target_minutes(isolated_projects_dir):
+    pipeline = _new_pipeline()
+    llm, _calls = make_fake_llm()
+    _run_pipeline(pipeline, llm)
+    plan = case_store.load_plan(pipeline.case_id)
+    assert not any("dài hơn video" in w for w in plan.check_warnings), plan.check_warnings     # video 8 phút: vừa
+    long = plan.model_copy(deep=True, update={"target_minutes": 1})
+    for scene in long.scenes[1:]:                                        # mỗi cảnh ~63 chữ Việt, ~42 từ Anh
+        scene.narration_vi = " ".join(["mưa rơi đều trên mái tôn cũ"] * 9)
+        scene.narration_en = " ".join(["the rain kept falling on the roof"] * 6)
+    checked = check_plan(long, DOSSIER)
+    vi = [w for w in checked.check_warnings if "bản Việt" in w]
+    en = [w for w in checked.check_warnings if "bản Anh" in w]
+    assert vi and en, checked.check_warnings
+    assert all("dài hơn video 1 phút" in w for w in vi + en), checked.check_warnings

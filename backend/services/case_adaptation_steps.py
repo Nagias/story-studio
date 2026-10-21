@@ -1694,11 +1694,28 @@ def _norm_visual(value: Any) -> str:
     return key if key in VISUAL_KINDS else "image"
 
 
-def scene_budget(target_minutes: int) -> WordBudget:
-    """Số từ lời kể mỗi cảnh cho video `target_minutes` phút: số giây mỗi cảnh = thời lượng chia số cảnh mục tiêu (giữa
-    khoảng TARGET_SCENES), đổi ra số từ theo tốc độ đọc đã đo."""
+def scene_budget(target_minutes: int, total_scenes: Optional[int] = None,
+                 supported_minutes: Optional[int] = None) -> WordBudget:
+    """Số từ lời kể mỗi cảnh cho video `target_minutes` phút, đổi từ số giây mỗi cảnh theo tốc độ đọc đã đo.
+
+    - Mức chuẩn: thời lượng chia số cảnh mục tiêu (giữa khoảng TARGET_SCENES); 8 phút (35–40 cảnh) là 12,8 giây.
+    - Biết dàn ý (`total_scenes`: tổng số cảnh của video, kể cả cảnh miễn trừ) thì không vượt số giây có được khi chia
+      đều thời lượng cho các cảnh đó, để dàn ý nhiều cảnh vẫn ra đúng số phút (8 phút, 45 cảnh: 10,7 giây). Dàn ý ít cảnh
+      thì giữ mức chuẩn: video ngắn theo, không kéo dài lời cho đủ giờ. Bài chỉ đủ tư liệu cho ít phút hơn
+      (`supported_minutes`) thì chia theo số phút đó."""
     lo, hi = target_scenes(target_minutes)
-    return word_budget(max(int(target_minutes), 1) * 60 / ((lo + hi) / 2))
+    minutes = max(int(target_minutes), 1)
+    seconds = minutes * 60 / ((lo + hi) / 2)
+    if total_scenes:
+        budget_minutes = min(minutes, supported_minutes) if supported_minutes else minutes
+        seconds = min(seconds, budget_minutes * 60 / total_scenes)
+    return word_budget(seconds)
+
+
+def _outline_budget(pipeline: CasePipeline, outline: CaseOutline) -> WordBudget:
+    """scene_budget theo dàn ý đã duyệt: tổng số cảnh của các nhịp cộng cảnh miễn trừ, và số phút bài đủ tư liệu."""
+    total = sum(p.scene_count for p in outline.parts) + 1
+    return scene_budget(pipeline.target_minutes, total, outline.supported_minutes)
 
 
 def _validate_write_vi(raw: Any, ctx: _PartContext, guard: _TextGuard, budget: Optional[WordBudget] = None) -> dict:
@@ -1772,7 +1789,7 @@ async def _run_write_vi(pipeline: CasePipeline, step: PipelineStep, llm: LLMCall
     teaser_ids = [e for e in ctx.part.event_ids if borrowed.get(e) == ctx.part.id]
     teased_ids = [e for e in ctx.part.event_ids if e in borrowed and borrowed[e] != ctx.part.id]
     guard = _TextGuard(ctx.bible, _source_text(pipeline))
-    budget = scene_budget(pipeline.target_minutes)
+    budget = _outline_budget(pipeline, ctx.outline)
     output = await ask_validated(
         write_vi_prompt(ctx.bible, ctx.part, _part_events(ctx), _part_chunks(pipeline, ctx), prev_scenes,
                         part_position=ctx.position, revealed_ids=revealed, teaser_ids=teaser_ids,
@@ -1821,7 +1838,7 @@ async def _run_write_en(pipeline: CasePipeline, step: PipelineStep, llm: LLMCall
     guard = _TextGuard(ctx.bible, _source_text(pipeline))
     question = (next_part_of(ctx.part, ctx.outline.parts) is not None and bool(vi_scenes)
                 and ends_with_question(vi_scenes[-1].get("narration_vi", "")))
-    budget = scene_budget(pipeline.target_minutes)
+    budget = _outline_budget(pipeline, ctx.outline)
     output = await ask_validated(
         write_en_prompt(ctx.bible, ctx.part, vi_scenes, _part_chunks(pipeline, ctx), part_position=ctx.position,
                         budget=budget),
@@ -1995,16 +2012,18 @@ def _validate_rewrite(raw: Any, orders: list[int], guard: _TextGuard,
 
 
 async def rewrite_english(bible: CaseBible, items: list[tuple[int, str]], *,
-                          llm: Optional[LLMCall] = None, target_minutes: Optional[int] = None) -> dict[int, str]:
-    """Viết lại lời Anh cho các cảnh (order, lời Việt) vừa thêm hoặc sửa; trả {order: lời Anh}. `target_minutes`:
-    thời lượng video của kế hoạch, để lời Anh dài vừa số giây mỗi cảnh (không có thì 15 giây).
+                          llm: Optional[LLMCall] = None, target_minutes: Optional[int] = None,
+                          total_scenes: Optional[int] = None) -> dict[int, str]:
+    """Viết lại lời Anh cho các cảnh (order, lời Việt) vừa thêm hoặc sửa; trả {order: lời Anh}. `target_minutes`,
+    `total_scenes`: thời lượng video và tổng số cảnh của kế hoạch, để lời Anh dài vừa số giây mỗi cảnh như các cảnh khác
+    (scene_budget; không có thời lượng thì 15 giây).
     Không có cảnh nào thì không gọi LLM. Hỏng thì StepFailed với tên việc "viết lại lời Anh"."""
     items = [(int(order), str(text)) for order, text in items]
     if not items:
         return {}
     orders = list(dict.fromkeys(order for order, _text in items))
     guard = _TextGuard(bible)
-    budget = scene_budget(target_minutes) if target_minutes else word_budget()
+    budget = scene_budget(target_minutes, total_scenes) if target_minutes else word_budget()
     return await ask_validated(
         rewrite_en_prompt(bible, items, budget),
         lambda raw: _validate_rewrite(raw, orders, guard, budget),

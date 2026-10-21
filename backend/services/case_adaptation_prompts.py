@@ -16,7 +16,13 @@ from dataclasses import dataclass
 from typing import Iterable, Optional, Sequence
 
 from models.case_adaptation_schemas import CaseBible, CaseEntity, StoryPart, TimelineEvent
-from services.case_adaptation_checks import GENERIC_TERMS, apply_aliases, build_forbidden_names
+from services.case_adaptation_checks import (
+    EN_WORDS_PER_MINUTE,
+    GENERIC_TERMS,
+    VI_WORDS_PER_MINUTE,
+    apply_aliases,
+    build_forbidden_names,
+)
 from services.video_service import CAMERA_MOTIONS
 
 # Ngưỡng kiểm của bước đọc đoạn (spec 7.2). case_adaptation_steps dùng lại đúng các số này.
@@ -38,11 +44,9 @@ MAX_SCENES_PER_EVENT = 2        # một sự việc đủ cho tối đa 2 cảnh
 SCENES_PER_MINUTE = 4           # trung bình khoảng 15 giây mỗi cảnh
 MAX_DROPPED_SHARE = 1 / 3       # dàn ý bỏ tối đa 1/3 số sự việc (chi tiết vụn) để kể gọn và cuốn
 MAX_DEDUPE_SHARE = 0.5          # bước lọc trùng gộp tối đa một nửa số sự việc (nhiều hơn là gộp nhầm)
-# Tốc độ đọc đo bằng giọng Edge khi chạy thật vụ Nhũ Cô (21/10): lời Việt 229 chữ/phút, lời Anh 133 chữ/phút. Số chữ mỗi
-# cảnh tính từ số giây mỗi cảnh của thời lượng đã chọn (word_budget), để video ra đúng số phút: trước đây giới hạn cố định
+# Số chữ mỗi cảnh tính từ số giây mỗi cảnh của thời lượng đã chọn (word_budget, theo VI_WORDS_PER_MINUTE /
+# EN_WORDS_PER_MINUTE đo thật, khai báo ở case_adaptation_checks), để video ra đúng số phút: trước đây giới hạn cố định
 # 80 chữ nên model viết trung bình 72 chữ Việt mỗi cảnh, video 8 phút ra 13–14,5 phút.
-VI_WORDS_PER_MINUTE = 229
-EN_WORDS_PER_MINUTE = 133
 MIN_IMAGE_PROMPT_WORDS = 20
 MIN_VIDEO_PROMPT_WORDS = 8
 PART_KINDS = ("hook", "setup", "discovery", "investigation", "twist", "resolution", "open_questions", "epilogue")

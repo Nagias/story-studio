@@ -564,7 +564,8 @@ async def create_language_version(project_id: str, language: Lang, voice: Option
             "Hãy sửa lời của các cảnh này bằng tay hoặc đưa chúng về lời gốc rồi thử lại.")
 
     rewritten = (await rewrite_english(plan.bible, [(s.order, s.text) for s in to_rewrite], llm=llm,
-                                       target_minutes=plan.target_minutes) if to_rewrite else {})
+                                       target_minutes=plan.target_minutes, total_scenes=len(plan.scenes))
+                 if to_rewrite else {})
     rewritten = _guard_rewritten(plan, rewritten)
     for scene in to_rewrite:
         texts[scene.id] = rewritten[scene.order]
