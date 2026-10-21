@@ -159,3 +159,21 @@ Thiết kế: `docs/superpowers/specs/2026-10-19-true-crime-adaptation-design.md
   dùng: 24 cảnh ảnh còn trống, chưa có giọng, chưa có video. Đo giọng thật trên kế hoạch này: Việt 7,54 phút, Anh 7,43 phút
 - [x] Worktree cũ `.claude/worktrees/true-crime-adaptation` (đã gộp, code 20/10, có bản sao `.env`) chuyển vào Thùng rác; nhánh
   `worktree-true-crime-adaptation` đã xoá; ghi chú quy trình chép sang `.superpowers/` (git bỏ qua). Git chỉ còn nhánh master
+
+# TASKS — dọn dẹp sau rà soát (2026-10-21, người dùng duyệt C1–C11, T1–T3, T4a; nhánh `don-dep-sau-ra-soat`)
+Giữ: T4b (8 dự án thử 4–16/10), "ZZ Thử Muse", 3 mục MẪU. Mỗi mục một commit, chạy test liên quan sau mỗi commit.
+- [x] Test mốc: bộ offline (`pytest tests --ignore-glob=*e2e* --ignore-glob=*live* --ignore=tests/test_launcher.py`): **668 pass, 0 fail**, 8 phút 35 giây; không sinh dự án mới
+- [x] C1 xoá `services/nhu_co_case_scenes.py`
+- [x] C2 xoá màn Render Video giả (không mở được)
+- [x] C3 xoá hàm JS chết, bỏ gắn sự kiện bước hai lần
+- [x] C4 Python: import thừa `api.py`, re-export `models/__init__`, nhánh trỏ douyin, `generate_ai_video_segment` giả, comment sai
+- [x] C5 xoá ảnh `style_*.jpg` và `.srt` mẫu giọng không dùng
+- [x] C6 xoá `test_live_browser_reality.py`, `test_launcher.py`
+- [x] C7 bỏ `run_all_tests.py`, sửa lệnh test trong README/AGENTS.md
+- [x] C8 bỏ CLI `run_studio.py`/`.bat`, 2 hàm chỉ CLI dùng, typer/rich
+- [x] C9 xoá endpoint không ai gọi kể cả test (đúng danh sách đã duyệt; `/upload-reference-image`, `/auto-gen`, `muse-cloud/generate-all-*` cũng không còn ai gọi nhưng chưa xoá vì ngoài danh sách)
+- [x] C10 xoá `docs/technical_report_openrouter_veo3_and_vox_workflow.md`
+- [x] C11 `.bat` Muse: bỏ nhánh trỏ đường dẫn cũ
+- [x] T1–T3, T4a chuyển vào Thùng rác: 24 thư mục comic_slices, 2 evidence_boards, `output/`, `public/`, `dist/`, 4 dự án Nhũ Cô cũ (33 mục)
+- [x] Cuối đợt: bộ offline (`pytest tests -q --ignore-glob="*e2e*" --ignore-glob="*live*"`) **667 pass, 0 fail**, 7 phút (mốc 668 trừ 1 test của hàm đã xoá); không sinh dự án hay comic_slices mới. Giao diện trên server thử cổng 8010 (`.claude/launch.json`, tắt worker và Fleet Runner tự bật): 4 bước chuyển đúng, 7 cửa sổ chính mở/đóng được, console không lỗi, không có 404/500, bấm Bước 4 chỉ gọi `/seo-pack` một lần; 3 `project.json` (ZZ Thử Muse, 2 MẪU) không bị ghi
+- Còn lại, chưa làm vì ngoài danh sách: endpoint `/upload-reference-image`, `/auto-gen`, `muse-cloud/generate-all-images|videos` không còn ai gọi; hàm chỉ test dùng: `grid_slicer.slice_grid_image`, `generate_parallax_layers`, `audio_engine.mix_3layer_audio`; `generate_voiced_scene_audio` không ai dùng; `muse_bridge.py` còn import thừa `re`, `JSONResponse`; `config.DEFAULT_RESOLUTION` không ai dùng
