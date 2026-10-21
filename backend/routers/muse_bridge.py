@@ -1134,8 +1134,9 @@ async def complete_task(
     task["executed_by"] = parsed_meta.get("account_id") or task.get("assigned_account")
 
     # Web URL
-    has_proj = bool(project_id and project_id != "None" and (PROJECTS_DIR / str(project_id)).exists())
-    if has_proj and str(final_file_path).startswith(str(PROJECTS_DIR / str(project_id))):
+    has_proj = bool(project_id and project_id != "None" and is_safe_id(str(project_id))
+                    and (PROJECTS_DIR / str(project_id)).exists())
+    if has_proj and is_within(final_file_path, PROJECTS_DIR / str(project_id)):
         rel_media = "videos" if kind == "video" else "images"
         task["media_url"] = f"/api/projects/{project_id}/media/{rel_media}/{final_file_path.name}"
         # Luôn sao 1 bản sang MUSE_OUTPUTS_DIR (đặt tên theo task_id để không đè nhau) cho Gallery
@@ -1143,7 +1144,7 @@ async def complete_task(
             shutil.copy2(final_file_path, MUSE_OUTPUTS_DIR / f"{task_id}{ext}")
         except Exception:
             pass
-    elif not str(final_file_path).startswith(str(MUSE_OUTPUTS_DIR)):
+    elif not is_within(final_file_path, MUSE_OUTPUTS_DIR):
         copy_dest = MUSE_OUTPUTS_DIR / f"{task_id}{ext}"
         try:
             shutil.copy2(final_file_path, copy_dest)

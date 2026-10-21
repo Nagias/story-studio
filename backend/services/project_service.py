@@ -24,9 +24,9 @@ from models.schemas import (
     SceneCreateRequest,
     SceneUpdateRequest,
 )
+from security import is_safe_id
 from services import safe_files
 
-import re
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class ProjectUnreadableError(RuntimeError):
                          f"File được giữ nguyên, chưa ghi gì đè lên; sửa tay file hoặc khôi phục bản sao.")
 
 def _get_project_dir(project_id: str) -> Path:
-    if not project_id or not re.fullmatch(r"[a-zA-Z0-9_\-]{1,64}", project_id):
+    if not is_safe_id(project_id):
         raise ValueError(f"Invalid project_id format: {project_id}")
     # Thư mục bắt đầu bằng "_" dành cho hệ thống (vd _cases chứa phân tích vụ án), không phải dự án.
     if project_id.startswith("_"):
@@ -104,7 +104,7 @@ def list_projects() -> List[Dict[str, Any]]:
             data = _read_project_json(json_file, d.name)
         except (ProjectUnreadableError, OSError) as e:
             logger.warning("Không đọc được dự án %s: %s", d.name, e)
-            if not re.fullmatch(r"[a-zA-Z0-9_\-]{1,64}", d.name):  # tên lạ thì chỉ ghi log, không đưa ra giao diện
+            if not is_safe_id(d.name):  # tên lạ thì chỉ ghi log, không đưa ra giao diện
                 continue
             projects.append({
                 "id": d.name,
@@ -335,7 +335,7 @@ def reorder_scenes(project_id: str, scene_ids: List[str]) -> Optional[List[Scene
 
 def get_scene_media_paths(project_id: str, scene_id: str) -> Dict[str, Path]:
     """Get absolute file paths for a scene's assets."""
-    if not scene_id or not re.fullmatch(r"[a-zA-Z0-9_\-]{1,64}", scene_id):
+    if not is_safe_id(scene_id):
         raise ValueError(f"Invalid scene_id format: {scene_id}")
     p_dir = _get_project_dir(project_id)
     return {

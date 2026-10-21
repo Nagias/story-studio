@@ -123,9 +123,7 @@ def test_env_read_only_in_config():
 
 
 # --- Đường cấm 7: kiểm đường dẫn bằng security.py, không dùng str.startswith ----------------------------------------
-ALLOWED_STARTSWITH_PATH = {
-    "backend/routers/muse_bridge.py": 2,  # complete_task()
-}
+ALLOWED_STARTSWITH_PATH: dict = {}  # muse_bridge.complete_task() chuyển sang is_within (22/10/2026)
 
 
 def test_no_string_prefix_path_checks():

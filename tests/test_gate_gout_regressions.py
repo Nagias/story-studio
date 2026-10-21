@@ -55,8 +55,9 @@ async def test_sec_01_block_arbitrary_file_read_via_comic_import():
             # Verify that sensitive file was NOT copied into project images
             proj_data = (await client.get(f"/api/projects/{proj_id}")).json()
             for sc in proj_data.get("scenes", []):
-                sc_img_path = Path(sc.get("image_path", ""))
-                if sc_img_path.exists():
+                assert sc.get("status_image") == "error", "khung bị chặn phải được đánh dấu Lỗi ảnh"
+                sc_img_path = Path(sc.get("image_path") or "")
+                if sc.get("image_path") and sc_img_path.exists():
                     assert sc_img_path.stat().st_size == 0 or b"secret123" not in sc_img_path.read_bytes()
         finally:
             if os.path.exists(sensitive_path):

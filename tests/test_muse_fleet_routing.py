@@ -276,3 +276,19 @@ def test_status_has_no_vm_fields(fleet):
     assert r.status_code == 200
     assert "bootstrap_command" not in r.json() and "tailscale" not in r.text
     assert c.get("/api/muse-bridge/bootstrap-command").status_code == 404
+
+
+def test_output_in_similar_project_name_is_not_linked_to_other_project(fleet):
+    """proj_a và proj_ab: ảnh nằm trong proj_ab không được gắn link /api/projects/proj_a/... (lỗi so chuỗi startswith)."""
+    c = fleet["client"]
+    projects = mb.PROJECTS_DIR
+    (projects / "proj_a").mkdir(parents=True, exist_ok=True)
+    target = projects / "proj_ab" / "images" / "lan.jpg"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    t = mb.enqueue_task({"mode": "text-to-image", "prompt": "p", "project_id": "proj_a", "output_path": str(target)})
+    _activate(t)
+    r = c.post(f"/api/muse-bridge/tasks/{t['task_id']}/complete", files={"file": ("x.jpg", jpeg_bytes(), "image/jpeg")})
+    assert r.status_code == 200
+    done = next(x for x in mb.task_history if x["task_id"] == t["task_id"])
+    assert not done["media_url"].startswith("/api/projects/proj_a/")
+    assert done["media_url"] == f"/static/muse_outputs/{t['task_id']}.jpg"
