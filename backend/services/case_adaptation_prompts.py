@@ -218,13 +218,13 @@ YÊU CẦU
    - "time_label": mốc thời gian chép nguyên văn từ bài (ngày, giờ, "ba ngày sau"...); bài không nói thì "".
    - "names": các tên liên quan đến sự việc, viết đúng như trong "names" hoặc danh sách tên đã gặp.
 3. "evidence": mọi vật chứng, dấu vết, kết quả giám định, giấy tờ, dữ liệu camera hay điện thoại, lời khai quan trọng có trong đoạn.
-   - "label_vi", "label_en": nhãn ngắn 2–6 từ (tiếng Việt / tiếng Anh), không chứa tên riêng.
+   - "label_vi", "label_en": nhãn ngắn 2–6 từ (tiếng Việt / tiếng Anh), không chứa tên riêng, không ghi ngày, tháng hay năm (nhãn hiện lên bảng ghim trong video).
    - "description_vi", "description_en": một câu mô tả (tiếng Việt / tiếng Anh).
    - "names": các tên liên quan, viết như trong "names".
 4. "relations": quan hệ giữa hai đối tượng có tên (nợ nần, làm ăn, vợ chồng, đe doạ, nhìn thấy, gọi điện...).
    - "source_name", "target_name": viết đúng như trong "names" hoặc danh sách tên đã gặp.
    - "relation_type": một trong {relation_types}.
-   - "label_vi", "label_en": nhãn ngắn 2–6 từ, không chứa tên riêng.
+   - "label_vi", "label_en": nhãn ngắn 2–6 từ, không chứa tên riêng, không ghi ngày, tháng hay năm.
 5. Mục nào trong đoạn không có thì để mảng rỗng. Không thêm điều bài không nói.
 
 Trả về đúng một JSON object theo mẫu:

@@ -882,20 +882,40 @@ def test_known_alias_names_in_title_and_labels_never_block():
     assert checked.flags == [] and not has_blocking_flags(checked)
 
 
-def test_dates_outside_narration_are_check_warnings_only():
-    ev = [CaseEvidence(id="ev1", label_vi="Hồ sơ năm 2014", label_en="File from 2014")]
+def test_dates_outside_narration_never_block_and_are_removed_from_title_and_labels():
+    """Ngày trong prompt hình: chỉ cảnh báo. Ngày trong tên tập và nhãn bằng chứng/quan hệ (hiện trong video, màn xem
+    lại không sửa được nhãn): tự bỏ, ghi vào `warnings`."""
+    ev = [CaseEvidence(id="ev1", label_vi="Biên bản đối chất ngày 28 tháng 2", label_en="Confrontation record on February 28"),
+          CaseEvidence(id="ev2", label_vi="Hồ sơ năm 2014", label_en="File from 2014")]
+    rel = [CaseRelation(id="r1", source_id="e1", target_id="e1", label_vi="Cuộc gọi lúc 02:21 ngày 2/8", label_en="Call on August 2")]
     plan = _plan(
-        [_scene(1, board_reveal=["ev1"], visual_kind="board",
+        [_scene(1, board_reveal=["ev1", "ev2", "r1"], visual_kind="board",
                 image_prompt="A newspaper clipping dated March 3, 2014 on a cluttered desk, cinematic close-up shot.")],
-        evidence=ev, title_vi="Vụ án năm 2014",
+        evidence=ev, relations=rel, title_vi="Vụ án năm 2014",
     )
     checked = check_plan(plan, "")
+    b = checked.bible
+    assert (b.evidence[0].label_vi, b.evidence[0].label_en) == ("Biên bản đối chất", "Confrontation record")
+    assert (b.evidence[1].label_vi, b.evidence[1].label_en) == ("Hồ sơ", "File")
+    assert (b.relations[0].label_vi, b.relations[0].label_en) == ("Cuộc gọi lúc 02:21", "Call")
+    assert b.title_vi == "Vụ án"
+    notes = "\n".join(checked.warnings)
+    assert "Đã tự bỏ ngày tháng cụ thể 'ngày 28 tháng 2'" in notes and "ev1" in notes and "title_vi" in notes
+    assert "r1" in notes
     joined = "\n".join(checked.check_warnings)
-    assert "March 3, 2014" in joined and "image_prompt" in joined
-    assert "năm 2014" in joined and "title_vi" in joined and "ev1" in joined
-    assert checked.warnings == []
+    assert "March 3, 2014" in joined and "image_prompt" in joined          # prompt hình: chỉ cảnh báo, không tự sửa
+    assert not any("ev1" in w or "title_vi" in w for w in checked.check_warnings)
     assert checked.scenes[0].flags == [] and checked.flags == []
     assert not has_blocking_flags(checked)
+    again = check_plan(checked, "")                                       # chạy lại: không đổi, không thêm ghi chú
+    assert again.bible == checked.bible and again.warnings == checked.warnings
+
+
+def test_label_that_is_only_a_date_is_kept_and_warned():
+    ev = [CaseEvidence(id="ev1", label_vi="28/2/2015", label_en="2015")]
+    checked = check_plan(_plan([_scene(1)], evidence=ev), "")
+    assert checked.bible.evidence[0].label_vi == "28/2/2015"
+    assert any("ev1" in w and "28/2/2015" in w for w in checked.check_warnings)
 
 
 def test_warnings_persist_across_check_plan_calls_without_duplicates():

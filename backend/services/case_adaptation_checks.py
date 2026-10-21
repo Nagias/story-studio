@@ -730,6 +730,26 @@ def find_dates(text: str) -> list[str]:
     return [norm[s:e] for s, e in merged]
 
 
+# Chữ nối đứng ngay trước ngày tháng trong một nhãn ngắn, bỏ cùng ngày ("ngày 28 tháng 2", "on February 28").
+_DATE_LEAD = re.compile(r"(?:[\s,(\-–]*\b(?:ngày|hôm|vào|lúc|năm|on|dated|from|in|of)\b)?[\s,(\-–]*$", re.IGNORECASE)
+
+
+def strip_dates(text: str) -> tuple[str, list[str]]:
+    """Bỏ ngày tháng, năm cụ thể (find_dates) khỏi một nhãn ngắn (tên tập, nhãn bằng chứng/quan hệ), kèm chữ nối ngay
+    trước. Trả (nhãn mới, các ngày đã bỏ); bỏ xong mà nhãn rỗng thì giữ nguyên nhãn và trả [] để người dùng tự sửa."""
+    found = find_dates(text)
+    if not found:
+        return text, []
+    out = unicodedata.normalize("NFC", text)
+    for date in found:
+        at = out.find(date)
+        if at < 0:
+            continue
+        out = _DATE_LEAD.sub("", out[:at]) + " " + out[at + len(date):]
+    out = " ".join(out.split()).strip(" ,;:-–(")
+    return (out, found) if out else (text, [])
+
+
 # ---------------------------------------------------------------- kiểm cả kế hoạch
 
 _NARRATION_FIELDS = ("narration_vi", "narration_en")
@@ -758,7 +778,9 @@ def check_plan(plan: CaseAdaptationPlan, source_text: str) -> CaseAdaptationPlan
     - Cờ chặn tạo dự án:
         * ở cảnh: tên thật chưa có alias (lời kể, prompt), thiếu lời kể, id lạ trong board_reveal, ngày cụ thể trong lời kể;
         * cấp kế hoạch: tên thật chưa có alias trong tên tập (field "title") hoặc nhãn ("evidence:<id>", "relation:<id>").
-    - Ngày cụ thể trong prompt, tên tập, nhãn và bằng chứng chưa hiện ra: chỉ vào `check_warnings`, không chặn.
+    - Ngày cụ thể trong tên tập và nhãn bằng chứng/quan hệ (hiện trong video, màn xem lại không sửa được nhãn): tự bỏ
+      (strip_dates) và ghi vào `warnings`; nhãn chỉ có ngày thì giữ nguyên và cảnh báo.
+    - Ngày cụ thể trong prompt hình và bằng chứng chưa hiện ra: chỉ vào `check_warnings`, không chặn.
     - Cũng chỉ vào `check_warnings` (các bước viết gọi lại model khi gặp, nhưng hết lượt thì vẫn nhận kết quả):
         * tên viết không dấu trùng tên thật của nhiều người có tên hư cấu khác nhau: đã thay bằng tên hư cấu của thực thể
           đứng trước trong bảng tên, cảnh báo nêu cảnh và tên hư cấu đã dùng, không nêu tên thật;
@@ -860,7 +882,12 @@ def check_plan(plan: CaseAdaptationPlan, source_text: str) -> CaseAdaptationPlan
         for name in unknown:
             plan_flags.append(SceneFlag(kind="unknown_name", field=flag_field,
                                         detail=f"Tên thật chưa có tên thay thế ở {where} ({field}): '{name}'."))
-        for found in _unique(find_dates(fixed)):
+        # tên tập và nhãn hiện ra trong video (bảng ghim) mà màn xem lại không sửa được nhãn: tự bỏ ngày cụ thể
+        undated, removed = strip_dates(fixed)
+        if removed:
+            setattr(obj, field, undated)
+            note(f"Đã tự bỏ ngày tháng cụ thể {', '.join(repr(d) for d in removed)} ở {where} ({field}).")
+        for found in _unique(find_dates(undated)):
             warn(f"Còn ngày tháng hoặc năm cụ thể '{found}' ở {where} ({field}); hãy sửa thành cách nói chung.")
 
     clean_label(bible, "title_vi", "vi", "tiêu đề", "title")
