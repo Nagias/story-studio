@@ -1,5 +1,3 @@
-import asyncio
-import os
 import sys
 import pytest
 from pathlib import Path
@@ -13,12 +11,8 @@ if str(BACKEND_DIR) not in sys.path:
 
 from main import app
 from services.script_splitter import (
-    split_text_into_scenes,
     split_text_into_vox_scenes_offline,
-    PACING_CONFIGS,
-    SemanticStoryAnalyzer,
 )
-from services.project_service import delete_project
 
 STORY_VOX_TEXT = """
 Tại sao một đế chế hùng mạnh từng cai trị toàn cõi lại sụp đổ chỉ sau một đêm? Sự thật kinh hoàng ít ai ngờ tới bắt đầu từ một quyết định sai lầm.

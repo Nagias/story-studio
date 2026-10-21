@@ -11,11 +11,9 @@ Translates raw text/script into validated Master Storyboard JSON with:
 6. Kinetic subtitle highlight keywords.
 """
 
-import os
 import re
-import json
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 
 import httpx
 

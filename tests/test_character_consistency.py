@@ -11,18 +11,12 @@ if str(BACKEND_DIR) not in sys.path:
 
 from main import app
 from models.schemas import (
-    Character,
-    PRESET_CHARACTERS,
-    PRESET_CHARACTERS_MAP,
     get_preset_characters,
     get_preset_character_by_id,
-    ProjectCreateRequest,
 )
 from services.image_service import (
-    STYLE_PRESETS,
     get_available_styles,
     build_character_anchored_prompt,
-    build_consistent_prompt,
     MASTER_NEGATIVE_PROMPT,
 )
 

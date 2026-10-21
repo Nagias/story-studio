@@ -9,14 +9,10 @@ Tests:
 """
 
 import sys
-import os
 import json
 import time
-import shutil
-import asyncio
 from pathlib import Path
 
-import pytest
 
 # Windows console encoding
 if hasattr(sys.stdout, "reconfigure"):
@@ -32,7 +28,6 @@ if str(BACKEND_DIR) not in sys.path:
 from runners.muse_fleet_runner import (
     MusePromptFormatter,
     clean_singleton_locks,
-    FleetAccount,
     MuseFleetRunner,
     ACCOUNTS_CONFIG_PATH,
 )

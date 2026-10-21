@@ -33,7 +33,6 @@ from services.tts_service import (
     create_fallback_srt,
     normalize_narration_text,
     detect_language,
-    AVAILABLE_VOICES,
 )
 
 

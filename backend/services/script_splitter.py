@@ -14,7 +14,6 @@ Features:
 
 import re
 import json
-import math
 import logging
 import functools
 from typing import List, Dict, Any, Optional, Tuple, Callable, Awaitable
@@ -491,13 +490,11 @@ class SemanticStoryAnalyzer:
                 "4. VĂN PHONG YOUTUBE REVIEW TRIỆU VIEW: Lôi cuốn, nhịp điệu gãy gọn, tạo sự tò mò, kịch tính và đồng cảm. Giữ nguyên 100% TIẾNG VIỆT, tuyệt đối không dịch trường 'text' sang tiếng Anh.\n"
                 "5. Trường 'image_prompt' PHẢI viết bằng TIẾNG ANH điện ảnh chi tiết, mô tả chính xác góc máy, nhân vật, hành động, biểu cảm và bối cảnh tương ứng để AI (Meta Muse) vẽ tranh đẹp nhất."
             )
-            lang_label = "Vietnamese YouTube Novel Review Host ('text' in Vietnamese 3rd person review, 'image_prompt' in English)"
         else:
             narration_rule = (
                 "1. Output English narration text in the 'text' field optimized for spoken audio (natural, punchy, engaging storytelling tone for a male US voice like Andrew / Guy).\n"
                 "2. Output ultra-detailed cinematic English prompt in the 'image_prompt' field for AI image generation."
             )
-            lang_label = "English narration ('text' and 'image_prompt' in English)"
 
         system_instruction = (
             "You are an elite YouTube Story Podcast Director and Hollywood Cinematographer.\n"

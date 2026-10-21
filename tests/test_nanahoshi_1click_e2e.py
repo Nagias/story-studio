@@ -1,9 +1,5 @@
-import asyncio
-import io
-import os
 import re
 import sys
-import uuid
 import pytest
 from pathlib import Path
 from httpx import AsyncClient, ASGITransport
@@ -31,10 +27,9 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from main import app
-from services.project_service import delete_project, get_project
+from services.project_service import delete_project
 from services.tts_service import generate_speech
 from services.video_service import render_scene_video
-from routers.muse_bridge import pending_tasks, active_tasks, task_history, current_worker
 
 @pytest.fixture
 def anyio_backend():

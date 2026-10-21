@@ -8,7 +8,6 @@ G1–G4 của luồng chuyển thể vụ án: cắt bài thành đoạn, đọc
 """
 import asyncio
 import copy
-import re
 import sys
 import threading
 import time

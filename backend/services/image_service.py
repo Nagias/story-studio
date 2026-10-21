@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import io
 import logging
@@ -9,11 +8,10 @@ import urllib.parse
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 import httpx
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from config import (
     OPENAI_API_KEY,
-    STATIC_DIR,
     NINEROUTER_BASE_URL,
     NINEROUTER_API_KEY,
     NINEROUTER_IMAGE_MODEL,

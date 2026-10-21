@@ -6,10 +6,8 @@ Test Suite for 4 Key Production YouTube AI Storyboard Studio Improvements:
 4. 16:9 Full HD YouTube Thumbnail & YouTube SEO Packaging (Titles, Chapters, Tags).
 """
 
-import os
 import sys
 import tempfile
-import asyncio
 from pathlib import Path
 import pytest
 from PIL import Image
@@ -20,11 +18,9 @@ if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
 from main import app
-from config import PROJECTS_DIR, ASSETS_DIR
-from models.schemas import Project, Scene
 from services.video_service import render_scene_video, build_xfade_video
 from services.subtitle_engine import generate_karaoke_ass
-from services.audio_engine import auto_detect_scene_sfx, ensure_sfx_library, find_or_create_sfx
+from services.audio_engine import auto_detect_scene_sfx, find_or_create_sfx
 from services.thumbnail_service import generate_youtube_thumbnail, generate_youtube_seo_pack
 from services.project_service import create_project, delete_project, ProjectCreateRequest
 

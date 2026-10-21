@@ -1,4 +1,3 @@
-import asyncio
 import json
 import os
 import subprocess
@@ -30,12 +29,10 @@ if str(BACKEND_DIR) not in sys.path:
 
 from services.project_service import (
     create_project,
-    get_project,
     add_scene,
     delete_project,
     get_scene_media_paths,
     get_render_media_paths,
-    save_project,
 )
 from services.tts_service import generate_speech
 from services.image_service import generate_image

@@ -3,7 +3,6 @@ Unit tests for Investigation Board Engine (Corkboard, Fixed-Anchor, Cumulative S
 """
 
 import sys
-import os
 from itertools import combinations
 from pathlib import Path
 

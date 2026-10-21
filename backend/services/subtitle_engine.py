@@ -8,9 +8,6 @@ Compliant with OP_CTOOL Master Specification:
 4. Word-level timestamps from Faster-Whisper or high-precision syllable alignment fallback.
 """
 
-import os
-import re
-import math
 import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Union
@@ -116,7 +113,7 @@ def generate_karaoke_ass(
     margin_v: int = 45,
     style_mode: str = "kinetic_pop",  # kinetic_pop, karaoke_sweep, classic
 ) -> str:
-    """
+    r"""
     Builds a professional 1080p Kinetic Karaoke .ass subtitle script.
     
     Styles:

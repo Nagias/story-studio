@@ -15,19 +15,16 @@ Comprehensive adversarial verification:
    - Pacing tier comparisons (fast vs balanced vs deep_story).
 """
 
-import asyncio
 import json
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Tuple, Dict, Any, List
+from typing import Tuple
 
 import cv2
 import numpy as np
 import pytest
-from PIL import Image
 
 # Ensure backend and tests are in sys.path
 TEST_DIR = Path(__file__).resolve().parent
@@ -41,20 +38,14 @@ if str(TEST_DIR) not in sys.path:
 from services.video_service import (
     render_scene_video,
     assemble_full_video,
-    build_zoompan_filter,
     ensure_speedlines_asset,
 )
 from services.comic_slicer import slice_comic
 from services.script_splitter import (
     split_text_into_vox_scenes_offline,
-    split_text_into_scenes,
-    PACING_CONFIGS,
-    SemanticStoryAnalyzer,
 )
 from services.image_service import (
     build_character_anchored_prompt,
-    STYLE_PRESETS,
-    MASTER_NEGATIVE_PROMPT,
 )
 from models.schemas import (
     PRESET_CHARACTERS,

@@ -5,7 +5,6 @@ Dựng dự án từ kế hoạch chuyển thể vụ án và tạo bản ngôn 
 - Không gọi 9router thật: bản tiếng Anh của cảnh sửa/thêm đi qua rewrite_english với LLM giả.
 """
 import asyncio
-import copy
 import json
 import sys
 from itertools import combinations

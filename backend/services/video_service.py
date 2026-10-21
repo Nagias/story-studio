@@ -338,13 +338,13 @@ async def render_scene_video(
             # Tôn trọng âm thanh video: Trộn âm thanh nền video (25% ambient) với giọng đọc Voice (100%).
             # normalize=0 để giọng không bị hạ một nửa so với cảnh ảnh.
             filter_complex_parts.append(
-                f"[0:a]volume=0.25[amb];[1:a]volume=1.0[voice];[voice][amb]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]"
+                "[0:a]volume=0.25[amb];[1:a]volume=1.0[voice];[voice][amb]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]"
             )
             audio_map = "[aout]"
         elif has_voice:
             audio_map = "1:a"
         elif has_video_audio:
-            filter_complex_parts.append(f"[0:a]volume=0.8[aout]")
+            filter_complex_parts.append("[0:a]volume=0.8[aout]")
             audio_map = "[aout]"
         else:
             cmd.extend(["-f", "lavfi", "-i", SILENT_AUDIO_SRC])

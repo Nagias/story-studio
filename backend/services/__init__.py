@@ -3,7 +3,6 @@ from .tts_service import get_available_voices, generate_speech, get_audio_durati
 from .image_service import (
     get_available_styles,
     generate_image,
-    generate_9router_gemini,
     build_consistent_prompt,
     build_character_anchored_prompt,
     MASTER_NEGATIVE_PROMPT,
@@ -64,6 +63,7 @@ from .thumbnail_service import (
 )
 
 __all__ = [
+    "adapt_novel_chapter_to_us_podcast",
     "generate_youtube_thumbnail",
     "generate_youtube_seo_pack",
     "get_available_voices",

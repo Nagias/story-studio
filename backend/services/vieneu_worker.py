@@ -3,7 +3,6 @@ Invoked directly via:
     uv run --with vieneu --python 3.11 backend/services/vieneu_worker.py --text "..." --voice "Mai Anh" --output "output.mp3"
 """
 import argparse
-import os
 import re
 import subprocess
 import sys

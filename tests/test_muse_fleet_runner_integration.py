@@ -4,19 +4,11 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-import pytest
 from starlette.testclient import TestClient
 from main import app
 from routers.muse_bridge import (
-    load_muse_accounts,
-    muse_accounts,
-    get_enriched_accounts,
-    get_active_account,
-    assign_task_account,
     is_local_fleet_runner_active,
     is_muse_worker_online,
-    pending_tasks,
-    active_tasks,
 )
 
 

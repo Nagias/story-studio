@@ -14,11 +14,10 @@ Compliant with OP_CTOOL Specification:
 
 import os
 import re
-import json
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
-from PIL import Image, ImageDraw, ImageFont, ImageEnhance, ImageFilter
+from typing import Dict, Any, Optional, Tuple
+from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 
 from config import PROJECTS_DIR
 
@@ -54,10 +53,6 @@ def format_timestamp_mmss(seconds: float) -> str:
 def extract_headline_hooks(project: Any) -> Tuple[str, str]:
     """Generate punchy 2-line YouTube headline hook from project name and characters."""
     name = (getattr(project, "name", None) or "Huyền Thoại").strip()
-    char_name = ""
-    if hasattr(project, "character") and project.character:
-        char_name = getattr(project.character, "name", "")
-
     # Clean punctuation and novel chapter artifacts
     clean_name = re.sub(r"^[0-9\.\-\:\s]+", "", name)
     clean_name = clean_name.replace("US Novel:", "").replace("Sử thi:", "").strip()
@@ -258,7 +253,6 @@ def generate_youtube_seo_pack(project: Any) -> Dict[str, Any]:
     """
     proj_id = getattr(project, "id", "default_proj")
     name = (getattr(project, "name", None) or "Huyền Thoại").strip()
-    style = getattr(project, "style_preset", "cinematic_realistic")
     scenes = getattr(project, "scenes", []) or []
 
     # Clean title

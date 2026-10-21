@@ -1,7 +1,5 @@
-import asyncio
 import json
 import os
-import shutil
 import subprocess
 import sys
 import pytest
@@ -21,7 +19,6 @@ from services.video_service import (
     ensure_speedlines_asset,
     merge_srt_files,
     generate_default_bgm_track,
-    get_available_bgm_tracks,
     parse_srt_time,
     format_srt_time,
     CAMERA_MOTIONS,

@@ -24,15 +24,13 @@ Features:
 """
 
 import os
-import io
 import math
 import random
 import shutil
 import hashlib
-import tempfile
 import subprocess
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Optional, Tuple
 
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageColor
 
@@ -187,7 +185,6 @@ def generate_corkboard_background(width: int = CANVAS_WIDTH, height: int = CANVA
     # Inner corkboard drop shadow
     shadow_w = 12
     for i in range(shadow_w):
-        alpha = int(140 * (1.0 - i / shadow_w))
         s_rect = [t + i, t + i, width - t - i, height - t - i]
         # Darkening top & left borders
         draw.line([s_rect[0], s_rect[1], s_rect[2], s_rect[1]], fill=(30, 18, 10), width=1)
