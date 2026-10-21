@@ -99,7 +99,9 @@ def install_hook() -> int:
     if HOOK.exists() and HOOK_MARK not in HOOK.read_text(encoding="utf-8", errors="replace"):
         print(f"Đã có hook khác ở {HOOK}; không ghi đè. Gộp tay nếu cần.")
         return 1
+    # Hook dùng chung cho mọi nhánh; nhánh cũ chưa có tools/check.py thì không có gì để kiểm
     HOOK.write_text("#!/bin/sh\n" + HOOK_MARK + "\n"
+                    '[ -f tools/check.py ] || exit 0\n'
                     'exec ".venv/Scripts/python.exe" -X utf8 tools/check.py\n', encoding="utf-8", newline="\n")
     print(f"Đã cài hook trước commit: {HOOK.relative_to(ROOT)} (chạy bản nhanh mỗi lần git commit)")
     return 0
