@@ -184,3 +184,12 @@ Giữ: T4b (8 dự án thử 4–16/10), "ZZ Thử Muse", 3 mục MẪU. Mỗi m
 - [x] AGENTS.md chỉ còn trỏ sang CLAUDE.md (nội dung cũ đã gộp vào CLAUDE.md mục 3 và 6)
 - [x] `.claude/launch.json`: server thử cổng 8010 tắt hàng việc phân tích và tự bật Fleet Runner
 - [ ] Chủ dự án: viết mục 1 (mục đích), duyệt mục 5 (đường cấm) và phần làm dày ở mục 6, điền cột quy trình mục 7
+
+# TASKS — bộ kiểm tra tự động (2026-10-21, bước 4, người dùng duyệt cả gói; nhánh `kiem-tra-tu-dong` tách từ `tai-lieu-agent`)
+- [x] `pytest.ini` + cờ `live` (mặc định bỏ qua), chặn mạng/dịch vụ thật trong test không gắn cờ, báo dự án rác sau khi chạy. Chạy thử có chốt chặn lộ đúng 12 test gọi Edge-TTS/9router/VieNeu (khớp dự đoán lúc rà soát): đã gắn cờ `live`, cùng 3 file e2e/live → 19 test `live`
+- [x] `tests/test_architecture.py`: đường cấm kiểm được bằng máy, chỗ vi phạm cũ ghi thành ngoại lệ hẹp
+- [x] `tests/test_feature_map.py`: id, hàm, endpoint, file trong FEATURE_MAP.md và CLAUDE.md phải có thật
+- [x] Ruff 0.17.1 (ghim trong `requirements-dev.txt`), `ruff.toml`; 193 lỗi cũ ghi vào mốc `tools/ruff_baseline.json` (122 import thừa, 35 try/except pass, 22 gọi chặn trong async…), không sửa code cũ
+- [x] `tools/check.py` (nhanh / đầy đủ) + hook trước commit (đã cài ở `.git/hooks/pre-commit`; nhánh chưa có `tools/check.py` thì hook bỏ qua)
+- [x] Cập nhật CLAUDE.md, README, FEATURE_MAP theo lệnh mới
+- [x] Bằng chứng (22/10/2026): `tools/check.py --full` **ĐẠT**, 3 phút: Ruff 0 lỗi mới, 2 file JS đúng cú pháp, 10 test kiến trúc/FEATURE_MAP, **672 test mặc định đạt, 0 lỗi** (2 phút 47 giây; trước đây 7–9 phút vì gọi dịch vụ thật); không có dự án rác. Thử ngược: test kiến trúc bắt được 4 nút bước gắn sự kiện hai lần trên code trước đợt dọn và bắt vi phạm giả; hook chặn commit có lỗi Ruff mới (HEAD không đổi). Chưa chạy lại 19 test `live` (tốn quota, cần mạng)
