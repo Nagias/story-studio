@@ -805,7 +805,7 @@ def test_create_language_version_rewrites_edited_scenes(client, small_chunks, mo
     saved = project_service.get_project(vi_id)
     edited_vi = "Run rẩy, bà Hà gọi trực ban hình sự và nói vừa thấy một bóng người áo khoác sẫm chạy qua cổng cảng."
     next(s for s in saved.scenes if s.order == 3).text = edited_vi
-    project_service._save_project(saved)
+    project_service.save_project(saved)
     llm, calls = use_llm(monkeypatch, {"REWRITE_EN": {"scenes": [{"order": 3, "narration_en": REWRITE_3}]}})
 
     response = client.post(f"/api/projects/{vi_id}/create-language-version", json={"language": "en"})
@@ -898,7 +898,7 @@ def test_language_version_job_error_never_contains_real_names(client, small_chun
     vi_id = create_vi_project(client, case_id)
     saved = project_service.get_project(vi_id)
     next(s for s in saved.scenes if s.order == 3).text = "Một lời Việt mới cho cảnh ba, được sửa tay sau khi tạo dự án."
-    project_service._save_project(saved)
+    project_service.save_project(saved)
     # Lời Anh quá ngắn (loại) và còn tên thật: thông báo của việc hỏng trích dẫn tên thật.
     bad = {"scenes": [{"order": 3, "narration_en": f"Short line about {REAL_VICTIM}."}]}
     use_llm(monkeypatch, {"REWRITE_EN": bad})

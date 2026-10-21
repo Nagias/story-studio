@@ -82,7 +82,7 @@ def test_put_with_stale_client_scene_keeps_server_media(client, projects_dir):
     fresh = project_service.get_project(project.id)
     fresh.scenes[0].image_path = str(projects_dir / project.id / "images" / f"{scene.id}.jpg")
     fresh.scenes[0].image_url = f"/api/projects/{project.id}/media/images/{scene.id}.jpg"
-    project_service._save_project(fresh)
+    project_service.save_project(fresh)
 
     # Người dùng sửa lời thoại rồi giao diện tự lưu bản cũ
     stale_payload["scenes"][0]["text"] = "Lời thoại đã sửa"
@@ -104,7 +104,7 @@ def test_gen_image_does_not_overwrite_edits_saved_while_generating(client, proje
         # Trong lúc "chờ Muse", giao diện tự lưu: sửa lời thoại cảnh 2
         current = project_service.get_project(project.id)
         current.scenes[1].text = "Cảnh 2 đã sửa trong lúc chờ"
-        project_service._save_project(current)
+        project_service.save_project(current)
         out = Path(kwargs["output_path"])
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(_jpeg_bytes())

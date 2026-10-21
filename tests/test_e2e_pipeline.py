@@ -35,7 +35,7 @@ from services.project_service import (
     delete_project,
     get_scene_media_paths,
     get_render_media_paths,
-    _save_project,
+    save_project,
 )
 from services.tts_service import generate_speech
 from services.image_service import generate_image
