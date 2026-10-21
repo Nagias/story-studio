@@ -352,12 +352,6 @@ class NovelIngestRequest(BaseModel):
     create_new_project: Optional[bool] = True
     project_title: Optional[str] = None
 
-class AutoGenRequest(BaseModel):
-    voice: Optional[str] = "en-US-GuyNeural"
-    image_provider: Optional[str] = "9router_gemini"
-    style_preset: Optional[str] = "manga_murata_battle"
-    overwrite: bool = False
-
 class RenderRequest(BaseModel):
     resolution: Optional[str] = "1080p"
     ducking: Optional[bool] = True
@@ -528,22 +522,6 @@ class MasterStoryboardImportRequest(BaseModel):
     storyboard: MasterStoryboard
     project_id: Optional[str] = None
     title: Optional[str] = None
-
-class SliceGridRequest(BaseModel):
-    image_path: Optional[str] = None
-    image_url: Optional[str] = None
-    rows: int = 3
-    cols: int = 3
-    border_trim_pct: float = 0.03
-    project_id: Optional[str] = None
-    grid_batch_id: Optional[str] = None
-
-class ThreeLayerAudioMixRequest(BaseModel):
-    project_id: str
-    bgm_track: Optional[str] = None
-    ducking_db: float = -20.0
-    release_db: float = -8.0
-    include_sfx: bool = True
 
 def master_storyboard_to_project(storyboard: MasterStoryboard, project_id: Optional[str] = None) -> Project:
     """Convert MasterStoryboard into Story Studio Project instance."""

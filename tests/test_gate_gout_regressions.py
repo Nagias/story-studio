@@ -3,7 +3,6 @@ Validates that all critical delivery blockers (Security & Core Logic) are comple
 """
 import asyncio
 import os
-import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -17,11 +16,8 @@ if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
 from main import app
-from config import PROJECTS_DIR, COMIC_SLICES_DIR, STATIC_DIR
-from services.grid_slicer import slice_grid_image
-from services.audio_engine import mix_3layer_audio
-from services.project_service import create_project, get_project, delete_project
-from models.schemas import ProjectCreateRequest, Scene
+from services.project_service import delete_project
+from models.schemas import Scene
 
 
 @pytest.fixture
@@ -125,110 +121,6 @@ async def test_sec_04_block_arbitrary_file_overwrite_in_muse_complete(tmp_path, 
         out_path = Path(resp_comp.json()["output_path"])
         assert "System32" not in str(out_path)
         assert out_path.parent == outputs.resolve() and out_path.is_file()
-
-
-def test_core_01_ffmpeg_3layer_audio_sidechain_ducking_success():
-    """TC-CORE-01: FFmpeg 3-Layer Audio Sidechain Ducking chạy thành công, exit code 0, không bị crash fallback."""
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        tmp_p = Path(tmp_dir)
-        voice_wav = tmp_p / "voice.wav"
-        bgm_wav = tmp_p / "bgm.wav"
-        out_master = tmp_p / "master_out.wav"
-
-        # Generate 3 seconds of voice sine wave (440Hz)
-        import subprocess
-        cmd_voice = [
-            "ffmpeg", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
-            "-ar", "24000", "-ac", "1", str(voice_wav)
-        ]
-        subprocess.run(cmd_voice, check=True, capture_output=True)
-
-        # Generate 5 seconds of BGM white noise
-        cmd_bgm = [
-            "ffmpeg", "-y", "-f", "lavfi", "-i", "anoisesrc=d=5:c=white:r=44100:a=0.5",
-            "-ar", "44100", "-ac", "2", str(bgm_wav)
-        ]
-        subprocess.run(cmd_bgm, check=True, capture_output=True)
-
-        scenes_audio = [{
-            "scene_id": "sc_01",
-            "voice_audio_path": str(voice_wav),
-            "duration": 3.0,
-            "pause_after_sec": 0.5,
-            "sfx_cues": [],
-        }]
-
-        res_path = mix_3layer_audio(
-            scenes_audio=scenes_audio,
-            bgm_path=str(bgm_wav),
-            output_master_path=out_master,
-            bgm_volume=0.3,
-            ducking_threshold=0.08,
-            ducking_ratio=4.0,
-        )
-
-        assert Path(res_path).exists()
-        assert Path(res_path).stat().st_size > 1000
-
-
-def test_core_02_9grid_slice_with_offset_no_overwrite():
-    """TC-CORE-02: Cắt lưới 9-Grid đa batch (offset) không ghi đè cảnh của batch trước."""
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        tmp_p = Path(tmp_dir)
-        # Create a 300x300 image
-        grid_img_path = tmp_p / "test_grid.png"
-        img = Image.new("RGB", (300, 300), color=(128, 64, 32))
-        img.save(grid_img_path)
-
-        out_dir = tmp_p / "slices"
-
-        # Batch 1: start_index = 1
-        b1_paths = slice_grid_image(
-            image_path=grid_img_path,
-            output_dir=out_dir,
-            rows=3, cols=3,
-            start_index=1,
-            target_resolution=(160, 90)
-        )
-        assert len(b1_paths) == 9
-        assert Path(b1_paths[0]).name == "scene_001.png"
-        assert Path(b1_paths[8]).name == "scene_009.png"
-
-        # Batch 2: start_index = 10
-        b2_paths = slice_grid_image(
-            image_path=grid_img_path,
-            output_dir=out_dir,
-            rows=3, cols=3,
-            start_index=10,
-            target_resolution=(160, 90)
-        )
-        assert len(b2_paths) == 9
-        assert Path(b2_paths[0]).name == "scene_010.png"
-        assert Path(b2_paths[8]).name == "scene_018.png"
-
-        # Verify all 18 files exist without collision
-        all_files = list(out_dir.glob("scene_*.png"))
-        assert len(all_files) == 18
-
-
-def test_core_03_imageops_fit_preserves_aspect_ratio_no_anamorphic_distortion():
-    """TC-CORE-03: Cắt ảnh lưới 1:1 sang 16:9 bằng ImageOps.fit không gây méo tỷ lệ."""
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        tmp_p = Path(tmp_dir)
-        # 1:1 square image
-        square_img = tmp_p / "square_grid.png"
-        img = Image.new("RGB", (600, 600), color=(50, 100, 150))
-        img.save(square_img)
-
-        slices = slice_grid_image(
-            image_path=square_img,
-            output_dir=tmp_p / "fitted_slices",
-            rows=3, cols=3,
-            target_resolution=(1920, 1080)
-        )
-        assert len(slices) == 9
-        with Image.open(slices[0]) as cell:
-            assert cell.size == (1920, 1080)
 
 
 def test_core_04_schema_contract_audio_url_compatibility():

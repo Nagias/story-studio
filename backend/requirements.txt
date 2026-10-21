@@ -18,5 +18,4 @@ playwright==1.64.0          # runners/muse_fleet_runner.py (sau khi cài: python
 # openai              # services/image_service.py
 # faster-whisper      # services/subtitle_engine.py (căn chỉnh phụ đề theo từ)
 # av                  # services/tts_service.py
-# rembg               # services/grid_slicer.py (tách nền parallax)
 # Công cụ ngoài: ffmpeg/ffprobe trong PATH, uv (giọng VieNeu), Google Chrome hoặc Microsoft Edge

@@ -13,11 +13,7 @@ Verifies:
 
 import os
 import sys
-import json
-import wave
-import pytest
 from pathlib import Path
-from PIL import Image, ImageDraw
 from fastapi.testclient import TestClient
 
 # Ensure backend in sys.path
@@ -30,31 +26,13 @@ if str(BACKEND_DIR) not in sys.path:
 
 from models.schemas import (
     MasterStoryboard,
-    ProjectMetadata,
-    MasterScene,
-    MasterAudio,
-    MasterSoundDesign,
-    MasterVisual,
-    MasterSubtitles,
-    ParallaxMotion,
-    CharacterAnchor,
     master_storyboard_to_project,
 )
-from services.grid_slicer import (
-    slice_grid_image,
-    compose_9grid_prompt,
-    generate_parallax_layers,
-)
 from services.audio_engine import (
-    find_or_create_sfx,
-    append_silence_to_audio,
-    mix_3layer_audio,
     generate_procedural_sfx,
 )
 from services.subtitle_engine import (
-    format_ass_time,
     generate_karaoke_ass,
-    extract_word_timestamps,
 )
 from services.storyboard_engine import (
     deconstruct_script_offline,
@@ -163,89 +141,13 @@ def test_master_storyboard_to_project_converter():
     assert project.scenes[1].generation_mode == "9_grid_composite"
     assert project.scenes[1].sfx_cue == ["rusty_iron_gate_creak", "heartbeat_single_pulse"]
 
-def test_9grid_slicer_with_border_trim(tmp_path):
-    """Verify 9-Grid Slicer cuts 3x3 grid with border trim and outputs 1920x1080 16:9 images."""
-    # Create test 3x3 grid image (1200x1200)
-    grid_img = Image.new("RGB", (1200, 1200), color=(30, 30, 30))
-    draw = ImageDraw.Draw(grid_img)
-    # Draw dividing grid lines
-    draw.line([(400, 0), (400, 1200)], fill=(255, 255, 255), width=8)
-    draw.line([(800, 0), (800, 1200)], fill=(255, 255, 255), width=8)
-    draw.line([(0, 400), (1200, 400)], fill=(255, 255, 255), width=8)
-    draw.line([(0, 800), (1200, 800)], fill=(255, 255, 255), width=8)
-
-    img_path = tmp_path / "test_grid.png"
-    grid_img.save(str(img_path))
-
-    out_dir = tmp_path / "slices"
-    slices = slice_grid_image(
-        image_path=img_path,
-        output_dir=out_dir,
-        rows=3,
-        cols=3,
-        border_trim_pct=0.03,
-    )
-
-    assert len(slices) == 9
-    for sp in slices:
-        assert os.path.exists(sp)
-        with Image.open(sp) as panel:
-            assert panel.size == (1920, 1080), f"Expected 1920x1080, got {panel.size}"
-
-def test_compose_9grid_prompt():
-    """Verify 9-Grid composite prompt generation adheres to spec."""
-    prompt = compose_9grid_prompt(
-        character_anchor="Asian detective Nam wearing charcoal trench coat",
-        visual_style_dna="Dark moody neo-noir, 35mm film grain",
-        panel_descriptions=[
-            "pushing rusty gate in rain",
-            "close up of footprints",
-            "holding vintage flashlight",
-            "beam cutting living room",
-            "blinking red led light",
-            "stepping closer alert",
-            "bloody journal on desk",
-            "shadow darting window",
-            "turning around sharply",
-        ],
-    )
-    assert "9-grid storyboard" in prompt
-    assert "sequential narrative sheet" in prompt
-    assert "panel 1 pushing rusty gate in rain" in prompt
-    assert "panel 9 turning around sharply" in prompt
-    assert "--ar 16:9" in prompt
-
-def test_parallax_layer_generation(tmp_path):
-    """Verify 2.5D Parallax generates foreground (Alpha) and blurred background."""
-    test_img = Image.new("RGB", (640, 360), color=(40, 60, 100))
-    draw = ImageDraw.Draw(test_img)
-    # Draw subject in center
-    draw.ellipse([(200, 80), (440, 300)], fill=(220, 50, 50))
-    test_path = tmp_path / "scene_parallax.png"
-    test_img.save(str(test_path))
-
-    layers = generate_parallax_layers(test_path, tmp_path / "layers", prefix="scene_001")
-    assert os.path.exists(layers["foreground"])
-    assert os.path.exists(layers["background"])
-
-    with Image.open(layers["foreground"]) as fg:
-        assert fg.mode == "RGBA", "Foreground layer must have Alpha channel"
-    with Image.open(layers["background"]) as bg:
-        assert bg.size == (640, 360)
-
-def test_procedural_sfx_and_silence_padding(tmp_path):
-    """Verify procedural SFX synthesis and silence padding."""
+def test_procedural_sfx(tmp_path):
+    """Verify procedural SFX synthesis."""
     # Test procedural SFX
     sfx_path = tmp_path / "heartbeat.wav"
     generate_procedural_sfx("heartbeat", sfx_path, duration_sec=1.0)
     assert sfx_path.exists()
     assert sfx_path.stat().st_size > 1000
-
-    # Test silence padding
-    padded_path = tmp_path / "padded.wav"
-    res = append_silence_to_audio(sfx_path, padded_path, pause_sec=0.8)
-    assert os.path.exists(res)
-    assert os.path.getsize(res) > os.path.getsize(sfx_path)
 
 def test_kinetic_karaoke_ass_subtitle(tmp_path):
     """Verify Kinetic Karaoke .ass subtitle syntax."""
@@ -310,14 +212,3 @@ def test_api_storyboard_endpoints():
     assert "scenes" in data
     assert len(data["scenes"]) >= 2
 
-    # 2. Test compose 9-grid prompt
-    resp_prompt = client.post(
-        "/api/grid-slicer/compose-prompt",
-        json={
-            "character_anchor": "Detective Nam",
-            "visual_style_dna": "Neo-noir",
-            "panels": ["Panel 1", "Panel 2"],
-        },
-    )
-    assert resp_prompt.status_code == 200
-    assert "9-grid storyboard" in resp_prompt.json()["prompt"]

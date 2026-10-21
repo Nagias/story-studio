@@ -122,7 +122,7 @@ Code mới nên theo mẫu của mảng true-crime (mục 4), không theo mảng
   - Server thử phải tắt hàng việc phân tích, nếu không nó tự chạy tiếp các vụ đang dở.
 - **Commit:** tiếng Việt theo kiểu `<vùng>: <mô tả>`, mỗi thay đổi một commit.
 - **Chỗ đặt file:** không thêm script ở gốc dự án; test đặt trong `tests/`, công cụ đặt trong `tools/`, file tạm đặt trong `.cache/`. Không sửa file ngoài thư mục dự án khi chưa hỏi.
-- **Thư viện tuỳ chọn:** `openai`, `faster-whisper`, `av`, `rembg` có thể chưa cài, code tự bỏ qua; thiếu chúng không phải lỗi.
+- **Thư viện tuỳ chọn:** `openai`, `faster-whisper`, `av` có thể chưa cài, code tự bỏ qua; thiếu chúng không phải lỗi.
 
 ## 7. Bảng định tuyến: loại việc → quy trình
 

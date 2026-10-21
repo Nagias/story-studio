@@ -197,12 +197,11 @@ Mở: `#btn-open-true-crime-modal`, `#btn-step1-open-true-crime` hoặc `#true-c
 Dùng được qua `/docs` (Swagger) hoặc test; sửa tới thì nhớ không có nút để bấm thử.
 - `GET /api/styles`, `GET /api/characters/presets`, `GET /api/characters/presets/{char_id}`, `GET /api/bgm/{filename}`
 - `GET /api/vox/pacing-presets`, `POST /api/vox/analyze-script` (**LLM**), `POST /api/projects/{project_id}/vox-script`, `POST /api/novel/ingest-chapter` (**LLM**)
-- `POST /api/projects/create-1click-pipeline` (bí danh của create-from-script), `POST /api/upload-reference-image` (không ai gọi)
+- `POST /api/projects/create-1click-pipeline` (bí danh của create-from-script)
 - Cảnh lẻ: `POST /api/projects/{project_id}/scenes`, `PUT /api/projects/{project_id}/scenes/{scene_id}`, `DELETE /api/projects/{project_id}/scenes/{scene_id}`, `POST /api/projects/{project_id}/scenes/reorder`, `POST /api/gen-image`
 - `DELETE /api/projects/{project_id}` (**xoá vĩnh viễn** bằng `shutil.rmtree`, giao diện không có nút xoá dự án)
-- `POST /api/projects/{project_id}/auto-gen`, `POST /api/projects/{project_id}/muse-cloud/generate-all-images` (**Muse**), `POST /api/projects/{project_id}/muse-cloud/generate-all-videos` (**Muse**): không còn ai gọi, chờ duyệt xoá
 - `POST /api/projects/{project_id}/render` (đường dựng cũ, chỉ test dùng; đường thật là produce-long-video)
-- `POST /api/grid-slicer/compose-prompt`, `POST /api/true-crime/render-board-scene/{scene_id}`, `GET /api/muse-bridge/reference-file` (runner tải ảnh tham chiếu), `GET /api/muse-bridge/download/{task_id}`, `POST /api/muse-bridge/accounts/add`
+- `POST /api/true-crime/render-board-scene/{scene_id}`, `GET /api/muse-bridge/reference-file` (runner tải ảnh tham chiếu), `GET /api/muse-bridge/download/{task_id}`, `POST /api/muse-bridge/accounts/add`
 - `GET /api/health` (giao diện hỏi 8 s/lần; `run.py` dùng để biết Story Studio đã chạy chưa)
 
 ## 5. Tiến trình nền, cổng, nơi chứa dữ liệu

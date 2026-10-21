@@ -45,16 +45,8 @@ from .comic_slicer import (
     assign_camera_motion,
     sort_reading_order,
 )
-from .grid_slicer import (
-    slice_grid_image,
-    compose_9grid_prompt,
-    generate_parallax_layers,
-)
 from .audio_engine import (
-    generate_voiced_scene_audio,
-    mix_3layer_audio,
     find_or_create_sfx,
-    append_silence_to_audio,
 )
 from .subtitle_engine import (
     generate_karaoke_ass,
@@ -110,13 +102,7 @@ __all__ = [
     "slice_comic",
     "assign_camera_motion",
     "sort_reading_order",
-    "slice_grid_image",
-    "compose_9grid_prompt",
-    "generate_parallax_layers",
-    "generate_voiced_scene_audio",
-    "mix_3layer_audio",
     "find_or_create_sfx",
-    "append_silence_to_audio",
     "generate_karaoke_ass",
     "extract_word_timestamps",
     "format_ass_time",

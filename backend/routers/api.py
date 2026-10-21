@@ -16,7 +16,6 @@ logger = logging.getLogger("story_studio.api")
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks, WebSocket, UploadFile, File, Form, Body, Depends
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
 
 from config import (
     STORY_STUDIO_DIR,
@@ -46,7 +45,6 @@ from models.schemas import (
     SplitScriptRequest,
     VoiceGenRequest,
     ImageGenRequest,
-    AutoGenRequest,
     RenderRequest,
     OpenFolderRequest,
     ComicSliceResponse,
@@ -70,7 +68,6 @@ from services import (
     detect_language,
     get_available_styles,
     generate_image,
-    MASTER_NEGATIVE_PROMPT,
     render_scene_video,
     assemble_full_video,
     get_available_bgm_tracks,
@@ -91,7 +88,6 @@ from services import (
     adapt_novel_chapter_to_us_podcast,
     PACING_CONFIGS,
     slice_comic,
-    compose_9grid_prompt,
     deconstruct_script_async,
     deconstruct_script_offline,
     generate_youtube_thumbnail,
@@ -818,32 +814,6 @@ async def create_1click_pipeline(req: CreateProjectFromScriptRequest):
     """Dedicated 1-Click Pipeline endpoint for producing story studio projects."""
     return await create_project_from_script(req)
 
-@router.post("/upload-reference-image")
-async def upload_reference_image(file: UploadFile = File(...)):
-    """Upload character reference image and store it in static directory."""
-    try:
-        content = await read_upload_limited(file)
-        if not content:
-            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
-        ext = Path(file.filename or "ref.jpg").suffix.lower()
-        if ext not in [".jpg", ".jpeg", ".png", ".webp"]:
-            ext = ".jpg"
-        ref_id = f"char_ref_{uuid.uuid4().hex[:8]}"
-        ref_dir = STATIC_DIR / "reference_images"
-        ref_dir.mkdir(parents=True, exist_ok=True)
-        target_file = ref_dir / f"{ref_id}{ext}"
-        with open(target_file, "wb") as f:
-            f.write(content)
-        return {
-            "success": True,
-            "url": f"/static/reference_images/{target_file.name}",
-            "path": str(target_file.resolve()),
-            "filename": target_file.name,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Reference image upload failed: {str(e)}")
-
-
 @router.post("/projects/{project_id}/scenes/{scene_id}/upload-media")
 async def upload_scene_media(
     project_id: str,
@@ -1230,166 +1200,6 @@ async def generate_standalone_image(req: ImageGenRequest):
         "is_placeholder": bool(img_res.get("is_placeholder")),
         "scene_id": s_id,
         "project_id": p_id,
-    }
-
-# ----------------- AUTO-GEN ALL -----------------
-
-async def run_autogen_task(project_id: str, req: AutoGenRequest):
-    project = get_project(project_id)
-    if not project:
-        return
-
-    voice = req.voice or project.voice
-    provider = req.image_provider or project.image_provider
-    style = req.style_preset or project.style_preset
-
-    for scene in project.scenes:
-        media_paths = get_scene_media_paths(project_id, scene.id)
-
-        # Gen voice if missing or overwrite
-        if req.overwrite or not scene.voice_audio_path or not media_paths["audio"].exists():
-            try:
-                tts_res = await generate_speech(
-                    text=scene.text,
-                    voice=voice,
-                    output_audio_path=str(media_paths["audio"]),
-                    output_srt_path=str(media_paths["srt"]),
-                )
-                _apply_voice_result(scene, tts_res, project_id)
-            except Exception as e:
-                logger.warning(f"auto-gen: scene {scene.id} voice failed: {e}")
-                scene.status_voice = "error"
-                scene.metadata["voice_error"] = str(e)
-
-        # Gen image if missing or overwrite
-        if req.overwrite or not scene.image_path or not media_paths["image"].exists():
-            try:
-                img_res = await generate_image(
-                    prompt=scene.image_prompt or scene.text,
-                    style_preset=style,
-                    character_anchor=project.character_anchor,
-                    character=project.character,
-                    reference_image=project.character_reference_image,
-                    provider=provider,
-                    output_path=str(media_paths["image"]),
-                    scene_index=scene.order,
-                )
-            except Exception as e:
-                img_res = {"success": False, "error": str(e)}
-            if not _apply_image_result(scene, img_res, project_id):
-                logger.warning(f"auto-gen: scene {scene.id} image failed: {img_res.get('error')}")
-
-        if scene.voice_audio_path and scene.image_path:
-            scene.status = "ready"
-        elif scene.voice_audio_path:
-            scene.status = "voiced"
-        elif scene.image_path:
-            scene.status = "imaged"
-
-    update_project(project_id, ProjectUpdateRequest(scenes=project.scenes))
-
-@router.post("/projects/{project_id}/auto-gen")
-async def auto_generate_all(project_id: str, req: AutoGenRequest, background_tasks: BackgroundTasks):
-    """Automatically generate all missing voice and images for all scenes."""
-    project = get_project(project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found.")
-
-    background_tasks.add_task(run_autogen_task, project_id, req)
-    return {
-        "success": True,
-        "message": f"Auto-gen background job initiated for {len(project.scenes)} scenes.",
-        "project_id": project_id,
-    }
-
-class MuseBatchImagesRequest(BaseModel):
-    style_preset: Optional[str] = None
-
-@router.post("/projects/{project_id}/muse-cloud/generate-all-images")
-async def muse_batch_generate_images(project_id: str, req: Optional[MuseBatchImagesRequest] = None):
-    """Enqueues image generation tasks for all scenes to Meta Muse Cloud Worker."""
-    import time
-    project = get_project(project_id)
-    if not project or not project.scenes:
-        raise HTTPException(status_code=400, detail="Dự án không có phân cảnh nào để tạo ảnh.")
-
-    from routers.muse_bridge import enqueue_task, is_kind_online
-    style = (req.style_preset if req and req.style_preset else None) or project.style_preset or "manga_murata_battle"
-    enqueued_count = 0
-
-    for idx, sc in enumerate(project.scenes):
-        media_paths = get_scene_media_paths(project.id, sc.id)
-        task_id = f"task_m_{uuid.uuid4().hex[:8]}"
-        prompt = sc.image_prompt or sc.text
-        if project.character_anchor:
-            prompt = f"{project.character_anchor}, {prompt}"
-        task_dict = {
-            "task_id": task_id,
-            "mode": "text-to-image",
-            "prompt": prompt,
-            "negative_prompt": MASTER_NEGATIVE_PROMPT,
-            "project_id": project.id,
-            "scene_id": sc.id,
-            "scene_index": sc.order or (idx + 1),
-            "output_path": str(media_paths["image"]),
-            "parameters": {
-                "aspect_ratio": "16:9",
-                "resolution": "2K",
-                "style_preset": style,
-            },
-            "status": "pending",
-            "created_at": time.time(),
-        }
-        enqueue_task(task_dict)
-        enqueued_count += 1
-
-    return {
-        "success": True,
-        "enqueued_count": enqueued_count,
-        "message": f"Đã đưa {enqueued_count} phân cảnh vào hàng đợi Muse (tài khoản ảnh).",
-        "worker_online": is_kind_online("image"),
-    }
-
-@router.post("/projects/{project_id}/muse-cloud/generate-all-videos")
-async def muse_batch_generate_videos(project_id: str):
-    """Enqueues video generation tasks for all scenes to Meta Muse Cloud Worker."""
-    import time
-    project = get_project(project_id)
-    if not project or not project.scenes:
-        raise HTTPException(status_code=400, detail="Dự án không có phân cảnh nào để tạo video.")
-
-    from routers.muse_bridge import enqueue_task, is_kind_online
-    enqueued_count = 0
-
-    for idx, sc in enumerate(project.scenes):
-        media_paths = get_scene_media_paths(project.id, sc.id)
-        task_id = f"task_m_{uuid.uuid4().hex[:8]}"
-        input_url = sc.image_url or f"/api/projects/{project.id}/media/images/{sc.id}.jpg"
-        task_dict = {
-            "task_id": task_id,
-            "mode": "image-to-video",
-            "prompt": sc.video_prompt or sc.image_prompt or sc.text,
-            "project_id": project.id,
-            "scene_id": sc.id,
-            "input_image_url": input_url,
-            "output_path": str(media_paths["motion_video"]),
-            "parameters": {
-                "duration_sec": getattr(sc, "duration", 5.0) or 5.0,
-                "fps": project.fps or 25,
-                "aspect_ratio": "16:9",
-                "camera_motion": sc.camera_motion or "zoom_in",
-            },
-            "status": "pending",
-            "created_at": time.time(),
-        }
-        enqueue_task(task_dict)
-        enqueued_count += 1
-
-    return {
-        "success": True,
-        "enqueued_count": enqueued_count,
-        "message": f"Đã đưa {enqueued_count} tác vụ video vào hàng đợi Muse (tài khoản video).",
-        "worker_online": is_kind_online("video"),
     }
 
 # ----------------- FULL VIDEO RENDER & WEBSOCKET -----------------
@@ -2268,19 +2078,3 @@ async def api_import_master_storyboard(req: MasterStoryboardImportRequest):
         "project": project,
     }
 
-@router.post("/grid-slicer/compose-prompt")
-async def api_compose_9grid_prompt(data: Dict[str, Any]):
-    """
-    Composes a Master 9-Grid Composite prompt for Flux.1/SDXL/Midjourney.
-    """
-    character_anchor = data.get("character_anchor", "")
-    visual_style_dna = data.get("visual_style_dna", "Dark moody cinematic neo-noir, 35mm film grain")
-    panels = data.get("panels", [])
-
-    prompt = compose_9grid_prompt(
-        character_anchor=character_anchor,
-        visual_style_dna=visual_style_dna,
-        panel_descriptions=panels,
-        aspect_ratio=data.get("aspect_ratio", "16:9"),
-    )
-    return {"prompt": prompt}
