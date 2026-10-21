@@ -32,7 +32,7 @@ from models.case_adaptation_schemas import (
     TARGET_SCENES,
     TimelineEvent,
 )
-from services import case_store, project_service
+from services import case_store, project_service, safe_files
 
 
 def _plan(case_id: str = "case_0a1b2c3d") -> CaseAdaptationPlan:
@@ -262,8 +262,8 @@ def test_concurrent_save_and_read_pipeline_do_not_raise(isolated_projects_dir):
 
 
 def test_save_retries_replace_on_permission_error(isolated_projects_dir, monkeypatch):
-    monkeypatch.setattr(case_store, "_RETRY_DELAY", 0)
-    real_replace = case_store.os.replace
+    monkeypatch.setattr(safe_files, "RETRY_DELAY", 0)
+    real_replace = safe_files.os.replace
     calls = []
 
     def flaky_replace(src, dst):
@@ -272,7 +272,7 @@ def test_save_retries_replace_on_permission_error(isolated_projects_dir, monkeyp
             raise PermissionError(13, "The process cannot access the file")
         return real_replace(src, dst)
 
-    monkeypatch.setattr(case_store.os, "replace", flaky_replace)
+    monkeypatch.setattr(safe_files.os, "replace", flaky_replace)
     pipeline = _pipeline("case_0a1b2c3d", "2026-10-19T10:00:00")
     case_store.save_pipeline(pipeline)
     assert len(calls) == 3
@@ -280,22 +280,22 @@ def test_save_retries_replace_on_permission_error(isolated_projects_dir, monkeyp
 
 
 def test_save_gives_up_after_max_tries_and_leaves_no_tmp(isolated_projects_dir, monkeypatch):
-    monkeypatch.setattr(case_store, "_RETRY_DELAY", 0)
+    monkeypatch.setattr(safe_files, "RETRY_DELAY", 0)
     calls = []
 
     def locked_replace(src, dst):
         calls.append(1)
         raise PermissionError(13, "The process cannot access the file")
 
-    monkeypatch.setattr(case_store.os, "replace", locked_replace)
+    monkeypatch.setattr(safe_files.os, "replace", locked_replace)
     with pytest.raises(PermissionError):
         case_store.save_pipeline(_pipeline("case_0a1b2c3d", "2026-10-19T10:00:00"))
-    assert len(calls) == case_store._TRIES
+    assert len(calls) == safe_files.TRIES
     assert not list((isolated_projects_dir / "_cases").rglob("*.tmp"))
 
 
 def test_read_retries_on_permission_error_and_list_skips_locked_file(isolated_projects_dir, monkeypatch):
-    monkeypatch.setattr(case_store, "_RETRY_DELAY", 0)
+    monkeypatch.setattr(safe_files, "RETRY_DELAY", 0)
     ok = _pipeline("case_00000001", "2026-10-19T09:00:00")
     locked = _pipeline("case_00000002", "2026-10-19T10:00:00")
     case_store.save_pipeline(ok)

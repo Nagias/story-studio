@@ -8,14 +8,12 @@ Lưu trữ phân tích vụ án trên đĩa: projects/_cases/<case_id>/
     plan.json             kế hoạch hoàn chỉnh (CaseAdaptationPlan)
 
 Thư mục `_cases` không có project.json nên list_projects() không thấy.
-Mọi file ghi UTF-8, ghi qua file tạm rồi đổi tên để tắt máy giữa chừng không để lại file cụt.
-Đọc/đổi tên gặp PermissionError (Windows khoá file vài ms khi luồng khác đang đọc/ghi) thì tự thử lại.
+Mọi file ghi UTF-8 qua services/safe_files.py: ghi file tạm rồi đổi tên (tắt máy giữa chừng không để lại file cụt),
+đọc/đổi tên gặp PermissionError (Windows khoá file vài ms) thì tự thử lại.
 Id không an toàn (case_id, step_id) thì raise ValueError.
 """
 import json
 import logging
-import os
-import time
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -24,12 +22,12 @@ from fastapi import HTTPException
 
 from models.case_adaptation_schemas import CaseAdaptationPlan, CasePipeline
 from security import is_safe_id, require_safe_id
-from services import project_service
+from services import project_service, safe_files
 
 logger = logging.getLogger(__name__)
 
-_TRIES = 8           # số lần thử khi file đang bị khoá (chỉ tốn thời gian khi thật sự bị khoá)
-_RETRY_DELAY = 0.02  # giây chờ sau lần thử đầu, tăng tuyến tính ở các lần sau (20, 40, ... 140 ms)
+_write_text = safe_files.write_text_atomic
+_read_text = safe_files.read_text
 
 
 def cases_dir() -> Path:
@@ -50,36 +48,6 @@ def _safe(value: object, field: str) -> str:
 
 def _case_dir(case_id: str) -> Path:
     return cases_dir() / _safe(case_id, "case_id")
-
-
-def _retry_if_locked(action):
-    """Windows báo PermissionError khi file đang bị tiến trình/luồng khác mở (đọc đúng lúc đổi tên,
-    hoặc đổi tên đúng lúc có người đọc). Khoá chỉ kéo dài vài ms nên thử lại vài lần rồi mới báo lỗi."""
-    for attempt in range(_TRIES):
-        try:
-            return action()
-        except PermissionError:
-            if attempt == _TRIES - 1:
-                raise
-            time.sleep(_RETRY_DELAY * (attempt + 1))  # chờ lâu dần
-
-
-def _write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex[:8]}.tmp")
-    try:
-        tmp.write_text(text, encoding="utf-8")
-        _retry_if_locked(lambda: os.replace(tmp, path))
-    except BaseException:
-        tmp.unlink(missing_ok=True)
-        raise
-
-
-def _read_text(path: Path) -> Optional[str]:
-    try:
-        return _retry_if_locked(lambda: path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return None
 
 
 def _write_json(path: Path, data) -> None:

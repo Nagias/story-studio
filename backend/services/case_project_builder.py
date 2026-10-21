@@ -357,7 +357,7 @@ def create_project_from_plan(plan: CaseAdaptationPlan, language: Lang, voice: st
                 "voices": {**(voices or {}), language: voice},
             },
         )
-        project_service._save_project(project)
+        project_service.save_project(project)
     except BaseException:
         project_service.delete_project(project_id)      # thư mục vừa tạo, còn dở dang
         raise
@@ -498,14 +498,14 @@ def _materialize_language_version(source: Project, plan: CaseAdaptationPlan, lan
                 _draw_text_image(plan, scene, kind, plan_order if isinstance(plan_order, int) else scene.order,
                                  language, new_id, new_dir)
 
-        project_service._save_project(new)
+        project_service.save_project(new)
         # Liên kết hai chiều. Đọc lại dự án gốc: lúc LLM viết lại, giao diện có thể đã tự lưu chỉnh sửa khác.
         latest = project_service.get_project(old_id) or source
         siblings = list(latest.metadata.get("sibling_project_ids") or [])
         if new_id not in siblings:
             siblings.append(new_id)
         latest.metadata["sibling_project_ids"] = siblings
-        project_service._save_project(latest)
+        project_service.save_project(latest)
     except BaseException:
         project_service.delete_project(new_id)          # dự án mới còn dở dang
         raise

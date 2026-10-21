@@ -1,24 +1,44 @@
+"""Dự án: projects/<proj_id>/project.json và thư mục media. Đây là nơi DUY NHẤT ghi project.json.
+
+- Ghi qua services/safe_files (file tạm rồi đổi tên): lỗi giữa chừng không để lại file cụt.
+- project.json có mà không đọc được (JSON hỏng, sai schema, không phải UTF-8) thì báo ProjectUnreadableError,
+  không coi là "chưa có": nếu không, lần lưu kế tiếp sẽ ghi đè thành dự án rỗng.
+"""
 import json
-import os
+import logging
 import shutil
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
+from pydantic import ValidationError
+
 from config import PROJECTS_DIR
 from models.schemas import (
     Project,
     Scene,
-    Character,
     get_preset_character_by_id,
     ProjectCreateRequest,
     ProjectUpdateRequest,
     SceneCreateRequest,
     SceneUpdateRequest,
 )
+from services import safe_files
 
 import re
+
+logger = logging.getLogger(__name__)
+
+
+class ProjectUnreadableError(RuntimeError):
+    """project.json tồn tại nhưng không đọc được. File được giữ nguyên để còn sửa tay hoặc khôi phục."""
+
+    def __init__(self, project_id: str, reason: str):
+        self.project_id = project_id
+        self.reason = reason
+        super().__init__(f"Dự án {project_id}: project.json không đọc được ({reason}). "
+                         f"File được giữ nguyên, chưa ghi gì đè lên; sửa tay file hoặc khôi phục bản sao.")
 
 def _get_project_dir(project_id: str) -> Path:
     if not project_id or not re.fullmatch(r"[a-zA-Z0-9_\-]{1,64}", project_id):
@@ -41,57 +61,89 @@ def _ensure_project_subdirs(project_id: str):
     (p_dir / "videos").mkdir(parents=True, exist_ok=True)
     (p_dir / "renders").mkdir(parents=True, exist_ok=True)
 
-def _save_project(project: Project):
+def ensure_project_dirs(project_id: str) -> Path:
+    """Tạo thư mục dự án và các thư mục con media; trả thư mục dự án."""
+    _ensure_project_subdirs(project_id)
+    return _get_project_dir(project_id)
+
+def save_project(project: Project) -> None:
+    """Cách duy nhất để ghi project.json (ghi an toàn, cập nhật updated_at)."""
     p_dir = _get_project_dir(project.id)
     p_dir.mkdir(parents=True, exist_ok=True)
-    json_path = _get_project_json_path(project.id)
     project.updated_at = datetime.utcnow().isoformat()
-    with open(json_path, "w", encoding="utf-8") as f:
-        f.write(project.model_dump_json(indent=2))
+    safe_files.write_text_atomic(_get_project_json_path(project.id), project.model_dump_json(indent=2))
+
+_save_project = save_project  # tên cũ, chỉ dùng trong module này
+
+def _read_project_json(json_path: Path, project_id: str) -> Optional[Dict[str, Any]]:
+    """Dữ liệu JSON của dự án, None nếu chưa có file; file có mà hỏng thì ProjectUnreadableError."""
+    try:
+        text = safe_files.read_text(json_path)
+    except UnicodeDecodeError as e:
+        raise ProjectUnreadableError(project_id, f"không phải UTF-8: {e}") from e
+    if text is None:
+        return None
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ProjectUnreadableError(project_id, f"JSON hỏng: {e}") from e
+    if not isinstance(data, dict):
+        raise ProjectUnreadableError(project_id, "nội dung không phải một đối tượng JSON")
+    return data
 
 def list_projects() -> List[Dict[str, Any]]:
-    """List all projects found in PROJECTS_DIR."""
+    """Danh sách dự án trong PROJECTS_DIR. Dự án không đọc được vẫn hiện (đánh dấu unreadable) và được ghi log."""
     projects = []
     if not PROJECTS_DIR.exists():
         return []
 
     for d in PROJECTS_DIR.iterdir():
-        if d.is_dir():
-            json_file = d / "project.json"
-            if json_file.exists():
-                try:
-                    with open(json_file, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                        projects.append({
-                            "id": data.get("id"),
-                            "name": data.get("name"),
-                            "description": data.get("description", ""),
-                            "style_preset": data.get("style_preset"),
-                            "voice": data.get("voice"),
-                            "character_reference_image": data.get("character_reference_image"),
-                            "scenes_count": len(data.get("scenes", [])),
-                            "final_video_url": data.get("final_video_url"),
-                            "updated_at": data.get("updated_at"),
-                            "created_at": data.get("created_at"),
-                        })
-                except Exception:
-                    pass
+        if not d.is_dir() or d.name.startswith("_"):
+            continue
+        json_file = d / "project.json"
+        try:
+            data = _read_project_json(json_file, d.name)
+        except (ProjectUnreadableError, OSError) as e:
+            logger.warning("Không đọc được dự án %s: %s", d.name, e)
+            if not re.fullmatch(r"[a-zA-Z0-9_\-]{1,64}", d.name):  # tên lạ thì chỉ ghi log, không đưa ra giao diện
+                continue
+            projects.append({
+                "id": d.name,
+                "name": f"⚠ Không đọc được: {d.name}",
+                "description": str(e),
+                "scenes_count": 0,
+                "unreadable": True,
+                "updated_at": None,
+                "created_at": None,
+            })
+            continue
+        if data is None:
+            continue
+        projects.append({
+            "id": data.get("id"),
+            "name": data.get("name"),
+            "description": data.get("description", ""),
+            "style_preset": data.get("style_preset"),
+            "voice": data.get("voice"),
+            "character_reference_image": data.get("character_reference_image"),
+            "scenes_count": len(data.get("scenes", [])),
+            "final_video_url": data.get("final_video_url"),
+            "updated_at": data.get("updated_at"),
+            "created_at": data.get("created_at"),
+        })
 
     projects.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
     return projects
 
 def get_project(project_id: str) -> Optional[Project]:
-    """Retrieve full project schema by id."""
-    json_path = _get_project_json_path(project_id)
-    if not json_path.exists():
+    """Dự án theo id; None nếu chưa có. project.json có mà hỏng thì ProjectUnreadableError (không bao giờ None)."""
+    data = _read_project_json(_get_project_json_path(project_id), project_id)
+    if data is None:
         return None
-
     try:
-        with open(json_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return Project.model_validate(data)
-    except Exception:
-        return None
+        return Project.model_validate(data)
+    except ValidationError as e:
+        raise ProjectUnreadableError(project_id, f"sai cấu trúc: {e.error_count()} lỗi, đầu tiên: {e.errors()[0]['msg']}") from e
 
 def create_project(data: ProjectCreateRequest) -> Project:
     """Create a new story studio project."""

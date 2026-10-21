@@ -26,6 +26,8 @@ ROOT = Path(__file__).resolve().parent.parent
 BACKEND_DIR = ROOT / "backend"
 ACCOUNTS_FILE = ROOT / "backend" / "config" / "muse_fleet_accounts.json"
 PROJECTS_ROOT = ROOT / "projects"
+if str(BACKEND_DIR) not in sys.path:  # test import thẳng config, services, routers… như code trong backend/
+    sys.path.insert(0, str(BACKEND_DIR))
 
 # --------------------------------------------------------------------------- chặn mạng cho test không gắn cờ live
 _LOOPBACK_NAMES = {"localhost", "::1", "0.0.0.0", "::"}

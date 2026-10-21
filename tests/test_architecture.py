@@ -51,10 +51,7 @@ def _call_name(node: ast.Call) -> str:
 
 
 # --- Đường cấm 1: chỉ project_service ghi project.json -------------------------------------------------------------
-ALLOWED_PROJECT_JSON_WRITES = {
-    "backend/routers/api.py": 4,  # 3 lần gọi _save_project() + api_import_master_storyboard() ghi thẳng "project.json"
-    "backend/services/case_project_builder.py": 3,  # gọi project_service._save_project()
-}
+ALLOWED_PROJECT_JSON_WRITES: dict = {}  # đã gom hết về project_service.save_project() (22/10/2026)
 
 
 def test_only_project_service_writes_project_json():

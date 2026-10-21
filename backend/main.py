@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from config import STATIC_DIR, PROJECTS_DIR, BGM_DIR, HOST, PORT
 from security import LocalAccessMiddleware, is_safe_id
@@ -24,6 +24,7 @@ from routers.muse_bridge import router as muse_bridge_router
 from routers.true_crime import router as true_crime_router
 from routers.language_versions import router as language_versions_router
 from services import case_worker
+from services.project_service import ProjectUnreadableError
 from services.video_service import get_available_bgm_tracks
 
 
@@ -97,6 +98,11 @@ app.add_middleware(
 )
 # Chỉ cho phép truy cập từ chính máy này (thêm sau CORS để chạy trước)
 app.add_middleware(LocalAccessMiddleware)
+
+@app.exception_handler(ProjectUnreadableError)
+async def project_unreadable_handler(request, exc: ProjectUnreadableError):
+    """project.json hỏng: báo rõ cho giao diện (409), không để route nào coi là "chưa có" rồi ghi đè."""
+    return JSONResponse(status_code=409, content={"detail": str(exc), "project_id": exc.project_id})
 
 # Include API Router
 app.include_router(api_router)

@@ -97,7 +97,7 @@ from services import (
     generate_youtube_seo_pack,
 )
 
-from services.project_service import _get_project_dir
+from services.project_service import _get_project_dir, ensure_project_dirs, save_project
 
 router = APIRouter(prefix="/api", tags=["Story Studio"], dependencies=[Depends(validate_path_ids)])
 
@@ -808,8 +808,7 @@ async def create_project_from_script(req: CreateProjectFromScriptRequest):
         "provider": "offline" if analysis_fallback_reason and analysis_provider != "partial" else analysis_provider,
         "fallback_reason": analysis_fallback_reason,
     }
-    from services.project_service import _save_project
-    _save_project(project)
+    save_project(project)
     return project
 
 @router.post("/projects/create-1click-pipeline")
@@ -1563,8 +1562,7 @@ async def execute_full_render(project_id: str, render_id: str, options: RenderRe
         if p_obj:
             p_obj.final_video_path = assemble_res["video_path"]
             p_obj.final_video_url = final_video_url
-            from services.project_service import _save_project
-            _save_project(p_obj)
+            save_project(p_obj)
 
         await broadcast_render_update(render_id, {
             "status": "completed",
@@ -1931,8 +1929,7 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
         if p_obj:
             p_obj.final_video_path = assemble_res["video_path"]
             p_obj.final_video_url = final_video_url
-            from services.project_service import _save_project
-            _save_project(p_obj)
+            save_project(p_obj)
 
         await broadcast_render_update(render_id, {
             "status": "completed",
@@ -2248,15 +2245,8 @@ async def api_import_master_storyboard(req: MasterStoryboardImportRequest):
     if req.title:
         project.name = req.title
 
-    p_dir = PROJECTS_DIR / project.id
-    (p_dir / "audio").mkdir(parents=True, exist_ok=True)
-    (p_dir / "images").mkdir(parents=True, exist_ok=True)
-    (p_dir / "videos").mkdir(parents=True, exist_ok=True)
-    (p_dir / "renders").mkdir(parents=True, exist_ok=True)
-
-    json_path = p_dir / "project.json"
-    with open(json_path, "w", encoding="utf-8") as f:
-        f.write(project.model_dump_json(indent=2))
+    ensure_project_dirs(project.id)
+    save_project(project)
 
     return {
         "success": True,
