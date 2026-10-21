@@ -149,3 +149,13 @@ Thiết kế: `docs/superpowers/specs/2026-10-19-true-crime-adaptation-design.md
 - [x] Lỗi tìm ra khi kiểm chứng: nhãn bằng chứng evd_35 chứa "ngày 28 tháng 2" / "February 28" (lần này không lên bảng ghim, nhưng vụ khác có thể hiện ngày thật trên hình, màn xem lại không sửa được nhãn). Sửa: `check_plan` tự bỏ ngày cụ thể khỏi tên tập và nhãn bằng chứng/quan hệ (`strip_dates`, ghi vào `warnings`; nhãn chỉ có ngày thì giữ và cảnh báo); prompt đọc bài dặn không ghi ngày trong nhãn. Kiểm lại trên kế hoạch thật: nhãn còn "Biên bản đối chất", lời kể không đổi
 - [x] Test: 32 file offline 667 pass + 1 test cần Edge-TTS thật (`test_adversarial_produce_long_video_pipeline`) hỏng vì dịch vụ Microsoft trả "No audio", chạy lại riêng thì qua
 - [x] Dọn: 2 dự án thử và case_b7c70756 (từ lần bấm thử giao diện) đã chuyển vào Thùng rác
+
+# Dự án mẫu true-crime — GIỮ, KHÔNG DỌN (2026-10-21)
+- Vụ `case_7dcf6158` (Nhũ Cô, video 8 phút, phân tích bằng `d13ec7b`) trong `projects/_cases/`, cùng hai dự án dựng từ vụ này:
+  `proj_crime_52c3a5e8` "MẪU — Lời Nhắn Từ Đỉnh Vọng Nguyệt (bản Việt, không xoá)" (giọng vieneu-MaiAnh) và
+  `proj_crime_8329b12d` "MẪU — Whispers from Wangyue Peak (English, do not delete)" (en-US-AndrewMultilingualNeural).
+  Mở ở danh sách dự án hoặc `http://localhost:8000/?project_id=proj_crime_52c3a5e8`. Dọn dữ liệu thử thì bỏ qua 3 mục này
+- Có sẵn: 41 cảnh, lời Việt/Anh, prompt ảnh, 16 bảng ghim + 1 thẻ miễn trừ (vẽ trên máy). Chưa chạy Muse theo yêu cầu người
+  dùng: 24 cảnh ảnh còn trống, chưa có giọng, chưa có video. Đo giọng thật trên kế hoạch này: Việt 7,54 phút, Anh 7,43 phút
+- [x] Worktree cũ `.claude/worktrees/true-crime-adaptation` (đã gộp, code 20/10, có bản sao `.env`) chuyển vào Thùng rác; nhánh
+  `worktree-true-crime-adaptation` đã xoá; ghi chú quy trình chép sang `.superpowers/` (git bỏ qua). Git chỉ còn nhánh master
