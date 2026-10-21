@@ -66,11 +66,6 @@ from .storyboard_engine import (
     deconstruct_script_offline,
     MASTER_SYSTEM_PROMPT,
 )
-from .video_service import (
-    render_parallax_scene_video,
-    assemble_master_studio_video,
-)
-
 from .thumbnail_service import (
     generate_youtube_thumbnail,
     generate_youtube_seo_pack,
@@ -128,6 +123,4 @@ __all__ = [
     "deconstruct_script_async",
     "deconstruct_script_offline",
     "MASTER_SYSTEM_PROMPT",
-    "render_parallax_scene_video",
-    "assemble_master_studio_video",
 ]

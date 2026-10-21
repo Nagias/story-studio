@@ -13,8 +13,6 @@ opencv-python-headless==5.0.0.93
 numpy==2.5.3
 python-dotenv==1.2.4        # config.py
 playwright==1.64.0          # runners/muse_fleet_runner.py (sau khi cài: python -m playwright install chromium)
-typer==0.27.3               # run_studio.py (CLI)
-rich==15.0.0                # run_studio.py (CLI)
 
 # Tuỳ chọn (code tự bỏ qua nếu chưa cài):
 # openai              # services/image_service.py
