@@ -956,3 +956,13 @@ def test_has_blocking_flags_false_for_clean_plan():
     checked = check_plan(_plan([_scene(1), _scene(2)]), "")
     assert has_blocking_flags(checked) is False
     assert checked.warnings == [] and checked.check_warnings == [] and checked.flags == []
+
+
+def test_find_unsourced_quotes_only_flags_quotes_missing_from_the_source():
+    from services.case_adaptation_checks import find_unsourced_quotes, quote_source, quotes_in
+    source = quote_source("Bà Mai khai nhận quay lại văn phòng lấy sổ sách tài chính thì phát hiện hiện trường.", [], "vi")
+    text = ('Bà kể: “Quay lại văn phòng lấy sổ sách tài chính.” Rồi bà nói: "Tôi sợ lắm, thật sự rất sợ." '
+            'Người ta gọi hắn là "Sáu lùn".')
+    assert quotes_in(text) == ["Quay lại văn phòng lấy sổ sách tài chính.", "Tôi sợ lắm, thật sự rất sợ."]   # "Sáu lùn": biệt danh
+    assert find_unsourced_quotes(text, source) == ["Tôi sợ lắm, thật sự rất sợ."]
+    assert find_unsourced_quotes("Không có lời trích nào.", source) == []

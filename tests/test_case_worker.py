@@ -45,11 +45,12 @@ from tests.case_adaptation_fakes import FIXTURES_DIR, load_fixture, make_fake_ll
 DOSSIER = (FIXTURES_DIR / "dossier.txt").read_text(encoding="utf-8")
 STYLE = "cinematic noir"
 FULL_ORDER = [
-    "EXTRACT 0", "EXTRACT 1", "CLUSTER", "ALIASES", "OUTLINE",
+    "EXTRACT 0", "EXTRACT 1", "CLUSTER", "ALIASES", "DEDUPE", "OUTLINE",
     "WRITE_VI p1", "WRITE_EN p1", "PROMPTS p1", "WRITE_VI p2", "WRITE_EN p2", "PROMPTS p2",
 ]
 ALL_LABELS = [
-    "Đang đọc đoạn 1/2", "Đang đọc đoạn 2/2", "Đang gộp tên nhân vật", "Đang đặt tên hư cấu", "Đang lên dàn ý",
+    "Đang đọc đoạn 1/2", "Đang đọc đoạn 2/2", "Đang gộp tên nhân vật", "Đang đặt tên hư cấu", "Đang lọc sự việc trùng",
+    "Đang lên dàn ý",
     "Đang viết lời Việt, nhịp 1/2", "Đang viết lời Anh, nhịp 1/2", "Đang viết prompt hình, nhịp 1/2",
     "Đang viết lời Việt, nhịp 2/2", "Đang viết lời Anh, nhịp 2/2", "Đang viết prompt hình, nhịp 2/2",
     "Đang ráp và kiểm tra",
@@ -150,7 +151,7 @@ def test_start_analysis_saves_source_chunks_and_pipeline(isolated_projects_dir):
     pipeline = _pipeline(case_id)
     assert pipeline.status == "running"
     assert (pipeline.target_minutes, pipeline.visual_style, pipeline.chunk_chars) == (8, STYLE, 900)
-    assert [s.id for s in pipeline.steps] == ["extract_00", "extract_01", "cluster", "aliases", "outline"]
+    assert [s.id for s in pipeline.steps] == ["extract_00", "extract_01", "cluster", "aliases", "dedupe", "outline"]
     assert all(s.status == "pending" and s.attempts == 0 for s in pipeline.steps)
     assert pipeline.created_at and pipeline.updated_at
 
@@ -181,7 +182,7 @@ def test_progress_labels(isolated_projects_dir):
     case_id = _start()
     progress = _progress(case_id)
     assert progress == {"status": "running", "step_label": "Đang đọc đoạn 1/2", "steps_done": 0,
-                        "steps_total": 5, "error": ""}
+                        "steps_total": 6, "error": ""}
 
 
 def test_progress_label_for_every_step_kind(isolated_projects_dir):
@@ -204,12 +205,12 @@ def test_progress_label_for_every_step_kind(isolated_projects_dir):
             break
         approve_outline(case_id)
 
-    assert labels[:-1] == ALL_LABELS[:5] + [REVIEW_LABEL] + ALL_LABELS[5:]
+    assert labels[:-1] == ALL_LABELS[:6] + [REVIEW_LABEL] + ALL_LABELS[6:]
     assert [label for _id, _n, label in seen_running] == ALL_LABELS[:-1]   # assemble không gọi LLM
     assert all(n == 1 for _id, n, _label in seen_running)
     done = _progress(case_id)
     assert done["status"] == "done"
-    assert done["steps_done"] == done["steps_total"] == 12
+    assert done["steps_done"] == done["steps_total"] == 13
     assert done["error"] == ""
 
 
@@ -219,13 +220,13 @@ def test_runs_all_steps_sequentially(isolated_projects_dir):
     case_id = _start()
     llm, calls = make_fake_llm()
 
-    assert _drain(llm) == 12
+    assert _drain(llm) == 13
 
     assert calls == FULL_ORDER
     pipeline = _pipeline(case_id)
     assert pipeline.status == "done"
     assert [s.id for s in pipeline.steps] == [
-        "extract_00", "extract_01", "cluster", "aliases", "outline", "write_vi_p1", "write_en_p1", "write_prompts_p1",
+        "extract_00", "extract_01", "cluster", "aliases", "dedupe", "outline", "write_vi_p1", "write_en_p1", "write_prompts_p1",
         "write_vi_p2", "write_en_p2", "write_prompts_p2", "assemble",
     ]
     assert all(s.status == "done" and s.attempts == 1 and s.error == "" for s in pipeline.steps)
@@ -261,7 +262,7 @@ def test_cancelled_step_stays_running_then_recovered(isolated_projects_dir):
     """Tắt server (huỷ task worker) lúc LLM đang chạy: việc còn `running` trên đĩa, khởi động lại thì chạy lại việc đó."""
     case_id = _start()
     base, calls = make_fake_llm()
-    for _ in range(4):
+    for _ in range(5):
         asyncio.run(run_next_step(llm=base))
 
     async def hanging_llm(system, user, **kwargs):
@@ -276,14 +277,14 @@ def test_cancelled_step_stays_running_then_recovered(isolated_projects_dir):
             await task
 
     asyncio.run(main())
-    outline = _pipeline(case_id).steps[4]
+    outline = _pipeline(case_id).steps[5]
     assert (outline.id, outline.status, outline.attempts) == ("outline", "running", 1)
 
     assert recover_interrupted() == 1
     _drain(base)
     pipeline = _pipeline(case_id)
     assert pipeline.status == "done"
-    assert pipeline.steps[4].attempts == 2
+    assert pipeline.steps[5].attempts == 2
     assert [c for c in calls if c != "treo"] == FULL_ORDER
 
 
@@ -329,7 +330,7 @@ def test_failure_stops_then_resume(isolated_projects_dir):
     fixed, fixed_calls = make_fake_llm()                        # bỏ override
     _drain(fixed)
     assert _pipeline(case_id).status == "done"
-    assert fixed_calls == FULL_ORDER[5:]                        # chạy tiếp từ đúng việc hỏng
+    assert fixed_calls == FULL_ORDER[6:]                        # chạy tiếp từ đúng việc hỏng
     assert len(case_store.load_plan(case_id).scenes) == 7
 
 
@@ -346,7 +347,7 @@ def test_stale_running_step_stops_case_instead_of_skipping_ahead(isolated_projec
     pipeline = _pipeline(case_id)
     assert pipeline.status == "failed"
     assert pipeline.steps[0].status == "failed" and "Thử lại" in pipeline.steps[0].error
-    assert [s.status for s in pipeline.steps[1:]] == ["pending"] * 4
+    assert [s.status for s in pipeline.steps[1:]] == ["pending"] * 5
 
     resume_pipeline(case_id)
     _drain(llm)
@@ -439,7 +440,7 @@ def test_unexpected_error_does_not_stop_worker_loop(isolated_projects_dir, monke
 
     broken = _pipeline(first)
     assert broken.status == "failed"
-    assert [s.status for s in broken.steps] == ["done", "done", "failed", "pending", "pending"]
+    assert [s.status for s in broken.steps] == ["done", "done", "failed", "pending", "pending", "pending"]
     assert "RuntimeError" in pipeline_progress(broken)["error"]
     assert _pipeline(second).status == "done"
     assert case_store.load_plan(second) is not None
@@ -496,8 +497,8 @@ def test_one_llm_call_at_a_time(isolated_projects_dir, monkeypatch):
     assert state["peak"] == 1
     # Vụ cũ chạy tới dàn ý rồi chờ duyệt; trong lúc đó vụ mới chạy tiếp tới dàn ý. Duyệt cả hai thì vụ cũ viết xong
     # hẳn rồi mới tới vụ mới.
-    assert owners == [older] * 5 + [newer] * 5 + [older] * 6 + [newer] * 6
-    assert calls == FULL_ORDER[:5] * 2 + FULL_ORDER[5:] * 2
+    assert owners == [older] * 6 + [newer] * 6 + [older] * 6 + [newer] * 6
+    assert calls == FULL_ORDER[:6] * 2 + FULL_ORDER[6:] * 2
     for case_id in (older, newer):
         assert _pipeline(case_id).status == "done"
         assert len(case_store.load_plan(case_id).scenes) == 7
@@ -558,22 +559,22 @@ def _edited_parts(case_id: str, **changes) -> list[dict]:
 def _in_review() -> tuple[str, list[str]]:
     case_id = _start()
     llm, calls = make_fake_llm()
-    assert _drain(llm, approve=False) == 5
+    assert _drain(llm, approve=False) == 6
     return case_id, calls
 
 
 def test_outline_waits_for_review_then_approve_runs_the_rest(isolated_projects_dir):
     case_id, calls = _in_review()
 
-    assert calls == FULL_ORDER[:5]
+    assert calls == FULL_ORDER[:6]
     pipeline = _pipeline(case_id)
     assert pipeline.status == "review"
-    assert [s.id for s in pipeline.steps][5:] == [
+    assert [s.id for s in pipeline.steps][6:] == [
         "write_vi_p1", "write_en_p1", "write_prompts_p1", "write_vi_p2", "write_en_p2", "write_prompts_p2", "assemble",
     ]
-    assert all(s.status == "pending" for s in pipeline.steps[5:])
-    assert _progress(case_id) == {"status": "review", "step_label": REVIEW_LABEL, "steps_done": 5,
-                                  "steps_total": 12, "error": ""}
+    assert all(s.status == "pending" for s in pipeline.steps[6:])
+    assert _progress(case_id) == {"status": "review", "step_label": REVIEW_LABEL, "steps_done": 6,
+                                  "steps_total": 13, "error": ""}
     llm, more_calls = make_fake_llm()
     assert asyncio.run(run_next_step(llm=llm)) is False           # chờ duyệt: worker không chạy tiếp
     assert more_calls == []
@@ -582,7 +583,7 @@ def test_outline_waits_for_review_then_approve_runs_the_rest(isolated_projects_d
     assert approved.status == "running"
     assert _pipeline(case_id) == approved
     assert _drain(llm) == 7
-    assert more_calls == FULL_ORDER[5:]
+    assert more_calls == FULL_ORDER[6:]
     assert _pipeline(case_id).status == "done"
     assert case_store.load_plan(case_id) is not None
 
@@ -631,11 +632,11 @@ def test_edit_outline_revalidates_renumbers_and_regenerates_steps(isolated_proje
     pipeline = edit_outline(case_id, parts)
 
     assert pipeline.status == "review"
-    assert [s.id for s in pipeline.steps][5:] == [
+    assert [s.id for s in pipeline.steps][6:] == [
         "write_vi_p1", "write_en_p1", "write_prompts_p1", "write_vi_p2", "write_en_p2", "write_prompts_p2",
         "write_vi_p3", "write_en_p3", "write_prompts_p3", "assemble",
     ]
-    assert all(s.status == "pending" for s in pipeline.steps[5:])
+    assert all(s.status == "pending" for s in pipeline.steps[6:])
     assert _pipeline(case_id) == pipeline
     saved = _outline(case_id)
     assert saved["supported_minutes"] == 2                         # giữ ước lượng tư liệu của bước dàn ý
@@ -656,7 +657,7 @@ def test_edit_outline_is_used_by_the_writing_steps(isolated_projects_dir):
 
     _drain(llm)
 
-    assert calls == FULL_ORDER[5:]
+    assert calls == FULL_ORDER[6:]
     plan = case_store.load_plan(case_id)
     assert plan.parts[1].kind == "investigation" and plan.parts[1].summary_vi == summary
     write_vi_p2 = next(p for p in llm.prompts if p.startswith("TASK: WRITE_VI p2"))
@@ -897,3 +898,52 @@ def test_app_starts_even_if_recover_fails(isolated_projects_dir, monkeypatch):
             assert time.monotonic() < deadline
             time.sleep(0.01)
         assert client.get("/favicon.ico").status_code == 204
+
+
+def test_edit_outline_drops_and_restores_events(isolated_projects_dir):
+    """Người dùng bỏ sự việc khỏi video (bỏ quá 1/3 cũng được: đó là lựa chọn của họ) rồi đưa lại."""
+    from services.case_adaptation_steps import USER_DROP_REASON
+    case_id, _calls = _in_review()
+    parts = _edited_parts(case_id)
+    second = parts[1]["event_ids"]
+    dropped_ids = second[1:]                                         # 5 trên 12 sự việc
+    parts[1].update(event_ids=second[:1], scene_count=2)
+
+    edit_outline(case_id, parts, dropped=[{"event_id": e, "reason": ""} for e in dropped_ids])
+
+    saved = _outline(case_id)
+    assert [d["event_id"] for d in saved["dropped"]] == dropped_ids
+    assert all(d["reason"] == USER_DROP_REASON for d in saved["dropped"])
+    view = outline_view(case_id)
+    assert view["dropped"] == saved["dropped"] and view["merged_count"] == 0
+
+    parts = _edited_parts(case_id)                                   # gửi lại không kèm danh sách bỏ: giữ nguyên
+    edit_outline(case_id, parts)
+    assert _outline(case_id)["dropped"] == saved["dropped"]
+
+    both = _edited_parts(case_id, **{"1": {"event_ids": second, "scene_count": 3}})
+    with pytest.raises(OutlineEditError) as info:
+        edit_outline(case_id, both)                                  # vừa trong nhịp vừa trong danh sách bỏ
+    assert 'mục "Bỏ khỏi video"' in info.value.message and '"dropped"' not in info.value.message
+
+    edit_outline(case_id, both, dropped=[])                         # đưa lại cả 5 sự việc
+    assert _outline(case_id)["dropped"] == []
+    assert _outline(case_id)["parts"][1]["event_ids"] == second
+
+
+def test_dropped_events_are_not_written(isolated_projects_dir):
+    case_id, _calls = _in_review()
+    parts = _edited_parts(case_id)
+    gone = parts[1]["event_ids"][-1]
+    parts[1]["event_ids"] = parts[1]["event_ids"][:-1]
+    edit_outline(case_id, parts, dropped=[{"event_id": gone, "reason": "Chi tiết phụ."}])
+    approve_outline(case_id)
+    llm, _more = make_fake_llm()
+
+    _drain(llm)
+
+    write_vi_p2 = next(p for p in llm.prompts if p.startswith("TASK: WRITE_VI p2"))
+    events_block = write_vi_p2.split("Sự việc phải kể", 1)[1].split("BẢNG TÊN", 1)[0]
+    assert gone not in events_block
+    plan = case_store.load_plan(case_id)
+    assert all(gone not in s.covers_event_ids for s in plan.scenes)

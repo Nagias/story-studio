@@ -9,7 +9,8 @@ Endpoints (prefix /api/true-crime):
 - GET  /cases/{case_id}/progress          tiến độ của hàng việc (404 nếu không có vụ).
 - POST /cases/{case_id}/resume            "Thử lại": chạy tiếp từ việc bị hỏng.
 - GET  /cases/{case_id}/outline           dàn ý + dòng thời gian (tên hư cấu) cho màn duyệt (409 nếu chưa có dàn ý).
-- PUT  /cases/{case_id}/outline           sửa dàn ý đang chờ duyệt; kiểm bằng các quy tắc dàn ý (400), 409 nếu đã duyệt.
+- PUT  /cases/{case_id}/outline           sửa dàn ý đang chờ duyệt (cả danh sách sự việc bỏ khỏi video); kiểm bằng các
+                                          quy tắc dàn ý (400), 409 nếu đã duyệt.
 - POST /cases/{case_id}/outline/approve   duyệt dàn ý: worker viết cảnh tiếp (409 nếu không chờ duyệt).
 - GET  /cases/{case_id}                   kế hoạch (409 nếu chưa phân tích xong).
 - PUT  /cases/{case_id}/entities          sửa tên hư cấu / thêm tên mới, áp cho cả kế hoạch, chạy lại kiểm tra.
@@ -58,10 +59,17 @@ class OutlinePartEdit(BaseModel):
     scene_count: int
 
 
+class OutlineDroppedEdit(BaseModel):
+    event_id: str = Field(max_length=64)
+    reason: str = Field(default="", max_length=500)
+
+
 class OutlineEditRequest(BaseModel):
     parts: list[OutlinePartEdit] = Field(max_length=100)
     supported_minutes: Optional[int] = Field(default=None, ge=1, le=60,
                                              description="Số phút bài đủ tư liệu; để trống thì giữ ước lượng của máy")
+    dropped: Optional[list[OutlineDroppedEdit]] = Field(
+        default=None, max_length=500, description="Sự việc bỏ khỏi video; để trống thì giữ danh sách đang lưu")
 
 
 class EntitiesRequest(BaseModel):
@@ -181,8 +189,10 @@ async def get_outline(case_id: str):
 @router.put("/cases/{case_id}/outline")
 async def edit_outline(case_id: str, req: OutlineEditRequest):
     """Thay toàn bộ các nhịp của dàn ý đang chờ duyệt (đổi loại, tóm tắt, số cảnh, chuyển sự việc, thêm bớt nhịp) và,
-    nếu gửi, số phút bài đủ tư liệu. Trả dàn ý đã lưu như GET."""
-    await _outline_call(case_id, case_worker.edit_outline, [p.model_dump() for p in req.parts], req.supported_minutes)
+    nếu gửi, số phút bài đủ tư liệu và danh sách sự việc bỏ khỏi video. Trả dàn ý đã lưu như GET."""
+    dropped = None if req.dropped is None else [d.model_dump() for d in req.dropped]
+    await _outline_call(case_id, case_worker.edit_outline, [p.model_dump() for p in req.parts], req.supported_minutes,
+                        dropped)
     return await _outline_call(case_id, case_worker.outline_view)
 
 

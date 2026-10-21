@@ -7,7 +7,7 @@
       "covers_event_ids": ["ev_1_1", "ev_1_2"]
     },
     {
-      "narration_vi": "Pháp y đưa ra kết luận đầu tiên: ông Vũ tử vong vào khoảng 22 giờ 15, sớm hơn cuộc gọi của bà Hà hơn một giờ. Khoảng trống ấy chưa ai giải thích được. Rồi dưới gầm tủ tài liệu bị lục tung, điều tra viên nhặt được một chiếc bật lửa kim loại khắc chữ.",
+      "narration_vi": "Pháp y đưa ra kết luận: ông Vũ tử vong vào khoảng 22 giờ 15, sớm hơn cuộc gọi của bà Hà hơn một giờ. Rồi dưới gầm tủ tài liệu bị lục tung, điều tra viên nhặt được một chiếc bật lửa kim loại khắc chữ.",
       "visual_kind": "board",
       "board_reveal": ["evd_1", "evd_2", "evd_3", "evd_4", "evd_5", "evd_6", "evd_7", "evd_8"],
       "covers_event_ids": ["ev_1_3", "ev_1_4"]

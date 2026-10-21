@@ -138,7 +138,8 @@ def test_dossier_splits_into_two_chunks_and_initial_steps():
     steps = initial_steps(2)
     assert [(s.id, s.kind) for s in steps] == [
         ("extract_00", "extract_chunk"), ("extract_01", "extract_chunk"),
-        ("cluster", "cluster_names"), ("aliases", "assign_aliases"), ("outline", "build_outline"),
+        ("cluster", "cluster_names"), ("aliases", "assign_aliases"), ("dedupe", "dedupe_events"),
+        ("outline", "build_outline"),
     ]
     assert [s.params.get("index") for s in steps[:2]] == [0, 1]
     assert all(s.status == "pending" for s in steps)

@@ -42,13 +42,13 @@ VI_VOICE = "vieneu-test-voice"
 EN_VOICE = "en-US-AndrewMultilingualNeural"
 
 # Lời Anh viết lại: 20-70 từ, không tên thật, không ngày tháng, dùng tên hư cấu dạng Anh.
-REWRITE_3 = (
-    "Shaking and out of breath, Dang Thu Ha pressed the phone to her ear and told the duty officer that a figure "
-    "in a dark jacket had just sprinted through the port gate and vanished into the pouring rain."
+REWRITE_3 = (                       # video 8 phút: lời Anh mỗi cảnh tối đa 33 từ
+    "Shaking, Dang Thu Ha told the duty officer that a figure in a dark jacket had just sprinted through the port "
+    "gate and vanished into the pouring rain."
 )
 REWRITE_NEW = (
-    "Days later, a quiet harbor clerk came forward with something nobody had asked about: a handwritten gate log "
-    "that placed one more visitor inside the port that night, long after the last shift had gone home."
+    "Days later, a harbor clerk came forward with a handwritten gate log that placed one more visitor inside the "
+    "port that night, long after the last shift had gone home."
 )
 
 
@@ -643,7 +643,7 @@ def test_language_version_rewritten_text_gets_aliases_and_blocks_real_names(isol
     scene_by_order(saved, 4).text = "Câu đã sửa của cảnh bốn, kể lại diễn biến bằng lời mới."
     project_service._save_project(saved)
 
-    async def leaky(bible, items, *, llm=None):
+    async def leaky(bible, items, *, llm=None, target_minutes=None):
         return {4: "Nguyen Van Hung lay still in the loading yard while the rain kept falling on the silent containers "
                    "and nobody yet knew who had been standing beside him in the dark."}
 
@@ -658,7 +658,7 @@ def test_language_version_rewritten_text_gets_aliases_and_blocks_real_names(isol
     # Tên chỉ regex bắt được trên bài gốc (chưa có tên hư cấu): chặn, và thông báo không nêu tên thật.
     case_store.save_source(plan.case_id, case_store.load_source(plan.case_id) + "\nÔng Hoàng Minh Tuấn là tài xế xe tải.")
 
-    async def leaky_unknown(bible, items, *, llm=None):
+    async def leaky_unknown(bible, items, *, llm=None, target_minutes=None):
         return {4: "Hoang Minh Tuan watched the yard from his truck while the rain kept falling and nobody noticed "
                    "him there, parked in the dark beside the silent containers all night long."}
 
@@ -679,7 +679,7 @@ def test_language_version_rewritten_text_with_exact_date_is_blocked_without_nami
     scene_by_order(saved, 4).text = "Câu đã sửa của cảnh bốn, kể lại diễn biến bằng lời mới."
     project_service._save_project(saved)
 
-    async def dated(bible, items, *, llm=None):
+    async def dated(bible, items, *, llm=None, target_minutes=None):
         return {4: "On October 7, 2014 the loading yard lay silent under the rain while nobody yet knew who had been "
                    "standing beside the victim in the dark, parked between the silent containers all night long."}
 

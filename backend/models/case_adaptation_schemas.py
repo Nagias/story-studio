@@ -46,6 +46,8 @@ class TimelineEvent(BaseModel):
     time_label: str = ""
     summary: str
     entity_ids: list[str] = []
+    # đoạn gốc của các sự việc trùng đã gộp vào sự việc này (bước lọc trùng), để lời kể vẫn đọc được mọi chi tiết
+    extra_chunk_indices: list[int] = []
 
 
 class CaseEvidence(BaseModel):
@@ -94,9 +96,16 @@ class StoryPart(BaseModel):
     scene_count: int
 
 
+class DroppedEvent(BaseModel):
+    """Sự việc dàn ý bỏ khỏi video (chi tiết vụn), kèm lý do để người dùng xem lúc duyệt."""
+    event_id: str
+    reason: str
+
+
 class CaseOutline(BaseModel):
     supported_minutes: int
     parts: list[StoryPart]
+    dropped: list[DroppedEvent] = []
 
 
 class SceneFlag(BaseModel):
@@ -140,7 +149,7 @@ class CaseAdaptationPlan(BaseModel):
 
 
 StepKind = Literal[
-    "extract_chunk", "cluster_names", "assign_aliases", "build_outline",
+    "extract_chunk", "cluster_names", "assign_aliases", "dedupe_events", "build_outline",
     "write_vi", "write_en", "write_prompts", "assemble",
 ]
 

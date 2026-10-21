@@ -11,6 +11,8 @@ Prompt LLM cho luồng chuyển thể vụ án thật thành truyện song ngữ
   ở các nhịp trước, để cài cắm, trả lời và không giới thiệu lại nhân vật.
 """
 import math
+import re
+from dataclasses import dataclass
 from typing import Iterable, Optional, Sequence
 
 from models.case_adaptation_schemas import CaseBible, CaseEntity, StoryPart, TimelineEvent
@@ -34,17 +36,50 @@ MAX_SCENE_OVERSHOOT = 1.2       # tổng số cảnh (kể cả cảnh miễn tr
 MAX_EVENTS_PER_SCENE = 3        # mỗi cảnh kể tối đa 3 sự việc (nhiều hơn là tóm gọn)
 MAX_SCENES_PER_EVENT = 2        # một sự việc đủ cho tối đa 2 cảnh (nhiều hơn là kéo dài cho đủ)
 SCENES_PER_MINUTE = 4           # trung bình khoảng 15 giây mỗi cảnh
-VI_WORDS = (25, 80)             # độ dài narration_vi (từ)
-EN_WORDS = (20, 70)             # độ dài narration_en (từ)
+MAX_DROPPED_SHARE = 1 / 3       # dàn ý bỏ tối đa 1/3 số sự việc (chi tiết vụn) để kể gọn và cuốn
+MAX_DEDUPE_SHARE = 0.5          # bước lọc trùng gộp tối đa một nửa số sự việc (nhiều hơn là gộp nhầm)
+# Tốc độ đọc đo bằng giọng Edge khi chạy thật vụ Nhũ Cô (21/10): lời Việt 229 chữ/phút, lời Anh 133 chữ/phút. Số chữ mỗi
+# cảnh tính từ số giây mỗi cảnh của thời lượng đã chọn (word_budget), để video ra đúng số phút: trước đây giới hạn cố định
+# 80 chữ nên model viết trung bình 72 chữ Việt mỗi cảnh, video 8 phút ra 13–14,5 phút.
+VI_WORDS_PER_MINUTE = 229
+EN_WORDS_PER_MINUTE = 133
 MIN_IMAGE_PROMPT_WORDS = 20
 MIN_VIDEO_PROMPT_WORDS = 8
 PART_KINDS = ("hook", "setup", "discovery", "investigation", "twist", "resolution", "open_questions", "epilogue")
 VISUAL_KINDS = ("image", "video", "board")
 NARRATIVE_BEATS = ("hook", "setting", "escalation", "climax", "resolution")
 BGM_ENERGIES = ("ambient_low", "tension_buildup", "dramatic_climax")
-# Mức mong đợi nói với model (chặt hơn ngưỡng loại).
-_VI_TARGET, _VI_VIDEO_TARGET = "35–50", "25–30"
-_EN_TARGET, _EN_VIDEO_TARGET = "30–45", "20–25"
+DEFAULT_SCENE_SECONDS = 60 / SCENES_PER_MINUTE   # 15 giây, khi không biết thời lượng video (viết lại lời Anh lẻ)
+
+
+@dataclass(frozen=True)
+class WordBudget:
+    """Số từ lời kể của một cảnh. `*_aim`: khoảng nói với model (cảnh thường / cảnh video); `*_limit`: khoảng nhận,
+    ngoài khoảng này thì bị loại. Model hay viết sát mức trên của khoảng nhận (chạy thật 21/10: trung bình 92% mức
+    trên), nên mức trên chỉ hơn số từ đúng thời lượng 5%."""
+    seconds: float
+    vi_aim: tuple[int, int]
+    vi_video_aim: tuple[int, int]
+    vi_limit: tuple[int, int]
+    en_aim: tuple[int, int]
+    en_video_aim: tuple[int, int]
+    en_limit: tuple[int, int]
+
+
+def word_budget(seconds_per_scene: float = DEFAULT_SCENE_SECONDS) -> WordBudget:
+    """Số từ mỗi cảnh để lời đọc dài khoảng `seconds_per_scene` giây (theo tốc độ đọc đã đo của từng ngôn ngữ)."""
+    def ranges(words_per_minute: int) -> tuple[tuple[int, int], tuple[int, int], tuple[int, int]]:
+        mid = seconds_per_scene * words_per_minute / 60
+        return ((round(mid * 0.75), round(mid * 0.95)), (round(mid * 0.5), round(mid * 0.6)),
+                (round(mid * 0.45), round(mid * 1.05)))
+
+    vi_aim, vi_video_aim, vi_limit = ranges(VI_WORDS_PER_MINUTE)
+    en_aim, en_video_aim, en_limit = ranges(EN_WORDS_PER_MINUTE)
+    return WordBudget(seconds_per_scene, vi_aim, vi_video_aim, vi_limit, en_aim, en_video_aim, en_limit)
+
+
+def _span(pair: tuple[int, int]) -> str:
+    return f"{pair[0]}–{pair[1]}"
 
 _KIND_HINTS = {
     "hook": "mở đầu gây tò mò: hé lộ khoảnh khắc bí ẩn hoặc đáng sợ nhất, đặt câu hỏi; không tiết lộ hung thủ hay kết cục",
@@ -85,7 +120,7 @@ Công việc được chia thành nhiều việc nhỏ. Mỗi tin nhắn giao đ
 
 NGUYÊN TẮC CHUNG
 1. Giữ nguyên sự thật: diễn biến, cách gây án, quá trình điều tra, kết quả và bối cảnh chung (vùng núi, nông thôn, thành thị, thị trấn ven biển...). Không bịa thêm sự kiện, nhân vật có vai trò trong vụ án, động cơ, nghi phạm hay bằng chứng mà bài không nói.
-2. Mức kịch tính hoá "như phim": được thêm không khí, cảm xúc, nội tâm và lời thoại dựng lại, nhưng chỉ dựa trên những sự kiện có trong bài. Được có nhân vật phụ không tên (người qua đường, hàng xóm).
+2. Mức kịch tính hoá "như phim": được thêm không khí, ánh sáng, âm thanh, cảnh vật và cảm xúc người ngoài nhìn thấy được, nhưng chỉ dựa trên những sự kiện có trong bài. Không bịa lời nói: lời trích trực tiếp chỉ dùng khi bài có đúng câu đó, còn lại kể gián tiếp; không kể suy nghĩ thầm kín của người thật mà bài không nói. Được có nhân vật phụ không tên (người qua đường, hàng xóm).
 3. Tên riêng: chỉ đổi tên người và địa danh riêng từ cấp thành phố, huyện trở xuống (đường, xã, phường, núi, sông, cảng, trường, công ty, bệnh viện hay đơn vị công an có tên cụ thể), theo đúng bảng tên hư cấu được giao. Giữ nguyên tên quốc gia ("Việt Nam", "Đài Loan", "Mỹ") và tên chung của cơ quan ("cảnh sát", "công an", "toà án", "viện kiểm sát", "bệnh viện").
    Tên hư cấu theo phong cách văn hoá gốc của vụ án, không chuyển bối cảnh sang nước khác: vụ ở Việt Nam dùng tên Việt; vụ của người Hoa dùng tên Hán-Việt trong bản tiếng Việt (ví dụ "Lưu Vinh Phú") và pinyin của cùng tên đó trong bản tiếng Anh (ví dụ "Liu Rongfu"); vụ ở Mỹ dùng tên kiểu Mỹ.
 4. Ngày giờ: bỏ ngày và tháng cụ thể; năm đổi thành thời kỳ ("giữa thập niên 2010", "đầu những năm 2020"). Giữ mùa, các mốc tương đối ("ba ngày sau", "mười năm sau") và giờ trong ngày (ví dụ cuộc gọi lúc 02:21), vì giờ có thể là bằng chứng. Tuổi để xấp xỉ ("khoảng năm mươi tuổi").
@@ -123,6 +158,16 @@ def video_scene_cap(target_max: int) -> int:
 def supported_scene_cap(supported_minutes: int) -> int:
     """Số cảnh dàn ý tối đa khi bài chỉ đủ tư liệu cho `supported_minutes` phút (khoảng 4 cảnh/phút, + 20%)."""
     return math.floor(supported_minutes * SCENES_PER_MINUTE * MAX_SCENE_OVERSHOOT)
+
+
+def max_dropped(n_events: int) -> int:
+    """Số sự việc tối đa dàn ý được bỏ khỏi video."""
+    return math.floor(n_events * MAX_DROPPED_SHARE + 1e-9)
+
+
+def max_deduped(n_events: int) -> int:
+    """Số sự việc tối đa bước lọc trùng được gộp vào sự việc khác."""
+    return math.floor(n_events * MAX_DEDUPE_SHARE + 1e-9)
 
 
 def min_events_for(words: int) -> int:
@@ -298,12 +343,12 @@ def _alias_vi_of(bible: CaseBible, entity_id: str) -> str:
 
 
 def _event_lines(events: Iterable[TimelineEvent], bible: CaseBible, indent: str = "",
-                 marks: Optional[dict[str, str]] = None) -> str:
+                 marks: Optional[dict[str, str]] = None, summary_chars: int = 400) -> str:
     lines = []
     for ev in events:
         when = f' | mốc trong bài: "{_one_line(ev.time_label, 80)}"' if ev.time_label.strip() else ""
         mark = f" {marks[ev.id]}" if marks and ev.id in marks else ""
-        lines.append(f"{indent}- {ev.id}{mark}{when} | {_one_line(_aliased(ev.summary, bible), 400)}")
+        lines.append(f"{indent}- {ev.id}{mark}{when} | {_one_line(_aliased(ev.summary, bible), summary_chars)}")
     return "\n".join(lines) if lines else f"{indent}(không có sự việc nào)"
 
 
@@ -357,8 +402,17 @@ def outline_prompt(bible: CaseBible, target_minutes: int, target_scenes: tuple[i
     ending = ('"resolution" (phá án)' if bible.solved
               else '"open_questions" (những câu hỏi còn bỏ ngỏ); KHÔNG dùng "resolution" vì vụ chưa phá được')
     n_events = len(bible.timeline)
+    most_dropped = max_dropped(n_events)
+    if most_dropped:
+        drop_rule = (f'"dropped": chi tiết vụn bỏ khỏi video để câu chuyện gọn và cuốn (thủ tục hành chính, thông tin lặp '
+                     f'lại, chi tiết phụ không làm câu chuyện tiến lên), mỗi mục {{"event_id": "...", "reason": "lý do ngắn"}}. '
+                     f"Tối đa {most_dropped} sự việc; không bỏ gì thì để []. KHÔNG được bỏ sự việc then chốt: lúc phát hiện "
+                     "vụ án, bằng chứng hay lời khai làm đổi hướng điều tra, bước ngoặt, việc xác định, bắt giữ, xét xử hung "
+                     "thủ hoặc kết luận cuối cùng của vụ.")
+    else:
+        drop_rule = '"dropped": dòng thời gian ngắn nên không bỏ sự việc nào, để [].'
     return f"""TASK: OUTLINE
-Việc: lập dàn ý cho một video kể chuyện khoảng {target_minutes} phút, chuyển thể từ một vụ án có thật. Chia câu chuyện thành các nhịp (phần) theo cấu trúc phim; mỗi nhịp có từ {min_part} đến {max_part} cảnh, mỗi cảnh khoảng 15 giây lời kể. Chỉ lập dàn ý, chưa viết lời kể.
+Việc: lập dàn ý cho một video kể chuyện khoảng {target_minutes} phút, chuyển thể từ một vụ án có thật. Chia câu chuyện thành các nhịp (phần) theo cấu trúc phim; mỗi nhịp có từ {min_part} đến {max_part} cảnh, mỗi cảnh khoảng 15 giây lời kể. Mục tiêu là kể cuốn, giữ người xem tới cuối, nhưng không bịa. Chỉ lập dàn ý, chưa viết lời kể.
 
 HỒ SƠ (tên đã đổi sang tên hư cấu)
 - Tên tập: {_quote(bible.title_vi)}
@@ -373,22 +427,43 @@ BẰNG CHỨNG VÀ QUAN HỆ TRONG HỒ SƠ:
 {_board_lines(bible)}
 
 THỜI LƯỢNG VÀ SỐ CẢNH
-1. "supported_minutes": số phút (số nguyên, ít nhất 1) mà bài này đủ chất liệu để kể hấp dẫn mà không phải bịa thêm; tính khoảng {SCENES_PER_MINUTE} cảnh cho mỗi phút, mỗi sự việc đủ cho 1–{MAX_SCENES_PER_EVENT} cảnh. Ước trung thực theo lượng sự việc ở trên, không theo thời lượng người dùng chọn: không nâng lên cho bằng {target_minutes} phút, không hạ xuống để viết ít.
+1. "supported_minutes": số phút (số nguyên, ít nhất 1) mà bài này đủ chất liệu để kể hấp dẫn mà không phải bịa thêm; tính khoảng {SCENES_PER_MINUTE} cảnh cho mỗi phút, mỗi sự việc đủ cho 1–{MAX_SCENES_PER_EVENT} cảnh. Ước trung thực theo lượng sự việc giữ lại (không tính sự việc trong "dropped"), không theo thời lượng người dùng chọn: không nâng lên cho bằng {target_minutes} phút, không hạ xuống để viết ít.
 2. Video luôn có thêm 1 cảnh miễn trừ ở đầu, đã tính vào các mức dưới đây. Tổng số cảnh của dàn ý (cộng "scene_count" của mọi nhịp):
    - nếu "supported_minutes" ≥ {target_minutes}: từ {lo - 1} đến {hi - 1} cảnh (video có {lo}–{hi} cảnh, kể cả cảnh miễn trừ); ít hơn {lo - 1} cảnh là thiếu và sẽ bị trả lại;
    - nếu "supported_minutes" < {target_minutes}: vừa với chất liệu, khoảng "supported_minutes" × {SCENES_PER_MINUTE} cảnh và không quá "supported_minutes" × {SCENES_PER_MINUTE * MAX_SCENE_OVERSHOOT:g} cảnh (làm tròn xuống; ví dụ {example_minutes} phút: khoảng {example_minutes * SCENES_PER_MINUTE} cảnh, tối đa {supported_scene_cap(example_minutes)} cảnh). Không kéo dài cho đủ số cảnh;
    - trong mọi trường hợp không quá {cap - 1} cảnh (video tối đa {cap} cảnh, kể cả cảnh miễn trừ).
 
 QUY TẮC NHỊP
-1. Thứ tự theo cấu trúc phim: hook (mở đầu gây tò mò, không tiết lộ kết) → setup (bối cảnh, con người) → discovery (phát hiện vụ án) → investigation (điều tra) → twist (bước ngoặt) → kết thúc → epilogue (kết và dư âm). Kết thúc của vụ này là {ending}. Không bắt buộc đủ mọi loại; một loại có thể có nhiều nhịp liền nhau (ví dụ ba nhịp investigation).
+1. Thứ tự kể để giữ người xem, không bắt buộc theo thời gian: mở bằng hook (khoảnh khắc gây tò mò nhất, không tiết lộ kết); sau đó được kể ngay lúc phát hiện vụ án (discovery) rồi mới quay ngược về bối cảnh, con người (setup), hoặc kể setup trước nếu như vậy cuốn hơn; tiếp theo là investigation (điều tra), twist (bước ngoặt), kết thúc và epilogue (kết và dư âm). Bước ngoặt và kết luôn ở cuối, không tiết lộ sớm. Kết thúc của vụ này là {ending}. Không bắt buộc đủ mọi loại; một loại có thể có nhiều nhịp liền nhau (ví dụ ba nhịp investigation).
 2. "kind": một trong {kinds}.
-3. "event_ids": id các sự việc nhịp này kể, theo thứ tự kể. MỌI sự việc trong dòng thời gian (đủ {n_events} id) phải nằm trong ĐÚNG MỘT nhịp: không bỏ sót sự việc nào, kể cả sự việc nhỏ, và không kể lại cùng một sự việc ở hai nhịp. Chỉ dùng id có trong danh sách trên. Ngoại lệ duy nhất: nhịp hook được mượn trước tối đa 1 sự việc của một nhịp sau, nhưng chỉ để gợi tò mò (một câu hỏi, một hình ảnh, một chi tiết chưa có lời giải), không kể lại trọn sự việc; sự việc đó vẫn nằm trong nhịp của nó, và chính nhịp đó mới kể đầy đủ.
-4. "scene_count": số nguyên từ {min_part} đến {max_part}; không ít hơn số sự việc của nhịp chia {MAX_EVENTS_PER_SCENE} (mỗi cảnh kể tối đa {MAX_EVENTS_PER_SCENE} sự việc), và không nhiều hơn {MAX_SCENES_PER_EVENT} × số sự việc của nhịp (mỗi sự việc đủ cho tối đa {MAX_SCENES_PER_EVENT} cảnh; nhịp 1 sự việc thì đúng {min_part} cảnh). Nhịp có nhiều sự việc thì tách thành nhiều nhịp.
-5. "summary_vi": 1–2 câu tiếng Việt nói nhịp này kể gì; chỉ dùng tên hư cấu như trong hồ sơ trên; không ghi ngày, tháng hay năm cụ thể. Riêng nhịp hook: "summary_vi" là lời gợi tò mò (câu hỏi hay hình ảnh mở đầu), không tóm tắt diễn biến hay kết quả.
-6. "id": "p1", "p2", "p3"... theo thứ tự.
+3. "event_ids": id các sự việc nhịp này kể, theo thứ tự kể. Mỗi sự việc trong dòng thời gian (đủ {n_events} id) phải nằm trong ĐÚNG MỘT nhịp hoặc trong "dropped": không bỏ sót id nào, và không kể lại cùng một sự việc ở hai nhịp. Chỉ dùng id có trong danh sách trên. Ngoại lệ duy nhất: nhịp hook được mượn trước tối đa 1 sự việc của một nhịp sau, nhưng chỉ để gợi tò mò (một câu hỏi, một hình ảnh, một chi tiết chưa có lời giải), không kể lại trọn sự việc; sự việc đó vẫn nằm trong nhịp của nó, và chính nhịp đó mới kể đầy đủ.
+4. {drop_rule}
+5. "scene_count": số nguyên từ {min_part} đến {max_part}; không ít hơn số sự việc của nhịp chia {MAX_EVENTS_PER_SCENE} (mỗi cảnh kể tối đa {MAX_EVENTS_PER_SCENE} sự việc), và không nhiều hơn {MAX_SCENES_PER_EVENT} × số sự việc của nhịp (mỗi sự việc đủ cho tối đa {MAX_SCENES_PER_EVENT} cảnh; nhịp 1 sự việc thì đúng {min_part} cảnh). Nhịp có nhiều sự việc thì tách thành nhiều nhịp.
+6. "summary_vi": 1–2 câu tiếng Việt nói nhịp này kể gì; chỉ dùng tên hư cấu như trong hồ sơ trên; không ghi ngày, tháng hay năm cụ thể. Riêng nhịp hook: "summary_vi" là lời gợi tò mò (câu hỏi hay hình ảnh mở đầu), không tóm tắt diễn biến hay kết quả.
+7. "id": "p1", "p2", "p3"... theo thứ tự.
 
 Trả về đúng một JSON object theo mẫu (thay phần trong <...> bằng số nguyên):
-{{"supported_minutes": <số phút tư liệu đủ để kể mà không bịa>, "parts": [{{"id": "p1", "kind": "hook", "summary_vi": "...", "event_ids": ["..."], "scene_count": 3}}]}}"""
+{{"supported_minutes": <số phút tư liệu đủ để kể mà không bịa>, "parts": [{{"id": "p1", "kind": "hook", "summary_vi": "...", "event_ids": ["..."], "scene_count": 3}}], "dropped": []}}"""
+
+
+# ---------------------------------------------------------------- G4b: lọc sự việc trùng
+
+def dedupe_prompt(bible: CaseBible) -> str:
+    n = len(bible.timeline)
+    return f"""TASK: DEDUPE
+Việc: dưới đây là {n} sự việc ghi chép lần lượt từ các đoạn của một bài viết về vụ án có thật (tên đã đổi sang tên hư cấu). Bài báo hay kể một chuyện hai lần (đoạn mở đầu tóm tắt rồi phần sau kể chi tiết, hoặc nhắc lại khi tổng kết), nên có thể có sự việc trùng nhau. Hãy tìm các nhóm sự việc kể về CÙNG MỘT việc đã xảy ra.
+
+QUY TẮC
+1. Chỉ gộp khi chắc chắn là cùng một hành động của cùng người, ở cùng lúc (ví dụ "người vợ báo cảnh sát chồng mất tích" ở đoạn đầu và "chiều hôm đó, người vợ đến đồn trình báo chồng không về nhà" ở đoạn sau). Hai việc giống nhau nhưng xảy ra ở hai lúc khác nhau (hai lần thẩm vấn, hai cuộc gọi) là hai sự việc riêng: không gộp.
+2. "keep": id của sự việc ghi đầy đủ chi tiết nhất trong nhóm; "drop": các id còn lại của nhóm (ít nhất 1). Mỗi id chỉ nằm trong tối đa một nhóm, và không vừa là "keep" vừa là "drop".
+3. "reason": một câu ngắn nói vì sao là cùng một việc.
+4. Không có sự việc nào trùng thì trả "duplicates": []. Không gộp cho gọn: sự việc khác nhau thì giữ riêng.
+
+DÒNG THỜI GIAN: {n} sự việc, theo thứ tự trong bài (id | mốc thời gian | nội dung tóm tắt):
+{_event_lines(bible.timeline, bible, summary_chars=220)}
+
+Trả về đúng một JSON object theo mẫu:
+{{"duplicates":[{{"keep": "...", "drop": ["..."], "reason": "..."}}]}}"""
 
 
 # ---------------------------------------------------------------- G6: lời Việt
@@ -407,18 +482,59 @@ def _story_block(bible: CaseBible, part: StoryPart, outline_parts: Sequence[Stor
     return "\n".join(lines)
 
 
+def next_part_of(part: StoryPart, outline_parts: Sequence[StoryPart]) -> Optional[StoryPart]:
+    """Nhịp kể ngay sau `part` trong dàn ý; None nếu `part` là nhịp cuối (hoặc không có dàn ý)."""
+    ids = [p.id for p in outline_parts]
+    if part.id not in ids:
+        return None
+    index = ids.index(part.id)
+    return outline_parts[index + 1] if index + 1 < len(outline_parts) else None
+
+
+_LAST_QUESTION = re.compile(r"[^.!?…。！？]*[?？][\"'”’»)\]]*\s*$")
+
+
+def _last_question(text: str) -> str:
+    """Câu hỏi kết thúc `text` (câu cuối, nếu là câu hỏi), để nhịp sau không hỏi lặp kiểu."""
+    match = _LAST_QUESTION.search(text or "")
+    return " ".join(match.group(0).split()) if match else ""
+
+
+def _ending_rule(part: StoryPart, outline_parts: Sequence[StoryPart], bible: CaseBible,
+                 prev_question: str = "") -> str:
+    """Cảnh cuối của nhịp: câu hỏi bỏ ngỏ kéo sang nhịp sau (khác kiểu câu hỏi của nhịp trước), hoặc câu khép lại
+    video ở nhịp cuối."""
+    nxt = next_part_of(part, outline_parts)
+    if nxt is None:
+        if outline_parts:
+            return ("Đây là nhịp cuối của video: cảnh cuối khép lại câu chuyện bằng một câu đọng lại về những gì vụ án để "
+                    "lại, không mở thêm tình tiết mới.")
+        return "Cảnh cuối của nhịp kết bằng một câu gợi tò mò về điều sẽ kể tiếp, không trả lời trước."
+    summary = _one_line(_aliased(nxt.summary_vi, bible), 300) or "(không có tóm tắt)"
+    vary = ("Đổi cách hỏi qua từng nhịp: hỏi thẳng vào điều nhịp sau tiết lộ (\"Ai...\", \"Điều gì...\", \"Vì sao...\", "
+            "\"Bằng cách nào...\", \"... sẽ dẫn tới đâu?\"), không mở đầu câu hỏi bằng \"Liệu\".")
+    if prev_question:
+        vary += (f" Câu hỏi cuối nhịp trước là {_quote(_one_line(prev_question, 200))}: câu hỏi của nhịp này phải khác "
+                 "hẳn, không mở đầu bằng cùng từ, không cùng kiểu câu.")
+    return (f"Câu cuối của cảnh cuối nhịp này PHẢI là một câu hỏi bỏ ngỏ (kết bằng dấu ?) kéo người xem sang nhịp sau "
+            f"({nxt.kind}: {summary}). Câu hỏi gợi đúng điều nhịp sau sẽ kể, không trả lời trước, không hỏi chung chung "
+            f"kiểu \"chuyện gì sẽ xảy ra tiếp theo?\". {vary}")
+
+
 def write_vi_prompt(bible: CaseBible, part: StoryPart, events: list[TimelineEvent], source_chunks: list[str],
                     prev_scenes: list[dict], *, part_position: Optional[tuple[int, int]] = None,
                     revealed_ids: Iterable[str] = (), teaser_ids: Iterable[str] = (),
                     teased_ids: Iterable[str] = (), outline_parts: Sequence[StoryPart] = (),
-                    introduced_names: Iterable[str] = ()) -> str:
+                    introduced_names: Iterable[str] = (), budget: Optional[WordBudget] = None) -> str:
     """- `revealed_ids`: id bằng chứng/quan hệ đã hiện ở các nhịp trước (đánh dấu trong danh sách).
     - `teaser_ids`: sự việc nhịp hook mượn của nhịp sau: chỉ được gợi, không kể trọn.
     - `teased_ids`: sự việc của nhịp này đã được hook hé lộ: giờ mới kể đầy đủ.
     - `outline_parts`: mọi nhịp của dàn ý (để viết có cài cắm và trả lời); nhịp `part` được đánh dấu.
-    - `introduced_names`: tên hư cấu (tiếng Việt) của nhân vật đã xuất hiện ở các nhịp trước: không giới thiệu lại."""
+    - `introduced_names`: tên hư cấu (tiếng Việt) của nhân vật đã xuất hiện ở các nhịp trước: không giới thiệu lại.
+    - `budget`: số từ mỗi cảnh theo thời lượng video (mặc định 15 giây mỗi cảnh)."""
     n = part.scene_count
-    lo, hi = VI_WORDS
+    budget = budget or word_budget()
+    lo, hi = budget.vi_limit
     per_scene = max_events_per_scene(len(events), n)
     event_ids = ", ".join(ev.id for ev in events) or "(không có)"
     marks = {e: _TEASER_MARK for e in teaser_ids}
@@ -470,20 +586,21 @@ HAI CẢNH CUỐI CỦA NHỊP TRƯỚC:
 {_chunks_block(source_chunks)}
 
 CÁCH VIẾT
-1. Mỗi cảnh có "narration_vi" dài khoảng {_VI_TARGET} từ (khoảng 15 giây đọc); bắt buộc từ {lo} đến {hi} từ, ngoài khoảng này sẽ bị trả lại. Lời kể ngôi thứ ba, giọng người kể chuyện điện ảnh, câu trọn vẹn, liền mạch từ cảnh này sang cảnh sau.
+1. Mỗi cảnh có "narration_vi" dài khoảng {_span(budget.vi_aim)} từ (khoảng {round(budget.seconds)} giây đọc, để video ra đúng thời lượng đã chọn); bắt buộc từ {lo} đến {hi} từ, dài hơn {hi} từ sẽ bị trả lại. Câu gọn, mỗi câu một ý, không kể lan man. Lời kể ngôi thứ ba, giọng người kể chuyện điện ảnh, câu trọn vẹn, liền mạch từ cảnh này sang cảnh sau.
 2. Kể đúng thứ tự sự việc. Mỗi cảnh kể 1–{per_scene} sự việc; sự việc quan trọng có thể kéo dài 2 cảnh. Kể cụ thể (ai, làm gì, ở đâu, bằng cách nào, thấy gì), không tóm gọn kiểu "sau đó cảnh sát vào cuộc điều tra".
-3. "Như phim": được thêm không khí, cảm xúc, nội tâm và lời thoại dựng lại (đặt trong lời kể, ví dụ: cô run giọng nói: "..."), nhưng chỉ từ những gì đoạn gốc có. Không thêm sự kiện, nhân vật có vai trò trong vụ án, động cơ, nghi phạm hay bằng chứng mới; nhân vật phụ không tên (người qua đường, hàng xóm) thì được.
+3. "Như phim" nhưng không bịa: được thêm không khí, ánh sáng, âm thanh, cảnh vật và cảm xúc người ngoài nhìn thấy được, chỉ từ những gì đoạn gốc có. KHÔNG đặt lời vào miệng nhân vật: lời nói trực tiếp trong ngoặc kép chỉ dùng khi đoạn gốc có đúng câu đó (chép lại nguyên văn, hoặc dịch sang tiếng Việt nếu bài viết bằng tiếng khác); đoạn gốc không có thì kể gián tiếp (bà báo cảnh sát rằng chồng mình không về nhà). Không kể suy nghĩ thầm kín của người thật mà đoạn gốc không nói. Không thêm sự kiện, nhân vật có vai trò trong vụ án, động cơ, nghi phạm hay bằng chứng mới; nhân vật phụ không tên (người qua đường, hàng xóm) thì được.
 4. Ngày giờ: không viết ngày, tháng, năm cụ thể (không "15 tháng 10", không "15/10", không "năm 2021"); năm đổi thành thời kỳ ("đầu những năm 2020"). Giữ giờ trong ngày ("khoảng 23 giờ 30"), mùa và các mốc tương đối ("chiều hôm đó", "hơn một giờ sau"). Tuổi để xấp xỉ hoặc viết bằng chữ.
 5. {_ID_NUMBER_RULE_VI}
 6. Giữ tên quốc gia và tên chung của cơ quan ("cảnh sát", "công an", "toà án"). {_TONE_RULE_VI}
 7. Sự việc ghi [CHỈ GỢI] (nhịp mở đầu mượn của nhịp sau): chỉ hé lộ bằng một câu hỏi, một hình ảnh hoặc một chi tiết chưa có lời giải, trong một hai câu; không kể trọn diễn biến, không nói kết quả. Sự việc ghi [đã được hé lộ ở đoạn mở đầu]: giờ mới kể đầy đủ, không lặp lại câu mở đầu.
 8. "visual_kind" của từng cảnh:
    - "board": cảnh nói về chính các bằng chứng hoặc mối quan hệ hiện lên bảng điều tra ở cảnh đó. "board_reveal" PHẢI có ít nhất 1 id (chỉ dùng id trong danh sách trên, ưu tiên những cái chưa hiện), và lời kể của cảnh nói rõ nội dung của đúng những bằng chứng/quan hệ ấy. Không dùng "board" cho lời kể chung chung (ví dụ "lời khai được ghi vào hồ sơ"); không có gì để hiện thì dùng "image".
-   - "video": một khoảnh khắc hành động ngắn (chạy, bỏ trốn, xe lao đi...). Tối đa 1 cảnh video trong nhịp này; lời cảnh video ngắn hơn, khoảng {_VI_VIDEO_TARGET} từ.
+   - "video": một khoảnh khắc hành động ngắn (chạy, bỏ trốn, xe lao đi...). Tối đa 1 cảnh video trong nhịp này; lời cảnh video ngắn hơn, khoảng {_span(budget.vi_video_aim)} từ.
    - "image": mọi cảnh còn lại.
    Cảnh không phải "board" thì "board_reveal" là [].
 9. "covers_event_ids": id các sự việc (của nhịp này) mà lời kể của cảnh đó thật sự kể ra: mỗi cảnh có từ 1 đến {per_scene} id, chia đều cho các cảnh theo thứ tự. Gộp mọi cảnh lại phải có đủ: {event_ids}.
 10. Cài cắm và trả lời theo dàn ý cả video ở trên: chi tiết mà nhịp sau sẽ giải thích (một đồ vật, một câu nói, một điều bất thường có trong sự việc của nhịp này) thì gieo nhẹ để khán giả để ý, không nói trước lời giải hay diễn biến của nhịp sau; câu hỏi hay chi tiết các nhịp trước đã gieo thì khi tới sự việc liên quan, nhắc lại đúng chi tiết ấy và trả lời. Không giới thiệu lại nhân vật đã xuất hiện ở nhịp trước.
+11. {_ending_rule(part, outline_parts, bible, _last_question(prev_scenes[-1].get("narration_vi", "")) if prev_scenes else "")}
 
 Trả về đúng một JSON object, "scenes" có đúng {n} phần tử theo thứ tự kể:
 {{"scenes": [{{"narration_vi": "...", "visual_kind": "image", "board_reveal": [], "covers_event_ids": ["..."]}}]}}"""
@@ -491,12 +608,13 @@ Trả về đúng một JSON object, "scenes" có đúng {n} phần tử theo th
 
 # ---------------------------------------------------------------- G6: lời Anh
 
-def _en_writing_rules(count_rule: str) -> str:
-    lo, hi = EN_WORDS
+def _en_writing_rules(count_rule: str, budget: Optional[WordBudget] = None) -> str:
+    budget = budget or word_budget()
+    lo, hi = budget.en_limit
     return f"""CÁCH VIẾT
-1. Mỗi cảnh có "narration_en" dài khoảng {_EN_TARGET} từ tiếng Anh; bắt buộc từ {lo} đến {hi} từ, ngoài khoảng này sẽ bị trả lại. Cảnh "video" ngắn hơn, khoảng {_EN_VIDEO_TARGET} từ.
+1. Mỗi cảnh có "narration_en" dài khoảng {_span(budget.en_aim)} từ tiếng Anh (khoảng {round(budget.seconds)} giây đọc, để video ra đúng thời lượng đã chọn); bắt buộc từ {lo} đến {hi} từ, dài hơn {hi} từ sẽ bị trả lại: viết gọn hơn bản Việt, giữ ý chính và chi tiết then chốt. Cảnh "video" ngắn hơn, khoảng {_span(budget.en_video_aim)} từ.
 2. {count_rule}
-3. Văn phong người dẫn chuyện phim tài liệu true-crime Mỹ: câu rõ, nhịp tự nhiên khi đọc to; viết lại cho tự nhiên chứ không dịch sát từng chữ. Lời thoại dựng lại thì viết lại bằng tiếng Anh tự nhiên.
+3. Văn phong người dẫn chuyện phim tài liệu true-crime Mỹ: câu rõ, nhịp tự nhiên khi đọc to; viết lại cho tự nhiên chứ không dịch sát từng chữ. Lời trích trong ngoặc kép chỉ có khi bản Việt có (dịch đúng câu đó); không thêm lời thoại hay suy nghĩ của nhân vật. Cảnh tiếng Việt kết bằng câu hỏi thì cảnh tiếng Anh tương ứng cũng kết bằng câu hỏi đó.
 4. Tên: chỉ dùng tên ở phần "lời Anh dùng" trong bảng tên; không dùng tên thật, không dùng dạng tên tiếng Việt khi hai dạng khác nhau. Bỏ danh xưng tiếng Việt ("ông", "bà", "anh", "chị"); gọi bằng tên hoặc "he", "she".
 5. Ngày giờ: không ngày, tháng, năm cụ thể ("October 15", "2021"); dùng thời kỳ ("in the early 2020s"), mùa và mốc tương đối ("one autumn night", "three days later"). Giữ giờ trong ngày ("around 11:30 p.m.").
 6. {_ID_NUMBER_RULE_EN}
@@ -504,11 +622,11 @@ def _en_writing_rules(count_rule: str) -> str:
 
 
 def write_en_prompt(bible: CaseBible, part: StoryPart, vi_scenes: list[dict], source_chunks: list[str], *,
-                    part_position: Optional[tuple[int, int]] = None) -> str:
+                    part_position: Optional[tuple[int, int]] = None, budget: Optional[WordBudget] = None) -> str:
     n = len(vi_scenes)
     rules = _en_writing_rules(
         "Cảnh tiếng Anh số k kể đúng nội dung cảnh tiếng Việt số k (hình ảnh dùng chung): không gộp hai cảnh, "
-        "không tách một cảnh, không đảo thứ tự, không thêm chi tiết mà cảnh Việt và đoạn gốc không có.")
+        "không tách một cảnh, không đảo thứ tự, không thêm chi tiết mà cảnh Việt và đoạn gốc không có.", budget)
     return f"""TASK: WRITE_EN {part.id}
 Việc: viết lời kể tiếng Anh cho ĐÚNG {n} cảnh của {_where(part, part_position)} trong video chuyển thể vụ án có thật {_quote(bible.title_en)}, cho khán giả Mỹ nghe qua giọng đọc. Lời tiếng Việt của các cảnh đã có ở dưới; viết đúng {n} cảnh tiếng Anh tương ứng.
 
@@ -571,12 +689,12 @@ Trả về đúng một JSON object, "scenes" có đúng {n} phần tử theo th
 
 # ---------------------------------------------------------------- viết lại lời Anh cho cảnh đã sửa
 
-def rewrite_en_prompt(bible: CaseBible, items: list[tuple[int, str]]) -> str:
+def rewrite_en_prompt(bible: CaseBible, items: list[tuple[int, str]], budget: Optional[WordBudget] = None) -> str:
     orders = ", ".join(str(order) for order, _text in items)
     scenes = "\n".join(f"- order {order}: {_one_line(text, 1200)}" for order, text in items)
     rules = _en_writing_rules(
         "Mỗi cảnh tiếng Anh kể đúng nội dung cảnh tiếng Việt cùng order; không gộp, không tách, không bỏ cảnh nào, "
-        "không thêm chi tiết mà lời Việt không có.")
+        "không thêm chi tiết mà lời Việt không có.", budget)
     example_order = items[0][0] if items else 1
     return f"""TASK: REWRITE_EN
 Việc: lời tiếng Việt của {len(items)} cảnh dưới đây vừa được thêm hoặc sửa trong bản chuyển thể vụ án có thật {_quote(bible.title_en)}. Hãy viết lại lời kể tiếng Anh cho ĐÚNG các cảnh này (order: {orders}), cho khán giả Mỹ nghe qua giọng đọc.

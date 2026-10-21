@@ -21,10 +21,16 @@ Bộ chạy một việc nhỏ của hàng việc phân tích vụ án, cùng c�
     * extract_chunk (G2): đọc một đoạn → tên, sự việc, bằng chứng, quan hệ;
     * cluster_names (G3): gộp các cách gọi khác nhau của cùng một đối tượng;
     * assign_aliases (G4): đặt tên hư cấu, văn hoá, tên tập, rồi ghép với kết quả G2 thành CaseBible;
-    * build_outline (G5): dàn ý theo nhịp; sinh ra write_vi/write_en/write_prompts cho từng nhịp, cuối cùng assemble,
+    * dedupe_events (G4b): gộp các sự việc bài kể hai lần (tóm tắt đầu bài rồi kể lại chi tiết) vào sự việc đầy đủ
+      nhất; kết quả là CaseBible dùng cho mọi bước sau (_load_bible). Vụ tạo trước khi có bước này thì dùng bible G4;
+    * build_outline (G5): dàn ý theo nhịp, thứ tự kể không bắt buộc theo thời gian, được bỏ tối đa 1/3 sự việc vụn
+      (`dropped`, kèm lý do); sinh ra write_vi/write_en/write_prompts cho từng nhịp, cuối cùng assemble,
       và báo worker dừng chờ người dùng duyệt (StepResult.needs_review). revise_outline kiểm dàn ý người dùng sửa bằng
-      chính các quy tắc đó rồi sinh lại các việc viết cảnh; outline_review là dữ liệu cho màn duyệt;
-    * write_vi, write_en, write_prompts (G6): lời Việt → lời Anh → prompt hình của một nhịp, đúng scene_count cảnh;
+      chính các quy tắc đó (người dùng bỏ bao nhiêu sự việc cũng được) rồi sinh lại các việc viết cảnh; outline_review
+      là dữ liệu cho màn duyệt;
+    * write_vi, write_en, write_prompts (G6): lời Việt → lời Anh → prompt hình của một nhịp, đúng scene_count cảnh.
+      Cảnh cuối của mỗi nhịp (trừ nhịp cuối) kết bằng câu hỏi bỏ ngỏ kéo sang nhịp sau; lời trích trong ngoặc kép
+      không có nguyên văn trong bài là lỗi nhẹ (lời nói bịa cho người thật);
     * assemble (G7, không gọi LLM): chèn cảnh miễn trừ, ghép các nhịp, chuẩn hoá, check_plan rồi lưu plan.json.
 - rewrite_english: viết lại lời Anh cho vài cảnh có lời Việt mới sửa (dùng khi tạo bản tiếng Anh).
 - Hàm LLM mặc định lấy `case_adaptation_llm.call_llm_json` lúc gọi, để test và các task sau monkeypatch được.
@@ -57,6 +63,7 @@ from models.case_adaptation_schemas import (
     CaseOutline,
     CasePipeline,
     CaseRelation,
+    DroppedEvent,
     PipelineStep,
     StoryPart,
     TimelineEvent,
@@ -72,15 +79,16 @@ from services.case_adaptation_checks import (
     find_name_matches,
     find_names,
     find_unknown_names,
+    find_unsourced_quotes,
     find_vi_forms_in_en,
     fold,
     identifying_numbers,
     is_kept_term,
+    quote_source,
 )
 from services.case_adaptation_llm import BUSY_KIND, RETRYABLE_KINDS, LLMCall, LLMError
 from services.case_adaptation_prompts import (
     BGM_ENERGIES,
-    EN_WORDS,
     MAX_SCENES_PER_EVENT,
     MIN_EVENT_WORDS,
     MIN_IMAGE_PROMPT_WORDS,
@@ -92,18 +100,23 @@ from services.case_adaptation_prompts import (
     SCENES_PER_MINUTE,
     SCENES_PER_PART,
     SYSTEM_PROMPT,
-    VI_WORDS,
     VISUAL_KINDS,
+    WordBudget,
     aliases_prompt,
     cluster_prompt,
+    dedupe_prompt,
     extract_prompt,
+    max_deduped,
+    max_dropped,
     max_events_per_scene,
     min_events_for,
+    next_part_of,
     outline_prompt,
     prompts_prompt,
     rewrite_en_prompt,
     supported_scene_cap,
     video_scene_cap,
+    word_budget,
     word_count,
     write_en_prompt,
     write_vi_prompt,
@@ -133,6 +146,7 @@ OPENING_EXCERPT_CHARS = 1500
 _TEMPERATURE_EXTRACT = 0.2
 _TEMPERATURE_CLUSTER = 0.1
 _TEMPERATURE_ALIASES = 0.6
+_TEMPERATURE_DEDUPE = 0.1
 _TEMPERATURE_OUTLINE = 0.3
 _TEMPERATURE_VI = 0.7
 _TEMPERATURE_EN = 0.6
@@ -143,6 +157,7 @@ STEP_TIMEOUTS: dict[str, float] = {
     "extract_chunk": 240.0,
     "cluster_names": 240.0,
     "assign_aliases": 240.0,
+    "dedupe_events": 600.0,      # đọc cả dòng thời gian như dàn ý (thật: 177 sự việc thì quá 240 s)
     "build_outline": 600.0,
     "write_vi": 360.0,
     "write_en": 360.0,
@@ -404,6 +419,7 @@ def initial_steps(n_chunks: int) -> list[PipelineStep]:
     steps += [
         PipelineStep(id="cluster", kind="cluster_names"),
         PipelineStep(id="aliases", kind="assign_aliases"),
+        PipelineStep(id="dedupe", kind="dedupe_events"),
         PipelineStep(id="outline", kind="build_outline"),
     ]
     return steps
@@ -1028,6 +1044,11 @@ def _parse_model(model: type[BaseModel], data: Any, label: str, what: str) -> An
 
 
 def _load_bible(pipeline: CasePipeline, label: str) -> CaseBible:
+    """CaseBible dùng cho dàn ý và viết cảnh: bản đã lọc sự việc trùng (G4b); vụ tạo trước khi có bước lọc trùng thì
+    dùng bản của bước đặt tên hư cấu."""
+    if any(s.kind == "dedupe_events" for s in pipeline.steps):
+        data = _step_output(pipeline, "dedupe_events", label).get("bible")
+        return _parse_model(CaseBible, data, label, "lọc sự việc trùng")
     return _parse_model(CaseBible, _step_output(pipeline, "assign_aliases", label), label, "đặt tên hư cấu")
 
 
@@ -1060,10 +1081,22 @@ class _TextGuard:
 
     def __init__(self, bible: CaseBible, source_text: str = ""):
         self.bible = bible
+        self.source_text = source_text
         self.id_numbers = identifying_numbers(source_text)
         self.forbidden = build_forbidden_names(bible, source_text)
         self.aliases = list(dict.fromkeys(a.strip() for e in bible.entities
                                           for a in (e.alias_vi, e.alias_en) if a and a.strip()))
+        self._quote_sources: dict[str, str] = {}
+
+    def unsourced_quotes(self, text: str, lang: str) -> list[str]:
+        """Lời trích trong ngoặc kép không có nguyên văn trong bài (chỉ so khi lời kể cùng ngôn ngữ với bài)."""
+        if lang != self.bible.source_language or not self.source_text.strip():
+            return []
+        if lang not in self._quote_sources:
+            self._quote_sources[lang] = quote_source(self.source_text, self.forbidden, lang)
+        return [f"có lời trích \"{q}\" không có nguyên văn trong đoạn gốc (không đặt lời vào miệng nhân vật: kể gián "
+                "tiếp, hoặc chép đúng câu có trong bài)"
+                for q in find_unsourced_quotes(text, self._quote_sources[lang])]
 
     def real_names(self, text: str, lang: str) -> list[str]:
         out: list[str] = []
@@ -1109,7 +1142,8 @@ class _TextGuard:
                 for n in find_identifying_numbers(text, self.id_numbers)]
 
     def narration(self, text: str, lang: str) -> list[str]:
-        issues = self.real_names(text, lang) + self.dates(text) + self.identifying_numbers(text)
+        issues = (self.real_names(text, lang) + self.dates(text) + self.identifying_numbers(text)
+                  + self.unsourced_quotes(text, lang))
         if lang == "en":
             issues += self.vi_forms_in_en(text)
         return issues
@@ -1133,6 +1167,98 @@ class _ScenesOutput(_Item):
         if isinstance(data, list):
             return {"scenes": data}
         return data
+
+
+# ---------------------------------------------------------------- G4b: lọc sự việc trùng
+
+class _DuplicateGroup(_Item):
+    keep: str = ""
+    drop: list[str] = []
+    reason: str = ""
+
+    @field_validator("drop", mode="before")
+    @classmethod
+    def split_ids(cls, value: Any) -> Any:
+        return _as_list(value)
+
+
+class _DedupeOutput(_Item):
+    duplicates: list[_DuplicateGroup] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def wrap_list(cls, data: Any) -> Any:
+        return {"duplicates": data} if isinstance(data, list) else data
+
+
+def _validate_dedupe(raw: Any, bible: CaseBible) -> dict[str, str]:
+    """Kiểm kết quả lọc trùng; trả {id sự việc bị gộp: id sự việc giữ lại}."""
+    parsed = _DedupeOutput.model_validate(raw)
+    known = {ev.id for ev in bible.timeline}
+    problems: list[str] = []
+    merged: dict[str, str] = {}
+    used: set[str] = set()
+    for n, group in enumerate(parsed.duplicates, start=1):
+        keep = group.keep.strip()
+        drop = [d for d in _clean_ids(group.drop) if d != keep]
+        unknown = [i for i in [keep, *drop] if i not in known]
+        if unknown:
+            problems.append(f"Nhóm {n} có id không có trong dòng thời gian: {_id_list(unknown)}")
+            continue
+        if not drop:
+            problems.append(f"Nhóm {n} không có id nào trong \"drop\"; nhóm trùng phải có ít nhất 2 sự việc")
+            continue
+        twice = [i for i in [keep, *drop] if i in used]
+        if twice:
+            problems.append(f"Nhóm {n} có id đã nằm ở nhóm khác: {_id_list(twice)}; mỗi id chỉ ở tối đa một nhóm")
+            continue
+        used.update([keep, *drop])
+        merged.update({d: keep for d in drop})
+    most = max_deduped(len(known))
+    if len(merged) > most:
+        problems.append(f"Gộp {len(merged)} sự việc là quá nhiều (tối đa {most}); chỉ gộp khi chắc chắn hai sự việc kể "
+                        "cùng một việc, sự việc khác nhau thì giữ riêng")
+    if problems:
+        raise StepRejected("; ".join(problems))
+    return merged
+
+
+def _merge_duplicates(bible: CaseBible, merged: dict[str, str]) -> CaseBible:
+    """Bỏ các sự việc bị gộp khỏi dòng thời gian; sự việc giữ lại nhận thêm người liên quan, mốc thời gian (nếu chưa
+    có) và đoạn gốc của chúng. Đánh lại `order` theo thứ tự trong bài."""
+    new = bible.model_copy(deep=True)
+    by_id = {ev.id: ev for ev in new.timeline}
+    for dropped_id, keep_id in merged.items():
+        gone, keep = by_id[dropped_id], by_id[keep_id]
+        keep.entity_ids = list(dict.fromkeys([*keep.entity_ids, *gone.entity_ids]))
+        if not keep.time_label.strip():
+            keep.time_label = gone.time_label
+        extra = [i for i in [gone.chunk_index, *gone.extra_chunk_indices] if i != keep.chunk_index]
+        keep.extra_chunk_indices = sorted(set([*keep.extra_chunk_indices, *extra]))
+    new.timeline = [ev for ev in new.timeline if ev.id not in merged]
+    for n, ev in enumerate(new.timeline, start=1):
+        ev.order = n
+    return new
+
+
+async def _run_dedupe(pipeline: CasePipeline, step: PipelineStep, llm: LLMCall) -> StepResult:
+    label = "lọc sự việc trùng"
+    bible = _parse_model(CaseBible, _step_output(pipeline, "assign_aliases", label), label, "đặt tên hư cấu")
+    if len(bible.timeline) < 2:
+        return StepResult(output={"merged": {}, "bible": bible.model_dump()})
+    merged = await ask_validated(
+        dedupe_prompt(bible),
+        lambda raw: _validate_dedupe(raw, bible),
+        llm=llm, temperature=_TEMPERATURE_DEDUPE, timeout=STEP_TIMEOUTS["dedupe_events"], step_label=label,
+    )
+    return StepResult(output={"merged": merged, "bible": _merge_duplicates(bible, merged).model_dump()})
+
+
+def _merged_count(pipeline: CasePipeline) -> int:
+    """Số sự việc trùng bước lọc trùng đã gộp (0 nếu vụ chưa có bước này)."""
+    step = next((s for s in pipeline.steps if s.kind == "dedupe_events"), None)
+    data = case_store.load_step_output(pipeline.case_id, step.id) if step is not None else None
+    return len(data.get("merged") or {}) if isinstance(data, dict) else 0
 
 
 # ---------------------------------------------------------------- G5: dàn ý
@@ -1164,9 +1290,20 @@ class _OutlinePart(_Item):
         return _as_list(value)
 
 
+class _DroppedItem(_Item):
+    event_id: str = ""
+    reason: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def from_id(cls, data: Any) -> Any:
+        return {"event_id": data} if isinstance(data, str) else data
+
+
 class _OutlineOutput(_Item):
     supported_minutes: int
     parts: list[_OutlinePart]
+    dropped: list[_DroppedItem] = []
 
 
 def _repeated_event_problems(drafts: list[tuple[str, str, list[str], int]]) -> list[str]:
@@ -1240,19 +1377,41 @@ def _validate_outline(raw: Any, bible: CaseBible, target_minutes: int) -> dict:
     return outline
 
 
-def _check_outline(raw: Any, bible: CaseBible, target_minutes: int) -> tuple[list[str], Optional[dict]]:
+def _check_outline(raw: Any, bible: CaseBible, target_minutes: int, *,
+                   limit_dropped: bool = True) -> tuple[list[str], Optional[dict]]:
     """Mọi quy tắc dàn ý. Trả (các lỗi, dàn ý đã chuẩn hoá); có lỗi thì dàn ý là None. Câu lỗi viết cho LLM (dùng
-    tên trường JSON); revise_outline đổi sang lời cho người dùng."""
+    tên trường JSON); revise_outline đổi sang lời cho người dùng. `limit_dropped`: giới hạn số sự việc được bỏ (LLM
+    bỏ tối đa 1/3; người dùng tự quyết nên không giới hạn)."""
     parsed = _OutlineOutput.model_validate(raw)
     lo, hi = target_scenes(target_minutes)
     video_cap = video_scene_cap(hi)                     # cả video, kể cả cảnh miễn trừ
     min_part, max_part = SCENES_PER_PART
     known = [ev.id for ev in bible.timeline]
     known_set = set(known)
-    # Bài có quá nhiều sự việc so với số cảnh tối đa thì mỗi cảnh buộc phải kể nhiều hơn.
-    per_scene = max_events_per_scene(len(known), hi)
     forbidden = build_forbidden_names(bible, "")
     problems: list[str] = []
+
+    # sự việc bỏ khỏi video (chi tiết vụn), mỗi mục kèm lý do
+    dropped: list[DroppedEvent] = []
+    for item in parsed.dropped:
+        event_id = item.event_id.strip()
+        if not event_id or any(d.event_id == event_id for d in dropped):
+            continue
+        if event_id not in known_set:
+            problems.append(f'"dropped" có id sự việc không có trong dòng thời gian: {event_id}. Chỉ dùng id có trong '
+                            "danh sách")
+            continue
+        if not item.reason:
+            problems.append(f'Sự việc {event_id} trong "dropped" thiếu lý do ("reason"); ghi ngắn vì sao bỏ')
+        dropped.append(DroppedEvent(event_id=event_id, reason=item.reason))
+    dropped_ids = {d.event_id for d in dropped}
+    most_dropped = max_dropped(len(known))
+    if limit_dropped and len(dropped) > most_dropped:
+        problems.append(f'"dropped" có {len(dropped)} sự việc, tối đa {most_dropped}; chỉ bỏ chi tiết vụn, giữ mọi sự '
+                        "việc then chốt (phát hiện vụ án, bằng chứng đổi hướng điều tra, bước ngoặt, kết luận)")
+    kept = [e for e in known if e not in dropped_ids]
+    # Bài có quá nhiều sự việc so với số cảnh tối đa thì mỗi cảnh buộc phải kể nhiều hơn.
+    per_scene = max_events_per_scene(len(kept), hi)
 
     if parsed.supported_minutes < 1:
         problems.append('"supported_minutes" phải là số nguyên từ 1 trở lên')
@@ -1272,6 +1431,10 @@ def _check_outline(raw: Any, bible: CaseBible, target_minutes: int) -> tuple[lis
             problems.append(f"Nhịp {n} có id sự việc không có trong dòng thời gian: {_id_list(unknown)}. "
                             "Chỉ dùng id có trong danh sách")
         ids = [e for e in ids if e in known_set]
+        both = [e for e in ids if e in dropped_ids]
+        if both:
+            problems.append(f'Nhịp {n} có sự việc đã nằm trong "dropped": {_id_list(both)}. Sự việc đã bỏ thì không '
+                            "nằm trong nhịp nào")
         if known and not ids:
             problems.append(f"Nhịp {n} không có sự việc nào; mỗi nhịp phải kể ít nhất một sự việc")
         if not min_part <= item.scene_count <= max_part:
@@ -1289,10 +1452,10 @@ def _check_outline(raw: Any, bible: CaseBible, target_minutes: int) -> tuple[lis
         summary, _replaced = apply_aliases(item.summary_vi, forbidden, "vi")
         drafts.append((kind, summary, ids, item.scene_count))
 
-    missing = [e for e in known if e not in covered]
+    missing = [e for e in kept if e not in covered]
     if missing:
         problems.append(f"Có {len(missing)} sự việc chưa nằm trong nhịp nào: {_id_list(missing)}. "
-                        "Mọi sự việc phải nằm trong đúng một nhịp")
+                        'Mọi sự việc phải nằm trong đúng một nhịp, hoặc trong "dropped" nếu là chi tiết vụn')
     problems += _repeated_event_problems(drafts)
     total = sum(item.scene_count for item in parsed.parts)
     if total + 1 > video_cap:
@@ -1303,14 +1466,16 @@ def _check_outline(raw: Any, bible: CaseBible, target_minutes: int) -> tuple[lis
                         f"{supported_scene_cap(parsed.supported_minutes)} cảnh, nhưng dàn ý có {total} cảnh. "
                         "Không kéo dài cho đủ số cảnh; bớt cảnh, hoặc ước lại supported_minutes cho đúng lượng tư liệu")
     elif total + 1 < lo and parsed.supported_minutes >= target_minutes:
-        problems.append(_too_few_scenes_problem(total, len(known), parsed.supported_minutes, target_minutes,
+        problems.append(_too_few_scenes_problem(total, len(kept), parsed.supported_minutes, target_minutes,
                                                 (lo, hi), video_cap))
     if problems:
         return problems, None
 
     parts = [StoryPart(id=f"p{n}", kind=kind, summary_vi=summary, event_ids=ids, scene_count=count)
              for n, (kind, summary, ids, count) in enumerate(drafts, start=1)]
-    return [], CaseOutline(supported_minutes=parsed.supported_minutes, parts=parts).model_dump()
+    order = {e: i for i, e in enumerate(known)}
+    dropped.sort(key=lambda d: order[d.event_id])
+    return [], CaseOutline(supported_minutes=parsed.supported_minutes, parts=parts, dropped=dropped).model_dump()
 
 
 def _story_steps(parts: list[StoryPart]) -> list[PipelineStep]:
@@ -1345,6 +1510,9 @@ _USER_WORDING = (
     (re.compile(r"scene_count"), "số cảnh"),
     (re.compile(r"\(hook\)"), "(mở đầu)"),
     (re.compile(r"nhịp hook"), "nhịp mở đầu"),
+    (re.compile(r'hoặc trong "dropped" nếu là chi tiết vụn'), 'hoặc trong mục "Bỏ khỏi video"'),
+    (re.compile(r'"dropped"'), 'mục "Bỏ khỏi video"'),
+    (re.compile(r' \("reason"\)'), ""),
 )
 
 
@@ -1354,20 +1522,32 @@ def _for_user(problem: str) -> str:
     return problem[:1].upper() + problem[1:]
 
 
-def revise_outline(pipeline: CasePipeline, parts: list[dict], supported_minutes: Optional[int] = None) -> StepResult:
-    """Dàn ý người dùng sửa lúc duyệt (đổi loại, tóm tắt, số cảnh, chuyển sự việc giữa các nhịp, thêm bớt nhịp, và số
-    phút bài đủ tư liệu): kiểm bằng đúng các quy tắc của _validate_outline. `supported_minutes` None thì giữ ước lượng
-    của bước dàn ý; số mới phải từ 1 tới thời lượng video đã chọn (nâng lên chỉ nới tổng số cảnh, mỗi sự việc vẫn tối
-    đa 2 cảnh nên không độn được). Trả dàn ý mới (id nhịp đánh lại p1, p2...) cùng các việc viết cảnh sinh lại. Không
-    qua thì StepRejected, lý do bằng lời thường, mỗi lỗi một dòng."""
+USER_DROP_REASON = "Bạn bỏ khi duyệt dàn ý."
+
+
+def revise_outline(pipeline: CasePipeline, parts: list[dict], supported_minutes: Optional[int] = None,
+                   dropped: Optional[list[dict]] = None) -> StepResult:
+    """Dàn ý người dùng sửa lúc duyệt (đổi loại, tóm tắt, số cảnh, chuyển sự việc giữa các nhịp, thêm bớt nhịp, bỏ
+    sự việc khỏi video hoặc đưa lại, và số phút bài đủ tư liệu): kiểm bằng đúng các quy tắc của _validate_outline, trừ
+    giới hạn số sự việc được bỏ (người dùng tự quyết). `supported_minutes` None thì giữ ước lượng của bước dàn ý; số mới
+    phải từ 1 tới thời lượng video đã chọn (nâng lên chỉ nới tổng số cảnh, mỗi sự việc vẫn tối đa 2 cảnh nên không độn
+    được). `dropped` ({event_id, reason}) None thì giữ danh sách bỏ đang lưu; mục thiếu lý do lấy USER_DROP_REASON. Trả
+    dàn ý mới (id nhịp đánh lại p1, p2...) cùng các việc viết cảnh sinh lại. Không qua thì StepRejected, lý do bằng lời
+    thường, mỗi lỗi một dòng."""
     label = "sửa dàn ý"
     bible = _load_bible(pipeline, label)
     current = _load_outline(pipeline, label)
     minutes = current.supported_minutes if supported_minutes is None else supported_minutes
     if minutes != current.supported_minutes and not 1 <= minutes <= pipeline.target_minutes:
         raise StepRejected(f"Số phút tư liệu phải từ 1 đến {pipeline.target_minutes} phút (thời lượng video đã chọn).")
+    if dropped is None:
+        dropped = [d.model_dump() for d in current.dropped]
+    else:
+        dropped = [{**d, "reason": str(d.get("reason") or "").strip() or USER_DROP_REASON}
+                   for d in dropped if isinstance(d, dict)]
     try:
-        problems, output = _check_outline({"supported_minutes": minutes, "parts": parts}, bible, pipeline.target_minutes)
+        problems, output = _check_outline({"supported_minutes": minutes, "parts": parts, "dropped": dropped}, bible,
+                                          pipeline.target_minutes, limit_dropped=False)
     except ValidationError as exc:
         raise StepRejected(_schema_reason(exc)) from None
     if problems or output is None:
@@ -1418,6 +1598,9 @@ def outline_review(pipeline: CasePipeline) -> dict:
         "title_vi": bible.title_vi,
         "logline_vi": bible.logline_vi,
         "parts": [p.model_dump() for p in outline.parts],
+        # sự việc dàn ý bỏ khỏi video (chi tiết vụn) kèm lý do; người dùng đưa lại vào nhịp được
+        "dropped": [d.model_dump() for d in outline.dropped],
+        "merged_count": _merged_count(pipeline),        # số sự việc trùng đã gộp ở bước lọc trùng
         "timeline": [{"id": ev.id, "order": ev.order, "time_label": aliased(ev.time_label), "summary": aliased(ev.summary)}
                      for ev in bible.timeline],
     }
@@ -1471,9 +1654,9 @@ def _introduced_people(ctx: _PartContext) -> list[str]:
 
 
 def _part_chunks(pipeline: CasePipeline, ctx: _PartContext) -> list[str]:
-    """Toàn văn các đoạn gốc chứa sự việc của nhịp, theo thứ tự đoạn."""
+    """Toàn văn các đoạn gốc chứa sự việc của nhịp (kể cả đoạn của sự việc trùng đã gộp), theo thứ tự đoạn."""
     chunks = case_store.load_chunks(pipeline.case_id) or []
-    indices = sorted({ev.chunk_index for ev in _part_events(ctx)})
+    indices = sorted({i for ev in _part_events(ctx) for i in (ev.chunk_index, *ev.extra_chunk_indices)})
     if any(not 0 <= i < len(chunks) for i in indices):
         raise StepFailed(f"Bước {ctx.label} thất bại: thiếu đoạn gốc của các sự việc trong nhịp.")
     return [chunks[i] for i in indices]
@@ -1511,10 +1694,17 @@ def _norm_visual(value: Any) -> str:
     return key if key in VISUAL_KINDS else "image"
 
 
-def _validate_write_vi(raw: Any, ctx: _PartContext, guard: _TextGuard) -> dict:
+def scene_budget(target_minutes: int) -> WordBudget:
+    """Số từ lời kể mỗi cảnh cho video `target_minutes` phút: số giây mỗi cảnh = thời lượng chia số cảnh mục tiêu (giữa
+    khoảng TARGET_SCENES), đổi ra số từ theo tốc độ đọc đã đo."""
+    lo, hi = target_scenes(target_minutes)
+    return word_budget(max(int(target_minutes), 1) * 60 / ((lo + hi) / 2))
+
+
+def _validate_write_vi(raw: Any, ctx: _PartContext, guard: _TextGuard, budget: Optional[WordBudget] = None) -> dict:
     parsed = _VIOutput.model_validate(raw)
     n = ctx.part.scene_count
-    lo, hi = VI_WORDS
+    lo, hi = (budget or word_budget()).vi_limit
     board_ids = {e.id for e in ctx.bible.evidence} | {r.id for r in ctx.bible.relations}
     part_events = set(ctx.part.event_ids)
     per_scene = max_events_per_scene(len(ctx.part.event_ids), n)
@@ -1553,7 +1743,24 @@ def _validate_write_vi(raw: Any, ctx: _PartContext, guard: _TextGuard) -> dict:
     if missing:
         problems.append(f"Các sự việc sau chưa được kể ở cảnh nào (covers_event_ids gộp lại còn thiếu): "
                         f"{_id_list(missing)}. Mọi sự việc của nhịp phải được kể")
+    if parsed.scenes and next_part_of(ctx.part, ctx.outline.parts) is not None:
+        soft += _ending_question_issue(parsed.scenes[-1].narration_vi, len(parsed.scenes), "narration_vi")
     return _raise_if_problems(problems, soft, {"scenes": scenes})
+
+
+_ENDS_WITH_QUESTION = re.compile(r"[?？][\"'”’»)\]]*\s*$")
+
+
+def ends_with_question(text: str) -> bool:
+    return bool(_ENDS_WITH_QUESTION.search(text or ""))
+
+
+def _ending_question_issue(text: str, k: int, field_name: str) -> list[str]:
+    """Cảnh cuối của nhịp (trừ nhịp cuối video) phải kết bằng câu hỏi bỏ ngỏ kéo sang nhịp sau (lỗi nhẹ)."""
+    if ends_with_question(text):
+        return []
+    return [f"cảnh {k} là cảnh cuối nhịp nhưng {field_name} chưa kết bằng câu hỏi bỏ ngỏ; câu cuối phải là một câu "
+            "hỏi (kết bằng dấu ?) gợi đúng điều nhịp sau sẽ kể, không trả lời trước"]
 
 
 async def _run_write_vi(pipeline: CasePipeline, step: PipelineStep, llm: LLMCall) -> StepResult:
@@ -1565,12 +1772,13 @@ async def _run_write_vi(pipeline: CasePipeline, step: PipelineStep, llm: LLMCall
     teaser_ids = [e for e in ctx.part.event_ids if borrowed.get(e) == ctx.part.id]
     teased_ids = [e for e in ctx.part.event_ids if e in borrowed and borrowed[e] != ctx.part.id]
     guard = _TextGuard(ctx.bible, _source_text(pipeline))
+    budget = scene_budget(pipeline.target_minutes)
     output = await ask_validated(
         write_vi_prompt(ctx.bible, ctx.part, _part_events(ctx), _part_chunks(pipeline, ctx), prev_scenes,
                         part_position=ctx.position, revealed_ids=revealed, teaser_ids=teaser_ids,
                         teased_ids=teased_ids, outline_parts=ctx.outline.parts,
-                        introduced_names=_introduced_people(ctx)),
-        lambda raw: _validate_write_vi(raw, ctx, guard),
+                        introduced_names=_introduced_people(ctx), budget=budget),
+        lambda raw: _validate_write_vi(raw, ctx, guard, budget),
         llm=llm, temperature=_TEMPERATURE_VI, timeout=STEP_TIMEOUTS["write_vi"], step_label=ctx.label,
     )
     return StepResult(output=output)
@@ -1584,21 +1792,26 @@ class _ENOutput(_ScenesOutput):
     scenes: list[_ENScene]
 
 
-def _check_en_words(text: str, where: str) -> list[str]:
-    lo, hi = EN_WORDS
+def _check_en_words(text: str, where: str, budget: Optional[WordBudget] = None) -> list[str]:
+    lo, hi = (budget or word_budget()).en_limit
     words = word_count(text)
     return [] if lo <= words <= hi else [f"{where}: narration_en dài {words} từ, cần từ {lo} đến {hi} từ"]
 
 
-def _validate_write_en(raw: Any, n: int, guard: _TextGuard) -> dict:
+def _validate_write_en(raw: Any, n: int, guard: _TextGuard, *, end_with_question: bool = False,
+                       budget: Optional[WordBudget] = None) -> dict:
+    """`end_with_question`: cảnh cuối bản Việt kết bằng câu hỏi bỏ ngỏ (nhịp chưa phải nhịp cuối) thì bản Anh cũng
+    phải kết bằng câu hỏi (lỗi nhẹ)."""
     parsed = _ENOutput.model_validate(raw)
     problems: list[str] = []
     soft: list[str] = []
     if len(parsed.scenes) != n:
         problems.append(f"Có {len(parsed.scenes)} cảnh, cần đúng {n} cảnh, mỗi cảnh tiếng Việt một cảnh tiếng Anh")
     for k, scene in enumerate(parsed.scenes, start=1):
-        problems += _check_en_words(scene.narration_en, f"cảnh {k}")
+        problems += _check_en_words(scene.narration_en, f"cảnh {k}", budget)
         soft += [f"cảnh {k} {issue}" for issue in guard.narration(scene.narration_en, "en")]
+    if end_with_question and parsed.scenes:
+        soft += _ending_question_issue(parsed.scenes[-1].narration_en, len(parsed.scenes), "narration_en")
     return _raise_if_problems(problems, soft, {"scenes": [{"narration_en": s.narration_en} for s in parsed.scenes]})
 
 
@@ -1606,9 +1819,13 @@ async def _run_write_en(pipeline: CasePipeline, step: PipelineStep, llm: LLMCall
     ctx = _part_context(pipeline, step, "lời Anh")
     vi_scenes = _part_output(pipeline, "write_vi", ctx.part.id, ctx.label)
     guard = _TextGuard(ctx.bible, _source_text(pipeline))
+    question = (next_part_of(ctx.part, ctx.outline.parts) is not None and bool(vi_scenes)
+                and ends_with_question(vi_scenes[-1].get("narration_vi", "")))
+    budget = scene_budget(pipeline.target_minutes)
     output = await ask_validated(
-        write_en_prompt(ctx.bible, ctx.part, vi_scenes, _part_chunks(pipeline, ctx), part_position=ctx.position),
-        lambda raw: _validate_write_en(raw, len(vi_scenes), guard),
+        write_en_prompt(ctx.bible, ctx.part, vi_scenes, _part_chunks(pipeline, ctx), part_position=ctx.position,
+                        budget=budget),
+        lambda raw: _validate_write_en(raw, len(vi_scenes), guard, end_with_question=question, budget=budget),
         llm=llm, temperature=_TEMPERATURE_EN, timeout=STEP_TIMEOUTS["write_en"], step_label=ctx.label,
     )
     return StepResult(output=output)
@@ -1758,7 +1975,8 @@ class _RewriteOutput(_ScenesOutput):
     scenes: list[_RewriteScene]
 
 
-def _validate_rewrite(raw: Any, orders: list[int], guard: _TextGuard) -> dict[int, str]:
+def _validate_rewrite(raw: Any, orders: list[int], guard: _TextGuard,
+                      budget: Optional[WordBudget] = None) -> dict[int, str]:
     parsed = _RewriteOutput.model_validate(raw)
     found: dict[int, str] = {}
     for scene in parsed.scenes:
@@ -1771,23 +1989,25 @@ def _validate_rewrite(raw: Any, orders: list[int], guard: _TextGuard) -> dict[in
                         "đúng một phần tử với đúng order")
     result = {o: found[o] for o in orders if o in found}
     for order, text in result.items():
-        problems += _check_en_words(text, f"order {order}")
+        problems += _check_en_words(text, f"order {order}", budget)
         soft += [f"order {order} {issue}" for issue in guard.narration(text, "en")]
     return _raise_if_problems(problems, soft, result)
 
 
 async def rewrite_english(bible: CaseBible, items: list[tuple[int, str]], *,
-                          llm: Optional[LLMCall] = None) -> dict[int, str]:
-    """Viết lại lời Anh cho các cảnh (order, lời Việt) vừa thêm hoặc sửa; trả {order: lời Anh}.
+                          llm: Optional[LLMCall] = None, target_minutes: Optional[int] = None) -> dict[int, str]:
+    """Viết lại lời Anh cho các cảnh (order, lời Việt) vừa thêm hoặc sửa; trả {order: lời Anh}. `target_minutes`:
+    thời lượng video của kế hoạch, để lời Anh dài vừa số giây mỗi cảnh (không có thì 15 giây).
     Không có cảnh nào thì không gọi LLM. Hỏng thì StepFailed với tên việc "viết lại lời Anh"."""
     items = [(int(order), str(text)) for order, text in items]
     if not items:
         return {}
     orders = list(dict.fromkeys(order for order, _text in items))
     guard = _TextGuard(bible)
+    budget = scene_budget(target_minutes) if target_minutes else word_budget()
     return await ask_validated(
-        rewrite_en_prompt(bible, items),
-        lambda raw: _validate_rewrite(raw, orders, guard),
+        rewrite_en_prompt(bible, items, budget),
+        lambda raw: _validate_rewrite(raw, orders, guard, budget),
         llm=llm if llm is not None else case_adaptation_llm.call_llm_json,
         temperature=_TEMPERATURE_EN, timeout=STEP_TIMEOUTS["rewrite_english"], step_label="viết lại lời Anh",
     )
@@ -1799,6 +2019,7 @@ _HANDLERS = {
     "extract_chunk": _run_extract,
     "cluster_names": _run_cluster,
     "assign_aliases": _run_aliases,
+    "dedupe_events": _run_dedupe,
     "build_outline": _run_outline,
     "write_vi": _run_write_vi,
     "write_en": _run_write_en,

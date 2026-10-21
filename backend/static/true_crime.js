@@ -67,6 +67,7 @@ const TrueCrimeState = {
   outline: null,         // dàn ý máy chủ trả về khi vụ chờ duyệt (GET .../outline), không bị sửa ở client
   outlineDraft: null,    // bản đang sửa: [{kind, summary_vi, event_ids, scene_count}]
   outlineMinutes: null,  // bản đang sửa của "bài đủ tư liệu cho bao nhiêu phút" (supported_minutes)
+  outlineDropped: null,  // bản đang sửa của các sự việc bỏ khỏi video: [{event_id, reason}]
   outlineDirty: false,   // bản đang sửa khác bản đã lưu trên máy chủ
   modalOpen: false,
   pollTimer: null,
@@ -624,10 +625,15 @@ function tcOutlineCopy(parts) {
   }));
 }
 
+function tcDroppedCopy(dropped) {
+  return (dropped || []).map(d => ({ event_id: d.event_id, reason: d.reason || '' }));
+}
+
 function tcClearOutline() {
   TrueCrimeState.outline = null;
   TrueCrimeState.outlineDraft = null;
   TrueCrimeState.outlineMinutes = null;
+  TrueCrimeState.outlineDropped = null;
   TrueCrimeState.outlineDirty = false;
   tcShowOutlineError('');
 }
@@ -639,6 +645,7 @@ function tcSetOutline(view, keepDraft = false) {
   if (!keepDraft || !s.outlineDraft) {
     s.outlineDraft = tcOutlineCopy(view.parts);
     s.outlineMinutes = view.supported_minutes;
+    s.outlineDropped = tcDroppedCopy(view.dropped);
     s.outlineDirty = false;
   }
   tcRenderReview();
@@ -646,7 +653,11 @@ function tcSetOutline(view, keepDraft = false) {
 
 // Bản nháp gửi lên PUT .../outline.
 function tcOutlineBody() {
-  return { parts: tcOutlineCopy(TrueCrimeState.outlineDraft), supported_minutes: TrueCrimeState.outlineMinutes };
+  return {
+    parts: tcOutlineCopy(TrueCrimeState.outlineDraft),
+    supported_minutes: TrueCrimeState.outlineMinutes,
+    dropped: tcDroppedCopy(TrueCrimeState.outlineDropped)
+  };
 }
 
 async function tcLoadOutline(caseId) {
@@ -693,7 +704,10 @@ function tcRenderOutlineReview() {
       <div class="font-extrabold text-white text-sm">${tcEsc(view.title_vi || '(chưa có tên tập)')}</div>
       ${view.logline_vi ? `<div class="text-slate-300">${tcEsc(view.logline_vi)}</div>` : ''}
       <div>Máy chủ đã lập dàn ý và đang chờ bạn duyệt. Có thể đổi loại nhịp, số cảnh, tóm tắt, chuyển sự việc sang nhịp
-        khác, chèn hoặc xoá nhịp rỗng. Bấm "Duyệt và viết cảnh" để máy chủ viết lời kể (mỗi nhịp 3 lượt gọi AI).</div>
+        khác, bỏ chi tiết vụn khỏi video hoặc đưa lại, chèn hoặc xoá nhịp rỗng. Bấm "Duyệt và viết cảnh" để máy chủ viết
+        lời kể (mỗi nhịp 3 lượt gọi AI).</div>
+      ${Number(view.merged_count) > 0 ? `<div class="text-[11px] text-slate-400">Đã gộp ${tcEsc(view.merged_count)} sự việc
+        bài kể lặp lại (tóm tắt đầu bài rồi kể lại chi tiết) vào sự việc đầy đủ nhất.</div>` : ''}
       <label class="flex flex-wrap items-center gap-1.5 text-slate-300">Bài đủ tư liệu cho khoảng
         <input type="number" id="tc-outline-minutes" min="1" max="${tcEsc(maxMinutes)}" step="1" value="${tcEsc(s.outlineMinutes)}"
           class="w-14 bg-slate-950/90 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 focus:border-red-500 focus:outline-none">
@@ -727,7 +741,7 @@ function tcRenderOutlineReview() {
       }
       const moveOptions = parts.map((other, j) =>
         `<option value="${j}"${j === i ? ' selected' : ''}>${j === i ? tcEsc(tcPartLabel(other, j)) : `→ ${tcEsc(tcPartLabel(other, j))}`}</option>`
-      ).join('');
+      ).join('') + '<option value="drop">✕ Bỏ khỏi video</option>';
       const when = ev && ev.time_label ? `<span class="text-amber-300/80">[${tcEsc(ev.time_label)}]</span> ` : '';
       return `
         <li class="flex flex-wrap sm:flex-nowrap items-start gap-2 border-t border-slate-800 pt-1.5">
@@ -761,8 +775,37 @@ function tcRenderOutlineReview() {
           class="w-full bg-slate-950/90 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:border-red-500 focus:outline-none leading-relaxed resize-y">${tcEsc(part.summary_vi)}</textarea>
         <ul class="space-y-1.5">${rows || '<li class="text-rose-300">Nhịp chưa có sự việc nào: chuyển sự việc vào, hoặc xoá nhịp.</li>'}</ul>
       </div>`;
-  }).join('');
+  }).join('') + tcDroppedSection(parts, events);
   tcUpdateOutlineStatus();
+}
+
+// Các sự việc bỏ khỏi video (chi tiết vụn máy đề xuất bỏ, hoặc bạn bỏ), kèm lý do; mỗi dòng đưa lại được vào một nhịp.
+function tcDroppedSection(parts, events) {
+  const dropped = TrueCrimeState.outlineDropped || [];
+  const rows = dropped.map(d => {
+    const ev = events.get(d.event_id);
+    const when = ev && ev.time_label ? `<span class="text-amber-300/80">[${tcEsc(ev.time_label)}]</span> ` : '';
+    const options = '<option value="" selected>Đang bỏ</option>' + parts.map((p, j) =>
+      `<option value="${j}">→ ${tcEsc(tcPartLabel(p, j))}</option>`).join('');
+    return `
+      <li class="flex flex-wrap sm:flex-nowrap items-start gap-2 border-t border-slate-800 pt-1.5">
+        <span class="font-mono text-[10px] text-slate-500 shrink-0 pt-0.5">${tcEsc(d.event_id)}</span>
+        <span class="min-w-0 flex-1 leading-relaxed">
+          <span class="text-slate-400 line-through decoration-slate-600">${when}${tcEsc(ev ? ev.summary : '(sự việc không có trong dòng thời gian)')}</span>
+          <span class="block text-[10px] text-slate-500">Lý do bỏ: ${tcEsc(d.reason || '(không ghi)')}</span>
+        </span>
+        <select data-tc-restore-event="${tcEsc(d.event_id)}" aria-label="Đưa sự việc ${tcEsc(d.event_id)} lại vào một nhịp"
+          class="w-full sm:w-auto shrink-0 bg-slate-900 border border-slate-700 text-slate-200 text-[11px] rounded-lg px-2 py-1 focus:border-red-500">${options}</select>
+      </li>`;
+  }).join('');
+  return `
+    <div id="tc-outline-dropped" class="rounded-xl border border-dashed border-slate-700 bg-slate-950/40 p-2.5 space-y-2">
+      <div class="text-[11px] font-bold text-slate-300"><i class="fa-solid fa-scissors mr-1 text-slate-500"></i>Bỏ khỏi video
+        (${dropped.length} sự việc)</div>
+      <div class="text-[10px] text-slate-500">Chi tiết vụn bỏ đi cho câu chuyện gọn và cuốn. Thấy sự việc nào quan trọng thì
+        đưa lại vào một nhịp; muốn bỏ thêm thì chọn "Bỏ khỏi video" ở ô chuyển nhịp của sự việc đó.</div>
+      <ul class="space-y-1.5">${rows || '<li class="text-[11px] text-slate-500">Không bỏ sự việc nào.</li>'}</ul>
+    </div>`;
 }
 
 // Cập nhật số cảnh, nhắc từng nhịp và các nút mà không vẽ lại (giữ ô đang gõ).
@@ -805,13 +848,7 @@ function tcMoveOutlineEvent(eventId, from, to) {
   const parts = TrueCrimeState.outlineDraft;
   if (!parts || !parts[from] || !parts[to] || from === to) return;
   parts[from].event_ids = parts[from].event_ids.filter(id => id !== eventId);
-  const target = parts[to].event_ids;
-  if (!target.includes(eventId)) {
-    const events = tcOutlineEvents();
-    const order = id => events.get(id)?.order ?? Number.MAX_SAFE_INTEGER;
-    const at = target.findIndex(id => order(id) > order(eventId));
-    if (at < 0) target.push(eventId); else target.splice(at, 0, eventId);
-  }
+  tcInsertOutlineEvent(eventId, to);
   tcMarkOutlineDirty();
   tcRenderOutlineReview();
 }
@@ -849,8 +886,44 @@ function tcOnOutlineChange(e) {
     tcMarkOutlineDirty();
     tcRenderOutlineReview();                      // tên nhịp trong các ô "chuyển sang" đổi theo
   } else if (target.dataset.tcMoveEvent !== undefined) {
-    tcMoveOutlineEvent(target.dataset.tcMoveEvent, Number(target.dataset.from), Number(target.value));
+    if (target.value === 'drop') tcDropOutlineEvent(target.dataset.tcMoveEvent, Number(target.dataset.from));
+    else tcMoveOutlineEvent(target.dataset.tcMoveEvent, Number(target.dataset.from), Number(target.value));
+  } else if (target.dataset.tcRestoreEvent !== undefined && target.value !== '') {
+    tcRestoreOutlineEvent(target.dataset.tcRestoreEvent, Number(target.value));
   }
+}
+
+// Thêm sự việc vào nhịp `to`, chèn theo thứ tự trong dòng thời gian (không thêm nếu nhịp đã có).
+function tcInsertOutlineEvent(eventId, to) {
+  const target = TrueCrimeState.outlineDraft[to].event_ids;
+  if (target.includes(eventId)) return;
+  const events = tcOutlineEvents();
+  const order = id => events.get(id)?.order ?? Number.MAX_SAFE_INTEGER;
+  const at = target.findIndex(id => order(id) > order(eventId));
+  if (at < 0) target.push(eventId); else target.splice(at, 0, eventId);
+}
+
+// Bỏ sự việc khỏi video: gỡ khỏi mọi nhịp (kể cả bản nhịp mở đầu gợi trước), đưa vào danh sách bỏ.
+function tcDropOutlineEvent(eventId, from) {
+  const s = TrueCrimeState;
+  if (!s.outlineDraft || !s.outlineDraft[from]) return;
+  s.outlineDraft.forEach(part => { part.event_ids = part.event_ids.filter(id => id !== eventId); });
+  s.outlineDropped = s.outlineDropped || [];
+  if (!s.outlineDropped.some(d => d.event_id === eventId)) {
+    s.outlineDropped.push({ event_id: eventId, reason: 'Bạn bỏ khi duyệt dàn ý.' });
+  }
+  tcMarkOutlineDirty();
+  tcRenderOutlineReview();
+}
+
+// Đưa sự việc đã bỏ lại vào nhịp `to`.
+function tcRestoreOutlineEvent(eventId, to) {
+  const s = TrueCrimeState;
+  if (!s.outlineDraft || !s.outlineDraft[to]) return;
+  s.outlineDropped = (s.outlineDropped || []).filter(d => d.event_id !== eventId);
+  tcInsertOutlineEvent(eventId, to);
+  tcMarkOutlineDirty();
+  tcRenderOutlineReview();
 }
 
 function tcOnOutlineClick(e) {
@@ -880,6 +953,7 @@ function tcRevertOutline() {
   if (!window.confirm('Bỏ mọi thay đổi chưa lưu và quay về dàn ý đang lưu trên máy chủ?')) return;
   s.outlineDraft = tcOutlineCopy(s.outline.parts);
   s.outlineMinutes = s.outline.supported_minutes;
+  s.outlineDropped = tcDroppedCopy(s.outline.dropped);
   s.outlineDirty = false;
   tcShowOutlineError('');
   tcRenderOutlineReview();

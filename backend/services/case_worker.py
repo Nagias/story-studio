@@ -396,15 +396,17 @@ def outline_view(case_id: str) -> dict:
         raise OutlineStateError(exc.user_message) from None
 
 
-def edit_outline(case_id: str, parts: list[dict], supported_minutes: Optional[int] = None) -> CasePipeline:
+def edit_outline(case_id: str, parts: list[dict], supported_minutes: Optional[int] = None,
+                 dropped: Optional[list[dict]] = None) -> CasePipeline:
     """Sửa dàn ý đang chờ duyệt: `parts` là toàn bộ các nhịp mới ({kind, summary_vi, event_ids, scene_count}),
-    `supported_minutes` (tuỳ chọn) là số phút bài đủ tư liệu. Qua các quy tắc dàn ý thì lưu đè dàn ý và sinh lại các
-    việc viết cảnh (vụ vẫn chờ duyệt); không qua thì OutlineEditError và không đổi gì."""
+    `supported_minutes` (tuỳ chọn) là số phút bài đủ tư liệu, `dropped` (tuỳ chọn) là các sự việc bỏ khỏi video
+    ({event_id, reason}). Qua các quy tắc dàn ý thì lưu đè dàn ý và sinh lại các việc viết cảnh (vụ vẫn chờ duyệt);
+    không qua thì OutlineEditError và không đổi gì."""
     with _lock:
         pipeline = _require_pipeline(case_id)
         outline = _require_review(pipeline)
         try:
-            result = case_adaptation_steps.revise_outline(pipeline, parts, supported_minutes)
+            result = case_adaptation_steps.revise_outline(pipeline, parts, supported_minutes, dropped)
         except StepRejected as exc:
             raise OutlineEditError(exc.reason) from None
         except StepFailed as exc:
@@ -436,6 +438,7 @@ REVIEW_LABEL = "Dàn ý xong, chờ bạn duyệt"
 _STATIC_PHRASES = {
     "cluster_names": "gộp tên nhân vật",
     "assign_aliases": "đặt tên hư cấu",
+    "dedupe_events": "lọc sự việc trùng",
     "build_outline": "lên dàn ý",
     "assemble": "ráp và kiểm tra",
 }

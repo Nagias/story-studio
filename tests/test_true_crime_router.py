@@ -214,13 +214,13 @@ def test_analyze_then_progress_then_case(client, small_chunks, monkeypatch):
     progress = client.get(f"{BASE}/cases/{case_id}/progress")
     assert progress.status_code == 200
     assert progress.json() == {"status": "running", "step_label": "Đang đọc đoạn 1/2", "steps_done": 0,
-                               "steps_total": 5, "error": ""}
+                               "steps_total": 6, "error": ""}
 
     drain()
 
     progress = client.get(f"{BASE}/cases/{case_id}/progress").json()
     assert progress["status"] == "done" and progress["error"] == ""
-    assert progress["steps_done"] == progress["steps_total"] == 12
+    assert progress["steps_done"] == progress["steps_total"] == 13
 
     plan = get_plan(client, case_id)
     assert plan["case_id"] == case_id
@@ -319,8 +319,8 @@ def test_outline_review_edit_and_approve_routes(client, small_chunks, monkeypatc
     drain(approve=False)
 
     progress = client.get(f"{BASE}/cases/{case_id}/progress").json()
-    assert progress == {"status": "review", "step_label": "Dàn ý xong, chờ bạn duyệt", "steps_done": 5,
-                        "steps_total": 12, "error": ""}
+    assert progress == {"status": "review", "step_label": "Dàn ý xong, chờ bạn duyệt", "steps_done": 6,
+                        "steps_total": 13, "error": ""}
     assert client.get(f"{BASE}/cases/{case_id}").status_code == 409   # chưa có kế hoạch
     response = client.get(outline_url)
     assert response.status_code == 200
@@ -984,3 +984,25 @@ def test_path_ids_validated(client):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+def test_outline_put_can_drop_events_from_the_video(client, small_chunks, monkeypatch):
+    use_llm(monkeypatch)
+    case_id = analyze(client)
+    drain(approve=False)
+    outline_url = f"{BASE}/cases/{case_id}/outline"
+    view = client.get(outline_url).json()
+    assert view["dropped"] == [] and view["merged_count"] == 0
+
+    parts = _outline_parts(view)
+    gone = parts[1]["event_ids"].pop()
+    response = client.put(outline_url, json={"parts": parts, "dropped": [{"event_id": gone, "reason": ""}]})
+    assert response.status_code == 200, response.text
+    assert response.json()["dropped"] == [{"event_id": gone, "reason": "Bạn bỏ khi duyệt dàn ý."}]
+    assert client.get(outline_url).json()["dropped"] == response.json()["dropped"]
+
+    bad = client.put(outline_url, json={"parts": parts, "dropped": [{"event_id": gone, "reason": "x"},
+                                                                    {"event_id": "ev_9_9", "reason": "x"}]})
+    assert bad.status_code == 400 and "ev_9_9" in bad.json()["detail"]
+    assert REAL_VICTIM not in bad.text
+    assert client.get(outline_url).json()["dropped"] == response.json()["dropped"]    # bị từ chối thì không đổi

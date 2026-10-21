@@ -28,6 +28,8 @@ Kiểm lọt tên thật, ngày tháng cụ thể và tự áp tên hư cấu (G
 - identifying_numbers / find_identifying_numbers: con số nhận dạng của bài (số nhà, biển số, số điện thoại...) còn
   trong chữ; giờ, tuổi, số tiền và số lượng thì giữ.
 - find_vi_forms_in_en: tên hư cấu dạng tiếng Việt dùng trong lời Anh.
+- quotes_in / quote_source / find_unsourced_quotes: lời trích trong ngoặc kép không có nguyên văn trong bài gốc (lời
+  nói bịa đặt cho người thật).
 - check_plan: trả về bản sao mới; cờ (từng cảnh và cấp kế hoạch) và check_warnings tính lại từ đầu,
   còn warnings là danh sách bền, chỉ nối thêm các lần tự thay tên.
 """
@@ -550,6 +552,40 @@ def find_vi_forms_in_en(text: str, entities: Iterable) -> list:
     return out
 
 
+# ---------------------------------------------------------------- lời trích không có trong bài
+
+# Lời nói trực tiếp trong lời kể: chữ trong cặp ngoặc kép (“...”, "...", «...», 「...」).
+_QUOTE = re.compile(r'“([^”]+)”|"([^"]+)"|«([^»]+)»|「([^」]+)」')
+MIN_QUOTE_WORDS = 4      # ngắn hơn thường là biệt danh, tên gọi hay chữ nhấn mạnh, không phải một câu nói
+
+
+def _plain(text: str) -> str:
+    """Chữ đã fold, bỏ dấu câu, khoảng trắng gộp: để so một lời trích với bài gốc."""
+    return " ".join(re.sub(r"\W+", " ", fold(text or "")).split())
+
+
+def quotes_in(text: str) -> list[str]:
+    """Các lời trích trong ngoặc kép dài từ MIN_QUOTE_WORDS từ trở lên."""
+    out: list[str] = []
+    for match in _QUOTE.finditer(unicodedata.normalize("NFC", text or "")):
+        quote = next(g for g in match.groups() if g is not None).strip()
+        if len(quote.split()) >= MIN_QUOTE_WORDS and quote not in out:
+            out.append(quote)
+    return out
+
+
+def quote_source(source_text: str, forbidden: list[ForbiddenName], lang: Lang) -> str:
+    """Bài gốc đã đổi tên thật sang tên hư cấu của `lang` rồi chuẩn hoá như _plain, để tìm lời trích của lời kể."""
+    aliased, _done = apply_aliases(source_text or "", forbidden, lang)
+    return f" {_plain(aliased)} "
+
+
+def find_unsourced_quotes(text: str, source: str) -> list[str]:
+    """Lời trích trong `text` không có nguyên văn trong bài gốc (`source` lấy từ quote_source). Lời kể và bài phải
+    cùng ngôn ngữ; khác ngôn ngữ thì lời trích là bản dịch, không so được."""
+    return [q for q in quotes_in(text) if f" {_plain(q)} " not in source]
+
+
 # ---------------------------------------------------------------- ngày tháng
 
 _D = r"(?:3[01]|[12]\d|0?[1-9])"
@@ -711,7 +747,8 @@ def check_plan(plan: CaseAdaptationPlan, source_text: str) -> CaseAdaptationPlan
         * tên viết không dấu trùng tên thật của nhiều người có tên hư cấu khác nhau: đã thay bằng tên hư cấu của thực thể
           đứng trước trong bảng tên, cảnh báo nêu cảnh và tên hư cấu đã dùng, không nêu tên thật;
         * con số nhận dạng lấy từ bài gốc (số nhà, biển số...) còn trong lời kể hay prompt;
-        * tên hư cấu dạng tiếng Việt trong lời Anh.
+        * tên hư cấu dạng tiếng Việt trong lời Anh;
+        * lời trích trong ngoặc kép không có nguyên văn trong bài gốc (chỉ so khi lời kể cùng ngôn ngữ với bài).
     - Cảnh `disclaimer` không bị quét.
     """
     new = plan.model_copy(deep=True)
@@ -720,6 +757,11 @@ def check_plan(plan: CaseAdaptationPlan, source_text: str) -> CaseAdaptationPlan
     aliases = _unique(a.strip() for e in bible.entities for a in (e.alias_vi, e.alias_en) if a and a.strip())
     pool = [*_forbidden_aliases(forbidden), *aliases]
     id_numbers = identifying_numbers(source_text)
+    # bài gốc đã đổi tên, để so lời trích; chỉ dựng khi có lời kể cùng ngôn ngữ với bài và có lời trích
+    quote_lang = bible.source_language if bible.source_language in ("vi", "en") and source_text.strip() else None
+    quote_sources: dict[str, str] = {}
+    if quote_lang and any(quotes_in(getattr(s, f"narration_{quote_lang}")) for s in new.scenes):
+        quote_sources[quote_lang] = quote_source(source_text, forbidden, quote_lang)
     warnings: list[str] = list(new.warnings)    # bền: chỉ nối thêm
     check_warnings: list[str] = []              # tính lại từ đầu
     plan_flags: list[SceneFlag] = []            # tính lại từ đầu
@@ -778,6 +820,10 @@ def check_plan(plan: CaseAdaptationPlan, source_text: str) -> CaseAdaptationPlan
             if field == "narration_en":
                 for ent in find_vi_forms_in_en(fixed, bible.entities):
                     warn(f"Lời Anh ở {where} dùng dạng tên tiếng Việt '{ent.alias_vi}'; hãy đổi thành '{ent.alias_en}'.")
+            if field in _NARRATION_FIELDS and lang in quote_sources:
+                for quote in find_unsourced_quotes(fixed, quote_sources[lang]):
+                    warn(f"Lời trích \"{quote}\" ở {where} không có nguyên văn trong bài gốc; hãy kể gián tiếp hoặc "
+                         "chép đúng câu trong bài.")
         for rid in _unique(scene.board_reveal):
             if rid not in valid_ids:
                 flags.append(SceneFlag(kind="bad_reveal", field="board_reveal",
