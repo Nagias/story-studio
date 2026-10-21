@@ -193,3 +193,21 @@ Giữ: T4b (8 dự án thử 4–16/10), "ZZ Thử Muse", 3 mục MẪU. Mỗi m
 - [x] `tools/check.py` (nhanh / đầy đủ) + hook trước commit (đã cài ở `.git/hooks/pre-commit`; nhánh chưa có `tools/check.py` thì hook bỏ qua)
 - [x] Cập nhật CLAUDE.md, README, FEATURE_MAP theo lệnh mới
 - [x] Bằng chứng (22/10/2026): `tools/check.py --full` **ĐẠT**, 3 phút: Ruff 0 lỗi mới, 2 file JS đúng cú pháp, 10 test kiến trúc/FEATURE_MAP, **672 test mặc định đạt, 0 lỗi** (2 phút 47 giây; trước đây 7–9 phút vì gọi dịch vụ thật); không có dự án rác. Thử ngược: test kiến trúc bắt được 4 nút bước gắn sự kiện hai lần trên code trước đợt dọn và bắt vi phạm giả; hook chặn commit có lỗi Ruff mới (HEAD không đổi). Chưa chạy lại 19 test `live` (tốn quota, cần mạng)
+
+# TASKS — sửa lỗi và dọn nốt sau rà soát (2026-10-22, người dùng: "làm nốt", nhánh `sua-loi-sau-ra-soat`)
+Không đụng phần nguyên văn của chủ dự án trong CLAUDE.md (mục đích, duyệt đường cấm, quy trình).
+- [x] Mốc: 19 test `live` trên master (STORY_STUDIO_LIVE=1): **18 đạt, 1 lỗi** trong 25 phút 40 giây. Lỗi là `test_dossier_through_real_9router`: 9router không trả lời câu ping trong 60 giây. Không để lại dự án rác
+- [x] Lỗi mất dự án: project.json hỏng → `ProjectUnreadableError` (API 409), không ghi đè thành dự án rỗng; ghi an toàn qua `services/safe_files.py` (dùng chung với case_store); mọi chỗ ghi qua `project_service.save_project()`. Test `tests/test_project_service_safety.py`: 7 lỗi trên code cũ → 8 đạt
+- [x] Fleet Runner: bật tự động chỉ ở `runners/autostart.py`; `run.py` tôn trọng `STORY_STUDIO_DISABLE_FLEET_AUTOSTART`; runner gọi về đúng cổng (`--url`). `tests/test_fleet_autostart.py`: 2 lỗi trên code cũ → 4 đạt
+- [x] Test không ghi vào `projects/` thật: đổi `PROJECTS_DIR`/`COMIC_SLICES_DIR` ở mọi module; `tests/test_test_isolation.py`. `test_api` chạy 2 giây thay vì vài chục giây
+- [x] Thành công giả: `get_audio_duration()` báo `MediaDurationError` thay vì đoán 3 giây; nhập truyện tranh chép ảnh lỗi thì đánh dấu "Lỗi ảnh" (`tests/test_comic_import_errors.py`), giao diện cảnh báo
+- [x] Thông báo chèn chữ chưa lọc: 21 chỗ + thư viện Muse; `escapeHtml()` nhận mọi kiểu; luật máy kiểm (đường cấm 9) bắt đủ 20 chỗ trên code cũ
+- [x] Kiểm đường dẫn: `complete_task()` dùng `is_within` (test `proj_a`/`proj_ab` lỗi trên code cũ → đạt); `project_service` dùng `security.is_safe_id`
+- [x] Biến môi trường gom về `config.py` (còn 3 file tiến trình riêng có lý do); `.env.example` thêm 8 biến (luật máy kiểm bắt đủ 8 trên file cũ); `DEFAULT_VOICE` có tác dụng (`.env` hiện trùng mặc định nên máy này không đổi giọng)
+- [x] Code chết: 6 endpoint (auto-gen, Muse tạo hết ảnh/video, upload-reference-image, grid-slicer/compose-prompt), `grid_slicer.py`, 4 hàm âm thanh, 3 model yêu cầu; bỏ 6 test của phần đã xoá
+- [x] Ruff: bỏ import/biến thừa, f-string thừa, chuỗi thoát sai; mốc 193 → 57 (còn `except: pass`, gọi chặn trong async, 3 báo nhầm fixture)
+- [x] Cắt truyện tranh (OpenCV) và vẽ thumbnail (PIL) chạy ở luồng phụ
+- [x] Giao diện (server thử 8010, dự án ZZ Thử Muse): thông báo có mã HTML hiện dạng chữ, không chạy; thư viện Muse tải đủ 8 ảnh + 7 video; dữ liệu nút "Gắn" đọc đúng đường dẫn; danh sách dự án 12 mục; 15 giây không request lỗi; 3 `project.json` mẫu/thử không bị ghi
+- [x] Test `live` không cần 9router (Edge-TTS, VieNeu, dựng video, e2e): **11/11 đạt** trên code mới
+- [ ] 8 test `live` cần 9router: chưa chạy lại được vì 9router (cổng 20128) treo trong đợt chạy test live đêm 21–22/10 — cả GET /v1/models cũng không trả lời sau 10–15 giây; chưa tự khởi động lại vì là chương trình ngoài server 8000 cũng dùng
+- Còn lại có chủ đích (cần chủ dự án quyết hoặc kiểm thật với 9router/Muse): gom 3 client LLM về `case_adaptation_llm` (đường cấm 5); tách hàng việc Muse khỏi `routers/` (đường cấm 13); Muse lỗi rơi sang 9router tính tiền (đường cấm 4); xoá vĩnh viễn ở `delete_project`/`clear_all_gallery` (đường cấm 12); 31 chỗ `except: pass`

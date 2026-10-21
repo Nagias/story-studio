@@ -74,22 +74,22 @@ Lập từ đợt rà soát 21/10/2026. Cột cuối liệt kê chỗ còn vi ph
 Máy kiểm tự động (chạy trong `tools/check.py` và hook trước commit):
 - dòng 1, 5, 6, 7, 9 (phần `showToast`), 10, 13, 14: `tests/test_architecture.py` (vi phạm cũ ghi thành ngoại lệ đếm đúng số lần; biến môi trường phải có trong `.env.example`);
 - dòng 2 (phần `except: pass`) và 8 (phần `open`, `subprocess` trong hàm async): Ruff, so với mốc `tools/ruff_baseline.json`;
-- dòng 11 (phần gọi mạng và dự án rác): `tests/conftest.py`;
-- dòng 3, 4, 12 và phần còn lại của dòng 2, 8, 9, 11: **chưa có máy kiểm**, dựa vào người duyệt.
+- dòng 11: `tests/conftest.py` (mọi test chạy trong thư mục tạm, chặn mạng và dịch vụ thật nếu không gắn cờ `live`, báo dự án rác) và `tests/test_test_isolation.py`;
+- dòng 3, 4, 12 và phần còn lại của dòng 2, 8, 9: **chưa có máy kiểm**, dựa vào người duyệt.
 
 | # | Mẫu cấm | Làm thay | Vì sao | Còn vi phạm ở |
 |---|---|---|---|---|
 | 1 | Ghi `projects/<proj_id>/project.json` ở ngoài `project_service` (mở file ghi thẳng) | `project_service.save_project()` | nhiều nơi cùng ghi, ghi thẳng: ghi dở là hỏng file | — |
 | 2 | Bắt lỗi rồi trả `None` hay `pass`, khiến "lỗi" thành "không có" | để lỗi nổi lên, hoặc ghi log và báo rõ | từng gặp: `get_project()` trả `None` khi file hỏng → lần lưu sau ghi đè thành dự án rỗng (đã sửa 22/10/2026) | các chỗ `try/except: pass` còn trong mốc Ruff (`tools/ruff_baseline.json`, luật S110) |
-| 3 | "Thành công giả": giá trị bịa, link mẫu, mock báo xong, nhánh chỉ có `pass` | báo lỗi rõ hoặc đánh dấu thất bại | người dùng và agent tưởng đã xong | `tts_service.get_audio_duration()` (thiếu ffprobe thì coi là 3 giây), `import_comic_panels_to_storyboard()` (chép ảnh lỗi vẫn gán ảnh) |
+| 3 | "Thành công giả": giá trị bịa, link mẫu, mock báo xong, nhánh chỉ có `pass` | báo lỗi rõ hoặc đánh dấu thất bại | người dùng và agent tưởng đã xong | — (đã gặp và sửa 22/10/2026: `get_audio_duration()` đoán 3 giây khi thiếu ffprobe, nhập truyện tranh gán ảnh không có) |
 | 4 | Âm thầm chuyển sang dịch vụ tính tiền khi dịch vụ miễn phí lỗi | ghi lý do và hiện cho người dùng thấy | tốn tiền mà không ai biết | `image_service.generate_image()` (Muse lỗi rơi sang 9router) |
 | 5 | Viết thêm client gọi 9router/LLM | dùng `services/case_adaptation_llm.py` (có thử lại, chờ khi 9router bận) | đang có 4 client, chỉ 1 biết thử lại | `script_splitter.py`, `storyboard_engine.py` |
 | 6 | `os.getenv` ngoài `config.py` | thêm biến vào `config.py` và `.env.example` | biến rải rác thì khó biết app cần gì; từng gặp `DEFAULT_VOICE` trong `.env` không có tác dụng (sửa 22/10/2026) | — (3 file tiến trình riêng, ghi lý do trong `tests/test_architecture.py`) |
 | 7 | Tự kiểm id/đường dẫn bằng regex riêng hoặc `str.startswith` | `security.py` | tự viết dễ sai (`proj_a` khớp nhầm `proj_ab`, đã gặp ở `complete_task()`, sửa 22/10/2026) | — |
-| 8 | Đọc ghi đĩa, `subprocess`, ffmpeg, OpenCV chạy thẳng trong route `async def` | `asyncio.to_thread` như `routers/true_crime.py` | server khựng, WebSocket và heartbeat của Fleet Runner bị trễ | `routers/api.py` |
+| 8 | Đọc ghi đĩa, `subprocess`, ffmpeg, OpenCV chạy thẳng trong route `async def` | `asyncio.to_thread` như `routers/true_crime.py` | server khựng, WebSocket và heartbeat của Fleet Runner bị trễ | vài chỗ `open()`/kiểm file nhỏ trong `routers/api.py`, `routers/muse_bridge.py` (mốc Ruff); việc nặng (OpenCV, PIL thumbnail) đã chuyển sang luồng phụ 22/10/2026 |
 | 9 | Chèn chữ từ server hoặc người dùng vào `innerHTML`/`showToast()` mà chưa lọc | `escapeHtml()` / `tcEsc()` | chèn được mã HTML vào trang | `innerHTML` dựng từ dữ liệu máy chủ ngoài thông báo (chưa rà hết) |
 | 10 | Gắn một sự kiện hai lần (onclick trong HTML và `addEventListener`) | chọn một cách | chạy hai lần (đã gặp: nút bước tải SEO hai lần, đã sửa) | — |
-| 11 | Test ghi vào `projects/` thật, gọi LLM/Muse/Edge-TTS thật mà không gắn cờ, bật trình duyệt hay Fleet Runner | `tmp_path`, fixture `isolated_projects_dir`, LLM giả (`tests/case_adaptation_fakes.py`); test thật đặt tên `*_live*` và cần `STORY_STUDIO_LIVE=1` | mất dữ liệu, tốn quota, đụng tài khoản thật | `tests/test_api.py` (xoá dự án `default_preview`), `tests/test_comic.py`, 9 file ghi `projects/` |
+| 11 | Test ghi vào `projects/` thật, gọi LLM/Muse/Edge-TTS thật mà không gắn cờ, bật trình duyệt hay Fleet Runner | `tmp_path`, fixture `isolated_projects_dir`, LLM giả (`tests/case_adaptation_fakes.py`); test thật đặt tên `*_live*` và cần `STORY_STUDIO_LIVE=1` | mất dữ liệu, tốn quota, đụng tài khoản thật | — (từ 22/10/2026 mọi test ghi vào thư mục tạm) |
 | 12 | Xoá vĩnh viễn dữ liệu người dùng (`shutil.rmtree`, `unlink`) | chuyển vào Thùng rác, hoặc hỏi trước | không lấy lại được | `project_service.delete_project()`, `clear_all_gallery()` |
 | 13 | `services/` import từ `routers/` | đưa phần dùng chung xuống `services/` | vòng phụ thuộc; import kéo theo ghi file cấu hình | `image_service.py` (import `routers.muse_bridge`) |
 | 14 | Đường dẫn tuyệt đối của máy này, hay trỏ sang dự án khác | đường dẫn từ `config.py` | hỏng trên máy khách; `tools/build_release.py` chặn | `thumbnail_service.py` (`C:\Windows\Fonts`); vài chuỗi hợp lệ có ghi lý do trong `tests/test_architecture.py` |
@@ -112,7 +112,7 @@ Code mới nên theo mẫu của mảng true-crime (mục 4), không theo mảng
   - ghi kết quả vào `TASKS.md`.
 
   Chưa có bằng chứng thì báo "chưa kiểm chứng", không báo "xong".
-- **Sau khi chạy test:** bộ test tự báo dự án rác; chạy test lẻ bằng cách khác thì tự so danh sách `projects/` trước và sau.
+- **Sau khi chạy test:** bộ test tự cô lập `projects/` và tự báo dự án rác; chạy thử bằng cách khác (server thử, script) thì tự so danh sách `projects/` trước và sau.
 - **Dữ liệu cần giữ:**
   - Không sửa hay xoá 3 mục MẪU: `proj_crime_52c3a5e8`, `proj_crime_8329b12d`, `_cases/case_7dcf6158`. Dự án để thử là `proj_ea5b04db`.
   - Dọn thì chuyển vào Thùng rác, chỉ khi đã được duyệt.

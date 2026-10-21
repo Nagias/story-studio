@@ -47,7 +47,7 @@ Dữ liệu mẫu có sẵn (không xoá, không sửa khi thử):
 
 | Tính năng | Thao tác | Code giao diện | API → code server | Tốn |
 |---|---|---|---|---|
-| Quản lý dự án (mở danh sách, tạo, chuyển) | `#btn-project-dropdown` → cửa sổ `#modal-project-manager`; tạo: `#new-project-name-input` + `#btn-create-project`; chọn: dòng trong danh sách | `openProjectModal()`, `handleCreateNewProject()`, `switchProject()` | `GET /api/projects`, `POST /api/projects`, `GET /api/projects/{project_id}` → `project_service.py` | — |
+| Quản lý dự án (mở danh sách, tạo, chuyển) | `#btn-project-dropdown` → cửa sổ `#modal-project-manager`; tạo: `#new-project-name-input` + `#btn-create-project`; chọn: dòng trong danh sách | `openProjectModal()`, `handleCreateNewProject()`, `switchProject()` | `GET /api/projects`, `POST /api/projects`, `GET /api/projects/{project_id}` → `project_service.py`. Dự án có `projects/<proj_id>/project.json` hỏng vẫn hiện trong danh sách với tên "⚠ Không đọc được: …"; mở nó thì API trả 409 kèm lý do, file được giữ nguyên | — |
 | Chuyển bước 1–4 | `#step-nav-1` … `#step-nav-4` | `switchStep()` | Bước 4: `GET /api/projects/{project_id}/seo-pack` | — |
 | Hồ Sơ Kỳ Án | `#btn-open-true-crime-modal` | `openTrueCrimeModal()` | xem 2.6.7 | — |
 | Trạng thái + cửa sổ Muse | `#btn-muse-cloud-status` (chữ trạng thái `#header-muse-status-text`, hỏi 5 s/lần) | `openMuseModal()` | `GET /api/muse-bridge/status` | — |
@@ -123,6 +123,7 @@ Các khối khác trong Bước 2:
 - Thao tác: ảnh vào `#comic-dropzone` / `#comic-file-input` (hoặc `#btn-sample-manga-grid`, `#btn-sample-webtoon-strip`), chọn `#comic-layout-mode`, `#comic-reading-order`, `#comic-min-area`, bấm `#btn-start-slice`; xem kết quả `#tab-btn-panels` / `#tab-btn-annotated`; chọn ảnh khác `#btn-reset-comic`; tuỳ chọn xoá cảnh cũ `#comic-clear-existing-cb`; nhập vào dự án `#btn-import-comic-to-storyboard`.
 - Code: `handleStartSlice()`, `handleImportComicToStoryboard()`.
 - API: `POST /api/projects/{project_id}/comic/slice` (chưa có dự án: `POST /api/comic/slice`), ảnh cắt phục vụ qua `GET /api/comic/media/{session_id}/{filename}`, nhập: `POST /api/projects/{project_id}/comic/import-scenes` → `comic_slicer.py`. Ảnh cắt tạm nằm ở `backend/static/comic_slices/<phiên>/`.
+- Khung không chép được ảnh (không có file, nằm ngoài thư mục cho phép, chép lỗi) vẫn thành cảnh nhưng bị đánh dấu "Lỗi ảnh" (`status_image="error"`, lý do trong `metadata.image_error`); API trả `failed_panels`, giao diện cảnh báo số khung lỗi.
 
 #### 2.6.3 Kịch bản AI (`#modal-script-importer`)
 - Mở: `#btn-open-script-modal`. Đóng: `#btn-close-script-modal`, `#btn-cancel-script-modal`.
@@ -213,7 +214,7 @@ Dùng được qua `/docs` (Swagger) hoặc test; sửa tới thì nhớ không 
 | Fleet Runner | tiến trình Python riêng, khoá `backend/runners/.fleet_runner.lock`, log `backend/muse_fleet_runner.log` | gọi về cổng server qua `--url` (`runner_url()` theo `STORY_STUDIO_PORT`); chạy tay bằng `start_muse_fleet.bat` thì mặc định cổng 8000 |
 | 9router | `127.0.0.1:20128` | chương trình ngoài |
 | Server VieNeu | `127.0.0.1:5005` | tự bật qua `uv`, không tự tắt |
-| Dự án | `projects/<proj_id>/project.json` + `images/`, `videos/`, `audio/`, `renders/` | ghi qua `project_service.py` (còn chỗ ghi thẳng, xem `CLAUDE.md` mục đường cấm) |
+| Dự án | `projects/<proj_id>/project.json` + `images/`, `videos/`, `audio/`, `renders/` | ghi duy nhất qua `project_service.save_project()` (file tạm rồi đổi tên, `services/safe_files.py`) |
 | Vụ án | `projects/_cases/<case_id>/` | ghi qua `case_store.py` (ghi an toàn) |
 | Đầu ra phục vụ tĩnh | `backend/static/muse_outputs/`, `comic_slices/`, `evidence_boards/`, `reference_images/` | git bỏ qua |
 
@@ -221,16 +222,17 @@ Dùng được qua `/docs` (Swagger) hoặc test; sửa tới thì nhớ không 
 
 | Tính năng | File test |
 |---|---|
-| Dự án, đồng bộ, lưu | `tests/test_api.py`, `tests/test_project_sync.py` |
+| Dự án, đồng bộ, lưu, file hỏng | `tests/test_api.py`, `tests/test_project_sync.py`, `tests/test_project_service_safety.py`, `tests/test_default_voice.py` |
 | Chia cảnh (LLM, offline, bài dài) | `tests/test_script_splitter_long_text.py`, `tests/test_scene_analysis_fallback_reason.py`, `tests/test_vox_narrative.py` |
 | Ảnh, nhân vật | `tests/test_image.py`, `tests/test_character_consistency.py` |
 | Giọng | `tests/test_tts.py` (6 test gắn cờ `live`: Edge-TTS thật, một test bật VieNeu), `tests/test_ui_scan_fixes.py` |
 | Dựng video | `tests/test_video.py`, `tests/test_no_fake_success_and_motion_render.py`, `tests/test_youtube_studio_v2_improvements.py`, `tests/test_adversarial_qa.py` |
-| Truyện tranh | `tests/test_comic.py` (test gọi produce-long-video thật gắn cờ `live`: **LLM**, **Ảnh trả phí**) |
+| Truyện tranh | `tests/test_comic.py` (test gọi produce-long-video thật gắn cờ `live`: **LLM**, **Ảnh trả phí**), `tests/test_comic_import_errors.py` |
 | 9-Grid / Master Storyboard | `tests/test_youtube_storyboard_spec.py` |
 | Muse | `tests/test_muse_fleet_routing.py`, `tests/test_muse_fleet_runner.py`, `tests/test_muse_fleet_runner_media.py`, `tests/test_muse_fleet_runner_integration.py` |
 | True crime | `tests/test_case_*.py`, `tests/test_true_crime_router.py`, `tests/test_true_crime_e2e.py` (offline dù tên có e2e), `tests/test_investigation_board.py` |
-| Chạy một server, mở thư mục, bảo mật | `tests/test_run_single_server.py`, `tests/test_open_folder.py`, `tests/test_gate_gout_regressions.py` |
+| Chạy một server, bật Fleet Runner, mở thư mục, bảo mật | `tests/test_run_single_server.py`, `tests/test_fleet_autostart.py`, `tests/test_open_folder.py`, `tests/test_gate_gout_regressions.py` |
+| Test không chạm dữ liệu thật | `tests/test_test_isolation.py` |
 | Đường cấm, tài liệu khớp code | `tests/test_architecture.py`, `tests/test_feature_map.py` (chạy cả trong hook trước commit) |
 | Gọi dịch vụ thật (cờ `live`, chỉ chạy khi được yêu cầu: `pytest -m live`) | 19 test: `tests/test_e2e_pipeline.py`, `tests/test_nanahoshi_1click_e2e.py`, `tests/test_case_adaptation_live.py` (cần thêm `STORY_STUDIO_LIVE=1`) và 12 test lẻ trong `tests/test_tts.py`, `tests/test_video.py`, `tests/test_api.py`, `tests/test_comic.py`, `tests/test_adversarial_qa.py` |
 
