@@ -29,6 +29,12 @@ PROJECTS_ROOT = ROOT / "projects"
 if str(BACKEND_DIR) not in sys.path:  # test import thẳng config, services, routers… như code trong backend/
     sys.path.insert(0, str(BACKEND_DIR))
 
+# Thư mục tạm của test (tmp_path) đặt trong .cache trên ổ dự án, không trên ổ C (gần đầy). pytest vẫn đánh số
+# pytest-N cho từng lượt chạy nên hai lượt chạy cùng lúc không giẫm lên nhau; .cache bị git và gói bán bỏ qua.
+_TEST_TMP_ROOT = ROOT / ".cache" / "pytest-tmp"
+_TEST_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("PYTEST_DEBUG_TEMPROOT", str(_TEST_TMP_ROOT))
+
 # --------------------------------------------------------------------------- chặn mạng cho test không gắn cờ live
 _LOOPBACK_NAMES = {"localhost", "::1", "0.0.0.0", "::"}
 # Dịch vụ thật chạy trên chính máy này: 9router, server giọng VieNeu, server Story Studio đang dùng
