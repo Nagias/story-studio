@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable
 
-from services.tts_service import get_audio_duration
+from services.tts_service import MediaDurationError, get_audio_duration
 
 logger = logging.getLogger("story_studio.video_service")
 
@@ -700,8 +700,12 @@ async def assemble_full_video(
             err_msg = p_err.decode(errors="ignore")[-400:]
             raise RuntimeError(f"FFmpeg assemble failed (code {p_final.returncode}): {err_msg}")
 
-        # Calculate final duration
-        total_duration = get_audio_duration(str(out_file))
+        # Calculate final duration (file đã ghép xong: đo lỗi thì ước lượng bằng tổng các cảnh, không báo thất bại)
+        try:
+            total_duration = get_audio_duration(str(out_file))
+        except MediaDurationError as e:
+            total_duration = round(sum(float(i.get("duration") or 0) for i in scene_srt_infos), 3)
+            logger.warning(f"{e}; ước lượng thời lượng video bằng tổng các cảnh: {total_duration}s")
 
         # Save consolidated SRT and ASS alongside final video for softsub/download
         final_srt_path = out_file.with_suffix(".srt")

@@ -5161,7 +5161,7 @@ async function generateSceneWithMuse(index, mode = 'image') {
           } else if (t.status === 'failed') {
             clearInterval(pollTimer);
             // Không tự thay bằng video Ken Burns dựng từ ảnh: báo đúng là Muse thất bại
-            const errText = escapeHtml(String(t.error || 'Lỗi server'));
+            const errText = String(t.error || 'Lỗi server');
             const hint = isVideo ? ' Cảnh vẫn dùng ảnh tĩnh (Ken Burns) khi dựng video.' : '';
             showToast(`Cảnh #${index + 1}: Muse tạo ${isVideo ? 'video' : 'ảnh'} thất bại (${escapeHtml(errText)}).${hint}`, "error", 8000);
             if (isVideo) scene.status_video = 'error';
@@ -5171,7 +5171,7 @@ async function generateSceneWithMuse(index, mode = 'image') {
         }
       }, 2500);
     } else {
-      const errText = escapeHtml(String(res?.detail || 'máy chủ không nhận task'));
+      const errText = String(res?.detail || 'máy chủ không nhận task');
       showToast(`Không thể gửi task tới Muse Fleet (${kindLabel}): ${escapeHtml(errText)}`, "error", 7000);
       if (isVideo) scene.status_video = 'error';
       else scene.status_image = 'error';

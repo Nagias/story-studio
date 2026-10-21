@@ -28,7 +28,10 @@ def write_text_atomic(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex[:8]}.tmp")
     try:
-        tmp.write_text(text, encoding="utf-8")
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())  # dữ liệu xuống đĩa trước khi đổi tên (mất điện không còn file rỗng)
         retry_if_locked(lambda: os.replace(tmp, path))
     except BaseException:
         tmp.unlink(missing_ok=True)

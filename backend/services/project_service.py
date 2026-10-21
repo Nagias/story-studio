@@ -118,6 +118,14 @@ def list_projects() -> List[Dict[str, Any]]:
             continue
         if data is None:
             continue
+        scenes = data.get("scenes", [])
+        if not isinstance(scenes, list):
+            logger.warning("Dự án %s: trường scenes không phải danh sách", d.name)
+            if is_safe_id(d.name):
+                projects.append({"id": d.name, "name": f"⚠ Không đọc được: {d.name}",
+                                 "description": "scenes không phải danh sách", "scenes_count": 0,
+                                 "unreadable": True, "updated_at": None, "created_at": None})
+            continue
         projects.append({
             "id": data.get("id"),
             "name": data.get("name"),
@@ -125,7 +133,7 @@ def list_projects() -> List[Dict[str, Any]]:
             "style_preset": data.get("style_preset"),
             "voice": data.get("voice"),
             "character_reference_image": data.get("character_reference_image"),
-            "scenes_count": len(data.get("scenes", [])),
+            "scenes_count": len(scenes),
             "final_video_url": data.get("final_video_url"),
             "updated_at": data.get("updated_at"),
             "created_at": data.get("created_at"),

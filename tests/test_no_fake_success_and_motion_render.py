@@ -540,3 +540,28 @@ async def test_assemble_logs_xfade_failure_and_falls_back_to_concat(tmp_path, ca
     assert Path(res["video_path"]).exists()
     assert "xfade boom" in caplog.text
     assert any("concat" in c for c in captured_ffmpeg[0]), "phải chuyển sang ghép concat"
+
+
+@pytest.mark.asyncio
+async def test_assemble_succeeds_when_final_duration_cannot_be_measured(tmp_path, captured_ffmpeg, monkeypatch):
+    """Ghép xong rồi mà ffprobe không đo được: vẫn là thành công, thời lượng ước bằng tổng các cảnh."""
+    from services.tts_service import MediaDurationError
+
+    def cannot_measure(path):
+        raise MediaDurationError("Không đo được thời lượng final.mp4: ffprobe giả lỗi")
+
+    monkeypatch.setattr(video_service, "get_audio_duration", cannot_measure)
+    segs, srts = [], []
+    for i in range(2):
+        seg = tmp_path / f"seg{i}.mp4"
+        seg.write_bytes(MP4_BYTES)
+        srt = tmp_path / f"seg{i}.srt"
+        srt.write_text("1\n00:00:00,000 --> 00:00:01,000\nhi\n", encoding="utf-8")
+        segs.append(str(seg))
+        srts.append({"srt_path": str(srt), "duration": 2.5})
+    res = await video_service.assemble_full_video(
+        scene_video_paths=segs, scene_srt_infos=srts,
+        output_video_path=str(tmp_path / "renders" / "final.mp4"), transition="cut", hardsub=False,
+    )
+    assert Path(res["video_path"]).exists()
+    assert res["duration"] == 5.0

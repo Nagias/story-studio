@@ -15,11 +15,13 @@ Compliant with OP_CTOOL Specification:
 import os
 import re
 import logging
+import uuid
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 
 from config import PROJECTS_DIR
+from services import safe_files
 
 logger = logging.getLogger("story_studio.thumbnail_service")
 
@@ -230,7 +232,14 @@ def generate_youtube_thumbnail(
         out_f = PROJECTS_DIR / proj_id / "renders" / "thumbnail.jpg"
     
     out_f.parent.mkdir(parents=True, exist_ok=True)
-    composite_img.save(str(out_f), "JPEG", quality=95)
+    # Ghi file tạm rồi đổi tên: request khác (giao diện, bước dựng) không đọc phải ảnh đang ghi dở
+    tmp_f = out_f.with_name(f"{out_f.stem}.{uuid.uuid4().hex[:8]}.tmp{out_f.suffix}")
+    try:
+        composite_img.save(str(tmp_f), "JPEG", quality=95)
+        safe_files.retry_if_locked(lambda: os.replace(tmp_f, out_f))
+    except BaseException:
+        tmp_f.unlink(missing_ok=True)
+        raise
     logger.info(f"YouTube 1080p Thumbnail successfully generated: {out_f}")
 
     thumb_url = f"/api/projects/{proj_id}/thumbnail"

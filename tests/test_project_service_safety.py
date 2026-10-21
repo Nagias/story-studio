@@ -5,6 +5,7 @@ coi như dự án chưa có và ghi đè bằng dự án rỗng (scenes=[]). L�
 """
 import json
 import os
+from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -105,3 +106,39 @@ async def test_api_reports_unreadable_project_and_keeps_file(isolated_projects_d
         assert "không đọc được" in resp.json()["detail"]
     assert path.read_text(encoding="utf-8") == "{ cụt"
     assert os.path.exists(path)
+
+
+def test_list_survives_project_with_bad_scenes_field(isolated_projects_dir):
+    """JSON đúng cú pháp nhưng scenes không phải danh sách: danh sách dự án vẫn trả về, dự án đó đánh dấu hỏng."""
+    good = _make_project("Dự án tốt")
+    bad = _make_project("Scenes rỗng kiểu lạ")
+    path = _json_path(isolated_projects_dir, bad)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["scenes"] = None
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    listed = {p["id"]: p for p in project_service.list_projects()}
+    assert listed[good]["scenes_count"] == 2
+    assert listed[bad]["unreadable"] is True
+
+
+def test_thumbnail_failure_keeps_previous_file_and_no_tmp(isolated_projects_dir, monkeypatch):
+    """Vẽ thumbnail lỗi giữa chừng: ảnh cũ còn nguyên, không để lại file tạm (ghi tạm rồi đổi tên)."""
+    from PIL import Image
+    from services import thumbnail_service
+
+    project = project_service.get_project(_make_project("Có thumbnail"))
+    first = thumbnail_service.generate_youtube_thumbnail(project)
+    out = Path(first["thumbnail_path"])
+    before = out.read_bytes()
+
+    def broken_save(self, fp, *args, **kwargs):
+        Path(fp).write_bytes(b"dang ghi do")
+        raise OSError("đĩa đầy giả")
+
+    monkeypatch.setattr(Image.Image, "save", broken_save)
+    with pytest.raises(OSError):
+        thumbnail_service.generate_youtube_thumbnail(project)
+    monkeypatch.undo()
+    assert out.read_bytes() == before
+    assert not list(out.parent.glob("*.tmp*"))
