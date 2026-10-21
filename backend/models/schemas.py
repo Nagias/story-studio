@@ -194,7 +194,7 @@ class Project(BaseModel):
 class ProjectCreateRequest(BaseModel):
     name: str
     description: Optional[str] = ""
-    voice: Optional[str] = "vi-VN-NamMinhNeural"
+    voice: Optional[str] = None  # None: dùng config.DEFAULT_VOICE
     style_preset: Optional[str] = "manga_murata_battle"
     character_anchor: Optional[str] = ""
     character: Optional[Character] = None
@@ -456,7 +456,7 @@ class CreateProjectFromScriptRequest(BaseModel):
     character_preset_id: Optional[str] = None
     character_anchor: Optional[str] = ""
     character_reference_image: Optional[str] = None
-    voice: Optional[str] = "vi-VN-NamMinhNeural"
+    voice: Optional[str] = None  # None: giọng mặc định theo ngôn ngữ truyện
     image_provider: Optional[str] = "meta_muse_cloud"
     generate_initial_images: Optional[bool] = True
 

@@ -57,6 +57,8 @@ def _set_9router_key(monkeypatch, key: str):
         monkeypatch.delenv("NINEROUTER_API_KEY", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setattr(script_splitter, "GEMINI_API_KEY", "")
+    monkeypatch.setattr(script_splitter, "OPENROUTER_API_KEY", "")
 
 
 # Mỗi phần được gọi tối đa 2 lần (lần đầu + một lần thử lại), nên "phần 1 hỏng hẳn" là lần gọi 1 và 2

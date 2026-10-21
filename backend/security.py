@@ -7,7 +7,6 @@ Security helpers dùng chung cho toàn bộ backend.
 - LocalAccessMiddleware: chỉ cho phép truy cập từ chính máy này (loopback, không qua proxy/tunnel),
   chặn request cross-site từ trang web lạ. Fleet Runner cũng chạy trên máy này nên gọi qua loopback.
 """
-import os
 import re
 import uuid
 from pathlib import Path
@@ -16,6 +15,8 @@ from urllib.parse import urlsplit
 
 from fastapi import HTTPException, Request
 
+import config
+
 SAFE_ID_RE = re.compile(r"[A-Za-z0-9_\-]{1,64}")
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -23,7 +24,7 @@ VIDEO_EXTS = {".mp4"}
 MEDIA_EXTS = IMAGE_EXTS | VIDEO_EXTS
 
 # Giới hạn dung lượng upload mặc định (MB), có thể đổi qua .env
-MAX_UPLOAD_MB = int(os.getenv("STORY_STUDIO_MAX_UPLOAD_MB", "200"))
+MAX_UPLOAD_MB = config.MAX_UPLOAD_MB
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 
 
@@ -97,8 +98,6 @@ PROXY_HEADERS = {
 }
 
 
-def _split_env_list(name: str) -> set:
-    return {v.strip().lower() for v in os.getenv(name, "").split(",") if v.strip()}
 
 
 def _hostname(host_value: str) -> str:
@@ -119,8 +118,8 @@ class LocalAccessMiddleware:
 
     def __init__(self, app):
         self.app = app
-        self.allowed_hosts = {"localhost", "127.0.0.1", "::1"} | _split_env_list("STORY_STUDIO_ALLOWED_HOSTS")
-        self.allowed_origins = _split_env_list("STORY_STUDIO_ALLOWED_ORIGINS")
+        self.allowed_hosts = {"localhost", "127.0.0.1", "::1"} | set(config.ALLOWED_HOSTS_EXTRA)
+        self.allowed_origins = {o.lower() for o in config.ALLOWED_ORIGINS_EXTRA}
 
     async def __call__(self, scope, receive, send):
         if scope["type"] not in ("http", "websocket"):

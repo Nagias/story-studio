@@ -26,7 +26,6 @@ quả một việc được áp lên bản pipeline đọc lại từ đĩa (kh�
 """
 import asyncio
 import logging
-import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -83,7 +82,7 @@ class OutlineEditError(ValueError):
 
 def worker_disabled() -> bool:
     """Tắt worker (test đặt STORY_STUDIO_DISABLE_CASE_WORKER=1 để không chạy hàng việc ngầm)."""
-    return os.getenv("STORY_STUDIO_DISABLE_CASE_WORKER", "").strip().lower() in ("1", "true", "yes")
+    return config.case_worker_disabled()
 
 
 def _now() -> str:

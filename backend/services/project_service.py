@@ -14,7 +14,7 @@ from typing import List, Dict, Any, Optional
 
 from pydantic import ValidationError
 
-from config import PROJECTS_DIR
+from config import DEFAULT_VOICE, PROJECTS_DIR
 from models.schemas import (
     Project,
     Scene,
@@ -162,7 +162,7 @@ def create_project(data: ProjectCreateRequest) -> Project:
         id=project_id,
         name=data.name,
         description=data.description or "",
-        voice=data.voice or "vi-VN-NamMinhNeural",
+        voice=data.voice or DEFAULT_VOICE,
         style_preset=data.style_preset or "cinematic_realistic",
         character_anchor=anchor,
         character=char_obj,
@@ -193,7 +193,7 @@ def update_project(project_id: str, data: ProjectUpdateRequest) -> Optional[Proj
             id=project_id,
             name=data.name or "Dự án Story Studio",
             description=data.description or "",
-            voice=data.voice or "vi-VN-NamMinhNeural",
+            voice=data.voice or DEFAULT_VOICE,
             style_preset=data.style_preset or "cinematic_realistic",
             character_anchor=anchor,
             character=char_obj,

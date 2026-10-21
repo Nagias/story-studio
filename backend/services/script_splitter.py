@@ -12,7 +12,6 @@ Features:
 - Long text and full chapter chunking engine
 """
 
-import os
 import re
 import json
 import math
@@ -22,7 +21,13 @@ from typing import List, Dict, Any, Optional, Tuple, Callable, Awaitable
 
 import httpx
 
-from config import NINEROUTER_BASE_URL, NINEROUTER_API_KEY, NINEROUTER_SCENE_MODEL
+from config import (
+    GEMINI_API_KEY,
+    NINEROUTER_API_KEY,
+    NINEROUTER_BASE_URL,
+    NINEROUTER_SCENE_MODEL,
+    OPENROUTER_API_KEY,
+)
 
 logger = logging.getLogger("story_studio.script_splitter")
 
@@ -242,11 +247,11 @@ class SemanticStoryAnalyzer:
         preferred_provider: str = "auto",
         model_name: Optional[str] = None,
     ):
-        self.ninerouter_api_key = ninerouter_api_key or os.getenv("NINEROUTER_API_KEY") or NINEROUTER_API_KEY
-        self.ninerouter_base_url = ninerouter_base_url or os.getenv("NINEROUTER_BASE_URL") or NINEROUTER_BASE_URL
+        self.ninerouter_api_key = ninerouter_api_key or NINEROUTER_API_KEY
+        self.ninerouter_base_url = ninerouter_base_url or NINEROUTER_BASE_URL
         self.ninerouter_model = model_name or NINEROUTER_SCENE_MODEL or "ag/gemini-3.8-flash-low"
-        self.gemini_api_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
-        self.openrouter_api_key = openrouter_api_key or os.getenv("OPENROUTER_API_KEY")
+        self.gemini_api_key = gemini_api_key or GEMINI_API_KEY or None
+        self.openrouter_api_key = openrouter_api_key or OPENROUTER_API_KEY or None
         self.preferred_provider = preferred_provider.lower()
         self.model_name = model_name
         # Lý do lần gọi LLM gần nhất thất bại (không chứa key), để báo cho người dùng khi phải chia offline

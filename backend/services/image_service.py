@@ -3,7 +3,6 @@ import base64
 import io
 import logging
 import math
-import os
 import random
 import shutil
 import urllib.parse
@@ -13,6 +12,7 @@ import httpx
 from PIL import Image, ImageDraw, ImageFont
 
 from config import (
+    OPENAI_API_KEY,
     STATIC_DIR,
     NINEROUTER_BASE_URL,
     NINEROUTER_API_KEY,
@@ -525,7 +525,7 @@ def crop_to_aspect(img: Image.Image, target_ratio: float, tolerance: float = 0.0
 
 async def generate_openai_dalle(prompt: str, output_path: str) -> str:
     """Generate image via OpenAI DALL-E 3 if API key is present."""
-    api_key = os.getenv("OPENAI_API_KEY")
+    api_key = OPENAI_API_KEY or None
     if not api_key:
         raise ValueError("OPENAI_API_KEY is not configured.")
 

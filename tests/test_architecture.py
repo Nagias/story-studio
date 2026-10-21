@@ -91,15 +91,10 @@ def test_no_new_llm_clients():
 
 # --- Đường cấm 6: biến môi trường chỉ đọc ở config.py ----------------------------------------------------------------
 ALLOWED_ENV_READS = {
-    "backend/main.py": 1,
-    "backend/security.py": 2,
-    "backend/services/case_worker.py": 1,
-    "backend/services/image_service.py": 1,
-    "backend/services/script_splitter.py": 4,
-    "backend/services/tts_service.py": 3,
-    "backend/services/vieneu_server.py": 2,
-    "backend/runners/single_instance.py": 1,
-    "backend/runners/muse_fleet_runner.py": 5,  # LocalAppData/ProgramFiles của Windows để tìm Chrome/Edge (không phải cấu hình app)
+    # tiến trình riêng, không nạp backend/config.py:
+    "backend/services/vieneu_server.py": 2,  # chạy bằng uv với Python 3.11 riêng
+    "backend/runners/single_instance.py": 1,  # dùng cả trong tiến trình Fleet Runner
+    "backend/runners/muse_fleet_runner.py": 5,  # LocalAppData/ProgramFiles của Windows để tìm Chrome/Edge
 }
 
 
@@ -120,6 +115,28 @@ def test_env_read_only_in_config():
                 actual[rel] += 1
     _compare("Đường cấm 6: đọc biến môi trường ở backend/config.py (và ghi vào .env.example), không gọi os.getenv rải rác.",
              actual, ALLOWED_ENV_READS)
+
+
+_OS_ENV_NAMES = {"LocalAppData", "ProgramFiles", "ProgramFiles(x86)"}  # biến của Windows, không phải cấu hình app
+
+
+def test_every_env_var_is_documented_in_env_example():
+    """Biến môi trường code có đọc thì phải có dòng `TÊN=` trong .env.example (người dùng mới biết mà đặt)."""
+    names = set()
+    for _, tree in _trees():
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and node.args and isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)):
+                continue
+            f = node.func
+            reads_env = _is_os_attr(f, "getenv") or (isinstance(f, ast.Attribute) and f.attr == "get"
+                                                     and _is_os_attr(f.value, "environ"))
+            if reads_env or (isinstance(f, ast.Name) and f.id in ("env_flag", "_env_list")):
+                names.add(node.args[0].value)
+    example = (ROOT / ".env.example").read_text(encoding="utf-8")
+    documented = set(re.findall(r"^([A-Z0-9_]+)=", example, re.M))
+    missing = sorted(names - documented - _OS_ENV_NAMES)
+    assert not missing, f"Biến môi trường code có đọc mà .env.example chưa có: {', '.join(missing)}"
 
 
 # --- Đường cấm 7: kiểm đường dẫn bằng security.py, không dùng str.startswith ----------------------------------------

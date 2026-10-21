@@ -26,6 +26,7 @@ from config import (
     STATIC_DIR,
     ASSETS_DIR,
     DEFAULT_IMAGE_PROVIDER,
+    DEFAULT_VOICE,
 )
 from security import (
     is_within,
@@ -708,7 +709,8 @@ async def create_project_from_script(req: CreateProjectFromScriptRequest):
     if lang == "vi":
         # Chuẩn hóa giọng đọc tiếng Việt chất lượng cao cho review podcast
         if not req.voice or req.voice.startswith("en-"):
-            chosen_voice = "vi-VN-NamMinhNeural"
+            # giọng mặc định (.env DEFAULT_VOICE) nếu là giọng Việt; giọng Anh không đọc được truyện Việt
+            chosen_voice = DEFAULT_VOICE if DEFAULT_VOICE.lower().startswith(("vi-", "vieneu")) else "vi-VN-NamMinhNeural"
         else:
             chosen_voice = req.voice
     else:

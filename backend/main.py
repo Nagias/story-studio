@@ -1,4 +1,3 @@
-import os
 import sys
 from pathlib import Path
 
@@ -17,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
-from config import STATIC_DIR, PROJECTS_DIR, BGM_DIR, HOST, PORT
+from config import STATIC_DIR, PROJECTS_DIR, BGM_DIR, HOST, PORT, ALLOWED_ORIGINS_EXTRA
 from security import LocalAccessMiddleware, is_safe_id
 from routers.api import router as api_router, active_renders, active_connections
 from routers.muse_bridge import router as muse_bridge_router
@@ -88,7 +87,7 @@ app = FastAPI(
 )
 
 # CORS: giao diện chạy cùng origin nên chỉ cần cho phép localhost; thêm origin khác qua STORY_STUDIO_ALLOWED_ORIGINS
-_extra_origins = [o.strip() for o in os.getenv("STORY_STUDIO_ALLOWED_ORIGINS", "").split(",") if o.strip()]
+_extra_origins = list(ALLOWED_ORIGINS_EXTRA)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[f"http://localhost:{PORT}", f"http://127.0.0.1:{PORT}", *_extra_origins],

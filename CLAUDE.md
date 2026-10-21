@@ -65,17 +65,17 @@ Nơi ghi từng loại dữ liệu (hiện tại):
 | Vụ án true-crime | `projects/_cases/<case_id>/` | `services/case_store.py` (ghi an toàn) | — |
 | Tài khoản Muse | `backend/config/muse_fleet_accounts.json` | `routers/muse_bridge.py` và Fleet Runner (hai nơi) | — |
 | Ảnh/video Muse | `backend/static/muse_outputs/` + bản sao trong dự án | `complete_task()` | — |
-| Cấu hình | `.env`, `backend/config.py` | `config.py` | `os.getenv` rải ở 9 file khác |
+| Cấu hình | `.env` (mẫu đủ biến: `.env.example`), `backend/config.py` | `config.py` (công tắc đọc lúc gọi: `env_flag()`) | — (còn 3 file có lý do: tiến trình riêng `vieneu_server.py`, `single_instance.py`, `muse_fleet_runner.py`) |
 
 ## 5. Đường cấm — [Đề xuất của agent — chưa duyệt]
 
 Lập từ đợt rà soát 21/10/2026. Cột cuối liệt kê chỗ còn vi phạm để agent **không chép theo**; sửa chúng là việc riêng.
 
 Máy kiểm tự động (chạy trong `tools/check.py` và hook trước commit):
-- dòng 1, 5, 6, 7, 10, 13, 14: `tests/test_architecture.py` (vi phạm cũ ghi thành ngoại lệ đếm đúng số lần);
+- dòng 1, 5, 6, 7, 9 (phần `showToast`), 10, 13, 14: `tests/test_architecture.py` (vi phạm cũ ghi thành ngoại lệ đếm đúng số lần; biến môi trường phải có trong `.env.example`);
 - dòng 2 (phần `except: pass`) và 8 (phần `open`, `subprocess` trong hàm async): Ruff, so với mốc `tools/ruff_baseline.json`;
 - dòng 11 (phần gọi mạng và dự án rác): `tests/conftest.py`;
-- dòng 3, 4, 9, 12 và phần còn lại của dòng 2, 8, 11: **chưa có máy kiểm**, dựa vào người duyệt.
+- dòng 3, 4, 12 và phần còn lại của dòng 2, 8, 9, 11: **chưa có máy kiểm**, dựa vào người duyệt.
 
 | # | Mẫu cấm | Làm thay | Vì sao | Còn vi phạm ở |
 |---|---|---|---|---|
@@ -84,10 +84,10 @@ Máy kiểm tự động (chạy trong `tools/check.py` và hook trước commit
 | 3 | "Thành công giả": giá trị bịa, link mẫu, mock báo xong, nhánh chỉ có `pass` | báo lỗi rõ hoặc đánh dấu thất bại | người dùng và agent tưởng đã xong | `tts_service.get_audio_duration()` (thiếu ffprobe thì coi là 3 giây), `import_comic_panels_to_storyboard()` (chép ảnh lỗi vẫn gán ảnh) |
 | 4 | Âm thầm chuyển sang dịch vụ tính tiền khi dịch vụ miễn phí lỗi | ghi lý do và hiện cho người dùng thấy | tốn tiền mà không ai biết | `image_service.generate_image()` (Muse lỗi rơi sang 9router) |
 | 5 | Viết thêm client gọi 9router/LLM | dùng `services/case_adaptation_llm.py` (có thử lại, chờ khi 9router bận) | đang có 4 client, chỉ 1 biết thử lại | `script_splitter.py`, `storyboard_engine.py` |
-| 6 | `os.getenv` ngoài `config.py` | thêm biến vào `config.py` và `.env.example` | biến rải rác, `.env.example` thiếu 8 biến code có đọc, `DEFAULT_VOICE` đặt trong `.env` không có tác dụng | `main.py`, `security.py`, `case_worker.py`, `image_service.py`, `script_splitter.py`, `tts_service.py`, `vieneu_server.py`, `muse_fleet_runner.py`, `single_instance.py` |
+| 6 | `os.getenv` ngoài `config.py` | thêm biến vào `config.py` và `.env.example` | biến rải rác thì khó biết app cần gì; từng gặp `DEFAULT_VOICE` trong `.env` không có tác dụng (sửa 22/10/2026) | — (3 file tiến trình riêng, ghi lý do trong `tests/test_architecture.py`) |
 | 7 | Tự kiểm id/đường dẫn bằng regex riêng hoặc `str.startswith` | `security.py` | tự viết dễ sai (`proj_a` khớp nhầm `proj_ab`, đã gặp ở `complete_task()`, sửa 22/10/2026) | — |
 | 8 | Đọc ghi đĩa, `subprocess`, ffmpeg, OpenCV chạy thẳng trong route `async def` | `asyncio.to_thread` như `routers/true_crime.py` | server khựng, WebSocket và heartbeat của Fleet Runner bị trễ | `routers/api.py` |
-| 9 | Chèn chữ từ server hoặc người dùng vào `innerHTML`/`showToast()` mà chưa lọc | `escapeHtml()` / `tcEsc()` | chèn được mã HTML vào trang | khoảng 14 chỗ trong `app.js` |
+| 9 | Chèn chữ từ server hoặc người dùng vào `innerHTML`/`showToast()` mà chưa lọc | `escapeHtml()` / `tcEsc()` | chèn được mã HTML vào trang | `innerHTML` dựng từ dữ liệu máy chủ ngoài thông báo (chưa rà hết) |
 | 10 | Gắn một sự kiện hai lần (onclick trong HTML và `addEventListener`) | chọn một cách | chạy hai lần (đã gặp: nút bước tải SEO hai lần, đã sửa) | — |
 | 11 | Test ghi vào `projects/` thật, gọi LLM/Muse/Edge-TTS thật mà không gắn cờ, bật trình duyệt hay Fleet Runner | `tmp_path`, fixture `isolated_projects_dir`, LLM giả (`tests/case_adaptation_fakes.py`); test thật đặt tên `*_live*` và cần `STORY_STUDIO_LIVE=1` | mất dữ liệu, tốn quota, đụng tài khoản thật | `tests/test_api.py` (xoá dự án `default_preview`), `tests/test_comic.py`, 9 file ghi `projects/` |
 | 12 | Xoá vĩnh viễn dữ liệu người dùng (`shutil.rmtree`, `unlink`) | chuyển vào Thùng rác, hoặc hỏi trước | không lấy lại được | `project_service.delete_project()`, `clear_all_gallery()` |

@@ -8,13 +8,15 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 import edge_tts
 
+import config
+
 logger = logging.getLogger("story_studio.tts_service")
 
 # ----------------- VieNeu (giọng Việt offline) -----------------
 # Mọi thứ nặng của VieNeu (uv cache, Python do uv tải, model HuggingFace) nằm trong thư mục
 # dự án (ổ D), không rơi về ổ C. Thư mục này nằm trong .gitignore và bị chặn khi đóng gói.
 VIENEU_CACHE_DIR = Path(__file__).resolve().parents[2] / ".cache"
-VIENEU_URL = f"http://{os.getenv('VIENEU_HOST', '127.0.0.1')}:{os.getenv('VIENEU_PORT', '5005')}"
+VIENEU_URL = f"http://{config.VIENEU_HOST}:{config.VIENEU_PORT}"
 VIENEU_UV_CMD = ["uv", "run", "--with", "vieneu", "--python", "3.11"]
 VIENEU_SERVER_START_TIMEOUT = 240.0  # nạp model khi đã có cache ~20 s; lần cài đầu tiên lâu hơn nhiều
 VIENEU_SERVER_RETRY_AFTER = 600.0    # server vừa chết thì 10 phút sau mới thử bật lại
@@ -54,7 +56,7 @@ async def ensure_vieneu_server() -> bool:
     global _vieneu_lock, _vieneu_proc, _vieneu_started_at, _vieneu_failed_at
     if await _vieneu_server_ready():
         return True
-    if os.getenv("STORY_STUDIO_DISABLE_VIENEU_AUTOSTART") == "1":
+    if config.vieneu_autostart_disabled():
         return False
     if _vieneu_lock is None:
         _vieneu_lock = asyncio.Lock()
