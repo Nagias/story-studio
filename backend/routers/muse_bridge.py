@@ -615,15 +615,6 @@ async def enqueue_and_wait_muse_task(task_dict: Dict[str, Any], timeout: Optiona
 # -------------------------------------------------------------
 # Endpoints
 # -------------------------------------------------------------
-@router.get("/health")
-async def health_check():
-    """Kiểm tra tính sẵn sàng của Muse Bridge."""
-    return {
-        "status": "healthy",
-        "worker_online": is_muse_worker_online(),
-        "timestamp": int(time.time()),
-    }
-
 @router.get("/status")
 async def get_bridge_status():
     """Cung cấp trạng thái Telemetry và Task Queue cho Web Dashboard."""
@@ -769,7 +760,6 @@ async def switch_muse_account(req: AccountSwitchRequest):
     }
 
 @router.post("/accounts/add")
-@router.post("/accounts/update")
 async def add_or_update_muse_account(req: AccountCreateUpdateRequest):
     """Thêm mới hoặc cập nhật cấu hình tài khoản Fleet (mỗi tài khoản chỉ 1 loại: image hoặc video)."""
     require_safe_id(req.account_id, "account_id")
@@ -1299,15 +1289,6 @@ async def get_task_status(task_id: str):
         if t["task_id"] == task_id:
             return {"task": t}
     raise HTTPException(status_code=404, detail="Task not found")
-
-@router.get("/tasks")
-async def list_recent_tasks():
-    """Danh sách các tác vụ gần đây."""
-    return {
-        "pending": pending_tasks,
-        "active": list(active_tasks.values()),
-        "recent_completed": task_history[:20],
-    }
 
 def _is_servable_media(path: Path) -> bool:
     return (

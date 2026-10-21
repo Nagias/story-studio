@@ -28,8 +28,6 @@ from config import (
     DEFAULT_IMAGE_PROVIDER,
 )
 from security import (
-    IMAGE_EXTS,
-    is_safe_id,
     is_within,
     read_upload_limited,
     require_safe_id,
@@ -63,17 +61,14 @@ from models.schemas import (
     MasterStoryboard,
     DeconstructScriptRequest,
     MasterStoryboardImportRequest,
-    ThreeLayerAudioMixRequest,
     master_storyboard_to_project,
 )
 from services import (
     get_available_voices,
     generate_speech,
-    get_audio_duration,
     detect_language,
     get_available_styles,
     generate_image,
-    generate_9router_gemini,
     MASTER_NEGATIVE_PROMPT,
     render_scene_video,
     assemble_full_video,
@@ -95,12 +90,7 @@ from services import (
     adapt_novel_chapter_to_us_podcast,
     PACING_CONFIGS,
     slice_comic,
-    slice_grid_image,
     compose_9grid_prompt,
-    generate_parallax_layers,
-    generate_voiced_scene_audio,
-    mix_3layer_audio,
-    generate_karaoke_ass,
     deconstruct_script_async,
     deconstruct_script_offline,
     generate_youtube_thumbnail,
@@ -635,37 +625,6 @@ async def ingest_novel_chapter(req: NovelIngestRequest):
         "project": project,
         "scenes": created_scenes,
     }
-
-@router.post("/image/test-9router")
-async def test_9router_image_generation(req: ImageGenRequest):
-    """
-    Test direct image generation on 9router Gemini (ag/gemini-3.1-flash-image).
-    Saves to static test directory and returns image URL.
-    """
-    import time
-    from pathlib import Path
-    from config import STATIC_DIR
-
-    prompt = req.prompt or (
-        "extreme action shonen battle manga double-page spread, Yusuke Murata and Kengan Ashura dynamic style, "
-        "explosive kinetic impact, shattered concrete and pulverized debris flying airborne, intense radial speed lines, "
-        "bold hand-drawn manga sound effects typography (SFX: KA-BOOM, CRASH, 衝撃), selective crimson red energy glow, 8k"
-    )
-    demo_dir = STATIC_DIR / "demo_images"
-    demo_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"test_9router_{int(time.time())}.jpg"
-    out_path = demo_dir / filename
-
-    try:
-        await generate_9router_gemini(prompt, str(out_path))
-        return {
-            "success": True,
-            "image_url": f"/static/demo_images/{filename}",
-            "full_prompt": prompt,
-            "provider": "9router_gemini",
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"9router image generation failed: {str(e)}")
 
 @router.post("/split-script")
 async def split_script(req: SplitScriptRequest):
@@ -1271,50 +1230,6 @@ async def generate_standalone_image(req: ImageGenRequest):
         "scene_id": s_id,
         "project_id": p_id,
     }
-
-@router.post("/projects/{project_id}/scenes/{scene_id}/render-preview")
-async def render_scene_preview(project_id: str, scene_id: str):
-    """Render a single scene video segment."""
-    project = get_project(project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found.")
-
-    target_scene = next((s for s in project.scenes if s.id == scene_id), None)
-    if not target_scene:
-        raise HTTPException(status_code=404, detail="Scene not found.")
-
-    media_paths = get_scene_media_paths(project_id, scene_id)
-
-    input_media = _scene_render_input(target_scene, media_paths)
-    if not input_media:
-        raise HTTPException(status_code=400, detail="Scene image or video must be generated first.")
-
-    try:
-        v_res = await render_scene_video(
-            image_path=input_media,
-            audio_path=str(media_paths["audio"]) if media_paths["audio"].exists() else None,
-            output_path=str(media_paths["video"]),
-            duration=target_scene.duration,
-            camera_motion=target_scene.camera_motion or project.default_motion,
-            resolution=project.resolution,
-            fps=project.fps,
-        )
-
-        video_url = f"/api/projects/{project_id}/media/videos/{scene_id}.mp4"
-        target_scene.video_segment_path = v_res["video_path"]
-        target_scene.video_segment_url = video_url
-        target_scene.metadata["segment_rendered"] = True
-        update_project(project_id, ProjectUpdateRequest(scenes=project.scenes))
-
-        return {
-            "success": True,
-            "scene_id": scene_id,
-            "video_url": video_url,
-            "duration": v_res["duration"],
-            "scene": target_scene,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Scene render failed: {str(e)}")
 
 # ----------------- AUTO-GEN ALL -----------------
 
@@ -2351,98 +2266,6 @@ async def api_import_master_storyboard(req: MasterStoryboardImportRequest):
         "project": project,
     }
 
-@router.post("/grid-slicer/slice")
-async def api_slice_grid_image(
-    image: Optional[UploadFile] = File(None),
-    image_path: Optional[str] = Form(None),
-    project_id: Optional[str] = Form(None),
-    start_scene_index: int = Form(1),
-    rows: int = Form(3),
-    cols: int = Form(3),
-    border_trim_pct: float = Form(0.03),
-    assign_to_scenes: bool = Form(True),
-):
-    """
-    Slices a 3x3 (or rows x cols) composite narrative grid image with 3% border trimming
-    and LANCZOS resize to 1920x1080 16:9 Full HD. Automatically attaches sliced panels
-    to project scenes if project_id is provided, respecting start_scene_index offset.
-    """
-    if project_id:
-        require_safe_id(project_id, "project_id")
-    if not (1 <= rows <= 10 and 1 <= cols <= 10):
-        raise HTTPException(status_code=400, detail="rows và cols phải nằm trong khoảng 1-10.")
-
-    session_id = uuid.uuid4().hex[:8]
-    work_dir = COMIC_SLICES_DIR / session_id
-    work_dir.mkdir(parents=True, exist_ok=True)
-
-    input_img_path = None
-    if image:
-        # Không dùng filename của client (có thể chứa ../), chỉ giữ phần mở rộng hợp lệ
-        safe_name = safe_upload_name(image.filename, IMAGE_EXTS, prefix="grid_raw")
-        content = await read_upload_limited(image)
-        temp_input = work_dir / safe_name
-        with open(temp_input, "wb") as f:
-            f.write(content)
-        input_img_path = temp_input
-    elif image_path:
-        p_cand = Path(image_path).resolve()
-        allowed_roots = [COMIC_SLICES_DIR.resolve(), PROJECTS_DIR.resolve(), STATIC_DIR.resolve()]
-        if not any(p_cand.is_relative_to(root) for root in allowed_roots) or not p_cand.exists():
-            raise HTTPException(status_code=400, detail="Đường dẫn image_path không hợp lệ hoặc nằm ngoài phạm vi cho phép.")
-        input_img_path = p_cand
-    else:
-        raise HTTPException(status_code=400, detail="Vui lòng cung cấp file ảnh tải lên hoặc image_path hợp lệ.")
-
-    # Slice grid image
-    sliced_paths = slice_grid_image(
-        image_path=input_img_path,
-        output_dir=work_dir,
-        rows=rows,
-        cols=cols,
-        border_trim_pct=border_trim_pct,
-        start_index=start_scene_index,
-    )
-
-    sliced_info = []
-    for i, sp in enumerate(sliced_paths):
-        p = Path(sp)
-        sliced_info.append({
-            "index": start_scene_index + i,
-            "filename": p.name,
-            "path": str(p),
-            "url": f"/api/comic/media/{session_id}/{p.name}",
-        })
-
-    # Attach to project scenes if requested
-    assigned_count = 0
-    if project_id and assign_to_scenes:
-        proj = get_project(project_id)
-        if proj:
-            p_img_dir = PROJECTS_DIR / project_id / "images"
-            p_img_dir.mkdir(parents=True, exist_ok=True)
-
-            offset = max(0, start_scene_index - 1)
-            for i, sp in enumerate(sliced_paths):
-                target_idx = offset + i
-                if target_idx < len(proj.scenes):
-                    dst = p_img_dir / f"scene_{target_idx+1:03d}.png"
-                    shutil.copy2(sp, dst)
-                    proj.scenes[target_idx].image_path = str(dst)
-                    proj.scenes[target_idx].image_url = f"/api/projects/{project_id}/media/images/{dst.name}"
-                    proj.scenes[target_idx].status = "imaged"
-                    assigned_count += 1
-
-            update_project(project_id, ProjectUpdateRequest(scenes=proj.scenes))
-
-    return {
-        "success": True,
-        "session_id": session_id,
-        "total_panels": len(sliced_paths),
-        "panels": sliced_info,
-        "assigned_to_project_scenes": assigned_count,
-    }
-
 @router.post("/grid-slicer/compose-prompt")
 async def api_compose_9grid_prompt(data: Dict[str, Any]):
     """
@@ -2459,152 +2282,3 @@ async def api_compose_9grid_prompt(data: Dict[str, Any]):
         aspect_ratio=data.get("aspect_ratio", "16:9"),
     )
     return {"prompt": prompt}
-
-@router.post("/audio/3layer-mix")
-async def api_mix_3layer_audio(req: ThreeLayerAudioMixRequest):
-    """
-    Generates and mixes 3-Layer Audio Studio:
-    - Layer 1: Edge-TTS voiceover with dramatic pauses
-    - Layer 2: SFX cues synchronized to scene start timestamps
-    - Layer 3: Automatic Sidechain Ducking BGM (-20dB / -8dB)
-    """
-    proj = get_project(req.project_id)
-    if not proj:
-        raise HTTPException(status_code=404, detail="Không tìm thấy dự án.")
-
-    p_dir = PROJECTS_DIR / req.project_id
-    audio_dir = p_dir / "audio"
-    audio_dir.mkdir(parents=True, exist_ok=True)
-
-    # Step 1: Ensure all scenes have speech rendered with pauses
-    scenes_audio_data = []
-    for sc in proj.scenes:
-        sc_audio_p = sc.voice_audio_path
-        if not sc_audio_p or not Path(sc_audio_p).exists():
-            # Generate voiceover on the fly
-            out_sc_audio = audio_dir / f"{sc.id}.mp3"
-            res = await generate_voiced_scene_audio(
-                text=sc.text,
-                output_path=out_sc_audio,
-                speaker=sc.speaker or "narrator",
-                pause_after_sec=sc.pause_after_sec or 0.8,
-            )
-            sc.voice_audio_path = res["audio_path"]
-            sc.voice_audio_url = f"/api/projects/{proj.id}/media/audio/{Path(res['audio_path']).name}"
-            sc.duration = res["total_duration"]
-            sc_audio_p = res["audio_path"]
-
-        scenes_audio_data.append({
-            "audio_path": sc_audio_p,
-            "total_duration": sc.duration or 3.5,
-            "sfx_cue": sc.sfx_cue,
-        })
-
-    # Save project state
-    update_project(proj.id, ProjectUpdateRequest(scenes=proj.scenes))
-
-    # Step 2: Mix 3-Layer Audio
-    master_audio_path = audio_dir / "master_audio_mixed.wav"
-    # bgm_track chỉ nhận ID nhạc nền (tên file trong assets/bgm), không nhận đường dẫn tùy ý
-    bgm_file = None
-    bgm_id = req.bgm_track or proj.bgm_track
-    if bgm_id:
-        bgm_id = Path(str(bgm_id)).stem if str(bgm_id).lower().endswith(".mp3") else str(bgm_id)
-        if is_safe_id(bgm_id):
-            cand = BGM_DIR / f"{bgm_id}.mp3"
-            if cand.exists():
-                bgm_file = str(cand)
-
-    master_path = mix_3layer_audio(
-        scenes_audio=scenes_audio_data,
-        bgm_path=bgm_file,
-        output_master_path=master_audio_path,
-        bgm_energy=proj.scenes[0].bgm_energy if proj.scenes else "ambient_low",
-    )
-
-    total_dur = get_audio_duration(master_path)
-
-    return {
-        "success": True,
-        "master_audio_path": master_path,
-        "master_audio_url": f"/api/projects/{proj.id}/media/audio/{Path(master_path).name}",
-        "duration": total_dur,
-    }
-
-@router.post("/subtitles/karaoke-ass")
-async def api_generate_karaoke_subtitles(data: Dict[str, Any]):
-    """
-    Generates Kinetic Karaoke Substation Alpha (.ass) subtitle file
-    with golden yellow word-level highlight (#FFD700).
-    """
-    project_id = data.get("project_id")
-    if not project_id:
-        raise HTTPException(status_code=400, detail="Thiếu project_id.")
-
-    proj = get_project(project_id)
-    if not proj:
-        raise HTTPException(status_code=404, detail="Không tìm thấy dự án.")
-
-    p_dir = PROJECTS_DIR / project_id
-    ass_path = p_dir / "renders" / "karaoke_subtitles.ass"
-
-    scenes_sub_data = []
-    for sc in proj.scenes:
-        scenes_sub_data.append({
-            "text": sc.text,
-            "total_duration": sc.duration or 3.5,
-            "audio_path": sc.voice_audio_path,
-            "kinetic_highlight_words": sc.kinetic_highlight_words,
-        })
-
-    res_ass = generate_karaoke_ass(
-        scenes_data=scenes_sub_data,
-        output_ass_path=ass_path,
-    )
-
-    return {
-        "success": True,
-        "ass_path": res_ass,
-        "ass_url": f"/api/projects/{project_id}/media/renders/{Path(res_ass).name}",
-    }
-
-@router.post("/visual/parallax-layers")
-async def api_generate_parallax_layers(data: Dict[str, Any]):
-    """
-    Generates 2.5D Parallax foreground and background layers from a scene image.
-    """
-    image_path = data.get("image_path")
-    project_id = data.get("project_id")
-    scene_id = data.get("scene_id")
-    if project_id is not None:
-        require_safe_id(project_id, "project_id")
-    if scene_id is not None:
-        require_safe_id(scene_id, "scene_id")
-
-    if not image_path and project_id and scene_id:
-        proj = get_project(project_id)
-        if proj:
-            for sc in proj.scenes:
-                if sc.id == scene_id and sc.image_path:
-                    image_path = sc.image_path
-                    break
-
-    if image_path:
-        image_path = str(_resolve_studio_path(image_path))
-        if Path(image_path).suffix.lower() not in IMAGE_EXTS or not is_within(image_path, PROJECTS_DIR, STATIC_DIR):
-            raise HTTPException(status_code=400, detail="image_path phải là ảnh nằm trong thư mục projects hoặc static.")
-    if not image_path or not Path(image_path).exists():
-        raise HTTPException(status_code=400, detail="Không tìm thấy file ảnh gốc để tách lớp parallax.")
-
-    out_dir = Path(image_path).parent / "layers"
-    layers = generate_parallax_layers(
-        image_path=image_path,
-        output_dir=out_dir,
-        prefix=Path(image_path).stem,
-    )
-
-    return {
-        "success": True,
-        "layers": layers,
-    }
-
