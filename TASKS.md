@@ -221,4 +221,5 @@ Không đụng phần nguyên văn của chủ dự án trong CLAUDE.md (mục �
 - [x] Ý 4, bộ kiểm tra tự động: `pytest.ini` + cờ `live`, test kiến trúc, test FEATURE_MAP, Ruff 0.17.1 ghim, `tools/check.py` + hook trước commit; `check.py --full` trên master đạt (691 test)
 - [x] Dòng "story-studio chưa có git" trong `D:\25. OPC\OP_CTOOL\AGENTS.md` (ngoài dự án) sửa thành "có git riêng từ 19/10/2026" theo đồng ý của người dùng; bản cũ sao lưu trong scratchpad phiên
 - [x] Mục 1 CLAUDE.md: ghi nguyên văn mục đích của chủ dự án (22/10/2026, kiểm khớp từng chữ) + bảng 1.1 đối chiếu với code (đề xuất của agent, chưa duyệt)
-- [ ] Phần của chủ dự án: duyệt mục 1.1, 5, 6; điền cột quy trình mục 7
+- [x] Mục 1 CLAUDE.md: ghi nguyên văn "Mức tối thiểu là 15 phút" (22/10/2026); bảng 1.1 thêm khoảng cách: true-crime còn lựa chọn 8 phút, truyện chữ chưa báo khi video dưới 15 phút
+- [ ] Phần của chủ dự án: duyệt mục 1.1, 5, 6; kiểm sơ đồ quy trình agent suy ra từ mục đích; điền cột quy trình mục 7
