@@ -15,6 +15,11 @@ BACKEND = ROOT / "backend"
 STATIC = BACKEND / "static"
 
 
+def _js_names() -> list:
+    """Mọi file JS của giao diện (file mới thêm cũng bị kiểm ngay, không phải sửa danh sách)."""
+    return sorted(p.name for p in STATIC.glob("*.js"))
+
+
 def _py_files():
     files = [p for p in BACKEND.rglob("*.py") if "__pycache__" not in p.parts]
     files += [ROOT / "run.py", *sorted((ROOT / "tools").glob("*.py"))]
@@ -117,7 +122,7 @@ def test_env_read_only_in_config():
              actual, ALLOWED_ENV_READS)
 
 
-_OS_ENV_NAMES = {"LocalAppData", "ProgramFiles", "ProgramFiles(x86)"}  # biến của Windows, không phải cấu hình app
+_OS_ENV_NAMES = {"LocalAppData", "ProgramFiles", "ProgramFiles(x86)", "WINDIR"}  # biến của Windows, không phải cấu hình app
 
 
 def test_every_env_var_is_documented_in_env_example():
@@ -176,7 +181,6 @@ def test_services_do_not_import_routers():
 
 # --- Đường cấm 14: không đường dẫn tuyệt đối của máy này, không trỏ sang dự án khác -------------------------------
 ALLOWED_ABSOLUTE_PATHS = {
-    "backend/services/thumbnail_service.py": 1,  # C:\Windows\Fonts — vi phạm, nên lấy từ biến WINDIR
     "backend/runners/muse_fleet_runner.py": 4,  # hợp lệ: "C:/Program Files…" chỉ là giá trị dự phòng khi thiếu biến ProgramFiles
     "tools/build_release.py": 2,  # hợp lệ: nhãn của bộ chặn đường dẫn máy này khi đóng gói
 }
@@ -227,7 +231,7 @@ def _unescaped_toasts(source: str) -> list:
 
 
 def test_toasts_escape_untrusted_text():
-    problems = [f"  {name}:{no}: {text[:140]}" for name in ("app.js", "true_crime.js")
+    problems = [f"  {name}:{no}: {text[:140]}" for name in _js_names()
                 for no, text in _unescaped_toasts((STATIC / name).read_text(encoding="utf-8"))]
     assert not problems, ("Đường cấm 9: showToast() hiển thị HTML; chữ từ lỗi, máy chủ hay máy người dùng phải qua "
                           "escapeHtml()/tcEsc():\n" + "\n".join(problems))
@@ -237,11 +241,11 @@ def test_toasts_escape_untrusted_text():
 # Khoá cứng từ 22/10/2026 (CLAUDE.md mục 2.4): đã gặp 9 chỗ ở thư viện ảnh Muse (d33d9df). Đếm mọi ${...} chưa lọc nằm
 # trong chuỗi `...` có thẻ HTML; chỗ cũ ghi đúng số lần (gồm cả số, chữ nội bộ an toàn — chưa rà từng chỗ).
 ALLOWED_UNESCAPED_HTML_INTERPOLATIONS = {
-    "backend/static/app.js": 122,
+    "backend/static/app.js": 120,
     "backend/static/true_crime.js": 28,
 }
 _REGEX_PREV = set("(,=:[!&|?{};+-*%<>~^")
-_LITERAL_TERNARY = re.compile(r"""^[^?`]*\?\s*(['"])[^'"]*\1\s*:\s*(['"])[^'"]*\2\s*$""")
+_LITERAL_TERNARY = re.compile(r"""^[^?`]*\?\s*(['"])(?:(?!\1).)*\1\s*:\s*(['"])(?:(?!\2).)*\2\s*$""")
 _HTML_TAG = re.compile(r"<[a-zA-Z/!]")
 
 
@@ -347,7 +351,7 @@ def _unescaped_html_interpolations(src: str) -> list:
 
 def test_html_templates_escape_interpolations():
     actual, sample = Counter(), {}
-    for name in ("app.js", "true_crime.js"):
+    for name in _js_names():
         found = _unescaped_html_interpolations((STATIC / name).read_text(encoding="utf-8"))
         if found:
             actual[f"backend/static/{name}"] = len(found)
@@ -367,7 +371,6 @@ ALLOWED_SILENT_EXCEPT_RETURNS = {
     "backend/services/case_project_builder.py": 1,
     "backend/services/investigation_board_engine.py": 1,
     "backend/services/safe_files.py": 1,
-    "backend/services/thumbnail_service.py": 1,
     "backend/services/tts_service.py": 1,
     "run.py": 1,
 }
@@ -473,7 +476,7 @@ def _js_click_ids(app: str, tc: str) -> set:
     ids = {dom[k] for k in re.findall(r"DOM\.(\w+)\??\.addEventListener\(\s*'click'", app) if k in dom}
     for src in (app, tc):
         ids |= set(re.findall(r"getElementById\('([^']+)'\)\??\.addEventListener\(\s*'click'", src))
-    ids |= set(re.findall(r"tcEl\('([^']+)'\)\??\.addEventListener\(\s*'click'", tc))
+    ids |= set(re.findall(r"(?:tcEl|\bel)\('([^']+)'\)\??\.addEventListener\(\s*'click'", tc))
     ids |= set(re.findall(r"\bon\('([^']+)',\s*'click'", tc))
     for var, id_ in re.findall(r"const (\w+) = document\.getElementById\('([^']+)'\);", app + tc):
         if re.search(rf"\b{var}\??\.addEventListener\(\s*'click'", app + tc):
@@ -484,7 +487,7 @@ def _js_click_ids(app: str, tc: str) -> set:
 def test_click_handlers_bound_once():
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     app = (STATIC / "app.js").read_text(encoding="utf-8")
-    tc = (STATIC / "true_crime.js").read_text(encoding="utf-8")
-    both = sorted(_inline_click_ids(html) & _js_click_ids(app, tc))
+    others = "\n".join((STATIC / n).read_text(encoding="utf-8") for n in _js_names() if n != "app.js")
+    both = sorted(_inline_click_ids(html) & _js_click_ids(app, others))
     assert not both, ("Đường cấm 10: các nút vừa có onclick trong index.html vừa gắn addEventListener('click') trong JS, "
                       "bấm một lần chạy hai lần: " + ", ".join(both))

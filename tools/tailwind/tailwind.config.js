@@ -1,7 +1,7 @@
 // Cấu hình chuyển nguyên từ khối tailwind.config trong backend/static/index.html (bản CDN 3.4.17).
-// Thêm class mới trong index.html / app.js / true_crime.js thì chạy lại: npm run build (trong thư mục này).
+// Thêm class mới trong index.html hay file JS của giao diện thì chạy lại: npm run build (trong thư mục này).
 module.exports = {
-  content: ["../../backend/static/index.html", "../../backend/static/app.js", "../../backend/static/true_crime.js"],
+  content: ["../../backend/static/index.html", "../../backend/static/app.js", "../../backend/static/true_crime.js", "../../backend/static/youtube_seo.js"],
   theme: {
     extend: {
       colors: {

@@ -32,7 +32,7 @@ Agent ghi ngày 22/10/2026 để biết còn cách mục đích bao xa; đây l�
 | Đưa prompt để chủ dự án bấm generate | Mỗi cảnh có prompt ảnh, prompt video và nút Muse riêng (mục 2.3 `FEATURE_MAP.md`) | Luồng 1-Click hiện tự tạo ảnh ngay sau khi chia cảnh (`generate_initial_images` bật sẵn), tốn lượt Muse/9router mà không chờ bấm. Chủ dự án: tạm làm từng bước, chốt workflow rồi mới chuyển thành 1-Click (câu 4 mục 1.2) |
 | Ảnh tĩnh có chuyển động nhẹ; cần thì xuất video riêng 5 hoặc 10 giây (câu 5 mục 1.2) | Ảnh: chuyển động nhẹ khi dựng (`build_zoompan_filter()`). Video: Fleet Runner nhận 5 hoặc 10 giây (`clamp_video_duration()`), nhưng nút "Muse Video" luôn gửi 5 giây (`generateSceneWithMuse()`); clip ngắn hơn lời thoại thì lặp lại khi dựng (`render_scene_video()`) | Chưa chọn được video 10 giây; chưa báo khi lời thoại dài hơn clip |
 | Đầu vào là nội dung, quy trình ngầm, bấm là ra video | Luồng A và C trong `FEATURE_MAP.md`; nút Sản xuất video dài (`#btn-produce-long-video`) tự thu giọng, tạo ảnh còn thiếu, dựng và ghép | Đã có khung; độ dài và cách giữ nguyên văn như hai dòng trên |
-| Nhiều kênh YouTube; kênh theo loại nội dung, tính sau; tự đăng lên YouTube (câu 6 mục 1.2). Đã có kênh; cần tiêu đề, mô tả, thumbnail tải về được, chuẩn SEO YouTube dựa trên repo/nguồn có sẵn, không thuần AI (câu 9 mục 1.2) | Mỗi dự án độc lập; gói SEO và thumbnail theo từng dự án (Bước 4); không có phần đăng YouTube | Chưa có khái niệm "kênh" trong code (để sau); không cần làm phần đăng YouTube; gói SEO hiện chưa đối chiếu với chuẩn hay nguồn dữ liệu nào |
+| Nhiều kênh YouTube; kênh theo loại nội dung, tính sau; tự đăng lên YouTube (câu 6 mục 1.2). Đã có kênh; cần tiêu đề, mô tả, thumbnail tải về được, chuẩn SEO YouTube dựa trên repo/nguồn có sẵn, không thuần AI (câu 9 mục 1.2) | Mỗi dự án độc lập. Gói SEO ở Bước 4 (`backend/static/youtube_seo.js`, `routers/youtube_seo.py`): từ khoá từ gợi ý tìm kiếm YouTube, YouTube Data API (`YOUTUBE_API_KEY`) hoặc dán tay; AI chỉ viết câu trong khuôn từ khoá đã chọn; luật chính thức YouTube là khoá cứng (`youtube_seo_rules.py`); tải .txt; thumbnail font đủ dấu. Không có phần đăng YouTube | Chưa có khái niệm "kênh" trong code (để sau); không cần làm phần đăng YouTube; nguồn YouTube Analytics (từ khoá người xem thật sự gõ để tìm ra kênh) chưa làm |
 
 ### 1.2 Trả lời của chủ dự án về quy trình (22/10/2026)
 
@@ -72,7 +72,7 @@ Agent suy ra từ mục 1 và 1.2. Cuối mỗi bước ghi tình trạng code h
   8. Ảnh tĩnh có chuyển động nhẹ; video riêng 5 hoặc 10 giây khi cần — thiếu: nút Muse Video cố định 5 giây.
   9. Bản tiếng Anh dùng lại ảnh của bản Việt — vụ án có; truyện chữ thiếu.
   10. Giọng đọc, dựng, ghép từng bản — có.
-  11. Chủ dự án tự đăng YouTube; tiêu đề, mô tả, thumbnail có sẵn để chép — có.
+  11. Chủ dự án tự đăng YouTube; tiêu đề, mô tả, tags theo từ khoá tìm kiếm thật và luật YouTube, thumbnail, tải .txt — có (22/10/2026).
 - Để sau: kênh theo loại nội dung (câu 6 mục 1.2).
 
 ## 2. Nguyên tắc
@@ -159,7 +159,7 @@ Dòng nào là khoá cứng, dòng nào là khoá mềm: bảng 5.1 ngay dưới
 | 11 | Test ghi vào `projects/` thật, gọi LLM/Muse/Edge-TTS thật mà không gắn cờ, bật trình duyệt hay Fleet Runner | `tmp_path`, fixture `isolated_projects_dir`, LLM giả (`tests/case_adaptation_fakes.py`); test thật đặt tên `*_live*` và cần `STORY_STUDIO_LIVE=1` | mất dữ liệu, tốn quota, đụng tài khoản thật | — (từ 22/10/2026 mọi test ghi vào thư mục tạm) |
 | 12 | Xoá vĩnh viễn dữ liệu người dùng (`shutil.rmtree`, `unlink`) | chuyển vào Thùng rác, hoặc hỏi trước | không lấy lại được | `project_service.delete_project()`, `clear_all_gallery()` |
 | 13 | `services/` import từ `routers/` | đưa phần dùng chung xuống `services/` | vòng phụ thuộc; import kéo theo ghi file cấu hình | `image_service.py` (import `routers.muse_bridge`) |
-| 14 | Đường dẫn tuyệt đối của máy này, hay trỏ sang dự án khác | đường dẫn từ `config.py` | hỏng trên máy khách; `tools/build_release.py` chặn | `thumbnail_service.py` (`C:\Windows\Fonts`); vài chuỗi hợp lệ có ghi lý do trong `tests/test_architecture.py` |
+| 14 | Đường dẫn tuyệt đối của máy này, hay trỏ sang dự án khác | đường dẫn từ `config.py` | hỏng trên máy khách; `tools/build_release.py` chặn | — (font thumbnail lấy qua `config.WINDOWS_FONTS_DIR` từ 22/10/2026); vài chuỗi hợp lệ có ghi lý do trong `tests/test_architecture.py` |
 
 Code mới nên theo mẫu của mảng true-crime (mục 4), không theo mảng cũ.
 
@@ -172,19 +172,19 @@ Code mới nên theo mẫu của mảng true-crime (mục 4), không theo mảng
 | # | Khoá | Máy kiểm | Số lần vi phạm đã ghi nhận | Bằng chứng; phần còn mềm |
 |---|---|---|---|---|
 | 1 | cứng | `tests/test_architecture.py::test_only_project_service_writes_project_json` | 13 | 13 chỗ ghi project.json ngoài `project_service`, gom về một nơi (commit `c116f07`) |
-| 2 | cứng | `tests/test_architecture.py::test_except_does_not_silently_return_empty`, `tools/ruff_baseline.json` (luật S110) | 49 | 1 sự cố (dự án bị ghi đè thành rỗng) + 31 chỗ `except: pass` + 17 chỗ `except` trả rỗng không ghi log (chưa rà từng chỗ, có chỗ hợp lệ) |
+| 2 | cứng | `tests/test_architecture.py::test_except_does_not_silently_return_empty`, `tools/ruff_baseline.json` (luật S110) | 49 | 1 sự cố (dự án bị ghi đè thành rỗng) + 31 chỗ `except: pass` + 17 chỗ `except` trả rỗng không ghi log (còn 16, chưa rà từng chỗ, có chỗ hợp lệ) |
 | 3 | cứng một phần | `tests/test_architecture.py::test_no_sample_media_links`, `tests/test_architecture.py::test_no_functions_that_only_pass` | 4 | `get_audio_duration()` đoán 3 giây; nhập truyện tranh gán ảnh không có; màn Render giả kèm video mẫu (commit `34421c9`); chuỗi tạo ảnh báo xong khi lỗi (test `tests/test_no_fake_success_and_motion_render.py`). Còn mềm: các kiểu "thành công giả" khác máy không nhận ra được |
 | 4 | mềm | — | 1 | Muse lỗi tự rơi sang 9router (có ghi lý do, test `tests/test_no_fake_success_and_motion_render.py`) |
 | 5 | cứng | `tests/test_architecture.py::test_no_new_llm_clients` | 3 | 3 client cũ trong `script_splitter.py` (2) và `storyboard_engine.py` (1) |
 | 6 | cứng | `tests/test_architecture.py::test_env_read_only_in_config`, `tests/test_architecture.py::test_every_env_var_is_documented_in_env_example` | 1 | `DEFAULT_VOICE` trong `.env` không có tác dụng |
 | 7 | cứng | `tests/test_architecture.py::test_no_string_prefix_path_checks` | 1 | `complete_task()` khớp nhầm `proj_a` với `proj_ab` |
 | 8 | cứng một phần | `tools/ruff_baseline.json` (luật ASYNC220, ASYNC221, ASYNC230) | 22 | 20 chỗ `open()`/`subprocess` trong hàm async + 2 việc nặng OpenCV, PIL (đã chuyển luồng phụ). Còn mềm: gọi ffmpeg, OpenCV qua thư viện khác |
-| 9 | cứng | `tests/test_architecture.py::test_toasts_escape_untrusted_text`, `tests/test_architecture.py::test_html_templates_escape_interpolations` | 30 | 21 thông báo + 9 chỗ ở thư viện ảnh Muse chưa lọc (commit `d33d9df`); 150 chỗ `${...}` cũ trong khuôn HTML ghi thành ngoại lệ (chưa rà từng chỗ) |
+| 9 | cứng | `tests/test_architecture.py::test_toasts_escape_untrusted_text`, `tests/test_architecture.py::test_html_templates_escape_interpolations` | 30 | 21 thông báo + 9 chỗ ở thư viện ảnh Muse chưa lọc (commit `d33d9df`); 148 chỗ `${...}` cũ trong khuôn HTML ghi thành ngoại lệ (chưa rà từng chỗ); file JS mới tự bị kiểm, ngoại lệ 0 |
 | 10 | cứng | `tests/test_architecture.py::test_click_handlers_bound_once` | 1 | nút tải SEO chạy hai lần |
 | 11 | cứng | `tests/conftest.py`, `tests/test_test_isolation.py::test_no_loaded_module_points_at_real_projects_dir` | 3 | test để lại dự án rác và thư mục cắt truyện tranh nhiều lần trước 22/10/2026 |
 | 12 | cứng | `tests/test_architecture.py::test_no_new_permanent_deletes` | 3 | `delete_project()`, `delete_gallery_item()`, `clear_all_gallery()` vẫn xoá vĩnh viễn (ghi ngoại lệ; sửa là việc riêng) |
 | 13 | cứng | `tests/test_architecture.py::test_services_do_not_import_routers` | 1 | `image_service.py` import `routers.muse_bridge` |
-| 14 | cứng | `tests/test_architecture.py::test_no_machine_specific_paths` | 1 | font thumbnail `C:\Windows\Fonts` |
+| 14 | cứng | `tests/test_architecture.py::test_no_machine_specific_paths` | 1 | font thumbnail `C:\Windows\Fonts` (đã sửa 22/10/2026) |
 
 ## 6. Quy tắc làm việc của agent
 

@@ -56,6 +56,10 @@ MAX_UPLOAD_MB = int(os.getenv("STORY_STUDIO_MAX_UPLOAD_MB", "200"))
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")          # chia cảnh gọi Gemini trực tiếp khi không có 9router
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")  # chia cảnh qua OpenRouter khi không có 9router
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")          # nguồn ảnh "api" (DALL-E)
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")        # gói SEO: xem video đứng đầu tìm kiếm (YouTube Data API v3)
+
+# Thư mục font của Windows (thumbnail cần font đủ chữ có dấu tiếng Việt); không phải Windows thì None
+WINDOWS_FONTS_DIR = Path(os.environ["WINDIR"]) / "Fonts" if os.environ.get("WINDIR") else None
 
 # Server giọng VieNeu giữ model trong RAM (services/vieneu_server.py chạy tiến trình riêng)
 VIENEU_HOST = os.getenv("VIENEU_HOST", "127.0.0.1")

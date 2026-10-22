@@ -22,9 +22,6 @@
  "backend/services/subtitle_engine.py": {
   "S110": 1
  },
- "backend/services/thumbnail_service.py": {
-  "S110": 2
- },
  "backend/services/tts_service.py": {
   "ASYNC220": 1,
   "ASYNC230": 5,

@@ -1,6 +1,8 @@
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
+from models.youtube_seo import YoutubeSeoState
+
 class Scene(BaseModel):
     id: str
     order: int
@@ -183,6 +185,8 @@ class Project(BaseModel):
     seo_title: Optional[str] = None
     seo_description: Optional[str] = None
     seo_tags: List[str] = Field(default_factory=list)
+    # Gói SEO YouTube (từ khoá thật + gói đã kiểm luật); chỉ services/youtube_seo_pack.py ghi
+    youtube_seo: Optional[YoutubeSeoState] = None
     created_at: str = ""
     updated_at: str = ""
     metadata: Dict[str, Any] = Field(default_factory=dict)

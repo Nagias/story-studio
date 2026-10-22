@@ -21,7 +21,8 @@ from main import app
 from services.video_service import render_scene_video, build_xfade_video
 from services.subtitle_engine import generate_karaoke_ass
 from services.audio_engine import auto_detect_scene_sfx, find_or_create_sfx
-from services.thumbnail_service import generate_youtube_thumbnail, generate_youtube_seo_pack
+from services.thumbnail_service import generate_youtube_thumbnail
+from services.youtube_seo_rules import check_thumbnail, all_ok
 from services.project_service import create_project, delete_project, ProjectCreateRequest
 
 
@@ -130,7 +131,7 @@ def test_feature_03_action_sfx_library_and_auto_detect():
 
 
 def test_feature_04_youtube_thumbnail_and_seo_packaging():
-    """Verify 16:9 Full HD Thumbnail generation with bold typography & SEO metadata pack."""
+    """Thumbnail 16:9 Full HD đạt luật YouTube. Gói SEO (tiêu đề, mô tả, tags) kiểm ở tests/test_youtube_seo_pack.py."""
     proj = create_project(ProjectCreateRequest(
         name="US Novel: 300 Spartan Stand",
         style_preset="spartan_epic_mythology",
@@ -142,7 +143,7 @@ def test_feature_04_youtube_thumbnail_and_seo_packaging():
             project=proj,
             custom_headline="300 DŨNG SĨ SPARTA",
             custom_subtext="TRẬN CHIẾN TẠI CỬA TỬ",
-            badge_text="🔥 1080P FULL MOVIE",
+            badge_text="1080P",
         )
 
         assert thumb_res["success"] is True
@@ -154,15 +155,7 @@ def test_feature_04_youtube_thumbnail_and_seo_packaging():
         with Image.open(thumb_p) as im:
             assert im.size == (1920, 1080)
 
-        # Generate SEO pack
-        seo_pack = generate_youtube_seo_pack(proj)
-        assert "recommended_title" in seo_pack
-        assert len(seo_pack["title_variations"]) == 3
-        assert "🔥" in seo_pack["recommended_title"] or "⚔️" in seo_pack["recommended_title"]
-        assert len(seo_pack["tags"]) >= 5
-        assert len(seo_pack["hashtags"]) >= 3
-        assert "TÓM TẮT NỘI DUNG" in seo_pack["description"]
-        assert "DANH SÁCH CÁC CHƯƠNG" in seo_pack["description"]
+        assert all_ok(check_thumbnail(thumb_p))
 
     finally:
         delete_project(proj.id)
@@ -194,13 +187,10 @@ async def test_feature_05_api_thumbnail_and_seo_endpoints():
             assert thumb_get.status_code == 200
             assert thumb_get.headers["content-type"] == "image/jpeg"
 
-            # 4. Call SEO Pack GET Endpoint
-            seo_get = await client.get(f"/api/projects/{proj_id}/seo-pack")
+            # 4. Gói SEO mới: chưa tạo thì trạng thái rỗng (tạo gói cần video đã dựng, xem test_youtube_seo_pack.py)
+            seo_get = await client.get(f"/api/projects/{proj_id}/youtube-seo")
             assert seo_get.status_code == 200
-            seo_data = seo_get.json()
-            assert "recommended_title" in seo_data
-            assert "description" in seo_data
-            assert len(seo_data["tags"]) > 0
+            assert seo_get.json()["pack"] is None
 
         finally:
             await client.delete(f"/api/projects/{proj_id}")

@@ -91,8 +91,8 @@ from services import (
     deconstruct_script_async,
     deconstruct_script_offline,
     generate_youtube_thumbnail,
-    generate_youtube_seo_pack,
 )
+from services.thumbnail_service import ThumbnailError
 
 from services.project_service import _get_project_dir, ensure_project_dirs, save_project
 
@@ -956,14 +956,17 @@ async def api_generate_thumbnail(project_id: str, data: Dict[str, Any] = Body(de
     custom_subtext = data.get("custom_subtext")
     badge_text = data.get("badge_text")
 
-    res = await asyncio.to_thread(  # PIL vẽ ảnh: chạy ở luồng phụ để server không khựng
-        generate_youtube_thumbnail,
-        project=project,
-        scene_index=scene_index,
-        custom_headline=custom_headline,
-        custom_subtext=custom_subtext,
-        badge_text=badge_text,
-    )
+    try:
+        res = await asyncio.to_thread(  # PIL vẽ ảnh: chạy ở luồng phụ để server không khựng
+            generate_youtube_thumbnail,
+            project=project,
+            scene_index=scene_index,
+            custom_headline=custom_headline,
+            custom_subtext=custom_subtext,
+            badge_text=badge_text,
+        )
+    except ThumbnailError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from None
 
     project.thumbnail_path = res["thumbnail_path"]
     project.thumbnail_url = res["thumbnail_url"]
@@ -983,8 +986,11 @@ async def get_project_thumbnail(project_id: str):
 
     thumb_file = PROJECTS_DIR / project_id / "renders" / "thumbnail.jpg"
     if not thumb_file.exists():
-        # Generate on the fly if not exists
-        await asyncio.to_thread(generate_youtube_thumbnail, project=project)
+        # Chưa có thì vẽ luôn (chữ mặc định); font thiếu chữ thì báo lý do thay vì ảnh lỗi
+        try:
+            await asyncio.to_thread(generate_youtube_thumbnail, project=project)
+        except ThumbnailError as e:
+            raise HTTPException(status_code=422, detail=str(e)) from None
 
     if not thumb_file.exists():
         raise HTTPException(status_code=404, detail="Thumbnail could not be generated.")
@@ -995,16 +1001,6 @@ async def get_project_thumbnail(project_id: str):
         filename=f"{project_id}_youtube_thumbnail.jpg",
         headers={"Cache-Control": "public, max-age=3600"},
     )
-
-@router.get("/projects/{project_id}/seo-pack")
-async def api_get_project_seo_pack(project_id: str):
-    """Generate or retrieve complete YouTube SEO metadata (Title, Description with Timestamps, Tags)."""
-    project = get_project(project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found.")
-
-    seo_pack = generate_youtube_seo_pack(project)
-    return seo_pack
 
 # ----------------- SCENES CRUD -----------------
 
@@ -1356,7 +1352,7 @@ async def execute_full_render(project_id: str, render_id: str, options: RenderRe
         project.final_video_path = assemble_res["video_path"]
         project.final_video_url = final_video_url
 
-        # Auto-generate YouTube Thumbnail and SEO pack
+        # Tự vẽ thumbnail mặc định sau khi dựng (gói SEO làm riêng ở Bước 4)
         try:
             t_res = await asyncio.to_thread(generate_youtube_thumbnail, project)
             project.thumbnail_path = t_res["thumbnail_path"]
@@ -1724,7 +1720,7 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
         project.final_video_path = assemble_res["video_path"]
         project.final_video_url = final_video_url
 
-        # Auto-generate YouTube Thumbnail and SEO pack
+        # Tự vẽ thumbnail mặc định sau khi dựng (gói SEO làm riêng ở Bước 4)
         try:
             t_res = await asyncio.to_thread(generate_youtube_thumbnail, project)
             project.thumbnail_path = t_res["thumbnail_path"]

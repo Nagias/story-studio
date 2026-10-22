@@ -1082,7 +1082,7 @@
           </button>
         </div>
 
-        <!-- ================= YOUTUBE PACKAGING & THUMBNAIL (1-CLICK CTR KIT) ================= -->
+        <!-- ================= GÓI YOUTUBE: THUMBNAIL + SEO (xử lý SEO trong /static/youtube_seo.js) ================= -->
         <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
           <div class="flex items-center justify-between pb-3 border-b border-slate-100">
             <div class="flex items-center gap-2.5">
@@ -1090,14 +1090,11 @@
                 <i class="fa-brands fa-youtube"></i>
               </div>
               <div>
-                <h3 class="text-sm font-bold text-slate-900">Đóng Gói Xuất Bản YouTube & Thumbnail (1-Click Package)</h3>
-                <p class="text-xs text-slate-500">Tự động tạo ảnh bìa 16:9 thu hút CTR cao, tiêu đề giật tít, mô tả kèm mốc thời gian chương</p>
+                <h3 class="text-sm font-bold text-slate-900">Gói YouTube: thumbnail, tiêu đề, mô tả, tags</h3>
+                <p class="text-xs text-slate-500">Từ khoá lấy từ dữ liệu tìm kiếm thật; AI chỉ viết câu trong khuôn từ khoá bạn chọn; đạt luật YouTube mới lưu và tải về được</p>
               </div>
             </div>
-            <button id="btn-refresh-seo-pack" class="px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer">
-              <i class="fa-solid fa-arrows-rotate"></i>
-              <span>Làm mới bộ SEO</span>
-            </button>
+            <span id="yt-seo-language" class="text-[11px] font-bold text-slate-500"></span>
           </div>
 
           <!-- Thumbnail & Custom Text Row -->
@@ -1115,12 +1112,12 @@
             <!-- Thumbnail Text Customization -->
             <div class="md:col-span-7 space-y-2.5 text-xs">
               <div>
-                <label class="font-bold text-slate-700 block mb-1">Chữ giật tít dòng 1 (Chữ vàng kim viền đen):</label>
-                <input type="text" id="input-thumb-headline" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-slate-900 focus:bg-white focus:border-red-500 focus:outline-none transition" placeholder="VD: 300 DŨNG SĨ SPARTA">
+                <label class="font-bold text-slate-700 block mb-1">Dòng chữ 1 (vàng, viền đen):</label>
+                <input type="text" id="input-thumb-headline" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-slate-900 focus:bg-white focus:border-red-500 focus:outline-none transition" placeholder="Để trống: lấy chữ thumbnail của gói SEO, chưa có thì lấy tên dự án">
               </div>
               <div>
-                <label class="font-bold text-slate-700 block mb-1">Chữ phụ dòng 2 (Chữ trắng viền tối):</label>
-                <input type="text" id="input-thumb-subtext" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-slate-900 focus:bg-white focus:border-red-500 focus:outline-none transition" placeholder="VD: TRẬN CHIẾN TẠI CỬA TỬ">
+                <label class="font-bold text-slate-700 block mb-1">Dòng chữ 2 (trắng, tuỳ chọn):</label>
+                <input type="text" id="input-thumb-subtext" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-slate-900 focus:bg-white focus:border-red-500 focus:outline-none transition" placeholder="Không dùng emoji (font không vẽ được)">
               </div>
               <div class="flex items-center gap-2 pt-1">
                 <button id="btn-generate-custom-thumbnail" class="px-3.5 py-2 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer">
@@ -1135,12 +1132,44 @@
             </div>
           </div>
 
-          <!-- YouTube SEO Fields -->
-          <div class="space-y-3 pt-3 border-t border-slate-100 text-xs">
+          <!-- Bước 1: từ khoá từ dữ liệu thật -->
+          <div class="space-y-2 pt-3 border-t border-slate-100 text-xs">
+            <label class="font-bold text-slate-700 block">1. Tìm từ khoá từ dữ liệu tìm kiếm thật</label>
+            <div class="flex items-center gap-2">
+              <input type="text" id="yt-seo-seed" maxlength="200" class="flex-1 bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs text-slate-900 focus:bg-white focus:border-indigo-500 focus:outline-none transition" placeholder="Từ khoá gốc: tên truyện, chủ đề, kiểu nội dung...">
+              <button id="btn-yt-seo-research" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <span>Tìm từ khoá</span>
+              </button>
+            </div>
+            <div class="flex flex-wrap items-center gap-4 text-[11px] text-slate-600">
+              <label class="flex items-center gap-1.5"><input type="checkbox" id="yt-seo-src-suggest" class="accent-indigo-600" checked> Gợi ý của ô tìm kiếm YouTube</label>
+              <label id="yt-seo-src-api-label" class="flex items-center gap-1.5"><input type="checkbox" id="yt-seo-src-api" class="accent-indigo-600"> Video đứng đầu tìm kiếm (YouTube Data API)</label>
+            </div>
+            <textarea id="yt-seo-manual" rows="2" maxlength="3000" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs text-slate-800 focus:bg-white focus:border-indigo-500 focus:outline-none transition" placeholder="Dán từ khoá tay (mỗi dòng một từ khoá hoặc ngăn bằng dấu phẩy), ví dụ lấy từ tab Nghiên cứu của YouTube Studio"></textarea>
+            <div id="yt-seo-research-errors" class="hidden bg-amber-50 border border-amber-200 text-amber-700 rounded-lg p-2"></div>
+            <div id="yt-seo-candidates" class="bg-slate-50 border border-slate-200 rounded-lg p-2 overflow-y-auto" style="max-height: 14rem;"></div>
+            <div id="yt-seo-top-videos"></div>
+          </div>
+
+          <!-- Bước 2: AI viết trong khuôn -->
+          <div class="space-y-2 pt-3 border-t border-slate-100 text-xs">
+            <label class="font-bold text-slate-700 block">2. Từ khoá đã chọn (từ khoá đầu tiên là từ khoá chính)</label>
+            <div id="yt-seo-selected" class="flex flex-wrap gap-2"></div>
+            <button id="btn-yt-seo-generate" class="px-3.5 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer">
+              <i class="fa-solid fa-pen-nib"></i>
+              <span>Tạo gói SEO</span>
+            </button>
+          </div>
+
+          <!-- Bước 3: kết quả, sửa tay, kiểm luật, tải về -->
+          <div id="yt-seo-result" class="hidden space-y-3 pt-3 border-t border-slate-100 text-xs">
+            <label class="font-bold text-slate-700 block">3. Gói SEO (sửa tay được; bấm Lưu và kiểm lại trước khi tải)</label>
+            <div id="yt-seo-title-options" class="space-y-1"></div>
             <!-- Title -->
             <div>
               <div class="flex items-center justify-between mb-1">
-                <label class="font-bold text-slate-700">Tiêu đề YouTube tối ưu tỷ lệ nhấp (CTR):</label>
+                <label class="font-bold text-slate-700">Tiêu đề (tối đa 100 ký tự):</label>
                 <button id="btn-copy-seo-title" class="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer">
                   <i class="fa-regular fa-copy"></i> Sao chép tiêu đề
                 </button>
@@ -1151,23 +1180,42 @@
             <!-- Description -->
             <div>
               <div class="flex items-center justify-between mb-1">
-                <label class="font-bold text-slate-700">Mô tả YouTube (Kèm mốc thời gian chương tự động):</label>
+                <label class="font-bold text-slate-700">Mô tả (kèm mục lục chương theo thời gian video đã dựng):</label>
                 <button id="btn-copy-seo-desc" class="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer">
                   <i class="fa-regular fa-copy"></i> Sao chép mô tả
                 </button>
               </div>
-              <textarea id="textarea-seo-desc" rows="5" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 font-mono focus:bg-white focus:border-indigo-500 focus:outline-none transition leading-relaxed"></textarea>
+              <textarea id="textarea-seo-desc" rows="8" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 font-mono focus:bg-white focus:border-indigo-500 focus:outline-none transition leading-relaxed"></textarea>
             </div>
 
             <!-- Tags -->
             <div>
               <div class="flex items-center justify-between mb-1">
-                <label class="font-bold text-slate-700">Thẻ từ khóa YouTube (SEO Tags):</label>
+                <label class="font-bold text-slate-700">Tags (ngăn bằng dấu phẩy, tối đa 500 ký tự):</label>
                 <button id="btn-copy-seo-tags" class="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer">
                   <i class="fa-regular fa-copy"></i> Sao chép Tags
                 </button>
               </div>
               <input type="text" id="input-seo-tags" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono text-slate-700 focus:bg-white focus:border-indigo-500 focus:outline-none transition">
+            </div>
+
+            <!-- Hashtags -->
+            <div>
+              <label class="font-bold text-slate-700 block mb-1">Hashtag (ngăn bằng dấu cách; nằm ở dòng cuối mô tả):</label>
+              <input type="text" id="yt-seo-hashtags" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono text-slate-700 focus:bg-white focus:border-indigo-500 focus:outline-none transition">
+            </div>
+
+            <div id="yt-seo-checks" class="rounded-lg border p-2"></div>
+            <div id="yt-seo-reminder" class="hidden bg-amber-50 border border-amber-200 text-amber-700 rounded-lg p-2"></div>
+            <div class="flex items-center gap-2">
+              <button id="btn-yt-seo-save" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer">
+                <i class="fa-solid fa-check-double"></i>
+                <span>Lưu và kiểm lại</span>
+              </button>
+              <a id="btn-yt-seo-download" href="#" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold border border-slate-300 transition flex items-center gap-1.5 shadow-2xs">
+                <i class="fa-solid fa-file-arrow-down text-slate-500"></i>
+                <span>Tải gói SEO (.txt)</span>
+              </a>
             </div>
           </div>
         </div>
@@ -2184,5 +2232,7 @@
   <!-- Main JavaScript Logic (v2.9.1 Cache Buster: renderFullUI báo cho true_crime.js để hiện nút "Tạo bản tiếng Anh") -->
   <script src="/static/app.js?v=2.9.7"></script>
   <script src="/static/true_crime.js?v=1.4.0"></script>
+  <!-- Gói SEO YouTube ở Bước 4 (app.js gọi ytSeoLoad khi mở Bước 4) -->
+  <script src="/static/youtube_seo.js?v=1.0.0"></script>
 </body>
 </html>

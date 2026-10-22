@@ -47,7 +47,7 @@ HOOKS = {
                   'grep -q -- "--commit-msg" tools/check.py || exit 0\n'
                   'exec ".venv/Scripts/python.exe" -X utf8 tools/check.py --commit-msg "$1"\n',
 }
-JS_FILES = ["backend/static/app.js", "backend/static/true_crime.js"]
+JS_FILES = sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "backend" / "static").glob("*.js"))
 FAST_TESTS = ["tests/test_architecture.py", "tests/test_feature_map.py", "tests/test_working_rules.py",
               "tests/test_git_guards.py", "tests/test_guardrail_policy.py"]
 ENV = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}

@@ -30,7 +30,7 @@ def _html_ids() -> set:
 def _sources() -> str:
     py = [p for p in (ROOT / "backend").rglob("*.py") if "__pycache__" not in p.parts]
     py += [ROOT / "run.py", *(ROOT / "tools").glob("*.py")]
-    js = [STATIC / "app.js", STATIC / "true_crime.js"]
+    js = sorted(STATIC.glob("*.js"))  # mọi file JS của giao diện
     return "\n".join(_read(p) for p in py + js)
 
 

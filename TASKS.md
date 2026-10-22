@@ -232,3 +232,14 @@ Không đụng phần nguyên văn của chủ dự án trong CLAUDE.md (mục �
 - [x] Bảng 5.1 (14 đường cấm) và 6.1 (12 quy tắc làm việc) ghi khoá cứng/mềm, lệnh kiểm, số lần vi phạm, bằng chứng; mục 7 ghi là khoá mềm
 - [x] Khoá cứng mới: đường cấm 2 (except trả rỗng không log), 3 (link media mẫu, hàm chỉ có pass), 9 (chữ chưa lọc trong khuôn HTML), 12 (lệnh xoá file mới) trong `tests/test_architecture.py`; quy tắc 6.1 dòng 1 (commit thẳng master) và 10 (định dạng commit) bằng hook git trong `tools/check.py`; dòng 11 (script ở gốc) trong `tests/test_working_rules.py`; chính quy tắc "từ 3 lần là cứng" trong `tests/test_guardrail_policy.py`
 - [x] Thử phá từng khoá rồi hoàn lại: 6/6 bị chặn (điều 4 tăng lên 3 lần mà vẫn mềm; script ở gốc; lệnh xoá mới; chữ chưa lọc trong HTML; except trả None; link BigBuckBunny)
+
+# Gói SEO YouTube (2026-10-22, nhánh `goi-seo-youtube`, câu 9 mục 1.2 CLAUDE.md)
+Chủ dự án bỏ qua phần hỏi thiết kế: "cứ làm theo hướng bạn đề xuất đi. không ổn tôi sẽ chỉnh sau". Hướng: luật chính thức YouTube làm khoá cứng; từ khoá từ dữ liệu thật (gợi ý tìm kiếm YouTube khi bấm, YouTube Data API khi có key, dán tay); AI chỉ viết câu trong khuôn từ khoá đã chọn; thumbnail font đủ dấu.
+- [ ] `services/youtube_seo_rules.py`: luật tiêu đề, mô tả, tags, hashtag, chương, thumbnail (+ test)
+- [ ] `services/youtube_keywords.py`: gợi ý tìm kiếm, YouTube Data API (`YOUTUBE_API_KEY`), dán tay; dữ liệu quá 30 ngày thì bỏ (+ test bằng mạng giả)
+- [ ] `services/youtube_seo_pack.py`: chương theo thời gian video thật, AI viết câu qua `ask_validated` của luồng vụ án, lưu vào dự án (+ test LLM giả)
+- [ ] `routers/youtube_seo.py`: xem, tìm từ khoá, tạo gói, sửa (kiểm lại), tải .txt
+- [ ] Thumbnail: font Segoe UI Black (đủ 109/109 chữ có dấu; Impact thiếu 80), bỏ emoji và "FULL MOVIE", tự xuống dòng, ≤2 MB; bỏ đường dẫn cứng C:\Windows\Fonts (đường cấm 14)
+- [ ] Bỏ gói SEO cũ (khuôn giật tít, câu sai sự thật "9-Grid Spec 8K", hashtag mất dấu)
+- [ ] Giao diện Bước 4 (`youtube_seo.js` riêng), FEATURE_MAP, test kiến trúc quét cả file JS mới
+- [ ] Kiểm chứng: test, kiểm đầy đủ, gọi thật gợi ý tìm kiếm + 9router trên dự án thử `proj_ea5b04db`, xem thumbnail thật, bấm thật giao diện 8010

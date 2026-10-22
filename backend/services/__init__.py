@@ -59,13 +59,11 @@ from .storyboard_engine import (
 )
 from .thumbnail_service import (
     generate_youtube_thumbnail,
-    generate_youtube_seo_pack,
 )
 
 __all__ = [
     "adapt_novel_chapter_to_us_podcast",
     "generate_youtube_thumbnail",
-    "generate_youtube_seo_pack",
     "get_available_voices",
     "generate_speech",
     "get_audio_duration",

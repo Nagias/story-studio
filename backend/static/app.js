@@ -388,7 +388,6 @@ const DOM = {
   btnCopySeoDesc: document.getElementById('btn-copy-seo-desc'),
   inputSeoTags: document.getElementById('input-seo-tags'),
   btnCopySeoTags: document.getElementById('btn-copy-seo-tags'),
-  btnRefreshSeoPack: document.getElementById('btn-refresh-seo-pack'),
 
   // Header
   currentProjectTitle: document.getElementById('current-project-title'),
@@ -797,21 +796,10 @@ const API = {
         body: JSON.stringify(data)
       });
       if (res.ok) return await res.json();
-      return null;
+      return await this._errorResult(res);
     } catch (e) {
       console.error("API generateThumbnail failed", e);
-      return null;
-    }
-  },
-
-  async getSeoPack(projectId) {
-    try {
-      const res = await fetch(`${this.baseUrl}/projects/${projectId}/seo-pack`);
-      if (res.ok) return await res.json();
-      return null;
-    } catch (e) {
-      console.error("API getSeoPack failed", e);
-      return null;
+      return { success: false, detail: `Không kết nối được máy chủ: ${e.message || e}` };
     }
   },
 
@@ -2128,10 +2116,6 @@ function bindEventListeners() {
   });
 
   // YouTube Packaging & Thumbnail Events
-  DOM.btnRefreshSeoPack?.addEventListener('click', async () => {
-    await loadCinemaYouTubePackage();
-    showToast(AppState.serverOnline ? "Đã tải lại gói SEO (tiêu đề, mô tả, thẻ) từ máy chủ." : "Máy chủ đang offline, chưa tải lại được gói SEO.", AppState.serverOnline ? "info" : "warning");
-  });
   DOM.btnGenerateCustomThumbnail?.addEventListener('click', handleGenerateCustomThumbnail);
   DOM.btnCopySeoTitle?.addEventListener('click', () => copyToClipboard('input-seo-title', 'Đã sao chép tiêu đề YouTube!'));
   DOM.btnCopySeoDesc?.addEventListener('click', () => copyToClipboard('textarea-seo-desc', 'Đã sao chép mô tả YouTube!'));
@@ -3566,14 +3550,9 @@ async function loadCinemaYouTubePackage() {
     DOM.btnDownloadThumbnailDirect.href = `/api/projects/${project.id}/thumbnail`;
   }
 
-  // Fetch SEO Pack
-  if (AppState.serverOnline) {
-    const seoData = await API.getSeoPack(project.id);
-    if (seoData) {
-      if (DOM.inputSeoTitle) DOM.inputSeoTitle.value = seoData.recommended_title || "";
-      if (DOM.textareaSeoDesc) DOM.textareaSeoDesc.value = seoData.description || "";
-      if (DOM.inputSeoTags) DOM.inputSeoTags.value = (seoData.tags || []).join(", ");
-    }
+  // Gói SEO YouTube: xử lý trong /static/youtube_seo.js
+  if (AppState.serverOnline && typeof window.ytSeoLoad === 'function') {
+    await window.ytSeoLoad(project);
   }
 }
 
@@ -3600,7 +3579,7 @@ async function handleGenerateCustomThumbnail() {
       }
       showToast("Đã tạo mới Thumbnail YouTube 1080p!", "success");
     } else {
-      showToast("Không thể tạo Thumbnail", "error");
+      showToast("Không tạo được Thumbnail: " + escapeHtml(res?.detail || "lỗi không rõ"), "error", 8000);
     }
   } catch (err) {
     showToast("Lỗi tạo Thumbnail: " + escapeHtml(err.message || err), "error");
