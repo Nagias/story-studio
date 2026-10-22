@@ -211,5 +211,13 @@ Không đụng phần nguyên văn của chủ dự án trong CLAUDE.md (mục �
 - [x] Test `live` không cần 9router (Edge-TTS, VieNeu, dựng video, e2e): **11/11 đạt** trên code mới
 - [x] Review độc lập (agent Code Reviewer, chỉ đọc) trên toàn nhánh: không có lỗi nặng; sửa đủ 5 điểm nhỏ: lỗi Muse bị mã hoá hai lần; thumbnail ghi tạm rồi đổi tên (lỗi mới do chuyển sang luồng phụ); ghép video xong mà không đo được thời lượng vẫn thành công; `scenes` sai kiểu không làm sập danh sách dự án; `safe_files` fsync trước khi đổi tên. Thư mục tạm của test chuyển sang `.cache/pytest-tmp` (ổ C gần đầy)
 - [x] Kiểm cuối trên nhánh: `tools/check.py --full` **ĐẠT** — Ruff 0 lỗi mới (mốc 57), 12 test kiến trúc/FEATURE_MAP, **691 test mặc định đạt** (2 phút 40 giây)
-- [ ] 8 test `live` cần 9router: chưa chạy lại được vì 9router (cổng 20128) treo trong đợt chạy test live đêm 21–22/10 — cả GET /v1/models cũng không trả lời sau 10–15 giây; chưa tự khởi động lại vì là chương trình ngoài server 8000 cũng dùng
+- [x] Sau khi người dùng bật lại 9router (ping 4,5 s): cả 19 test `live` trên master (a2d1da7) **19/19 đạt**, 20 phút. Test phân tích vụ án thật: 23 lần gọi LLM, 953 s, gọi lại 0, 9router bận 0, lỗi khác 0. Test Nanahoshi 5–7 s mỗi test (lần mốc lúc 9router treo: 300 s). Không để lại dự án rác
 - Còn lại có chủ đích (cần chủ dự án quyết hoặc kiểm thật với 9router/Muse): gom 3 client LLM về `case_adaptation_llm` (đường cấm 5); tách hàng việc Muse khỏi `routers/` (đường cấm 13); Muse lỗi rơi sang 9router tính tiền (đường cấm 4); xoá vĩnh viễn ở `delete_project`/`clear_all_gallery` (đường cấm 12); 31 chỗ `except: pass`
+
+# Đối chiếu 4 ý của yêu cầu ban đầu (2026-10-22)
+- [x] Ý 1, báo cáo rà soát trước khi sửa: đã gửi (cấu trúc, rác/trùng/chết, chỗ mỗi nơi một kiểu, lệnh test/lint/build, rủi ro khi agent tự làm)
+- [x] Ý 2, dọn theo danh sách duyệt: 11 commit C1–C11 (`e7b7a0d`…`f814867`) + 33 thư mục vào Thùng rác; test mốc 668 đạt, sau dọn 667 đạt
+- [x] Ý 3, CLAUDE.md (7 mục, 4 đoạn nguyên văn khớp từng chữ, 14 đường cấm, bảng định tuyến cột quy trình để trống) + FEATURE_MAP.md (test đối chiếu tên với code đạt)
+- [x] Ý 4, bộ kiểm tra tự động: `pytest.ini` + cờ `live`, test kiến trúc, test FEATURE_MAP, Ruff 0.17.1 ghim, `tools/check.py` + hook trước commit; `check.py --full` trên master đạt (691 test)
+- [x] Dòng "story-studio chưa có git" trong `D:. OPC\OP_CTOOL\AGENTS.md` (ngoài dự án) sửa thành "có git riêng từ 19/10/2026" theo đồng ý của người dùng; bản cũ sao lưu trong scratchpad phiên
+- [ ] Phần của chủ dự án: viết mục 1 (mục đích) CLAUDE.md, duyệt mục 5–6, điền cột quy trình mục 7
