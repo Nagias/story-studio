@@ -233,6 +233,230 @@ def test_toasts_escape_untrusted_text():
                           "escapeHtml()/tcEsc():\n" + "\n".join(problems))
 
 
+# --- Đường cấm 9 (phần innerHTML): chữ chèn vào khuôn HTML phải qua escapeHtml()/tcEsc() ----------------------------
+# Khoá cứng từ 22/10/2026 (CLAUDE.md mục 2.4): đã gặp 9 chỗ ở thư viện ảnh Muse (d33d9df). Đếm mọi ${...} chưa lọc nằm
+# trong chuỗi `...` có thẻ HTML; chỗ cũ ghi đúng số lần (gồm cả số, chữ nội bộ an toàn — chưa rà từng chỗ).
+ALLOWED_UNESCAPED_HTML_INTERPOLATIONS = {
+    "backend/static/app.js": 122,
+    "backend/static/true_crime.js": 28,
+}
+_REGEX_PREV = set("(,=:[!&|?{};+-*%<>~^")
+_LITERAL_TERNARY = re.compile(r"""^[^?`]*\?\s*(['"])[^'"]*\1\s*:\s*(['"])[^'"]*\2\s*$""")
+_HTML_TAG = re.compile(r"<[a-zA-Z/!]")
+
+
+def _js_templates(src: str) -> list:
+    """Mọi chuỗi `...` trong file JS: (phần chữ cố định, [(dòng, biểu thức trong ${})]). Quét gần đúng nhưng ổn định."""
+    templates, n = [], len(src)
+
+    def skip_quote(i: int, q: str) -> int:
+        j = i + 1
+        while j < n and src[j] not in (q, "\n"):
+            j += 2 if src[j] == "\\" else 1
+        return j + 1
+
+    def skip_regex(i: int) -> int:
+        j, in_class = i + 1, False
+        while j < n and src[j] != "\n":
+            c = src[j]
+            if c == "\\":
+                j += 2
+                continue
+            if c == "[":
+                in_class = True
+            elif c == "]":
+                in_class = False
+            elif c == "/" and not in_class:
+                return j + 1
+            j += 1
+        return j
+
+    def read_expr(j: int) -> int:
+        depth = 0
+        while j < n:
+            c = src[j]
+            if c in "'\"":
+                j = skip_quote(j, c)
+                continue
+            if c == "`":
+                j = read_template(j)
+                continue
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                if depth == 0:
+                    return j
+                depth -= 1
+            j += 1
+        return n
+
+    def read_template(i: int) -> int:
+        static, exprs, j = [], [], i + 1
+        while j < n:
+            c = src[j]
+            if c == "\\":
+                j += 2
+                continue
+            if c == "`":
+                templates.append(("".join(static), exprs))
+                return j + 1
+            if src.startswith("${", j):
+                k = read_expr(j + 2)
+                exprs.append((src.count("\n", 0, j) + 1, src[j + 2:k]))
+                j = k + 1
+                continue
+            static.append(c)
+            j += 1
+        return n
+
+    i = 0
+    while i < n:
+        c = src[i]
+        if src.startswith("//", i):
+            k = src.find("\n", i)
+            i = n if k < 0 else k
+        elif src.startswith("/*", i):
+            k = src.find("*/", i + 2)
+            i = n if k < 0 else k + 2
+        elif c in "'\"":
+            i = skip_quote(i, c)
+        elif c == "`":
+            i = read_template(i)
+        elif c == "/":
+            prev = src[:i].rstrip()
+            i = skip_regex(i) if (not prev or prev[-1] in _REGEX_PREV or prev.endswith("return")) else i + 1
+        else:
+            i += 1
+    return templates
+
+
+def _unescaped_html_interpolations(src: str) -> list:
+    found = []
+    for static, exprs in _js_templates(src):
+        if not _HTML_TAG.search(static):
+            continue
+        for line, expr in exprs:
+            e = expr.strip()
+            if "`" in e or _LITERAL_TERNARY.match(e):  # khuôn lồng (đã đếm riêng) hoặc chỉ chọn giữa hai chữ cố định
+                continue
+            if re.match(r"^(escapeHtml|tcEsc)\(", e) and e.endswith(")"):
+                continue
+            found.append((line, e))
+    return found
+
+
+def test_html_templates_escape_interpolations():
+    actual, sample = Counter(), {}
+    for name in ("app.js", "true_crime.js"):
+        found = _unescaped_html_interpolations((STATIC / name).read_text(encoding="utf-8"))
+        if found:
+            actual[f"backend/static/{name}"] = len(found)
+            sample[name] = found[-3:]
+    _compare("Đường cấm 9: chữ chèn vào khuôn HTML (`<div>${...}</div>`) phải bọc escapeHtml()/tcEsc() (nhận mọi kiểu, "
+             f"cả số). Vài chỗ cuối tìm thấy: {sample}", actual, ALLOWED_UNESCAPED_HTML_INTERPOLATIONS)
+
+
+# --- Đường cấm 2 (phần trả rỗng): except không được lặng lẽ trả None/False/""/[]/{} --------------------------------
+# Khoá cứng từ 22/10/2026 (CLAUDE.md mục 2.4). Phần `except: pass` do Ruff S110 chặn (tools/ruff_baseline.json).
+# Chỗ cũ chưa rà từng chỗ: có chỗ hợp lệ (vd. is_within trả False khi khác ổ đĩa). Code mới: ghi log rồi mới trả.
+ALLOWED_SILENT_EXCEPT_RETURNS = {
+    "backend/routers/muse_bridge.py": 1,
+    "backend/runners/muse_fleet_runner.py": 6,
+    "backend/runners/single_instance.py": 3,
+    "backend/security.py": 2,  # hợp lệ: is_within/is_safe_id trả False nghĩa là "không an toàn"
+    "backend/services/case_project_builder.py": 1,
+    "backend/services/investigation_board_engine.py": 1,
+    "backend/services/safe_files.py": 1,
+    "backend/services/thumbnail_service.py": 1,
+    "backend/services/tts_service.py": 1,
+    "run.py": 1,
+}
+
+
+def _is_empty_value(node) -> bool:
+    if node is None:
+        return True
+    if isinstance(node, ast.Constant) and node.value in (None, False, "", 0):
+        return True
+    return isinstance(node, (ast.List, ast.Dict, ast.Tuple, ast.Set)) and not (
+        node.keys if isinstance(node, ast.Dict) else node.elts)
+
+
+def test_except_does_not_silently_return_empty():
+    actual = Counter()
+    for rel, tree in _trees():
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.ExceptHandler) and len(node.body) == 1
+                    and isinstance(node.body[0], ast.Return) and _is_empty_value(node.body[0].value)):
+                actual[rel] += 1
+    _compare("Đường cấm 2: except chỉ có `return None/False/\"\"/[]` biến lỗi thành 'không có'. Để lỗi nổi lên, "
+             "hoặc ghi log (logger.warning/exception) rồi mới trả.", actual, ALLOWED_SILENT_EXCEPT_RETURNS)
+
+
+# --- Đường cấm 3: không "thành công giả" -----------------------------------------------------------------------------
+# Khoá cứng một phần từ 22/10/2026 (CLAUDE.md mục 2.4): đã gặp 4 lần (get_audio_duration đoán 3 giây; nhập truyện tranh
+# gán ảnh không có; màn Render giả kèm video mẫu BigBuckBunny; chuỗi tạo ảnh báo xong khi lỗi). Máy chặn hai dạng
+# nhận ra được: link media mẫu và hàm chỉ có `pass`. Từng vụ cũ có test hồi quy riêng.
+_SAMPLE_MEDIA = re.compile(r"BigBuckBunny|gtv-videos-bucket|sample-videos|picsum\.photos|placeholder\.com|placehold\.co"
+                           r"|dummyimage|loremflickr|source\.unsplash|via\.placeholder", re.IGNORECASE)
+
+
+def test_no_sample_media_links():
+    files = [*_py_files(), STATIC / "app.js", STATIC / "true_crime.js", STATIC / "index.html"]
+    found = [f"  {_rel(p)}:{no}: {line.strip()[:120]}" for p in files
+             for no, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1) if _SAMPLE_MEDIA.search(line)]
+    assert not found, ("Đường cấm 3: link ảnh/video mẫu làm kết quả trông như thật (thành công giả). Báo lỗi hoặc đánh "
+                       "dấu thất bại thay vì gắn media mẫu:\n" + "\n".join(found))
+
+
+def test_no_functions_that_only_pass():
+    found = []
+    for rel, tree in _trees():
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                body = [b for b in node.body if not (isinstance(b, ast.Expr) and isinstance(b.value, ast.Constant)
+                                                     and isinstance(b.value.value, str))]
+                if body and all(isinstance(b, ast.Pass) or (isinstance(b, ast.Expr) and isinstance(b.value, ast.Constant)
+                                                            and b.value.value is Ellipsis) for b in body):
+                    found.append(f"  {rel}:{node.lineno} {node.name}()")
+    assert not found, ("Đường cấm 3: hàm chỉ có `pass`/`...` được gọi là chạy mà không làm gì (thành công giả). "
+                       "Làm thật hoặc raise NotImplementedError:\n" + "\n".join(found))
+
+
+# --- Đường cấm 12: không thêm chỗ xoá file vĩnh viễn ----------------------------------------------------------------
+# Khoá cứng từ 22/10/2026 (CLAUDE.md mục 2.4): 3 chỗ xoá dữ liệu người dùng vĩnh viễn (xoá dự án, xoá một mục gallery
+# Muse, xoá cả gallery). Đếm mọi lệnh xoá (rmtree, unlink, os.remove, rmdir); chỗ cũ ghi rõ là dọn file tạm hay vi phạm.
+# Chỗ mới: xoá dữ liệu người dùng thì chuyển vào Thùng rác hoặc hỏi trước; dọn file tạm thì ghi thêm ngoại lệ có lý do.
+ALLOWED_DELETES = {
+    # VI PHẠM (dữ liệu người dùng mất hẳn, sửa là việc riêng chờ chủ dự án chọn):
+    "backend/services/project_service.py": 1,  # delete_project(): xoá cả thư mục dự án
+    "backend/routers/muse_bridge.py": 2,  # delete_gallery_item(), clear_all_gallery(): xoá ảnh/video Muse
+    # Hợp lệ: chỉ dọn file tạm, file khoá hay file hỏng do chính code vừa tạo
+    "backend/routers/api.py": 4,  # file zip/srt tạm sau khi gửi tải về
+    "backend/runners/muse_fleet_runner.py": 4,  # khoá SingletonLock của Chrome (2), video tải về không hợp lệ, ảnh đính kèm tạm
+    "backend/services/safe_files.py": 1,  # file tạm khi ghi an toàn thất bại
+    "backend/services/thumbnail_service.py": 1,  # file thumbnail tạm
+    "backend/services/tts_service.py": 1,  # file .words.json cũ trước khi thu lại giọng
+    "backend/services/video_service.py": 1,  # thư mục đoạn dựng tạm
+    "backend/services/vieneu_worker.py": 2,  # file wav tạm, file đích cũ trước khi thay
+    "tools/build_release.py": 1,  # file tạm khi đóng gói
+}
+_DELETE_ATTRS = {"rmtree", "unlink", "rmdir", "removedirs"}
+
+
+def test_no_new_permanent_deletes():
+    actual = Counter()
+    for rel, tree in _trees():
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+                continue
+            attr = node.func.attr
+            if attr in _DELETE_ATTRS or (attr == "remove" and _is_os_attr(node.func, "remove")):
+                actual[rel] += 1
+    _compare("Đường cấm 12: lệnh xoá file mới. Dữ liệu người dùng: chuyển vào Thùng rác hoặc hỏi trước; file tạm: ghi "
+             "ngoại lệ kèm lý do vào ALLOWED_DELETES.", actual, ALLOWED_DELETES)
+
+
 # --- Đường cấm 10: một sự kiện click không gắn hai lần ---------------------------------------------------------------
 def _inline_click_ids(html: str) -> set:
     ids = set()

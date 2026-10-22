@@ -3,7 +3,9 @@
 Cách dùng (luôn bằng Python của .venv):
     .venv\\Scripts\\python.exe tools\\check.py                       bản nhanh (~15 s): Ruff, cú pháp JS, test kiến trúc, test FEATURE_MAP
     .venv\\Scripts\\python.exe tools\\check.py --full                bản đầy đủ: thêm cả bộ test mặc định (bỏ test cờ live), ~8 phút
-    .venv\\Scripts\\python.exe tools\\check.py --install-hook        cài hook: mỗi lần git commit tự chạy bản nhanh
+    .venv\\Scripts\\python.exe tools\\check.py --install-hook        cài 2 hook git (khoá cứng, CLAUDE.md mục 6.1):
+        pre-commit: chặn commit thẳng lên master/main, rồi chạy bản nhanh
+        commit-msg: chặn dòng đầu commit sai dạng "<vùng>: <mô tả>"
     .venv\\Scripts\\python.exe tools\\check.py --shrink-ruff-baseline  sau khi sửa bớt lỗi Ruff cũ: hạ mốc cho khớp
 
 Ruff so với mốc tools/ruff_baseline.json (lỗi có từ trước, đếm theo file và luật): lỗi mới thì chặn. Không có lệnh
@@ -12,6 +14,7 @@ nâng mốc: thêm ngoại lệ phải sửa tay file mốc và được duyệt
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -21,11 +24,51 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = ROOT / "tools" / "ruff_baseline.json"
-HOOK = ROOT / ".git" / "hooks" / "pre-commit"
+HOOK_DIR = ROOT / ".git" / "hooks"
 HOOK_MARK = "# cài bởi tools/check.py --install-hook"
+HOOKS = {
+    "pre-commit": ('if grep -q -- "--pre-commit" tools/check.py; then\n'
+                   '  exec ".venv/Scripts/python.exe" -X utf8 tools/check.py --pre-commit\n'
+                   'fi\n'
+                   'exec ".venv/Scripts/python.exe" -X utf8 tools/check.py\n'),
+    "commit-msg": ('grep -q -- "--commit-msg" tools/check.py || exit 0\n'
+                   'exec ".venv/Scripts/python.exe" -X utf8 tools/check.py --commit-msg "$1"\n'),
+}
 JS_FILES = ["backend/static/app.js", "backend/static/true_crime.js"]
-FAST_TESTS = ["tests/test_architecture.py", "tests/test_feature_map.py"]
+FAST_TESTS = ["tests/test_architecture.py", "tests/test_feature_map.py", "tests/test_working_rules.py",
+              "tests/test_git_guards.py", "tests/test_guardrail_policy.py"]
 ENV = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
+PROTECTED_BRANCHES = {"master", "main"}
+_SUBJECT_OK = re.compile(r"^[^\s:][^:\n]{0,39}: \S")
+_SUBJECT_GIT = re.compile(r"^(Merge |Revert |fixup! |squash! |amend! )")
+
+
+def branch_problem(branch: str | None, merging: bool) -> str | None:
+    """Khoá cứng CLAUDE.md mục 6.1 dòng 1: không commit thẳng lên nhánh chính (gộp nhánh thì được)."""
+    if branch in PROTECTED_BRANCHES and not merging:
+        return (f"Không commit thẳng lên {branch} (CLAUDE.md mục 6): tạo nhánh cho việc này rồi commit ở đó, "
+                f"ví dụ: git switch -c ten-viec-khong-dau. Gộp vào {branch} chỉ khi chủ dự án đồng ý.")
+    return None
+
+
+def commit_message_problem(message: str) -> str | None:
+    """Khoá cứng CLAUDE.md mục 6.1 dòng 10: dòng đầu commit dạng '<vùng>: <mô tả>' (vùng tối đa 40 ký tự)."""
+    lines = [ln for ln in message.splitlines() if not ln.startswith("#")]
+    subject = next((ln for ln in lines if ln.strip()), "")
+    if _SUBJECT_GIT.match(subject) or _SUBJECT_OK.match(subject):
+        return None
+    return ("Dòng đầu commit phải theo dạng '<vùng>: <mô tả>' bằng tiếng Việt (CLAUDE.md mục 6), vùng tối đa 40 ký tự, "
+            f"ví dụ 'tts_service: thử lại khi Edge-TTS lỗi'. Đang là: {subject[:90]!r}")
+
+
+def _git(*args: str) -> str:
+    proc = _run(["git", *args], 30)
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
+def _merging() -> bool:
+    merge_head = _git("rev-parse", "--git-path", "MERGE_HEAD")
+    return bool(merge_head) and (ROOT / merge_head).exists()
 
 
 def _run(cmd: list[str], timeout: int) -> subprocess.CompletedProcess:
@@ -95,15 +138,21 @@ def check_pytest(args: list[str], timeout: int) -> tuple[bool, str]:
     return True, summary
 
 
+def hook_script(name: str) -> str:
+    # Hook dùng chung cho mọi nhánh; nhánh cũ chưa có tools/check.py (hay chưa có cờ mới) thì kiểm theo bản của nhánh đó
+    return "#!/bin/sh\n" + HOOK_MARK + "\n" + '[ -f tools/check.py ] || exit 0\n' + HOOKS[name]
+
+
 def install_hook() -> int:
-    if HOOK.exists() and HOOK_MARK not in HOOK.read_text(encoding="utf-8", errors="replace"):
-        print(f"Đã có hook khác ở {HOOK}; không ghi đè. Gộp tay nếu cần.")
-        return 1
-    # Hook dùng chung cho mọi nhánh; nhánh cũ chưa có tools/check.py thì không có gì để kiểm
-    HOOK.write_text("#!/bin/sh\n" + HOOK_MARK + "\n"
-                    '[ -f tools/check.py ] || exit 0\n'
-                    'exec ".venv/Scripts/python.exe" -X utf8 tools/check.py\n', encoding="utf-8", newline="\n")
-    print(f"Đã cài hook trước commit: {HOOK.relative_to(ROOT)} (chạy bản nhanh mỗi lần git commit)")
+    for name in HOOKS:
+        path = HOOK_DIR / name
+        if path.exists() and HOOK_MARK not in path.read_text(encoding="utf-8", errors="replace"):
+            print(f"Đã có hook khác ở {path}; không ghi đè. Gộp tay nếu cần.")
+            return 1
+    for name in HOOKS:
+        (HOOK_DIR / name).write_text(hook_script(name), encoding="utf-8", newline="\n")
+    print(f"Đã cài hook git: {', '.join(HOOKS)} trong {HOOK_DIR.relative_to(ROOT)} "
+          "(chặn commit thẳng lên master, chặn commit sai định dạng, chạy bản nhanh mỗi lần commit)")
     return 0
 
 
@@ -129,8 +178,21 @@ def main() -> int:
     parser.add_argument("--install-hook", action="store_true", help="cài hook trước commit")
     parser.add_argument("--shrink-ruff-baseline", action="store_true", help="hạ mốc Ruff sau khi sửa bớt lỗi cũ")
     parser.add_argument("--init-ruff-baseline", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--pre-commit", action="store_true", help="dùng trong hook: chặn commit thẳng lên master rồi chạy bản nhanh")
+    parser.add_argument("--commit-msg", metavar="FILE", help="dùng trong hook: kiểm dòng đầu commit")
     args = parser.parse_args()
 
+    if args.commit_msg:
+        problem = commit_message_problem(Path(args.commit_msg).read_text(encoding="utf-8", errors="replace"))
+        if problem:
+            print("[LỖI] " + problem)
+            return 1
+        return 0
+    if args.pre_commit:
+        problem = branch_problem(_git("symbolic-ref", "--short", "-q", "HEAD") or None, _merging())
+        if problem:
+            print("[LỖI] " + problem)
+            return 1
     if args.install_hook:
         return install_hook()
     if args.shrink_ruff_baseline:
