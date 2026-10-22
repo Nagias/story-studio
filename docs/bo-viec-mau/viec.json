@@ -1,0 +1,61 @@
+{
+ "ghi_chu": "Bộ việc mẫu chuẩn (docs/bo-viec-mau/README.md). goc: mã nguồn trước lần sửa (commit, kèm thay đổi cần đảo ngược nếu có). dap_an: lần sửa thật áp lên bản gốc. Mỗi thay đổi là mã commit hoặc {commit, chi_lay: chỉ lấy các file này, bo_qua_ngu_canh: không đòi khớp dòng xung quanh}. test_them: test ẩn bổ sung trong thư mục của việc. duoc_sua: file được phép đổi (kết thúc bằng / là cả thư mục). phai_sua: file bắt buộc phải đổi.",
+ "viec": {
+  "T1": {
+   "ten": "Kiểm đường dẫn: ảnh Muse của proj_ab bị gắn link sang proj_a",
+   "loai": "Sửa lỗi bảo mật, kiểm đầu vào (Muse / Fleet Runner, đường cấm 7)",
+   "goc": {"commit": "d33d9df"},
+   "dap_an": [{"commit": "c639f93"}],
+   "test_them": ["test_an_t1_project_service_kiem_id.py"],
+   "duoc_sua": ["backend/routers/muse_bridge.py", "backend/services/project_service.py", "backend/security.py",
+                "tests/", "CLAUDE.md", "FEATURE_MAP.md", "TASKS.md", "tools/ruff_baseline.json"],
+   "phai_sua": []
+  },
+  "T2": {
+   "ten": "Thành công giả: get_audio_duration() đoán 3 giây khi không đo được",
+   "loai": "Giọng đọc, xử lý lỗi (đường cấm 2, 3)",
+   "goc": {"commit": "ff8114d"},
+   "dap_an": [{"commit": "1f059f7"}, {"commit": "44521ea"}],
+   "test_them": ["test_an_t2_phu_de_khi_khong_do_duoc.py"],
+   "duoc_sua": ["backend/services/tts_service.py", "backend/services/subtitle_engine.py",
+                "tests/", "CLAUDE.md", "FEATURE_MAP.md", "TASKS.md", "tools/ruff_baseline.json"],
+   "phai_sua": []
+  },
+  "T3": {
+   "ten": "Giao diện: lọc chữ từ máy chủ trước khi chèn vào thông báo và thư viện ảnh Muse",
+   "loai": "Sửa giao diện JS, chống chèn HTML (đường cấm 9)",
+   "goc": {"commit": "ccf87db"},
+   "dap_an": [{"commit": "d33d9df"}],
+   "test_them": ["test_an_t3_loc_chu_giao_dien.py"],
+   "duoc_sua": ["backend/static/app.js", "backend/static/true_crime.js",
+                "tests/", "CLAUDE.md", "FEATURE_MAP.md", "TASKS.md", "tools/ruff_baseline.json"],
+   "phai_sua": []
+  },
+  "T4": {
+   "ten": "Vụ án: ngày tháng thật lọt vào tên tập và nhãn bằng chứng",
+   "loai": "Pipeline LLM true-crime, kiểm lọt thông tin thật",
+   "goc": {"commit": "c786fd9", "dao_nguoc": [
+     {"commit": "8224dfb", "chi_lay": ["backend/services/case_adaptation_checks.py",
+                                        "backend/services/case_adaptation_prompts.py", "tests/test_case_adaptation_checks.py"]},
+     {"commit": "8224dfb", "chi_lay": ["TASKS.md"], "bo_qua_ngu_canh": true}]},
+   "dap_an": [{"commit": "8224dfb", "chi_lay": ["backend/services/case_adaptation_checks.py",
+                                                 "backend/services/case_adaptation_prompts.py",
+                                                 "tests/test_case_adaptation_checks.py"]}],
+   "test_them": ["test_an_t4_prompt_dan_khong_ghi_ngay.py"],
+   "duoc_sua": ["backend/services/case_adaptation_checks.py", "backend/services/case_adaptation_prompts.py",
+                "tests/", "CLAUDE.md", "FEATURE_MAP.md", "TASKS.md", "tools/ruff_baseline.json"],
+   "phai_sua": []
+  },
+  "T5": {
+   "ten": "Thumbnail: nền lấy nhầm thẻ chữ, vệt sáng góc trái dưới",
+   "loai": "Ảnh (Pillow) và duy trì FEATURE_MAP",
+   "goc": {"commit": "5629971"},
+   "dap_an": [{"commit": "c786fd9", "chi_lay": ["backend/services/thumbnail_service.py",
+                                                 "tests/test_youtube_seo_pack.py", "FEATURE_MAP.md"]}],
+   "test_them": ["test_an_t5_thumbnail.py"],
+   "duoc_sua": ["backend/services/thumbnail_service.py",
+                "tests/", "CLAUDE.md", "FEATURE_MAP.md", "TASKS.md", "tools/ruff_baseline.json"],
+   "phai_sua": ["FEATURE_MAP.md"]
+  }
+ }
+}
