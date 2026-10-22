@@ -220,7 +220,7 @@ Cùng cách đọc và cùng máy kiểm với bảng 5.1. Hook git chỉ có t�
 
 | # | Khoá | Máy kiểm | Số lần vi phạm đã ghi nhận | Quy tắc; bằng chứng; phần còn mềm |
 |---|---|---|---|---|
-| 1 | cứng | `tools/check.py::branch_problem` (hook pre-commit) | 24 | Không commit thẳng lên `master`: 24 commit thẳng trong lịch sử, 2 sau khi có quy tắc (`b4fd74e`, `6d0666e`). Gộp nhánh vào `master` vẫn được |
+| 1 | cứng | `tools/check.py::hook_script` (hook pre-commit), `tests/test_git_guards.py::test_pre_commit_hook_blocks_commit_on_master` | 25 | Không commit thẳng lên `master`: 25 commit thẳng trong lịch sử, 3 sau khi có quy tắc (`b4fd74e`, `6d0666e`, và `603dba6` là commit rỗng lọt khi agent thử khoá bản đầu, vì master còn `tools/check.py` cũ; nay phần chặn viết thẳng trong hook). Gộp nhánh vào `master` vẫn được |
 | 2 | mềm | — | 0 | Chỉ gộp vào `master` khi chủ dự án đồng ý: máy không biết chủ dự án đã đồng ý chưa |
 | 3 | mềm | — | 0 | Không push khi chưa được bảo (repo chưa có remote) |
 | 4 | mềm | — | 0 | Trước khi sửa: tra `FEATURE_MAP.md`, nói trước file sẽ sửa, việc dài ghi checklist `TASKS.md` |

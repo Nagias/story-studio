@@ -26,29 +26,33 @@ ROOT = Path(__file__).resolve().parent.parent
 BASELINE = ROOT / "tools" / "ruff_baseline.json"
 HOOK_DIR = ROOT / ".git" / "hooks"
 HOOK_MARK = "# cài bởi tools/check.py --install-hook"
+# Khoá cứng CLAUDE.md mục 6.1 dòng 1: không commit thẳng lên master/main (kết thúc một lần gộp nhánh thì được).
+# Viết thẳng trong hook, không gọi Python: bản tools/check.py của nhánh đang mở có thể là bản cũ chưa có khoá này
+# (đã gặp 22/10/2026: commit thử lọt vào master vì master còn check.py cũ).
+BRANCH_GUARD = (
+    'branch=$(git symbolic-ref --short -q HEAD)\n'
+    'case "$branch" in\n'
+    '  master|main)\n'
+    '    if [ ! -f "$(git rev-parse --git-path MERGE_HEAD)" ]; then\n'
+    '      echo "[LỖI] Không commit thẳng lên $branch (CLAUDE.md mục 6.1 dòng 1). Tạo nhánh cho việc này rồi commit ở đó:'
+    ' git switch -c ten-viec-khong-dau. Gộp vào $branch chỉ khi chủ dự án đồng ý."\n'
+    '      exit 1\n'
+    '    fi\n'
+    '    ;;\n'
+    'esac\n')
 HOOKS = {
-    "pre-commit": ('if grep -q -- "--pre-commit" tools/check.py; then\n'
-                   '  exec ".venv/Scripts/python.exe" -X utf8 tools/check.py --pre-commit\n'
-                   'fi\n'
-                   'exec ".venv/Scripts/python.exe" -X utf8 tools/check.py\n'),
-    "commit-msg": ('grep -q -- "--commit-msg" tools/check.py || exit 0\n'
-                   'exec ".venv/Scripts/python.exe" -X utf8 tools/check.py --commit-msg "$1"\n'),
+    "pre-commit": BRANCH_GUARD + '[ -f tools/check.py ] || exit 0\n'
+                  'exec ".venv/Scripts/python.exe" -X utf8 tools/check.py\n',
+    "commit-msg": '[ -f tools/check.py ] || exit 0\n'
+                  'grep -q -- "--commit-msg" tools/check.py || exit 0\n'
+                  'exec ".venv/Scripts/python.exe" -X utf8 tools/check.py --commit-msg "$1"\n',
 }
 JS_FILES = ["backend/static/app.js", "backend/static/true_crime.js"]
 FAST_TESTS = ["tests/test_architecture.py", "tests/test_feature_map.py", "tests/test_working_rules.py",
               "tests/test_git_guards.py", "tests/test_guardrail_policy.py"]
 ENV = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
-PROTECTED_BRANCHES = {"master", "main"}
 _SUBJECT_OK = re.compile(r"^[^\s:][^:\n]{0,39}: \S")
 _SUBJECT_GIT = re.compile(r"^(Merge |Revert |fixup! |squash! |amend! )")
-
-
-def branch_problem(branch: str | None, merging: bool) -> str | None:
-    """Khoá cứng CLAUDE.md mục 6.1 dòng 1: không commit thẳng lên nhánh chính (gộp nhánh thì được)."""
-    if branch in PROTECTED_BRANCHES and not merging:
-        return (f"Không commit thẳng lên {branch} (CLAUDE.md mục 6): tạo nhánh cho việc này rồi commit ở đó, "
-                f"ví dụ: git switch -c ten-viec-khong-dau. Gộp vào {branch} chỉ khi chủ dự án đồng ý.")
-    return None
 
 
 def commit_message_problem(message: str) -> str | None:
@@ -59,16 +63,6 @@ def commit_message_problem(message: str) -> str | None:
         return None
     return ("Dòng đầu commit phải theo dạng '<vùng>: <mô tả>' bằng tiếng Việt (CLAUDE.md mục 6), vùng tối đa 40 ký tự, "
             f"ví dụ 'tts_service: thử lại khi Edge-TTS lỗi'. Đang là: {subject[:90]!r}")
-
-
-def _git(*args: str) -> str:
-    proc = _run(["git", *args], 30)
-    return proc.stdout.strip() if proc.returncode == 0 else ""
-
-
-def _merging() -> bool:
-    merge_head = _git("rev-parse", "--git-path", "MERGE_HEAD")
-    return bool(merge_head) and (ROOT / merge_head).exists()
 
 
 def _run(cmd: list[str], timeout: int) -> subprocess.CompletedProcess:
@@ -139,8 +133,8 @@ def check_pytest(args: list[str], timeout: int) -> tuple[bool, str]:
 
 
 def hook_script(name: str) -> str:
-    # Hook dùng chung cho mọi nhánh; nhánh cũ chưa có tools/check.py (hay chưa có cờ mới) thì kiểm theo bản của nhánh đó
-    return "#!/bin/sh\n" + HOOK_MARK + "\n" + '[ -f tools/check.py ] || exit 0\n' + HOOKS[name]
+    # Hook dùng chung cho mọi nhánh; phần Python chạy theo bản tools/check.py của nhánh đang mở
+    return "#!/bin/sh\n" + HOOK_MARK + "\n" + HOOKS[name]
 
 
 def install_hook() -> int:
@@ -178,7 +172,6 @@ def main() -> int:
     parser.add_argument("--install-hook", action="store_true", help="cài hook trước commit")
     parser.add_argument("--shrink-ruff-baseline", action="store_true", help="hạ mốc Ruff sau khi sửa bớt lỗi cũ")
     parser.add_argument("--init-ruff-baseline", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--pre-commit", action="store_true", help="dùng trong hook: chặn commit thẳng lên master rồi chạy bản nhanh")
     parser.add_argument("--commit-msg", metavar="FILE", help="dùng trong hook: kiểm dòng đầu commit")
     args = parser.parse_args()
 
@@ -188,11 +181,6 @@ def main() -> int:
             print("[LỖI] " + problem)
             return 1
         return 0
-    if args.pre_commit:
-        problem = branch_problem(_git("symbolic-ref", "--short", "-q", "HEAD") or None, _merging())
-        if problem:
-            print("[LỖI] " + problem)
-            return 1
     if args.install_hook:
         return install_hook()
     if args.shrink_ruff_baseline:

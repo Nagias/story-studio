@@ -1,10 +1,14 @@
 """Khoá cứng của CLAUDE.md mục 6.1 làm bằng hook git (tools/check.py --install-hook).
 
-- dòng 1: không commit thẳng lên master/main (hook pre-commit gọi branch_problem);
+- dòng 1: không commit thẳng lên master/main (hook pre-commit, phần chặn viết thẳng trong hook);
 - dòng 10: dòng đầu commit dạng "<vùng>: <mô tả>" (hook commit-msg gọi commit_message_problem).
-Test cũng kiểm hook đã được cài đúng bản, vì hook chưa cài thì khoá không có tác dụng.
+Hook pre-commit được chạy thật bằng git trong một repo tạm. Test cũng kiểm hook của repo này đã cài đúng bản,
+vì hook chưa cài thì khoá không có tác dụng.
 """
 import importlib.util
+import os
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -15,20 +19,45 @@ assert _spec and _spec.loader
 check = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(check)
 
-
-@pytest.mark.parametrize("branch", ["master", "main"])
-def test_commit_on_main_branch_is_blocked(branch):
-    problem = check.branch_problem(branch, merging=False)
-    assert problem and "git switch -c" in problem
+# Khi chính test này chạy trong hook của repo thật, git đặt sẵn GIT_INDEX_FILE, GIT_DIR...: phải bỏ đi để không đụng repo thật
+_CLEAN_ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
 
 
-def test_finishing_a_merge_on_master_is_allowed():
-    assert check.branch_problem("master", merging=True) is None
+@pytest.fixture
+def temp_repo(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args):
+        return subprocess.run(["git", "-c", "user.name=test", "-c", "user.email=test@example.org", *args], cwd=repo,
+                              env=_CLEAN_ENV, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                              timeout=60)
+
+    assert git("init", "-q", "-b", "master").returncode == 0
+    assert git("commit", "-q", "--allow-empty", "-m", "khởi tạo: repo thử").returncode == 0
+    hooks = Path(git("rev-parse", "--git-path", "hooks").stdout.strip())
+    hooks = hooks if hooks.is_absolute() else repo / hooks
+    hooks.mkdir(parents=True, exist_ok=True)
+    (hooks / "pre-commit").write_text(check.hook_script("pre-commit"), encoding="utf-8", newline="\n")
+    return git
 
 
-@pytest.mark.parametrize("branch", ["khoa-cung-mem", "muc-toi-thieu-15-phut", None])
-def test_commit_on_work_branch_is_allowed(branch):
-    assert check.branch_problem(branch, merging=False) is None
+@pytest.mark.skipif(shutil.which("git") is None, reason="không có git")
+def test_pre_commit_hook_blocks_commit_on_master(temp_repo):
+    result = temp_repo("commit", "-q", "--allow-empty", "-m", "thử: commit thẳng lên master")
+    assert result.returncode != 0
+    assert "Không commit thẳng lên master" in result.stdout + result.stderr
+    assert temp_repo("rev-list", "--count", "master").stdout.strip() == "1"
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="không có git")
+def test_pre_commit_hook_allows_work_branch_and_merging_into_master(temp_repo):
+    assert temp_repo("switch", "-q", "-c", "viec-moi").returncode == 0
+    assert temp_repo("commit", "-q", "--allow-empty", "-m", "thử: commit trên nhánh").returncode == 0
+    assert temp_repo("switch", "-q", "master").returncode == 0
+    assert temp_repo("merge", "-q", "--no-ff", "--no-commit", "viec-moi").returncode == 0
+    finish = temp_repo("commit", "-q", "-m", "Merge branch 'viec-moi'")  # kết thúc gộp: hook thấy MERGE_HEAD nên cho qua
+    assert finish.returncode == 0, finish.stdout + finish.stderr
 
 
 @pytest.mark.parametrize("message", [
