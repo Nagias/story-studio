@@ -116,6 +116,7 @@ Agent suy ra từ mục 1 và 1.2. Cuối mỗi bước ghi tình trạng code h
 | Kiểm giao diện | server thử cổng 8010 theo `.claude/launch.json` (tắt hàng việc phân tích và tự bật Fleet Runner), mở bằng trình duyệt trong app, dùng dự án thử `?project_id=proj_ea5b04db`. Không khởi động lại server 8000 đang dùng chung |
 | Build CSS | thêm class Tailwind mới: `cd tools\tailwind`, `npm install --cache .npm-cache`, `npm run build` → `backend/static/tailwind.css` |
 | Đóng gói bán | `.venv\Scripts\python.exe tools\build_release.py` → `dist/` (lấy theo danh sách cho phép, tự chặn bí mật) |
+| Đo agent/skill bằng bộ việc mẫu | `.venv\Scripts\python.exe tools\bo_viec_mau.py chuan-bi --lan <tên> --mo-ta "<agent/skill đang đo>"`, giao đề cho agent, rồi `cham --lan <tên>` và `so-sanh <lần trước> <lần sau>`; đủ các bước trong `docs/bo-viec-mau/README.md` |
 | Lint | Ruff (`ruff.toml`), chạy qua `tools/check.py`. Kiểm kiểu dữ liệu và CI trên GitHub: chưa có |
 
 Công cụ ngoài: ffmpeg/ffprobe trong PATH, `uv` (giọng VieNeu), Chrome hoặc Edge, 9router ở `127.0.0.1:20128`.
@@ -214,6 +215,10 @@ Code mới nên theo mẫu của mảng true-crime (mục 4), không theo mảng
 - **Chỗ đặt file:** không thêm script ở gốc dự án; test đặt trong `tests/`, công cụ đặt trong `tools/`, file tạm đặt trong `.cache/`. Không sửa file ngoài thư mục dự án khi chưa hỏi.
 - **Thư viện tuỳ chọn:** `openai`, `faster-whisper`, `av` có thể chưa cài, code tự bỏ qua; thiếu chúng không phải lỗi.
 
+**[Nguyên văn chủ dự án]** (23/10/2026, khi giao bộ việc mẫu `docs/bo-viec-mau/README.md`)
+
+> Từ nay, mỗi lần sửa skill hoặc agent, phải chạy lại bộ việc mẫu này và báo cáo điểm trước/sau.
+
 ### 6.1 Khoá cứng hay khoá mềm (theo mục 2.4)
 
 Cùng cách đọc và cùng máy kiểm với bảng 5.1. Hook git chỉ có tác dụng khi đã cài: `.venv\Scripts\python.exe tools\check.py --install-hook` (test `tests/test_git_guards.py` báo nếu chưa cài hoặc bản cũ).
@@ -232,6 +237,7 @@ Cùng cách đọc và cùng máy kiểm với bảng 5.1. Hook git chỉ có t�
 | 10 | cứng | `tools/check.py::commit_message_problem` (hook commit-msg) | 4 | Dòng đầu commit dạng `<vùng>: <mô tả>`: 4 commit sai (`ffa1c3b`, `afaadab`, `a3de4c7`, `c116f07`). Còn mềm: viết tiếng Việt, mỗi thay đổi một commit |
 | 11 | cứng một phần | `tests/test_working_rules.py::test_no_new_scripts_in_project_root` | 3 | Không thêm script ở gốc dự án: đã phải xoá 3 script (run_studio.py, run_studio.bat, run_all_tests.py; xem `git log --diff-filter=D`). Còn mềm: không sửa file ngoài thư mục dự án khi chưa hỏi |
 | 12 | mềm | — | 0 | Thư viện tuỳ chọn: chỉ là ghi chú, không phải điều cấm |
+| 13 | mềm | — | 0 | Sửa skill hoặc agent thì chạy lại bộ việc mẫu và báo điểm trước/sau (`docs/bo-viec-mau/README.md`): máy chưa biết lúc nào skill hay agent của dự án bị sửa |
 
 ## 7. Bảng định tuyến: loại việc → quy trình
 
