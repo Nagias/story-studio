@@ -287,3 +287,21 @@ async def test_thumbnail_uses_seo_lines_and_vietnamese_font(isolated_projects_di
         generate_youtube_thumbnail(project, badge_text="🔥 1080P")
     long = generate_youtube_thumbnail(project, custom_headline="MỘT DÒNG CHỮ RẤT DÀI " * 4)
     assert len(long["lines"]) >= 2                          # quá dài thì tự xuống dòng
+
+
+@pytest.mark.skipif(config.WINDOWS_FONTS_DIR is None, reason="không phải Windows")
+def test_thumbnail_background_skips_text_cards(isolated_projects_dir, tmp_path):
+    """Thẻ miễn trừ, bảng ghim là ảnh chữ do app vẽ: không làm nền thumbnail (đã gặp khi xem ảnh thật 22/10/2026)."""
+    from services.thumbnail_service import generate_youtube_thumbnail, thumbnail_font_path
+    if thumbnail_font_path() is None:
+        pytest.skip("máy không có font thumbnail")
+    project = _make_project()
+    card, photo = tmp_path / "card.jpg", tmp_path / "photo.jpg"
+    Image.new("RGB", (1280, 720), (230, 20, 20)).save(card)     # đỏ: thẻ miễn trừ
+    Image.new("RGB", (1280, 720), (20, 20, 230)).save(photo)    # xanh: ảnh cảnh thật
+    project.scenes[0].image_path, project.scenes[0].metadata = str(card), {"visual_kind": "disclaimer"}
+    project.scenes[1].image_path = str(photo)
+    out = Path(generate_youtube_thumbnail(project, custom_headline="THỬ")["thumbnail_path"])
+    with Image.open(out) as im:
+        r, g, b = im.convert("RGB").getpixel((1850, 60))       # góc phải trên: không bị nền tối và chữ che
+    assert b > r

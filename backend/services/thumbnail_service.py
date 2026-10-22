@@ -91,11 +91,16 @@ def _draw_outlined(draw: ImageDraw.ImageDraw, pos, text, font, fill, outline, wi
     draw.text((x, y), text, font=font, fill=fill)
 
 
+TEXT_CARD_KINDS = {"disclaimer", "board"}   # ảnh chữ do app vẽ (thẻ miễn trừ, bảng ghim): không dùng làm nền
+
+
 def _source_image(scenes: list, scene_index: Optional[int]) -> Image.Image:
+    """Ảnh nền: cảnh được chọn, không thì ảnh cảnh đầu tiên không phải ảnh chữ, không có thì nền chuyển màu."""
     candidates = []
     if scene_index is not None and 0 <= scene_index < len(scenes):
         candidates.append(getattr(scenes[scene_index], "image_path", None))
-    candidates += [getattr(sc, "image_path", None) for sc in scenes]
+    candidates += [getattr(sc, "image_path", None) for sc in scenes
+                   if (getattr(sc, "metadata", None) or {}).get("visual_kind") not in TEXT_CARD_KINDS]
     for path in candidates:
         if path and os.path.exists(path):
             try:
@@ -140,13 +145,16 @@ def generate_youtube_thumbnail(
 
     img = _source_image(scenes, scene_index)
     img = ImageEnhance.Sharpness(ImageEnhance.Color(ImageEnhance.Contrast(img).enhance(1.18)).enhance(1.12)).enhance(1.2)
-    overlay = Image.new("RGBA", (CANVAS_W, CANVAS_H), (0, 0, 0, 0))
-    draw_ov = ImageDraw.Draw(overlay)
+    # Hai lớp tối (bên trái, phía dưới) phủ chồng lên nhau; vẽ chung một lớp thì lớp sau xoá lớp trước, để lại vệt sáng
+    left = Image.new("RGBA", (CANVAS_W, CANVAS_H), (0, 0, 0, 0))
+    draw_left = ImageDraw.Draw(left)
     for x in range(1250):   # nền tối bên trái để chữ dễ đọc
-        draw_ov.line([(x, 0), (x, CANVAS_H)], fill=(0, 0, 0, int(225 * (1.0 - (x / 1250) ** 1.3))))
+        draw_left.line([(x, 0), (x, CANVAS_H)], fill=(0, 0, 0, int(225 * (1.0 - (x / 1250) ** 1.3))))
+    bottom = Image.new("RGBA", (CANVAS_W, CANVAS_H), (0, 0, 0, 0))
+    draw_bottom = ImageDraw.Draw(bottom)
     for y in range(CANVAS_H - 300, CANVAS_H):
-        draw_ov.line([(0, y), (CANVAS_W, y)], fill=(0, 0, 0, int(170 * (y - (CANVAS_H - 300)) / 300)))
-    img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+        draw_bottom.line([(0, y), (CANVAS_W, y)], fill=(0, 0, 0, int(170 * (y - (CANVAS_H - 300)) / 300)))
+    img = Image.alpha_composite(Image.alpha_composite(img.convert("RGBA"), left), bottom).convert("RGB")
     draw = ImageDraw.Draw(img)
 
     if badge:

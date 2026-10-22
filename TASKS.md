@@ -235,11 +235,17 @@ Không đụng phần nguyên văn của chủ dự án trong CLAUDE.md (mục �
 
 # Gói SEO YouTube (2026-10-22, nhánh `goi-seo-youtube`, câu 9 mục 1.2 CLAUDE.md)
 Chủ dự án bỏ qua phần hỏi thiết kế: "cứ làm theo hướng bạn đề xuất đi. không ổn tôi sẽ chỉnh sau". Hướng: luật chính thức YouTube làm khoá cứng; từ khoá từ dữ liệu thật (gợi ý tìm kiếm YouTube khi bấm, YouTube Data API khi có key, dán tay); AI chỉ viết câu trong khuôn từ khoá đã chọn; thumbnail font đủ dấu.
-- [ ] `services/youtube_seo_rules.py`: luật tiêu đề, mô tả, tags, hashtag, chương, thumbnail (+ test)
-- [ ] `services/youtube_keywords.py`: gợi ý tìm kiếm, YouTube Data API (`YOUTUBE_API_KEY`), dán tay; dữ liệu quá 30 ngày thì bỏ (+ test bằng mạng giả)
-- [ ] `services/youtube_seo_pack.py`: chương theo thời gian video thật, AI viết câu qua `ask_validated` của luồng vụ án, lưu vào dự án (+ test LLM giả)
-- [ ] `routers/youtube_seo.py`: xem, tìm từ khoá, tạo gói, sửa (kiểm lại), tải .txt
-- [ ] Thumbnail: font Segoe UI Black (đủ 109/109 chữ có dấu; Impact thiếu 80), bỏ emoji và "FULL MOVIE", tự xuống dòng, ≤2 MB; bỏ đường dẫn cứng C:\Windows\Fonts (đường cấm 14)
-- [ ] Bỏ gói SEO cũ (khuôn giật tít, câu sai sự thật "9-Grid Spec 8K", hashtag mất dấu)
-- [ ] Giao diện Bước 4 (`youtube_seo.js` riêng), FEATURE_MAP, test kiến trúc quét cả file JS mới
-- [ ] Kiểm chứng: test, kiểm đầy đủ, gọi thật gợi ý tìm kiếm + 9router trên dự án thử `proj_ea5b04db`, xem thumbnail thật, bấm thật giao diện 8010
+- [x] `services/youtube_seo_rules.py`: luật tiêu đề, mô tả, tags, hashtag, chương, thumbnail (+ test)
+- [x] `services/youtube_keywords.py`: gợi ý tìm kiếm, YouTube Data API (`YOUTUBE_API_KEY`), dán tay; dữ liệu quá 30 ngày thì bỏ (+ test bằng mạng giả)
+- [x] `services/youtube_seo_pack.py`: chương theo thời gian video thật, AI viết câu qua `ask_validated` của luồng vụ án, lưu vào dự án (+ test LLM giả)
+- [x] `routers/youtube_seo.py`: xem, tìm từ khoá, tạo gói, sửa (kiểm lại), tải .txt
+- [x] Thumbnail: font Segoe UI Black (đủ 109/109 chữ có dấu; Impact thiếu 80), bỏ emoji và "FULL MOVIE", tự xuống dòng, ≤2 MB; bỏ đường dẫn cứng C:\Windows\Fonts (đường cấm 14)
+- [x] Bỏ gói SEO cũ (khuôn giật tít, câu sai sự thật "9-Grid Spec 8K", hashtag mất dấu)
+- [x] Giao diện Bước 4 (`youtube_seo.js` riêng), FEATURE_MAP, test kiến trúc quét cả file JS mới
+- [x] Kiểm chứng:
+  - test mới: 42 (luật, từ khoá với mạng giả, ghép gói với LLM giả, API, thumbnail); `tools/check.py --full` đạt 756 test (trước là 714)
+  - gọi thật trong thư mục tạm `.cache/live_seo` (bản sao 2 dự án MẪU, thời lượng cảnh chia theo số chữ từ số đo giọng thật 7,54/7,43 phút): gợi ý tìm kiếm YouTube trả 10 từ khoá mỗi ngôn ngữ (0,2–0,3 s); 9router viết gói Việt 18,6 s, Anh 22,4 s, mỗi gói 1 lần gọi, đạt 18/18 luật ngay lần đầu, có 3 chương và câu miễn trừ vụ án
+  - xem ảnh thật: chữ có dấu đủ; phát hiện và sửa 2 lỗi: thumbnail lấy thẻ miễn trừ (ảnh chữ) làm nền; vệt sáng ở góc trái dưới do lớp tối phía dưới xoá lớp tối bên trái (lỗi có từ code cũ)
+  - bấm thật giao diện server thử 8010 với `proj_ea5b04db`: Tìm từ khoá (10 gợi ý thật), tích 3 từ khoá, Tạo gói SEO (9router thật, 1 lần gọi, đạt 15/15 luật; video 21 giây nên không có chương), sửa tiêu đề có emoji và viết HOA thì bị chặn kèm 2 lý do, bấm tải khi chưa lưu thì bị nhắc, lưu lại thì tải .txt đúng nội dung; thumbnail có emoji báo lỗi rõ, để trống thì lấy chữ của gói SEO. Console chỉ có 2 lỗi 422 do cố tình làm sai; log server không có 500; danh sách `projects/` không đổi
+- [ ] Chưa kiểm chứng: nguồn YouTube Data API (chưa có `YOUTUBE_API_KEY`); chương trên một video thật dài trên 15 phút (chưa có dự án nào đã dựng video dài); YouTube có đọc đúng mốc H:MM:SS sau 60 phút không
+- [ ] Để sau (chờ chủ dự án): nguồn YouTube Analytics (từ khoá người xem thật sự gõ để tìm ra kênh, cần đăng nhập Google của kênh); xem lại pháp lý trước khi đưa gợi ý tìm kiếm YouTube vào bản bán
