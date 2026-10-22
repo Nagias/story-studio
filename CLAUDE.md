@@ -10,9 +10,23 @@ Cách đọc các nhãn trong file:
 
 ## 1. Mục đích project
 
-**[Nguyên văn chủ dự án]** — chủ dự án sẽ viết phần này.
+**[Nguyên văn chủ dự án]** (22/10/2026)
 
-> (chưa có — agent không tự điền, không suy ra từ code, TASKS.md hay ghi nhớ)
+> Mục đích của dự án này là tôi sẽ làm các video youtube về truyện chữ và dự án truyện từ các vụ án có thật, sau đó sẽ mở rộng thêm. Mục tiêu là xây nhiều kênh Youtube bằng AI, mỗi video dài ít nhất phải 20 phút trở lên. Nội dung thì tôi sẽ lấy từ các bộ truyện lightnovel có thật, nếu cần remake thì tôi sẽ bấm remake, còn không thì cứ bê y nguyên truyện vào. Còn vụ án tôi cũng tìm kiếm, sau đó AI sẽ gạch ra dàn ý để viết lại, loại bỏ tên người trong vụ án, địa điểm... để từ vụ án thật nghe giông truyện hơn. Các ảnh / video được generate bằng AI, cụ thể là dùng Muse và gemini 3.1 phải có sự đồng nhất về nhân vật, phong cảnh, sau đó đưa cho tôi prompt để tôi bấm generate luôn. Nhìn chung chỉ cần đầu vào là nội dung video muốn làm, qua hàng loạt quy trình ngầm thì tôi bấm generate và ra được video youtube ít nhất là 15 - 20 phút, dài thì 40-50 phút hoặc tùy độ dài của nội dung
+
+### 1.1 Đối chiếu mục đích với code hiện tại — [Đề xuất của agent — chưa duyệt]
+
+Agent ghi ngày 22/10/2026 để biết còn cách mục đích bao xa; đây là sự thật về code, không phải quyết định. Sửa code thì cập nhật bảng này.
+
+| Ý trong mục đích | Code hiện tại | Khoảng cách |
+|---|---|---|
+| Truyện chữ: "bê y nguyên", "cần remake thì bấm remake" | Nút 1-Click (`#btn-step1-process-script`) gửi bài qua LLM với quy tắc "review và tóm tắt truyện", ngôi thứ ba (`script_splitter.py`, quy tắc cho bài tiếng Việt). Cửa sổ Kịch bản AI (`#btn-submit-script-split`) chia offline, giữ nguyên chữ. Chuyển thể light novel thành podcast tiếng Anh chỉ có qua API (`POST /api/novel/ingest-chapter`) | Chưa có lựa chọn "giữ nguyên văn / remake" trên luồng 1-Click: hiện luôn viết lại thành lời review, dễ ngắn hơn bài gốc |
+| Vụ án thật: AI lập dàn ý, viết lại, bỏ tên người và địa điểm | Luồng C trong `FEATURE_MAP.md`: phân tích từng đoạn, đặt tên hư cấu, duyệt dàn ý, kiểm lọt tên thật (`case_adaptation_checks.py`), bản Việt và bản Anh | Đã có; đo thật 22/10/2026 qua test `live` |
+| Mỗi video từ 15–20 phút, dài 40–50 phút | True-crime chọn 8/15/20/30 phút (`#tc-duration-select`). Truyện chữ không có mục tiêu số phút: dài ngắn theo bài và nhịp (`#step1-pacing-select`) | Chưa có lựa chọn 40–50 phút; truyện chữ chưa nhắm được độ dài |
+| Ảnh/video bằng Muse và Gemini 3.1, đồng nhất nhân vật và phong cảnh | Nguồn ảnh: Muse (mặc định) và 9router Gemini 3.1 Flash Image (`NINEROUTER_IMAGE_MODEL`). Nhân vật: mô tả nhân vật (`character_anchor`, nhân vật mẫu), ảnh tham chiếu, phong cách chung của dự án. Phong cảnh: mỗi cảnh có mô tả bối cảnh riêng do LLM viết | Chưa có bước khoá bối cảnh dùng chung như khoá nhân vật. Cách "lưới 9 ô" của luồng dòng lệnh cũ đã gỡ ngày 22/10/2026 (commit `768a44f`, còn trong lịch sử git) vì giao diện không dùng tới |
+| Đưa prompt để chủ dự án bấm generate | Mỗi cảnh có prompt ảnh, prompt video và nút Muse riêng (mục 2.3 `FEATURE_MAP.md`) | Luồng 1-Click hiện tự tạo ảnh ngay sau khi chia cảnh (`generate_initial_images` bật sẵn), tốn lượt Muse/9router mà không chờ bấm |
+| Đầu vào là nội dung, quy trình ngầm, bấm là ra video | Luồng A và C trong `FEATURE_MAP.md`; nút Sản xuất video dài (`#btn-produce-long-video`) tự thu giọng, tạo ảnh còn thiếu, dựng và ghép | Đã có khung; độ dài và cách giữ nguyên văn như hai dòng trên |
+| Nhiều kênh YouTube | Mỗi dự án độc lập; gói SEO và thumbnail theo từng dự án | Chưa có khái niệm "kênh" trong code |
 
 ## 2. Nguyên tắc
 

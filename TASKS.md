@@ -220,4 +220,5 @@ Không đụng phần nguyên văn của chủ dự án trong CLAUDE.md (mục �
 - [x] Ý 3, CLAUDE.md (7 mục, 4 đoạn nguyên văn khớp từng chữ, 14 đường cấm, bảng định tuyến cột quy trình để trống) + FEATURE_MAP.md (test đối chiếu tên với code đạt)
 - [x] Ý 4, bộ kiểm tra tự động: `pytest.ini` + cờ `live`, test kiến trúc, test FEATURE_MAP, Ruff 0.17.1 ghim, `tools/check.py` + hook trước commit; `check.py --full` trên master đạt (691 test)
 - [x] Dòng "story-studio chưa có git" trong `D:\25. OPC\OP_CTOOL\AGENTS.md` (ngoài dự án) sửa thành "có git riêng từ 19/10/2026" theo đồng ý của người dùng; bản cũ sao lưu trong scratchpad phiên
-- [ ] Phần của chủ dự án: viết mục 1 (mục đích) CLAUDE.md, duyệt mục 5–6, điền cột quy trình mục 7
+- [x] Mục 1 CLAUDE.md: ghi nguyên văn mục đích của chủ dự án (22/10/2026, kiểm khớp từng chữ) + bảng 1.1 đối chiếu với code (đề xuất của agent, chưa duyệt)
+- [ ] Phần của chủ dự án: duyệt mục 1.1, 5, 6; điền cột quy trình mục 7
