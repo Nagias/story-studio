@@ -222,4 +222,5 @@ Không đụng phần nguyên văn của chủ dự án trong CLAUDE.md (mục �
 - [x] Dòng "story-studio chưa có git" trong `D:\25. OPC\OP_CTOOL\AGENTS.md` (ngoài dự án) sửa thành "có git riêng từ 19/10/2026" theo đồng ý của người dùng; bản cũ sao lưu trong scratchpad phiên
 - [x] Mục 1 CLAUDE.md: ghi nguyên văn mục đích của chủ dự án (22/10/2026, kiểm khớp từng chữ) + bảng 1.1 đối chiếu với code (đề xuất của agent, chưa duyệt)
 - [x] Mục 1 CLAUDE.md: ghi nguyên văn "Mức tối thiểu là 15 phút" (22/10/2026); bảng 1.1 thêm khoảng cách: true-crime còn lựa chọn 8 phút, truyện chữ chưa báo khi video dưới 15 phút
+- [x] Mục 1.2 CLAUDE.md: 7 câu trả lời của chủ dự án về quy trình (remake, dưới 15 phút, Anh + Việt, từng bước trước 1-Click, ảnh chuyển động + video 5/10 giây, tự đăng YouTube, giữ 8 phút), kiểm khớp từng chữ bằng script; bảng 1.1 cập nhật theo (thêm dòng bản Anh cho truyện chữ, dòng video 5/10 giây: nút Muse Video đang cố định 5 giây)
 - [ ] Phần của chủ dự án: duyệt mục 1.1, 5, 6; kiểm sơ đồ quy trình agent suy ra từ mục đích; điền cột quy trình mục 7

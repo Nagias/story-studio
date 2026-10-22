@@ -24,13 +24,29 @@ Agent ghi ngày 22/10/2026 để biết còn cách mục đích bao xa; đây l�
 
 | Ý trong mục đích | Code hiện tại | Khoảng cách |
 |---|---|---|
-| Truyện chữ: "bê y nguyên", "cần remake thì bấm remake" | Nút 1-Click (`#btn-step1-process-script`) gửi bài qua LLM với quy tắc "review và tóm tắt truyện", ngôi thứ ba (`script_splitter.py`, quy tắc cho bài tiếng Việt). Cửa sổ Kịch bản AI (`#btn-submit-script-split`) chia offline, giữ nguyên chữ. Chuyển thể light novel thành podcast tiếng Anh chỉ có qua API (`POST /api/novel/ingest-chapter`) | Chưa có lựa chọn "giữ nguyên văn / remake" trên luồng 1-Click: hiện luôn viết lại thành lời review, dễ ngắn hơn bài gốc |
+| Truyện chữ: "bê y nguyên", "cần remake thì bấm remake" (remake là kể kiểu review: câu 1 mục 1.2) | Nút 1-Click (`#btn-step1-process-script`) gửi bài qua LLM với quy tắc "review và tóm tắt truyện", ngôi thứ ba (`script_splitter.py`, quy tắc cho bài tiếng Việt). Cửa sổ Kịch bản AI (`#btn-submit-script-split`) chia offline, giữ nguyên chữ. Chuyển thể light novel thành podcast tiếng Anh chỉ có qua API (`POST /api/novel/ingest-chapter`) | Luồng 1-Click hiện chỉ có remake; chưa có lựa chọn "bê nguyên văn" trên luồng này. Quy tắc review hiện có chữ "tóm tắt" nên bài ra dễ ngắn hơn bài gốc |
+| Truyện chữ làm cả bản Anh và Việt (câu 3 mục 1.2) | Nút tạo bản tiếng Anh (`#btn-create-en-version`) chỉ hiện với dự án vụ án bản Việt | Truyện chữ chưa tạo được bản ngôn ngữ thứ hai từ giao diện |
 | Vụ án thật: AI lập dàn ý, viết lại, bỏ tên người và địa điểm | Luồng C trong `FEATURE_MAP.md`: phân tích từng đoạn, đặt tên hư cấu, duyệt dàn ý, kiểm lọt tên thật (`case_adaptation_checks.py`), bản Việt và bản Anh | Đã có; đo thật 22/10/2026 qua test `live` |
-| Mỗi video tối thiểu 15 phút, dài 40–50 phút hoặc tuỳ nội dung | True-crime chọn 8/15/20/30 phút, mặc định 20 (`#tc-duration-select`). Truyện chữ không có mục tiêu số phút: dài ngắn theo bài và nhịp (`#step1-pacing-select`) | Lựa chọn 8 phút thấp hơn mức tối thiểu; chưa có lựa chọn 40–50 phút; truyện chữ chưa nhắm được độ dài và chưa báo khi video dưới 15 phút |
+| Mỗi video tối thiểu 15 phút, dài 40–50 phút hoặc tuỳ nội dung | True-crime chọn 8/15/20/30 phút, mặc định 20 (`#tc-duration-select`). Truyện chữ không có mục tiêu số phút: dài ngắn theo bài và nhịp (`#step1-pacing-select`) | Lựa chọn 8 phút thấp hơn mức tối thiểu, giữ lại để thử (câu 7 mục 1.2); chưa có lựa chọn 40–50 phút; truyện chữ chưa nhắm được độ dài, chưa cảnh báo khi dưới 15 phút và chưa có nút "ghép chương / remake cho dài ra" (câu 2 mục 1.2) |
 | Ảnh/video bằng Muse và Gemini 3.1, đồng nhất nhân vật và phong cảnh | Nguồn ảnh: Muse (mặc định) và 9router Gemini 3.1 Flash Image (`NINEROUTER_IMAGE_MODEL`). Nhân vật: mô tả nhân vật (`character_anchor`, nhân vật mẫu), ảnh tham chiếu, phong cách chung của dự án. Phong cảnh: mỗi cảnh có mô tả bối cảnh riêng do LLM viết | Chưa có bước khoá bối cảnh dùng chung như khoá nhân vật. Cách "lưới 9 ô" của luồng dòng lệnh cũ đã gỡ ngày 22/10/2026 (commit `768a44f`, còn trong lịch sử git) vì giao diện không dùng tới |
-| Đưa prompt để chủ dự án bấm generate | Mỗi cảnh có prompt ảnh, prompt video và nút Muse riêng (mục 2.3 `FEATURE_MAP.md`) | Luồng 1-Click hiện tự tạo ảnh ngay sau khi chia cảnh (`generate_initial_images` bật sẵn), tốn lượt Muse/9router mà không chờ bấm |
+| Đưa prompt để chủ dự án bấm generate | Mỗi cảnh có prompt ảnh, prompt video và nút Muse riêng (mục 2.3 `FEATURE_MAP.md`) | Luồng 1-Click hiện tự tạo ảnh ngay sau khi chia cảnh (`generate_initial_images` bật sẵn), tốn lượt Muse/9router mà không chờ bấm. Chủ dự án: tạm làm từng bước, chốt workflow rồi mới chuyển thành 1-Click (câu 4 mục 1.2) |
+| Ảnh tĩnh có chuyển động nhẹ; cần thì xuất video riêng 5 hoặc 10 giây (câu 5 mục 1.2) | Ảnh: chuyển động nhẹ khi dựng (`build_zoompan_filter()`). Video: Fleet Runner nhận 5 hoặc 10 giây (`clamp_video_duration()`), nhưng nút "Muse Video" luôn gửi 5 giây (`generateSceneWithMuse()`); clip ngắn hơn lời thoại thì lặp lại khi dựng (`render_scene_video()`) | Chưa chọn được video 10 giây; chưa báo khi lời thoại dài hơn clip |
 | Đầu vào là nội dung, quy trình ngầm, bấm là ra video | Luồng A và C trong `FEATURE_MAP.md`; nút Sản xuất video dài (`#btn-produce-long-video`) tự thu giọng, tạo ảnh còn thiếu, dựng và ghép | Đã có khung; độ dài và cách giữ nguyên văn như hai dòng trên |
-| Nhiều kênh YouTube | Mỗi dự án độc lập; gói SEO và thumbnail theo từng dự án | Chưa có khái niệm "kênh" trong code |
+| Nhiều kênh YouTube; kênh theo loại nội dung, tính sau; tự đăng lên YouTube (câu 6 mục 1.2) | Mỗi dự án độc lập; gói SEO và thumbnail theo từng dự án; không có phần đăng YouTube | Chưa có khái niệm "kênh" trong code (để sau); không cần làm phần đăng YouTube |
+
+### 1.2 Trả lời của chủ dự án về quy trình (22/10/2026)
+
+Cột câu hỏi do agent viết (tóm tắt câu đã hỏi trong chat). Cột trả lời là **[Nguyên văn chủ dự án]**.
+
+| # | Câu hỏi của agent | Trả lời — [Nguyên văn chủ dự án] |
+|---|---|---|
+| 1 | "Remake" là viết lại văn phong nhưng giữ cốt truyện, hay kể kiểu review như nút 1-Click đang làm? | Remake là kể kiểu dạng review truyện đó. |
+| 2 | Truyện ngắn quá, không đủ 15 phút thì làm gì: ghép nhiều chương, remake cho dài ra, hay chỉ cần app cảnh báo? | App sẽ cảnh báo trước và có nút lựa chọn ghép chương hoặc remake cho dài ra |
+| 3 | Truyện chữ làm tiếng Việt, tiếng Anh hay cả hai? | Làm cả 2 bản Anh và Việt |
+| 4 | "Bấm generate": một nút cho cả video, hay xem prompt từng cảnh rồi mới bấm? (nút 1-Click hiện tự tạo ảnh ngay) | Tôi thấy cơ chế 1 click tiện nhưng tiềm ẩn rủi ro là ảnh / video không theo 1 workflow hoàn chỉnh, hiện tại thì cứ làm theo từng bước đã. sau này khi đã chốt được workflow rồi thì mới chuyển thành 1 click |
+| 5 | Hình mỗi cảnh: ảnh tĩnh có chuyển động nhẹ hay video Muse 5 giây? | Cứ cho ảnh tĩnh có chuyển động nhẹ, nếu cần video riêng thì tôi sẽ xuất video, mà video có cả 5s với 10s đó, đừng chỉ cố định trong 5 giây, lỡ thoại dài hơn thì còn biết |
+| 6 | Mỗi kênh gắn với gì? Tự đăng lên YouTube hay muốn app đăng? | Tôi muốn tự đăng lên youtube. Còn mỗi kênh gắn với gì thì tôi không hiểu lắm, chắc là loại nội dung đi. Kênh chuyên về truyện, chuyên về án, chuyên về review này kia thì tính sau. |
+| 7 | Lựa chọn 8 phút của vụ án: bỏ đi hay giữ lại để thử cho rẻ quota? | Giữ lại để thử trước. |
 
 ## 2. Nguyên tắc
 
