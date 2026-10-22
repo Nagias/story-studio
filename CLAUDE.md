@@ -32,7 +32,7 @@ Agent ghi ngày 22/10/2026 để biết còn cách mục đích bao xa; đây l�
 | Đưa prompt để chủ dự án bấm generate | Mỗi cảnh có prompt ảnh, prompt video và nút Muse riêng (mục 2.3 `FEATURE_MAP.md`) | Luồng 1-Click hiện tự tạo ảnh ngay sau khi chia cảnh (`generate_initial_images` bật sẵn), tốn lượt Muse/9router mà không chờ bấm. Chủ dự án: tạm làm từng bước, chốt workflow rồi mới chuyển thành 1-Click (câu 4 mục 1.2) |
 | Ảnh tĩnh có chuyển động nhẹ; cần thì xuất video riêng 5 hoặc 10 giây (câu 5 mục 1.2) | Ảnh: chuyển động nhẹ khi dựng (`build_zoompan_filter()`). Video: Fleet Runner nhận 5 hoặc 10 giây (`clamp_video_duration()`), nhưng nút "Muse Video" luôn gửi 5 giây (`generateSceneWithMuse()`); clip ngắn hơn lời thoại thì lặp lại khi dựng (`render_scene_video()`) | Chưa chọn được video 10 giây; chưa báo khi lời thoại dài hơn clip |
 | Đầu vào là nội dung, quy trình ngầm, bấm là ra video | Luồng A và C trong `FEATURE_MAP.md`; nút Sản xuất video dài (`#btn-produce-long-video`) tự thu giọng, tạo ảnh còn thiếu, dựng và ghép | Đã có khung; độ dài và cách giữ nguyên văn như hai dòng trên |
-| Nhiều kênh YouTube; kênh theo loại nội dung, tính sau; tự đăng lên YouTube (câu 6 mục 1.2) | Mỗi dự án độc lập; gói SEO và thumbnail theo từng dự án; không có phần đăng YouTube | Chưa có khái niệm "kênh" trong code (để sau); không cần làm phần đăng YouTube |
+| Nhiều kênh YouTube; kênh theo loại nội dung, tính sau; tự đăng lên YouTube (câu 6 mục 1.2). Đã có kênh; cần tiêu đề, mô tả, thumbnail tải về được, chuẩn SEO YouTube dựa trên repo/nguồn có sẵn, không thuần AI (câu 9 mục 1.2) | Mỗi dự án độc lập; gói SEO và thumbnail theo từng dự án (Bước 4); không có phần đăng YouTube | Chưa có khái niệm "kênh" trong code (để sau); không cần làm phần đăng YouTube; gói SEO hiện chưa đối chiếu với chuẩn hay nguồn dữ liệu nào |
 
 ### 1.2 Trả lời của chủ dự án về quy trình (22/10/2026)
 
@@ -48,6 +48,7 @@ Cột câu hỏi do agent viết (tóm tắt câu đã hỏi trong chat). Cột 
 | 6 | Mỗi kênh gắn với gì? Tự đăng lên YouTube hay muốn app đăng? | Tôi muốn tự đăng lên youtube. Còn mỗi kênh gắn với gì thì tôi không hiểu lắm, chắc là loại nội dung đi. Kênh chuyên về truyện, chuyên về án, chuyên về review này kia thì tính sau. |
 | 7 | Lựa chọn 8 phút của vụ án: bỏ đi hay giữ lại để thử cho rẻ quota? | Giữ lại để thử trước. |
 | 8 | "Remake cho dài ra" làm thế nào, khi quy tắc review hiện có chữ "tóm tắt" nên bài ra thường ngắn hơn truyện gốc? | Tôi nghĩ là remake cho dài ra thì cơ bản là thêm ý nhận xét ngoài lề thôi. nhưng ưu tiên gộp chương hơn là cố làm dài rồi thành nhạt nhẽo. |
+| 9 | (Góp ý khi duyệt bảng 1.1, dòng kênh YouTube) | Tôi đã có kênh, cứ làm luôn cả mô tả, tiêu đề, thumbnail để tôi tải về đi. Cái này phải xem có repo nào hỗ trợ không để chuẩn SEO Youtube, chứ không được thuần AI suy nghĩ. AI sẽ không chính xác. |
 
 ### 1.3 Quy trình làm video — [Đề xuất của agent; chủ dự án xác nhận tạm 22/10/2026: "Tạm thời là đúng ý tôi rồi"]
 
@@ -88,6 +89,16 @@ Agent suy ra từ mục 1 và 1.2. Cuối mỗi bước ghi tình trạng code h
 
 > mọi việc làm/tái hiện lỗi/kiểm chứng đều phải tra FEATURE_MAP.md trước, cấm đoán đường.
 
+### 2.4 Khoá cứng và khoá mềm — [Nguyên văn chủ dự án] (22/10/2026, khi duyệt mục 5, 6, 7)
+
+> 14  điều cấm khi viết code đang là Quy tắc cứng có luôn file script chạy gì đó hay là quy tắc mềm chỉ ghi trên Claude.md. Tôi đề xuất là cứ lỗi nào lặp đi lặp lại ít nhất 3 lần thì đưa thành quy tắc cứng - hard guardrail.
+
+> vẫn câu hỏi giống B là bạn đang để ở hard guardrail hay chỉ đơn thuần là 1 file markdown. Nếu bị vi phạm lỗi từ 3 lần trở lên, nếu đang là 1 file cấm dạng mềm như markdown thì chuyern thành khóa cứng luôn để không bao giờ vi phạm lại lỗi.
+
+> Tương tự với mục B và C. Tôi duyệt cho bạn nhưng cần phân loại rõ ràng giữa khóa cứng và khóa mềm. Trong đó khóa cứng là hard guardrail, tôi không rõ làm bằng gì nhưng là câu lệnh rõ ràng, không phải chỉ 1 file markdown. Còn khóa mềm đơn thuần là file markdown, tđôi lúc AI còn không thèm quét qua nên hay làm sai
+
+(B là mục 5, C là mục 6, D là mục 7 khi agent trình bày trong chat.)
+
 ## 3. Lệnh
 
 | Việc | Lệnh |
@@ -127,7 +138,7 @@ Nơi ghi từng loại dữ liệu (hiện tại):
 | Ảnh/video Muse | `backend/static/muse_outputs/` + bản sao trong dự án | `complete_task()` | — |
 | Cấu hình | `.env` (mẫu đủ biến: `.env.example`), `backend/config.py` | `config.py` (công tắc đọc lúc gọi: `env_flag()`) | — (còn 3 file có lý do: tiến trình riêng `vieneu_server.py`, `single_instance.py`, `muse_fleet_runner.py`) |
 
-## 5. Đường cấm — [Đề xuất của agent — chưa duyệt]
+## 5. Đường cấm — [Đề xuất của agent — chủ dự án duyệt 22/10/2026, kèm phân loại khoá cứng/mềm theo mục 2.4]
 
 Lập từ đợt rà soát 21/10/2026. Cột cuối liệt kê chỗ còn vi phạm để agent **không chép theo**; sửa chúng là việc riêng.
 
@@ -162,7 +173,7 @@ Code mới nên theo mẫu của mảng true-crime (mục 4), không theo mảng
 
 > làm trên branch, không push thẳng main, làm xong phải tự kiểm chứng bằng bằng chứng
 
-**Làm dày — [Đề xuất của agent — chưa duyệt]**
+**Làm dày — [Đề xuất của agent — chủ dự án duyệt 22/10/2026, kèm phân loại khoá cứng/mềm theo mục 2.4]**
 - **Nhánh:** repo chưa có remote, nhánh chính tên `master` (là "main" trong quy tắc trên). Mỗi việc một nhánh mới từ `master`, tên tiếng Việt không dấu. Commit trên nhánh; chỉ gộp vào `master` khi chủ dự án đồng ý; không push lên đâu khi chưa được bảo.
 - **Trước khi sửa:** tra `FEATURE_MAP.md`; nói rõ sẽ sửa những file nào; việc dài thì ghi checklist vào `TASKS.md` và tick khi xong.
 - **Bằng chứng tối thiểu:**
@@ -186,7 +197,7 @@ Code mới nên theo mẫu của mảng true-crime (mục 4), không theo mảng
 
 ## 7. Bảng định tuyến: loại việc → quy trình
 
-Cột "Quy trình" để trống, chủ dự án điền ở giai đoạn sau. Cột "Nhận biết" là **[Đề xuất của agent — chưa duyệt]**.
+Cột "Quy trình" để trống, chủ dự án điền ở giai đoạn sau. Cột "Nhận biết" là **[Đề xuất của agent — chủ dự án duyệt 22/10/2026, kèm phân loại khoá cứng/mềm theo mục 2.4]**.
 
 | Loại việc | Nhận biết | Quy trình |
 |---|---|---|
