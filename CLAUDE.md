@@ -27,7 +27,7 @@ Agent ghi ngày 22/10/2026 để biết còn cách mục đích bao xa; đây l�
 | Truyện chữ: "bê y nguyên", "cần remake thì bấm remake" (remake là kể kiểu review: câu 1 mục 1.2) | Nút 1-Click (`#btn-step1-process-script`) gửi bài qua LLM với quy tắc "review và tóm tắt truyện", ngôi thứ ba (`script_splitter.py`, quy tắc cho bài tiếng Việt). Cửa sổ Kịch bản AI (`#btn-submit-script-split`) chia offline, giữ nguyên chữ. Chuyển thể light novel thành podcast tiếng Anh chỉ có qua API (`POST /api/novel/ingest-chapter`) | Luồng 1-Click hiện chỉ có remake; chưa có lựa chọn "bê nguyên văn" trên luồng này. Quy tắc review hiện có chữ "tóm tắt" nên bài ra dễ ngắn hơn bài gốc |
 | Truyện chữ làm cả bản Anh và Việt (câu 3 mục 1.2) | Nút tạo bản tiếng Anh (`#btn-create-en-version`) chỉ hiện với dự án vụ án bản Việt | Truyện chữ chưa tạo được bản ngôn ngữ thứ hai từ giao diện |
 | Vụ án thật: AI lập dàn ý, viết lại, bỏ tên người và địa điểm | Luồng C trong `FEATURE_MAP.md`: phân tích từng đoạn, đặt tên hư cấu, duyệt dàn ý, kiểm lọt tên thật (`case_adaptation_checks.py`), bản Việt và bản Anh | Đã có; đo thật 22/10/2026 qua test `live` |
-| Mỗi video tối thiểu 15 phút, dài 40–50 phút hoặc tuỳ nội dung | True-crime chọn 8/15/20/30 phút, mặc định 20 (`#tc-duration-select`). Truyện chữ không có mục tiêu số phút: dài ngắn theo bài và nhịp (`#step1-pacing-select`) | Lựa chọn 8 phút thấp hơn mức tối thiểu, giữ lại để thử (câu 7 mục 1.2); chưa có lựa chọn 40–50 phút; truyện chữ chưa nhắm được độ dài, chưa cảnh báo khi dưới 15 phút và chưa có nút "ghép chương / remake cho dài ra" (câu 2 mục 1.2) |
+| Mỗi video tối thiểu 15 phút, dài 40–50 phút hoặc tuỳ nội dung | True-crime chọn 8/15/20/30 phút, mặc định 20 (`#tc-duration-select`). Truyện chữ không có mục tiêu số phút: dài ngắn theo bài và nhịp (`#step1-pacing-select`) | Lựa chọn 8 phút thấp hơn mức tối thiểu, giữ lại để thử (câu 7 mục 1.2); chưa có lựa chọn 40–50 phút; truyện chữ chưa nhắm được độ dài, chưa cảnh báo khi dưới 15 phút và chưa có nút "ghép chương / remake cho dài ra" (câu 2 mục 1.2; ưu tiên ghép chương: câu 8) |
 | Ảnh/video bằng Muse và Gemini 3.1, đồng nhất nhân vật và phong cảnh | Nguồn ảnh: Muse (mặc định) và 9router Gemini 3.1 Flash Image (`NINEROUTER_IMAGE_MODEL`). Nhân vật: mô tả nhân vật (`character_anchor`, nhân vật mẫu), ảnh tham chiếu, phong cách chung của dự án. Phong cảnh: mỗi cảnh có mô tả bối cảnh riêng do LLM viết | Chưa có bước khoá bối cảnh dùng chung như khoá nhân vật. Cách "lưới 9 ô" của luồng dòng lệnh cũ đã gỡ ngày 22/10/2026 (commit `768a44f`, còn trong lịch sử git) vì giao diện không dùng tới |
 | Đưa prompt để chủ dự án bấm generate | Mỗi cảnh có prompt ảnh, prompt video và nút Muse riêng (mục 2.3 `FEATURE_MAP.md`) | Luồng 1-Click hiện tự tạo ảnh ngay sau khi chia cảnh (`generate_initial_images` bật sẵn), tốn lượt Muse/9router mà không chờ bấm. Chủ dự án: tạm làm từng bước, chốt workflow rồi mới chuyển thành 1-Click (câu 4 mục 1.2) |
 | Ảnh tĩnh có chuyển động nhẹ; cần thì xuất video riêng 5 hoặc 10 giây (câu 5 mục 1.2) | Ảnh: chuyển động nhẹ khi dựng (`build_zoompan_filter()`). Video: Fleet Runner nhận 5 hoặc 10 giây (`clamp_video_duration()`), nhưng nút "Muse Video" luôn gửi 5 giây (`generateSceneWithMuse()`); clip ngắn hơn lời thoại thì lặp lại khi dựng (`render_scene_video()`) | Chưa chọn được video 10 giây; chưa báo khi lời thoại dài hơn clip |
@@ -47,6 +47,32 @@ Cột câu hỏi do agent viết (tóm tắt câu đã hỏi trong chat). Cột 
 | 5 | Hình mỗi cảnh: ảnh tĩnh có chuyển động nhẹ hay video Muse 5 giây? | Cứ cho ảnh tĩnh có chuyển động nhẹ, nếu cần video riêng thì tôi sẽ xuất video, mà video có cả 5s với 10s đó, đừng chỉ cố định trong 5 giây, lỡ thoại dài hơn thì còn biết |
 | 6 | Mỗi kênh gắn với gì? Tự đăng lên YouTube hay muốn app đăng? | Tôi muốn tự đăng lên youtube. Còn mỗi kênh gắn với gì thì tôi không hiểu lắm, chắc là loại nội dung đi. Kênh chuyên về truyện, chuyên về án, chuyên về review này kia thì tính sau. |
 | 7 | Lựa chọn 8 phút của vụ án: bỏ đi hay giữ lại để thử cho rẻ quota? | Giữ lại để thử trước. |
+| 8 | "Remake cho dài ra" làm thế nào, khi quy tắc review hiện có chữ "tóm tắt" nên bài ra thường ngắn hơn truyện gốc? | Tôi nghĩ là remake cho dài ra thì cơ bản là thêm ý nhận xét ngoài lề thôi. nhưng ưu tiên gộp chương hơn là cố làm dài rồi thành nhạt nhẽo. |
+
+### 1.3 Quy trình làm video — [Đề xuất của agent; chủ dự án xác nhận tạm 22/10/2026: "Tạm thời là đúng ý tôi rồi"]
+
+Agent suy ra từ mục 1 và 1.2. Cuối mỗi bước ghi tình trạng code hiện tại (có / thiếu / lệch); chi tiết ở bảng 1.1.
+
+Đầu vào: nội dung video muốn làm.
+
+- Nhánh truyện chữ (light novel có thật):
+  1. Dán truyện — có.
+  2. Chọn bê nguyên văn hoặc remake (kể kiểu review) — remake có; lựa chọn bê nguyên văn thiếu.
+  3. Ước độ dài; dưới 15 phút thì cảnh báo và cho chọn ghép chương (ưu tiên) hoặc remake cho dài ra (thêm nhận xét ngoài lề) — thiếu.
+- Nhánh vụ án thật:
+  1. Chủ dự án tự tìm vụ, dán bài — có.
+  2. AI gạch dàn ý, chủ dự án duyệt dàn ý; chọn 8/15/20/30 phút — có.
+  3. AI viết lại, bỏ tên người và địa điểm, kiểm lọt tên thật — có.
+- Phần chung sau khi hai nhánh gộp lại:
+  4. Chia cảnh (chạy ngầm) — có.
+  5. Đồng nhất nhân vật và phong cảnh — nhân vật có; khoá phong cảnh dùng chung thiếu.
+  6. Prompt ảnh/video cho từng cảnh (Muse, Gemini 3.1) — có.
+  7. Chủ dự án bấm generate từng bước — lệch: nút 1-Click đang tự tạo ảnh ngay.
+  8. Ảnh tĩnh có chuyển động nhẹ; video riêng 5 hoặc 10 giây khi cần — thiếu: nút Muse Video cố định 5 giây.
+  9. Bản tiếng Anh dùng lại ảnh của bản Việt — vụ án có; truyện chữ thiếu.
+  10. Giọng đọc, dựng, ghép từng bản — có.
+  11. Chủ dự án tự đăng YouTube; tiêu đề, mô tả, thumbnail có sẵn để chép — có.
+- Để sau: kênh theo loại nội dung (câu 6 mục 1.2).
 
 ## 2. Nguyên tắc
 

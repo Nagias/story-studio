@@ -223,4 +223,5 @@ Không đụng phần nguyên văn của chủ dự án trong CLAUDE.md (mục �
 - [x] Mục 1 CLAUDE.md: ghi nguyên văn mục đích của chủ dự án (22/10/2026, kiểm khớp từng chữ) + bảng 1.1 đối chiếu với code (đề xuất của agent, chưa duyệt)
 - [x] Mục 1 CLAUDE.md: ghi nguyên văn "Mức tối thiểu là 15 phút" (22/10/2026); bảng 1.1 thêm khoảng cách: true-crime còn lựa chọn 8 phút, truyện chữ chưa báo khi video dưới 15 phút
 - [x] Mục 1.2 CLAUDE.md: 7 câu trả lời của chủ dự án về quy trình (remake, dưới 15 phút, Anh + Việt, từng bước trước 1-Click, ảnh chuyển động + video 5/10 giây, tự đăng YouTube, giữ 8 phút), kiểm khớp từng chữ bằng script; bảng 1.1 cập nhật theo (thêm dòng bản Anh cho truyện chữ, dòng video 5/10 giây: nút Muse Video đang cố định 5 giây)
-- [ ] Phần của chủ dự án: duyệt mục 1.1, 5, 6; kiểm sơ đồ quy trình agent suy ra từ mục đích; điền cột quy trình mục 7
+- [x] Mục 1.2 thêm câu 8 (remake cho dài ra = thêm nhận xét ngoài lề, ưu tiên gộp chương), kiểm khớp từng chữ; mục 1.3 ghi sơ đồ quy trình làm video dạng chữ, chủ dự án xác nhận tạm "Tạm thời là đúng ý tôi rồi"
+- [ ] Phần của chủ dự án: duyệt bảng 1.1, mục 5, 6, cột "Nhận biết" mục 7 (đã trình bày lại đầy đủ trong chat 22/10/2026); điền cột quy trình mục 7
