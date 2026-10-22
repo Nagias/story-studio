@@ -106,9 +106,9 @@ Agent suy ra từ mục 1 và 1.2. Cuối mỗi bước ghi tình trạng code h
 | Chạy app | `run.bat` (hoặc `.venv\Scripts\python.exe run.py`), mở `http://localhost:8000`. Tự bật Fleet Runner |
 | Python | luôn `.venv\Scripts\python.exe` (Python 3.14), không dùng `python` hệ thống; in tiếng Việt thì thêm `-X utf8` |
 | Cài thư viện | `.venv\Scripts\python.exe -m pip install -r backend\requirements-dev.txt` (phiên bản đã ghim); Playwright thêm `.venv\Scripts\python.exe -m playwright install chromium` |
-| Kiểm tra nhanh (hook tự chạy mỗi lần commit) | `.venv\Scripts\python.exe tools\check.py`: Ruff so với mốc, cú pháp JS, test kiến trúc, test FEATURE_MAP (khoảng 15 giây) |
+| Kiểm tra nhanh (hook tự chạy mỗi lần commit) | `.venv\Scripts\python.exe tools\check.py`: Ruff so với mốc, cú pháp JS, test kiến trúc, test FEATURE_MAP, test khoá cứng mục 5.1 và 6.1 (khoảng 15 giây) |
 | Kiểm tra đầy đủ (trước khi gộp `master`) | `.venv\Scripts\python.exe tools\check.py --full`: thêm cả bộ test mặc định |
-| Cài hook trước commit (một lần mỗi bản sao repo) | `.venv\Scripts\python.exe tools\check.py --install-hook`. Không bỏ qua hook bằng `--no-verify` |
+| Cài hook git (một lần mỗi bản sao repo, và sau khi `tools/check.py` đổi cách cài hook) | `.venv\Scripts\python.exe tools\check.py --install-hook`: hook pre-commit chặn commit thẳng lên `master`/`main` rồi chạy bản nhanh; hook commit-msg chặn dòng đầu commit sai dạng `<vùng>: <mô tả>`. Không bỏ qua hook bằng `--no-verify` |
 | Test một file | `.venv\Scripts\python.exe -m pytest tests\test_xxx.py -q` |
 | Bộ test mặc định (offline) | `.venv\Scripts\python.exe -m pytest -q` (`pytest.ini` bỏ qua test cờ `live`; test không gắn cờ mà gọi mạng, 9router, VieNeu hay server 8000 thì bị chặn và báo lỗi; còn dự án rác trong `projects/` thì báo lỗi) |
 | Test gọi dịch vụ thật | chỉ khi được yêu cầu: `.venv\Scripts\python.exe -m pytest -m live -q` (Edge-TTS, 9router, VieNeu); riêng `tests/test_case_adaptation_live.py` cần thêm `STORY_STUDIO_LIVE=1` |
@@ -142,11 +142,7 @@ Nơi ghi từng loại dữ liệu (hiện tại):
 
 Lập từ đợt rà soát 21/10/2026. Cột cuối liệt kê chỗ còn vi phạm để agent **không chép theo**; sửa chúng là việc riêng.
 
-Máy kiểm tự động (chạy trong `tools/check.py` và hook trước commit):
-- dòng 1, 5, 6, 7, 9 (phần `showToast`), 10, 13, 14: `tests/test_architecture.py` (vi phạm cũ ghi thành ngoại lệ đếm đúng số lần; biến môi trường phải có trong `.env.example`);
-- dòng 2 (phần `except: pass`) và 8 (phần `open`, `subprocess` trong hàm async): Ruff, so với mốc `tools/ruff_baseline.json`;
-- dòng 11: `tests/conftest.py` (mọi test chạy trong thư mục tạm, chặn mạng và dịch vụ thật nếu không gắn cờ `live`, báo dự án rác) và `tests/test_test_isolation.py`;
-- dòng 3, 4, 12 và phần còn lại của dòng 2, 8, 9: **chưa có máy kiểm**, dựa vào người duyệt.
+Dòng nào là khoá cứng, dòng nào là khoá mềm: bảng 5.1 ngay dưới bảng này.
 
 | # | Mẫu cấm | Làm thay | Vì sao | Còn vi phạm ở |
 |---|---|---|---|---|
@@ -166,6 +162,29 @@ Máy kiểm tự động (chạy trong `tools/check.py` và hook trước commit
 | 14 | Đường dẫn tuyệt đối của máy này, hay trỏ sang dự án khác | đường dẫn từ `config.py` | hỏng trên máy khách; `tools/build_release.py` chặn | `thumbnail_service.py` (`C:\Windows\Fonts`); vài chuỗi hợp lệ có ghi lý do trong `tests/test_architecture.py` |
 
 Code mới nên theo mẫu của mảng true-crime (mục 4), không theo mảng cũ.
+
+### 5.1 Khoá cứng hay khoá mềm (theo mục 2.4)
+
+- **Khoá cứng**: có lệnh chạy tự động mỗi lần commit (`tools/check.py`, hook git), vi phạm là bị chặn, không lưu được. Chỗ vi phạm có từ trước được ghi thành ngoại lệ đếm đúng số lần: không cho thêm chỗ mới, chỉ cho giảm.
+- **Khoá mềm**: chỉ ghi trong file này, dựa vào agent đọc và người duyệt.
+- Quy tắc của mục 2.4: dòng nào ghi từ 3 lần vi phạm trở lên thì không được để "mềm". Máy kiểm chính bảng này: `tests/test_guardrail_policy.py` (đọc cột "Khoá" và "Số lần vi phạm"; dòng "cứng" phải trỏ tới lệnh kiểm có thật). Gặp thêm vi phạm thì tăng số ở đây.
+
+| # | Khoá | Máy kiểm | Số lần vi phạm đã ghi nhận | Bằng chứng; phần còn mềm |
+|---|---|---|---|---|
+| 1 | cứng | `tests/test_architecture.py::test_only_project_service_writes_project_json` | 13 | 13 chỗ ghi project.json ngoài `project_service`, gom về một nơi (commit `c116f07`) |
+| 2 | cứng | `tests/test_architecture.py::test_except_does_not_silently_return_empty`, `tools/ruff_baseline.json` (luật S110) | 49 | 1 sự cố (dự án bị ghi đè thành rỗng) + 31 chỗ `except: pass` + 17 chỗ `except` trả rỗng không ghi log (chưa rà từng chỗ, có chỗ hợp lệ) |
+| 3 | cứng một phần | `tests/test_architecture.py::test_no_sample_media_links`, `tests/test_architecture.py::test_no_functions_that_only_pass` | 4 | `get_audio_duration()` đoán 3 giây; nhập truyện tranh gán ảnh không có; màn Render giả kèm video mẫu (commit `34421c9`); chuỗi tạo ảnh báo xong khi lỗi (test `tests/test_no_fake_success_and_motion_render.py`). Còn mềm: các kiểu "thành công giả" khác máy không nhận ra được |
+| 4 | mềm | — | 1 | Muse lỗi tự rơi sang 9router (có ghi lý do, test `tests/test_no_fake_success_and_motion_render.py`) |
+| 5 | cứng | `tests/test_architecture.py::test_no_new_llm_clients` | 3 | 3 client cũ trong `script_splitter.py` (2) và `storyboard_engine.py` (1) |
+| 6 | cứng | `tests/test_architecture.py::test_env_read_only_in_config`, `tests/test_architecture.py::test_every_env_var_is_documented_in_env_example` | 1 | `DEFAULT_VOICE` trong `.env` không có tác dụng |
+| 7 | cứng | `tests/test_architecture.py::test_no_string_prefix_path_checks` | 1 | `complete_task()` khớp nhầm `proj_a` với `proj_ab` |
+| 8 | cứng một phần | `tools/ruff_baseline.json` (luật ASYNC220, ASYNC221, ASYNC230) | 22 | 20 chỗ `open()`/`subprocess` trong hàm async + 2 việc nặng OpenCV, PIL (đã chuyển luồng phụ). Còn mềm: gọi ffmpeg, OpenCV qua thư viện khác |
+| 9 | cứng | `tests/test_architecture.py::test_toasts_escape_untrusted_text`, `tests/test_architecture.py::test_html_templates_escape_interpolations` | 30 | 21 thông báo + 9 chỗ ở thư viện ảnh Muse chưa lọc (commit `d33d9df`); 150 chỗ `${...}` cũ trong khuôn HTML ghi thành ngoại lệ (chưa rà từng chỗ) |
+| 10 | cứng | `tests/test_architecture.py::test_click_handlers_bound_once` | 1 | nút tải SEO chạy hai lần |
+| 11 | cứng | `tests/conftest.py`, `tests/test_test_isolation.py::test_no_loaded_module_points_at_real_projects_dir` | 3 | test để lại dự án rác và thư mục cắt truyện tranh nhiều lần trước 22/10/2026 |
+| 12 | cứng | `tests/test_architecture.py::test_no_new_permanent_deletes` | 3 | `delete_project()`, `delete_gallery_item()`, `clear_all_gallery()` vẫn xoá vĩnh viễn (ghi ngoại lệ; sửa là việc riêng) |
+| 13 | cứng | `tests/test_architecture.py::test_services_do_not_import_routers` | 1 | `image_service.py` import `routers.muse_bridge` |
+| 14 | cứng | `tests/test_architecture.py::test_no_machine_specific_paths` | 1 | font thumbnail `C:\Windows\Fonts` |
 
 ## 6. Quy tắc làm việc của agent
 
@@ -195,9 +214,30 @@ Code mới nên theo mẫu của mảng true-crime (mục 4), không theo mảng
 - **Chỗ đặt file:** không thêm script ở gốc dự án; test đặt trong `tests/`, công cụ đặt trong `tools/`, file tạm đặt trong `.cache/`. Không sửa file ngoài thư mục dự án khi chưa hỏi.
 - **Thư viện tuỳ chọn:** `openai`, `faster-whisper`, `av` có thể chưa cài, code tự bỏ qua; thiếu chúng không phải lỗi.
 
+### 6.1 Khoá cứng hay khoá mềm (theo mục 2.4)
+
+Cùng cách đọc và cùng máy kiểm với bảng 5.1. Hook git chỉ có tác dụng khi đã cài: `.venv\Scripts\python.exe tools\check.py --install-hook` (test `tests/test_git_guards.py` báo nếu chưa cài hoặc bản cũ).
+
+| # | Khoá | Máy kiểm | Số lần vi phạm đã ghi nhận | Quy tắc; bằng chứng; phần còn mềm |
+|---|---|---|---|---|
+| 1 | cứng | `tools/check.py::hook_script` (hook pre-commit), `tests/test_git_guards.py::test_pre_commit_hook_blocks_commit_on_master` | 25 | Không commit thẳng lên `master`: 25 commit thẳng trong lịch sử, 3 sau khi có quy tắc (`b4fd74e`, `6d0666e`, và `603dba6` là commit rỗng lọt khi agent thử khoá bản đầu, vì master còn `tools/check.py` cũ; nay phần chặn viết thẳng trong hook). Gộp nhánh vào `master` vẫn được |
+| 2 | mềm | — | 0 | Chỉ gộp vào `master` khi chủ dự án đồng ý: máy không biết chủ dự án đã đồng ý chưa |
+| 3 | mềm | — | 0 | Không push khi chưa được bảo (repo chưa có remote) |
+| 4 | mềm | — | 0 | Trước khi sửa: tra `FEATURE_MAP.md`, nói trước file sẽ sửa, việc dài ghi checklist `TASKS.md` |
+| 5 | cứng một phần | `tools/check.py::check_pytest` (hook pre-commit chạy bản nhanh) | 1 | Có bằng chứng mới báo xong; lần ghi nhận: báo số ước tính thay số đo thật (21/10/2026). Còn mềm: chạy `--full` trước khi gộp, bấm thật giao diện, nghe/xem file thật, báo "chưa kiểm chứng" |
+| 6 | cứng một phần | `tests/conftest.py` | 3 | Không để lại dự án rác: phần test là cứng. Còn mềm: chạy thử bằng server thử hay script thì tự so `projects/` trước và sau |
+| 7 | mềm | — | 0 | Không đụng 3 mục MẪU; dọn thì vào Thùng rác và phải hỏi trước |
+| 8 | cứng một phần | `.gitignore`, `tools/build_release.py` | 1 | Bí mật: `git add` thường không lấy được `.env`, `backend/chrome_profiles/`, `backend/config/muse_fleet_accounts.json`; gói bán tự chặn chuỗi giống key (gói zip cũ từng lộ key, trước khi có git). Còn mềm: không in `.env` ra chat, không dùng `git add -f` |
+| 9 | cứng một phần | `tests/conftest.py`, `.claude/launch.json` | 0 | Quota: test không gọi được dịch vụ thật nếu không gắn cờ `live`; server thử tắt sẵn hàng việc phân tích. Còn mềm: ghi số lần gọi, không chạy lặp vô ích |
+| 10 | cứng | `tools/check.py::commit_message_problem` (hook commit-msg) | 4 | Dòng đầu commit dạng `<vùng>: <mô tả>`: 4 commit sai (`ffa1c3b`, `afaadab`, `a3de4c7`, `c116f07`). Còn mềm: viết tiếng Việt, mỗi thay đổi một commit |
+| 11 | cứng một phần | `tests/test_working_rules.py::test_no_new_scripts_in_project_root` | 3 | Không thêm script ở gốc dự án: đã phải xoá 3 script (run_studio.py, run_studio.bat, run_all_tests.py; xem `git log --diff-filter=D`). Còn mềm: không sửa file ngoài thư mục dự án khi chưa hỏi |
+| 12 | mềm | — | 0 | Thư viện tuỳ chọn: chỉ là ghi chú, không phải điều cấm |
+
 ## 7. Bảng định tuyến: loại việc → quy trình
 
 Cột "Quy trình" để trống, chủ dự án điền ở giai đoạn sau. Cột "Nhận biết" là **[Đề xuất của agent — chủ dự án duyệt 22/10/2026, kèm phân loại khoá cứng/mềm theo mục 2.4]**.
+
+Khoá: cả mục 7 là **khoá mềm**. Xếp một việc vào loại nào là phán đoán, máy không kiểm được; chưa ghi nhận lần xếp sai nào. Khi cột "Quy trình" có bước cụ thể, bước nào máy kiểm được (ví dụ "chạy `tools/check.py --full`") thì làm thành khoá cứng như bảng 6.1.
 
 | Loại việc | Nhận biết | Quy trình |
 |---|---|---|
