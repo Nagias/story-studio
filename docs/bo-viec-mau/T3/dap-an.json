@@ -8,7 +8,7 @@
    "commit": "d33d9df"
   }
  ],
- "tao_luc": "2026-10-23T01:14:27",
+ "tao_luc": "2026-10-23T08:49:57",
  "f2p": [
   "tests/test_an_t3_loc_chu_giao_dien.py::test_escapehtml_nhan_moi_kieu_gia_tri",
   "tests/test_an_t3_loc_chu_giao_dien.py::test_the_thu_vien_muse_loc_moi_gia_tri_tu_may_chu",

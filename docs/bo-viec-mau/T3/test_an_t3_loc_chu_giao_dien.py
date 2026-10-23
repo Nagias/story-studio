@@ -14,7 +14,9 @@ import pytest
 APP_JS = Path(__file__).resolve().parent.parent / "backend" / "static" / "app.js"
 _TOP_FUNCTION = re.compile(r"^(?:async\s+)?function\s+\w+\s*\(", re.MULTILINE)
 _SERVER_VALUES = re.compile(r"\b(?:mediaUrl|sceneId|taskId|downloadUrl)\b|\.(?:output_path|task_id|media_url|file_url)\b")
-_ESCAPED_CALL = re.compile(r"\b(?:escapeHtml|tcEsc)\(")
+# Cách lọc hợp lệ: escapeHtml/tcEsc; encodeURIComponent cũng được (kết quả không có < > " &), vd dựng link tải
+# `/download/${encodeURIComponent(id)}` rồi lọc cả link khi chèn (gặp ở lần đo điểm gốc 23/10/2026, trước đó bị chấm oan).
+_ESCAPED_CALL = re.compile(r"\b(?:escapeHtml|tcEsc|encodeURIComponent)\(")
 
 
 def _balanced_end(text: str, open_at: int, open_ch: str, close_ch: str) -> int:
