@@ -219,6 +219,12 @@ Code mới nên theo mẫu của mảng true-crime (mục 4), không theo mảng
 
 > Từ nay, mỗi lần sửa skill hoặc agent, phải chạy lại bộ việc mẫu này và báo cáo điểm trước/sau.
 
+**Skill và agent của dự án** (phương án 3 agent, chủ dự án duyệt 23/10/2026; dựng từ bộ skill mẫu ghép với expert agency-agents). Agent tự nạp skill hay tự gọi agent khi việc khớp dòng `description` — đó là khoá mềm.
+- Người làm (phiên chính) dùng 9 skill trong `.claude/skills/`: giao-viec, kiem-chung, cham-cheo, ban-giao, duy-tri-feature-map, tao-feature-map, lam-vuon, loop-toi-chuan, sua-thanh-luat.
+- Giám khảo `.claude/agents/giam-khao.md` (model Sonnet, chỉ đọc và chạy lệnh kiểm): gọi trước khi báo "xong" một thay đổi có đụng code, tối đa 3 vòng.
+- Rà soát `.claude/agents/ra-soat.md` (chỉ đọc): gọi khi chủ dự án yêu cầu rà soát, hoặc một loại lỗi lặp từ 3 lần.
+- Sửa các file này là "sửa skill hoặc agent": chạy lại bộ việc mẫu (`docs/bo-viec-mau/README.md`).
+
 ### 6.1 Khoá cứng hay khoá mềm (theo mục 2.4)
 
 Cùng cách đọc và cùng máy kiểm với bảng 5.1. Hook git chỉ có tác dụng khi đã cài: `.venv\Scripts\python.exe tools\check.py --install-hook` (test `tests/test_git_guards.py` báo nếu chưa cài hoặc bản cũ).
