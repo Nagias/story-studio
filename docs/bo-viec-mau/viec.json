@@ -1,5 +1,5 @@
 {
- "ghi_chu": "Bộ việc mẫu chuẩn (docs/bo-viec-mau/README.md). goc: mã nguồn trước lần sửa (commit, kèm thay đổi cần đảo ngược nếu có). dap_an: lần sửa thật áp lên bản gốc. Mỗi thay đổi là mã commit hoặc {commit, chi_lay: chỉ lấy các file này, bo_qua_ngu_canh: không đòi khớp dòng xung quanh}. test_them: test ẩn bổ sung trong thư mục của việc. duoc_sua: file được phép đổi (kết thúc bằng / là cả thư mục). phai_sua: file bắt buộc phải đổi.",
+ "ghi_chu": "Bộ việc mẫu chuẩn (docs/bo-viec-mau/README.md). goc: mã nguồn trước lần sửa (commit, kèm thay đổi cần đảo ngược nếu có). dap_an: lần sửa thật áp lên bản gốc. Mỗi thay đổi là mã commit hoặc {commit, chi_lay: chỉ lấy các file này, bo_qua_ngu_canh: không đòi khớp dòng xung quanh}. test_them: test ẩn bổ sung trong thư mục của việc. bo_cham: test của lần sửa thật không chấm vì đã biết chấm oan (kèm ly_do_bo_cham và test bổ sung thay thế). duoc_sua: file được phép đổi (kết thúc bằng / là cả thư mục). phai_sua: file bắt buộc phải đổi.",
  "viec": {
   "T1": {
    "ten": "Kiểm đường dẫn: ảnh Muse của proj_ab bị gắn link sang proj_a",
@@ -27,6 +27,8 @@
    "goc": {"commit": "ccf87db"},
    "dap_an": [{"commit": "d33d9df"}],
    "test_them": ["test_an_t3_loc_chu_giao_dien.py"],
+   "bo_cham": ["tests/test_architecture.py::test_toasts_escape_untrusted_text"],
+   "ly_do_bo_cham": "Bộ quét của lần sửa thật chỉ nhìn dòng showToast(), chấm oan biến đã lọc lúc gán (const errText = escapeHtml(...), có sẵn ở bản gốc). Thay bằng test_an_t3_loc_chu_giao_dien.py::test_thong_bao_loc_chu_tu_loi_may_chu_va_nguoi_dung. Gặp ở lần đo 2026-10-23-skill-tu-nap.",
    "duoc_sua": ["backend/static/app.js", "backend/static/true_crime.js",
                 "tests/", "CLAUDE.md", "FEATURE_MAP.md", "TASKS.md", "tools/ruff_baseline.json"],
    "phai_sua": []

@@ -93,6 +93,8 @@ Chạy lại lệnh này khi thêm hay sửa việc mẫu, đổi test bổ sung
 - **Bài làm đúng theo cách khác có thể bị chấm oan.** Test ẩn viết theo lần sửa thật, nên bài làm đúng theo cách khác hẳn có thể mất điểm ở A hoặc B. Điểm tụt thì đọc test nào hỏng trước khi kết luận. Lần đo điểm gốc đã gặp và sửa 2 lần chấm oan:
   - T1: bản chấm thiếu file test mới mà bài làm đã ghi vào `FEATURE_MAP.md`;
   - T3: test ẩn chưa nhận `encodeURIComponent` là cách lọc.
+
+  Lần đo `2026-10-23-skill-tu-nap` gặp thêm 1 lần ở T3: bộ quét thông báo của lần sửa thật (`test_architecture.py::test_toasts_escape_untrusted_text`) chỉ nhìn dòng `showToast()`, nên không nhận biến đã lọc ngay lúc gán (`const errText = escapeHtml(...)`). Test này được ghi vào `bo_cham` trong `viec.json` (không chấm), thay bằng test bổ sung `test_thong_bao_loc_chu_tu_loi_may_chu_va_nguoi_dung` nhận cả cách lọc lúc gán. Test của lần sửa thật mà chấm oan thì làm như vậy: không sửa được lịch sử git, nên bỏ chấm có ghi lý do và thay bằng test bổ sung.
 - **Thiếu hai loại việc:**
   - "tính năng mới lớn": mỗi lần đo sẽ mất hàng giờ;
   - việc chỉ kiểm được bằng mắt hay tai: giao diện thật, giọng thật.

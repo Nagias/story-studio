@@ -518,10 +518,13 @@ def lenh_tinh_dap_an(chon: list | None) -> None:
         kq_goc = chay_pytest(ban_goc, thu_muc / ma / "goc.xml")
         kq_da1 = chay_pytest(ban_da, thu_muc / ma / "dap-an-1.xml")
         kq_da2 = chay_pytest(ban_da, thu_muc / ma / "dap-an-2.xml")
-        tat_ca_id = sorted(set(kq_goc) | set(kq_da1) | set(kq_da2))
+        # bo_cham: test của lần sửa thật đã biết chấm oan, có test bổ sung thay thế (lý do trong viec.json)
+        bo_cham = set(viec.get("bo_cham", []))
+        tat_ca_id = sorted((set(kq_goc) | set(kq_da1) | set(kq_da2)) - bo_cham)
         on_dinh = [t for t in tat_ca_id if kq_da1.get(t) == kq_da2.get(t)]
         dap_an = {
-            "viec": ma, "goc": viec["goc"], "dap_an": viec["dap_an"], "tao_luc": dt.datetime.now().isoformat(timespec="seconds"),
+            "viec": ma, "goc": viec["goc"], "dap_an": viec["dap_an"], "bo_cham": sorted(bo_cham),
+            "tao_luc": dt.datetime.now().isoformat(timespec="seconds"),
             "f2p": [t for t in on_dinh if kq_da1.get(t) == "dat" and kq_goc.get(t) != "dat"],
             "p2p": [t for t in on_dinh if kq_da1.get(t) == "dat" and kq_goc.get(t) == "dat"],
             "khong_on_dinh": [t for t in tat_ca_id if kq_da1.get(t) != kq_da2.get(t)],

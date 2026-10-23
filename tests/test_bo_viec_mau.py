@@ -117,9 +117,13 @@ def test_moi_viec_mau_co_du_de_bai_test_bo_sung_va_dap_an_da_kiem():
             assert any(mau == d or (d.endswith("/") and mau.startswith(d)) for d in v["duoc_sua"]), \
                 f"{ma}: file bắt buộc {mau} không nằm trong danh sách được sửa"
         dap_an = json.loads((BO / ma / "dap-an.json").read_text(encoding="utf-8"))
-        assert dap_an["goc"] == v["goc"] and dap_an["dap_an"] == v["dap_an"], \
+        assert dap_an["goc"] == v["goc"] and dap_an["dap_an"] == v["dap_an"] and \
+            dap_an.get("bo_cham", []) == sorted(v.get("bo_cham", [])), \
             f"{ma}: viec.json đã đổi mà dap-an.json chưa lập lại (chạy tools/bo_viec_mau.py tinh-dap-an --viec {ma})"
         assert dap_an["f2p"] and dap_an["p2p"], f"{ma}: đáp án thiếu test ẩn hoặc test cũ"
+        if v.get("bo_cham"):
+            assert v.get("ly_do_bo_cham"), f"{ma}: bỏ chấm test của lần sửa thật phải ghi lý do (ly_do_bo_cham)"
+            assert not set(v["bo_cham"]) & set(dap_an["f2p"] + dap_an["p2p"]), f"{ma}: test bỏ chấm vẫn đang được chấm"
         for ten in v.get("test_them", []):
             assert any(t.startswith(f"tests/{ten}::") for t in dap_an["f2p"] + dap_an["p2p"]), \
                 f"{ma}: test bổ sung {ten} không đạt ở đáp án (không vào danh sách chấm nào)"

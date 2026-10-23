@@ -8,11 +8,14 @@
    "commit": "d33d9df"
   }
  ],
- "tao_luc": "2026-10-23T08:49:57",
+ "bo_cham": [
+  "tests/test_architecture.py::test_toasts_escape_untrusted_text"
+ ],
+ "tao_luc": "2026-10-24T00:25:17",
  "f2p": [
   "tests/test_an_t3_loc_chu_giao_dien.py::test_escapehtml_nhan_moi_kieu_gia_tri",
   "tests/test_an_t3_loc_chu_giao_dien.py::test_the_thu_vien_muse_loc_moi_gia_tri_tu_may_chu",
-  "tests/test_architecture.py::test_toasts_escape_untrusted_text"
+  "tests/test_an_t3_loc_chu_giao_dien.py::test_thong_bao_loc_chu_tu_loi_may_chu_va_nguoi_dung"
  ],
  "p2p": [
   "tests/test_adversarial_qa.py::test_adversarial_assembled_full_video_motion",
@@ -32,6 +35,7 @@
   "tests/test_adversarial_qa.py::test_adversarial_pacing_tiers_comparison",
   "tests/test_adversarial_qa.py::test_adversarial_static_control_negative",
   "tests/test_adversarial_qa.py::test_adversarial_vox_pacing_and_hook",
+  "tests/test_an_t3_loc_chu_giao_dien.py::test_bo_quet_thong_bao_nhan_bien_loc_luc_gan_va_bat_cho_chua_loc",
   "tests/test_api.py::test_api_gen_image_upsert",
   "tests/test_api.py::test_api_validation_errors",
   "tests/test_api.py::test_get_bgm_tracks",

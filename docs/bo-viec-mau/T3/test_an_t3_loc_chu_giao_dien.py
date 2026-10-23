@@ -1,5 +1,6 @@
 """Test ẩn bổ sung của bộ việc mẫu T3 (docs/bo-viec-mau): chỉ chép vào tests/ của bản chấm, không thuộc bộ test dự án.
 
+Yêu cầu 1 của đề: showToast() lọc chữ từ lỗi, máy chủ, tên file, tài khoản Muse.
 Yêu cầu 2 của đề: thẻ trong thư viện ảnh Muse lọc mọi giá trị lấy từ máy chủ.
 Yêu cầu 3 của đề: escapeHtml() nhận mọi kiểu giá trị.
 """
@@ -56,6 +57,72 @@ def test_the_thu_vien_muse_loc_moi_gia_tri_tu_may_chu():
         if _SERVER_VALUES.search(_strip_escaped(expr)):
             problems.append("${" + " ".join(expr.split())[:100] + "}")
     assert not problems, "Giá trị từ máy chủ chèn vào HTML thư viện ảnh Muse mà chưa qua escapeHtml():\n" + "\n".join(problems)
+
+
+# Yêu cầu 1. Thay test_architecture.py::test_toasts_escape_untrusted_text của lần sửa thật (viec.json, "bo_cham"):
+# bộ quét đó chỉ nhìn dòng showToast(), nên chấm oan biến đã lọc ngay lúc gán (`const errText = escapeHtml(...)`, có sẵn
+# trong code gốc). Gặp ở lần đo 2026-10-23-skill-tu-nap: bài làm để nguyên, đáp án lọc thêm lần nữa (`&` thành `&amp;`).
+_UNTRUSTED_IN_TOAST = re.compile(r"err\.message|\.detail\b|\berrText\b|\berrMsg\b|file\.name|\baid\b|\baccLabel\b")
+_TOAST_VARIABLES = ("errText", "errMsg", "aid", "accLabel")
+_ESCAPED_ONLY = re.compile(r"\b(?:escapeHtml|tcEsc)\(")
+
+
+def _strip_escaped_only(expr: str) -> str:
+    out, i = [], 0
+    while True:
+        m = _ESCAPED_ONLY.search(expr, i)
+        if not m:
+            return "".join(out) + expr[i:]
+        out.append(expr[i:m.start()])
+        i = _balanced_end(expr, m.end() - 1, "(", ")")
+
+
+def _escaped_at_assignment(lines: list, toast_at: int, name: str, function_start: int) -> bool:
+    """Lần gán gần nhất của biến (trong cùng hàm, trước dòng thông báo) là escapeHtml(...)/tcEsc(...)."""
+    assign = re.compile(rf"(?:\b(?:const|let|var)\s+|(?<![\w.]))\b{name}\s*=(?!=)\s*(.*)")
+    for line in reversed(lines[function_start:toast_at]):
+        m = assign.search(line)
+        if m:
+            return bool(re.match(r"(?:escapeHtml|tcEsc)\(", m.group(1)))
+    return False
+
+
+def _unescaped_toasts(source: str) -> list:
+    lines = source.splitlines()
+    starts = [source.count("\n", 0, m.start()) for m in _TOP_FUNCTION.finditer(source)]
+    found = []
+    for idx, line in enumerate(lines):
+        if "showToast(" not in line:
+            continue
+        rest = _strip_escaped_only(line)
+        function_start = max((s for s in starts if s <= idx), default=0)
+        for name in _TOAST_VARIABLES:
+            if re.search(rf"\b{name}\b", rest) and _escaped_at_assignment(lines, idx, name, function_start):
+                rest = re.sub(rf"\b{name}\b", "", rest)
+        if _UNTRUSTED_IN_TOAST.search(rest):
+            found.append((idx + 1, line.strip()))
+    return found
+
+
+def test_thong_bao_loc_chu_tu_loi_may_chu_va_nguoi_dung():
+    problems = [f"  {path.name}:{no}: {text[:140]}" for path in (APP_JS, APP_JS.with_name("true_crime.js"))
+                for no, text in _unescaped_toasts(path.read_text(encoding="utf-8"))]
+    assert not problems, ("showToast() hiển thị HTML; chữ từ lỗi, máy chủ hay máy người dùng phải qua "
+                          "escapeHtml()/tcEsc() (tại chỗ, hoặc ngay lúc gán biến):\n" + "\n".join(problems))
+
+
+def test_bo_quet_thong_bao_nhan_bien_loc_luc_gan_va_bat_cho_chua_loc():
+    src = """function a() {
+  const errText = escapeHtml(String(t.error));
+  showToast(`Lỗi: ${errText}`, "error");
+}
+function b(errText) {
+  showToast(`Lỗi: ${errText}`, "error");
+  showToast(`Lỗi: ${escapeHtml(err.message)}`, "error");
+  showToast(`Lỗi: ${err.message}`, "error");
+}
+"""
+    assert [no for no, _ in _unescaped_toasts(src)] == [6, 8]
 
 
 def _escape_function_source(source: str) -> str:
