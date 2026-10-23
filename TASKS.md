@@ -259,3 +259,11 @@ Chủ dự án giao: kiểm tra 10 skill ở `claude-skills-mau`, tạo bộ 3�
 - [x] Đo điểm gốc với agent thật (`general-purpose`, Opus 5.5, chưa cài skill; giám khảo Sonnet): **50/50**. Lần chạy làm lộ 2 lỗi chấm oan của máy chấm, đã sửa (T1 8 → 10, T3 7,33 → 10, lý do trong README mục 5). Chi phí: người làm bài khoảng 1,2 triệu token, 75 phút; giám khảo khoảng 0,6 triệu token
 - [x] `tools/check.py --full`: 766 test đạt, 2 phút 40 giây (sau cả 2 lần sửa máy chấm)
 - [ ] Chờ chủ dự án quyết: bộ đang chạm trần (50/50) nên chỉ bắt được tụt điểm, chưa đo được tiến bộ; có thêm việc khó hơn không
+
+# Skill và agent dự án, phương án 3 agent (2026-10-23, nhánh `skill-agent-du-an`)
+Chủ dự án giao: "Thiết kế và cài bộ skill cùng 2 agent giám khảo và rà soát vào dự án theo phương án 3 agent, rồi chạy lại bộ việc mẫu và báo điểm trước/sau."
+- [x] 9 skill `.claude/skills/` + agent `giam-khao` (Sonnet), `ra-soat`; CLAUDE.md mục 6 (commit `737f87a`)
+- [x] Máy chấm chạy lại riêng một lần các test hỏng (test video chập chờn khi máy thiếu bộ nhớ ảo), `tests/test_bo_viec_mau.py` 11 đạt (commit `854e86e`)
+- [x] Đo lại bộ việc mẫu, lần `2026-10-23-skill-tu-nap` (mở phiên mới để skill tự nạp; đề giống hệt lần gốc): **48,33/50** so với 50/50. T1, T2, T4, T5 được 10; T3 8,33 do chấm oan (ghi chú trong `docs/bo-viec-mau/lich-su-diem.md`), không tính chấm oan thì 50/50. Cả 5 việc agent tự gọi skill `giao-viec` và agent `giam-khao`; T3 gọi thêm `cham-cheo`. Giám khảo phần E cho cả 5 việc 1 điểm. Thời gian người làm bài: T2 16 phút, T3 14 phút, T4 16 phút, T5 9,5 phút
+- [x] Máy thiếu bộ nhớ ảo làm lần chấm T1 đầu hỏng test video; sau khi chủ dự án nới page file, chấm lại T1 9/9 điểm máy, không test nào phải chạy lại
+- [ ] Chờ chủ dự án quyết: sửa test ẩn T3 cho nhận biến đã lọc lúc gán (rồi chạy `tinh-dap-an --viec T3`, khoảng 25 phút); gộp nhánh `skill-agent-du-an` vào `master`
