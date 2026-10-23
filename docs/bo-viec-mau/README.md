@@ -83,9 +83,16 @@ Chạy lại lệnh này khi thêm hay sửa việc mẫu, đổi test bổ sung
 
 ## 5. Giới hạn cần biết
 
+- **Bộ việc đang chạm trần.** Lần đo điểm gốc 23/10/2026 (`lich-su-diem.md`), agent `general-purpose` (Opus 5.5) chưa cài skill được 50/50. Vì vậy bộ hiện chỉ bắt được khi một thay đổi làm tụt điểm; chưa đo được thay đổi có làm tốt hơn hay không. Nguyên nhân: đề ghi rất rõ kết quả mong đợi, đúng yêu cầu "có đáp án rõ ràng", nên đề cũng dễ. Muốn đo được tiến bộ thì cần thêm việc khó hơn.
+- **Chi phí một lần đo** (số đo lần điểm gốc):
+  - người làm bài: khoảng 1,2 triệu token, 11–18 phút mỗi việc, tổng khoảng 75 phút;
+  - giám khảo: khoảng 0,6 triệu token, dưới 1 phút mỗi việc;
+  - máy chấm: khoảng 2,5–3 phút mỗi việc.
 - **5 việc là ít.** Chênh từ 1 điểm trở xuống ở một việc có thể chỉ là dao động giữa hai lần chạy. Muốn chắc thì đo mỗi bên 2 lần. Chuyên gia "Multi-Agent Systems Architect" khuyên từ 20 ca trở lên; chủ dự án chọn 3–5 việc để mỗi lần đo không quá lâu.
-- **Người làm bài vẫn đọc được đáp án nếu cố tình.** Thư mục dự án thật và lịch sử git của nó (có đáp án) vẫn mở. Lời dặn chung cấm đọc ra ngoài thư mục làm bài, nhưng máy không chặn được, giám khảo cũng không thấy được.
-- **Bài làm đúng theo cách khác có thể bị chấm oan.** Test ẩn viết theo lần sửa thật, nên bài làm đúng theo cách khác hẳn có thể mất điểm ở A hoặc B. Điểm tụt thì đọc test nào hỏng trước khi kết luận.
+- **Người làm bài vẫn đọc được đáp án nếu cố tình.** Thư mục dự án thật và lịch sử git của nó (có đáp án) vẫn mở. Lời dặn chung cấm đọc ra ngoài thư mục làm bài, nhưng máy không chặn được, giám khảo cũng không thấy được. Đã gặp ở lần đo điểm gốc: agent làm T3 tự khai đã lỡ đọc `CLAUDE.md` của dự án thật.
+- **Bài làm đúng theo cách khác có thể bị chấm oan.** Test ẩn viết theo lần sửa thật, nên bài làm đúng theo cách khác hẳn có thể mất điểm ở A hoặc B. Điểm tụt thì đọc test nào hỏng trước khi kết luận. Lần đo điểm gốc đã gặp và sửa 2 lần chấm oan:
+  - T1: bản chấm thiếu file test mới mà bài làm đã ghi vào `FEATURE_MAP.md`;
+  - T3: test ẩn chưa nhận `encodeURIComponent` là cách lọc.
 - **Thiếu hai loại việc:**
   - "tính năng mới lớn": mỗi lần đo sẽ mất hàng giờ;
   - việc chỉ kiểm được bằng mắt hay tai: giao diện thật, giọng thật.

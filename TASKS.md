@@ -249,3 +249,13 @@ Chủ dự án bỏ qua phần hỏi thiết kế: "cứ làm theo hướng bạ
   - bấm thật giao diện server thử 8010 với `proj_ea5b04db`: Tìm từ khoá (10 gợi ý thật), tích 3 từ khoá, Tạo gói SEO (9router thật, 1 lần gọi, đạt 15/15 luật; video 21 giây nên không có chương), sửa tiêu đề có emoji và viết HOA thì bị chặn kèm 2 lý do, bấm tải khi chưa lưu thì bị nhắc, lưu lại thì tải .txt đúng nội dung; thumbnail có emoji báo lỗi rõ, để trống thì lấy chữ của gói SEO. Console chỉ có 2 lỗi 422 do cố tình làm sai; log server không có 500; danh sách `projects/` không đổi
 - [ ] Chưa kiểm chứng: nguồn YouTube Data API (chưa có `YOUTUBE_API_KEY`); chương trên một video thật dài trên 15 phút (chưa có dự án nào đã dựng video dài); YouTube có đọc đúng mốc H:MM:SS sau 60 phút không
 - [ ] Để sau (chờ chủ dự án): nguồn YouTube Analytics (từ khoá người xem thật sự gõ để tìm ra kênh, cần đăng nhập Google của kênh); xem lại pháp lý trước khi đưa gợi ý tìm kiếm YouTube vào bản bán
+
+# Bộ việc mẫu chuẩn (2026-10-23, nhánh `bo-viec-mau`)
+Chủ dự án giao: kiểm tra 10 skill ở `claude-skills-mau`, tạo bộ 3–5 việc mẫu có đáp án rõ, "Từ nay, mỗi lần sửa skill hoặc agent, phải chạy lại bộ việc mẫu này và báo cáo điểm trước/sau", bảng đối chiếu skill với expert agency-agents, phương án số agent.
+- [x] Chọn 5 việc từ lỗi thật đã sửa trong git (T1 Muse/kiểm đường dẫn, T2 giọng đọc/thành công giả, T3 giao diện, T4 pipeline LLM vụ án, T5 thumbnail + FEATURE_MAP); đề bài, test ẩn bổ sung (7), `docs/bo-viec-mau/`
+- [x] Công cụ `tools/bo_viec_mau.py` (chuan-bi, cham, so-sanh, tinh-dap-an) + `tests/test_bo_viec_mau.py` (10 test)
+- [x] Đáp án: `tinh-dap-an` cả 5 việc tự kiểm ĐẠT (bản gốc 0 điểm, đáp án 9/9 điểm máy), 0 test chập chờn
+- [x] CLAUDE.md: nguyên văn quy tắc chủ dự án (mục 6), bảng 6.1 dòng 13 (khoá mềm), lệnh ở mục 3
+- [x] Đo điểm gốc với agent thật (`general-purpose`, Opus 5.5, chưa cài skill; giám khảo Sonnet): **50/50**. Lần chạy làm lộ 2 lỗi chấm oan của máy chấm, đã sửa (T1 8 → 10, T3 7,33 → 10, lý do trong README mục 5). Chi phí: người làm bài khoảng 1,2 triệu token, 75 phút; giám khảo khoảng 0,6 triệu token
+- [x] `tools/check.py --full`: 766 test đạt, 2 phút 40 giây (sau cả 2 lần sửa máy chấm)
+- [ ] Chờ chủ dự án quyết: bộ đang chạm trần (50/50) nên chỉ bắt được tụt điểm, chưa đo được tiến bộ; có thêm việc khó hơn không

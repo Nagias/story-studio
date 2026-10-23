@@ -4,3 +4,4 @@ Mỗi dòng là một lần đo, ghi bằng `.venv\Scripts\python.exe tools\bo_v
 
 | Ngày | Lần chạy | Agent/skill đang đo | T1 | T2 | T3 | T4 | T5 | Tổng |
 |---|---|---|---|---|---|---|---|---|
+| 23/10/2026 | 2026-10-23-goc | general-purpose (Opus 5.5), chưa cài skill của thư mục mẫu | 10 | 10 | 10 | 10 | 10 | 50 / 50 |
