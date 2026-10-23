@@ -78,6 +78,12 @@ def test_file_test_moi_chi_lay_file_bai_lam_tu_them(tmp_path):
     assert bvm.file_test_moi(bai, dap_an) == ["fixtures/mau.json", "test_moi.py"]
 
 
+def test_chay_lai_chi_cuu_test_hong_ma_lan_sau_dat():
+    dau = {"a": "hong", "b": "hong", "c": "dat", "d": "bo_qua"}
+    gop, cuu = bvm.gop_chay_lai(dau, {"a": "dat", "b": "hong", "d": "dat"})
+    assert gop == {"a": "dat", "b": "hong", "c": "dat", "d": "bo_qua"} and cuu == ["a"]
+
+
 # ----------------------------------------------------------------------------- đọc kết quả pytest
 def test_doc_junit_nhan_dat_hong_bo_qua_lop_va_tham_so():
     xml = """<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite>

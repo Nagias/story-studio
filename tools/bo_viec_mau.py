@@ -232,17 +232,29 @@ def doc_junit(xml_text: str) -> dict:
     return ket_qua
 
 
-def chay_pytest(cay: Path, xml: Path, timeout: int = 3600) -> dict:
-    """Chạy cả bộ test mặc định của bản chấm, bỏ qua file test do bài làm tự thêm (không tính điểm)."""
+def chay_pytest(cay: Path, xml: Path, timeout: int = 3600, chon: list | None = None) -> dict:
+    """Chạy cả bộ test mặc định của bản chấm (hoặc chỉ các test trong `chon`), bỏ qua file test do bài làm tự thêm
+    (không tính điểm)."""
     ghi = cay / ".test-cua-bai-lam.json"
     bo_qua = json.loads(ghi.read_text(encoding="utf-8")) if ghi.exists() else []
     proc = _run([str(_python(cay)), "-X", "utf8", "-m", "pytest", "-q", "-p", "no:cacheprovider",
                  f"--junitxml={xml}", "-o", "junit_family=xunit1",
-                 *(f"--ignore=tests/{rel}" for rel in bo_qua)], cay, timeout)
+                 *(f"--ignore=tests/{rel}" for rel in bo_qua), *(chon or [])], cay, timeout)
     xml.with_suffix(".log").write_text(proc.stdout[-300_000:] + "\n" + proc.stderr[-30_000:], encoding="utf-8")
     if not xml.exists():
         raise LoiBoViec(f"pytest không ghi kết quả ({xml.name}); xem {xml.with_suffix('.log')}")
     return doc_junit(xml.read_text(encoding="utf-8"))
+
+
+def gop_chay_lai(ket_qua: dict, ket_qua_lai: dict) -> tuple:
+    """Test hỏng ở lượt chạy cả bộ mà chạy lại riêng thì đạt: tính đạt (chập chờn do máy, ví dụ cạn bộ nhớ ảo làm
+    ffmpeg sập - gặp ở lần đo 23/10/2026). Trả (kết quả gộp, danh sách test được cứu nhờ chạy lại)."""
+    gop, cuu = dict(ket_qua), []
+    for test_id, trang_thai in ket_qua_lai.items():
+        if gop.get(test_id) == "hong" and trang_thai == "dat":
+            gop[test_id] = "dat"
+            cuu.append(test_id)
+    return gop, sorted(cuu)
 
 
 def chay_cong_kiem(bai: Path) -> tuple:
@@ -363,8 +375,13 @@ def cham_mot_bai(ma: str, viec: dict, bai: Path, goc_sha: str, thu_muc_lan: Path
     ban_cham = dung_ban_cham(bai, _tests_dap_an(ma, viec, thu_muc_lan), _test_them(ma, viec),
                              thu_muc_lan / ten_ban_cham)
     ket_qua_test = chay_pytest(ban_cham, thu_muc_lan / f"{ten_ban_cham}.xml")
+    hong = [t for t in dap_an["f2p"] + dap_an["p2p"] if ket_qua_test.get(t) == "hong"]
+    cuu: list = []
+    if hong:   # chạy lại riêng các test hỏng một lần: lỗi thật vẫn hỏng, chập chờn do máy thì đạt
+        lai = chay_pytest(ban_cham, thu_muc_lan / f"{ten_ban_cham}-chay-lai.xml", chon=hong)
+        ket_qua_test, cuu = gop_chay_lai(ket_qua_test, lai)
     ket = tinh_diem(dap_an, ket_qua_test, van_de, cong_ok and not lach, None)
-    return {**ket, "file_da_doi": da_doi, "van_de_pham_vi": van_de, "lach_khoa": lach,
+    return {**ket, "file_da_doi": da_doi, "van_de_pham_vi": van_de, "lach_khoa": lach, "dat_khi_chay_lai": cuu,
             "cong_kiem_dat": cong_ok, "cong_kiem_log": cong_log,
             "so_test": {"an": len(dap_an["f2p"]), "cu": len(dap_an["p2p"])}}
 
