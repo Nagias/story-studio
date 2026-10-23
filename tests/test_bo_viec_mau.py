@@ -69,6 +69,15 @@ def test_ngoai_le_khoa_cung_chi_duoc_giam():
     assert bvm.ngoai_le_bi_nang("", "", ruff_cu, '{"x.py": {"S110": 1}}') == []
 
 
+def test_file_test_moi_chi_lay_file_bai_lam_tu_them(tmp_path):
+    bai, dap_an = tmp_path / "bai", tmp_path / "dap_an"
+    for path in (bai / "test_cu.py", bai / "test_moi.py", bai / "fixtures" / "mau.json", bai / "__pycache__" / "x.pyc",
+                 dap_an / "test_cu.py", dap_an / "test_an.py"):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x", encoding="utf-8")
+    assert bvm.file_test_moi(bai, dap_an) == ["fixtures/mau.json", "test_moi.py"]
+
+
 # ----------------------------------------------------------------------------- đọc kết quả pytest
 def test_doc_junit_nhan_dat_hong_bo_qua_lop_va_tham_so():
     xml = """<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite>

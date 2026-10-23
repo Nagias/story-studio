@@ -175,8 +175,17 @@ def dung_bai(ma: str, viec: dict, dich: Path, ap_dap_an: bool = False) -> dict:
     return {"thu_muc": str(dich), "goc_sha": sha, "hook": hook}
 
 
+def file_test_moi(tests_bai: Path, tests_dap_an: Path) -> list:
+    """File trong tests/ của bài làm mà đáp án không có (người làm bài tự thêm), đường dẫn tính từ tests/."""
+    return sorted(p.relative_to(tests_bai).as_posix() for p in tests_bai.rglob("*")
+                  if p.is_file() and "__pycache__" not in p.parts
+                  and not (tests_dap_an / p.relative_to(tests_bai)).exists())
+
+
 def dung_ban_cham(bai: Path, tests_dap_an: Path, test_them: list, dich: Path) -> Path:
-    """Bản chấm: mã của bài làm + thư mục tests/ của đáp án + test ẩn bổ sung. Bài làm giữ nguyên."""
+    """Bản chấm: mã của bài làm + thư mục tests/ của đáp án + test ẩn bổ sung. Bài làm giữ nguyên.
+    File test cũ bài làm đã sửa bị thay bằng bản của đáp án (không lách được bằng cách sửa test). File test bài làm
+    tự thêm thì chép theo để tài liệu nhắc tới chúng (FEATURE_MAP.md) vẫn đúng, nhưng không chạy (xem chay_pytest)."""
     def bo_qua(thu_muc, ten_file):
         bo = {t for t in ten_file if t in BO_QUA_KHI_CHEP}
         if Path(thu_muc).resolve() == bai.resolve():
@@ -186,6 +195,11 @@ def dung_ban_cham(bai: Path, tests_dap_an: Path, test_them: list, dich: Path) ->
         raise LoiBoViec(f"{dich} đã có")
     shutil.copytree(bai, dich, ignore=bo_qua)
     shutil.copytree(tests_dap_an, dich / "tests", ignore=shutil.ignore_patterns("__pycache__"))
+    moi = file_test_moi(bai / "tests", tests_dap_an) if (bai / "tests").is_dir() else []
+    for rel in moi:
+        (dich / "tests" / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(bai / "tests" / rel, dich / "tests" / rel)
+    (dich / ".test-cua-bai-lam.json").write_text(json.dumps(moi, ensure_ascii=False), encoding="utf-8")
     for path in test_them:
         shutil.copy2(path, dich / "tests" / path.name)
     (dich / ".env").write_text(ENV_RONG, encoding="utf-8")
@@ -219,8 +233,12 @@ def doc_junit(xml_text: str) -> dict:
 
 
 def chay_pytest(cay: Path, xml: Path, timeout: int = 3600) -> dict:
+    """Chạy cả bộ test mặc định của bản chấm, bỏ qua file test do bài làm tự thêm (không tính điểm)."""
+    ghi = cay / ".test-cua-bai-lam.json"
+    bo_qua = json.loads(ghi.read_text(encoding="utf-8")) if ghi.exists() else []
     proc = _run([str(_python(cay)), "-X", "utf8", "-m", "pytest", "-q", "-p", "no:cacheprovider",
-                 f"--junitxml={xml}", "-o", "junit_family=xunit1"], cay, timeout)
+                 f"--junitxml={xml}", "-o", "junit_family=xunit1",
+                 *(f"--ignore=tests/{rel}" for rel in bo_qua)], cay, timeout)
     xml.with_suffix(".log").write_text(proc.stdout[-300_000:] + "\n" + proc.stderr[-30_000:], encoding="utf-8")
     if not xml.exists():
         raise LoiBoViec(f"pytest không ghi kết quả ({xml.name}); xem {xml.with_suffix('.log')}")
