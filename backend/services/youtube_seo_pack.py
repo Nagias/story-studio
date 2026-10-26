@@ -102,10 +102,14 @@ def load_project(project_id: str) -> Project:
 
 
 def current_state(project: Project) -> YoutubeSeoState:
-    """Trạng thái gói SEO; dữ liệu từ khoá quá 30 ngày thì bỏ (chính sách nhà phát triển của YouTube)."""
+    """Trạng thái gói SEO; dữ liệu từ khoá quá 30 ngày thì bỏ (chính sách nhà phát triển của YouTube). Từ khoá hay gói
+    viết cho ngôn ngữ khác với dự án (dự án bản Anh chép từ bản Việt trước 26/10/2026) cũng bỏ, để làm lại."""
     state = project.youtube_seo or YoutubeSeoState()
-    if is_expired(state.research):
-        state = YoutubeSeoState(research=None, pack=state.pack)
+    lang = project_language(project)
+    research = None if is_expired(state.research) or (state.research and state.research.language != lang) else state.research
+    pack = state.pack if state.pack and state.pack.language == lang else None
+    if research is not state.research or pack is not state.pack:
+        state = YoutubeSeoState(research=research, pack=pack)
     return state
 
 

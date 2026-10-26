@@ -305,3 +305,20 @@ def test_thumbnail_background_skips_text_cards(isolated_projects_dir, tmp_path):
     with Image.open(out) as im:
         r, g, b = im.convert("RGB").getpixel((1850, 60))       # góc phải trên: không bị nền tối và chữ che
     assert b > r
+
+
+@pytest.mark.asyncio
+async def test_seo_data_of_another_language_is_dropped(isolated_projects_dir, monkeypatch):
+    """Gặp 26/10/2026: dự án bản Anh mang từ khoá và gói SEO tiếng Việt chép từ bản Việt, thumbnail ra chữ Việt."""
+    from services.thumbnail_service import default_lines
+    project = _make_project(language="vi")
+    _with_final_video(project.id, monkeypatch)
+    await seo.generate_pack(project.id, KEYWORDS, llm=FakeLLM("good"))
+    project = project_service.get_project(project.id)
+    assert seo.current_state(project).pack is not None
+    assert default_lines(project) == ["RỪNG SƯƠNG MÙ", "KHÔNG LỐI VỀ"]
+
+    project.metadata["language"] = "en"                       # như dự án bản Anh chép nguyên youtube_seo bản Việt
+    state = seo.current_state(project)
+    assert state.pack is None and state.research is None
+    assert default_lines(project) == [project.name]

@@ -20,6 +20,7 @@ if str(BACKEND_DIR) not in sys.path:
 from models.case_adaptation_schemas import DISCLAIMER, CaseEvidence, SceneFlag
 from models.evidence_schemas import EvidenceNode
 from models.schemas import ProjectCreateRequest, Scene, SceneCreateRequest
+from models.youtube_seo import YoutubeSeoState
 from services import case_project_builder, case_store, project_service
 from services.case_adaptation_checks import has_blocking_flags
 from services.case_project_builder import (
@@ -504,6 +505,7 @@ def prepare_source_media(project):
     project.thumbnail_path = str(root / "renders" / "thumb.jpg")
     project.thumbnail_url = f"/api/projects/{project.id}/media/renders/thumb.jpg"
     project.seo_title, project.seo_description, project.seo_tags = "Tiêu đề SEO", "Mô tả SEO", ["a"]
+    project.youtube_seo = YoutubeSeoState()          # gói SEO bản Việt (nội dung không quan trọng ở đây)
     project_service.save_project(project)
     return project_service.get_project(project.id)
 
@@ -556,6 +558,7 @@ def test_language_version_copies_media_and_switches_text(isolated_projects_dir):
     assert new.final_video_path is None and new.final_video_url is None
     assert new.thumbnail_path is None and new.thumbnail_url is None
     assert new.seo_title is None and new.seo_description is None and new.seo_tags == []
+    assert new.youtube_seo is None                                # gặp 26/10: bản Anh chép từ khoá, gói SEO, chữ thumbnail tiếng Việt
 
     # Cảnh board và disclaimer vẽ lại bằng chữ của ngôn ngữ mới
     for order in (1, 6):

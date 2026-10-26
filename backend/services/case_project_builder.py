@@ -473,6 +473,7 @@ def _materialize_language_version(source: Project, plan: CaseAdaptationPlan, lan
         new.thumbnail_path = new.thumbnail_url = None
         new.seo_title = new.seo_description = None      # SEO viết cho lời kể ngôn ngữ cũ
         new.seo_tags = []
+        new.youtube_seo = None                          # từ khoá, gói SEO, chữ thumbnail của ngôn ngữ cũ
         new.created_at = _now()
         voices = dict(source.metadata.get("voices") or {})
         voices[language] = voice

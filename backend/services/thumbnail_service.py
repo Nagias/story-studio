@@ -55,9 +55,10 @@ def _font(size: int) -> ImageFont.FreeTypeFont:
 
 
 def default_lines(project: Any) -> List[str]:
+    from services.youtube_seo_pack import project_language  # nhập muộn: youtube_seo_pack nhập file này
     seo = getattr(project, "youtube_seo", None)
     pack = getattr(seo, "pack", None) if seo else None
-    if pack and pack.thumbnail_lines:
+    if pack and pack.thumbnail_lines and pack.language == project_language(project):
         return list(pack.thumbnail_lines)
     return [(getattr(project, "name", None) or "").strip() or "Story Studio"]
 
