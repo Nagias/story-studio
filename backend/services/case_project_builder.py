@@ -11,6 +11,7 @@ Dựng dự án Story Studio từ kế hoạch chuyển thể vụ án, và tạ
 """
 import asyncio
 import shutil
+import subprocess
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -232,6 +233,34 @@ def redraw_board_images(project: Project) -> int:
     return count
 
 
+# ---------------------------------------------------------------- vẽ nối tiếp
+
+def previous_scene_frame(project: Project, scene: Scene) -> Optional[Path]:
+    """Khung hình cảnh ngay trước trong cùng nhịp (metadata "part_id"), để Muse vẽ cảnh này nối tiếp (chủ dự án
+    26/10/2026: mỗi ảnh như một câu chuyện độc lập). Cảnh trước có clip Muse thì lấy khung cuối của clip (cảnh cuối của
+    video này là mở đầu của cảnh sau), không thì lấy ảnh của nó. Bảng ghim, thẻ miễn trừ không tính. None: cảnh đầu nhịp,
+    dự án cũ chưa có part_id, hoặc cảnh trước chưa có hình."""
+    part = (scene.metadata or {}).get("part_id")
+    if not part or scene not in project.scenes:
+        return None
+    for prev in reversed(project.scenes[:project.scenes.index(scene)]):
+        meta = prev.metadata or {}
+        if meta.get("part_id") != part:
+            return None
+        if meta.get("visual_kind") in ("board", "disclaimer"):
+            continue
+        clip = Path(prev.motion_video_path) if prev.motion_video_path else None
+        if clip and clip.is_file():
+            frame = clip.with_name(f"{prev.id}_khung_cuoi.jpg")
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-sseof", "-0.2", "-i", str(clip), "-frames:v", "1",
+                            "-q:v", "2", str(frame)], check=True, timeout=60)
+            return frame
+        if prev.image_path and Path(prev.image_path).is_file():
+            return Path(prev.image_path)
+        return None
+    return None
+
+
 # ---------------------------------------------------------------- thẻ miễn trừ
 
 def _wrap_lines(draw: ImageDraw.ImageDraw, text: str, font, max_width: int) -> list[str]:
@@ -347,6 +376,7 @@ def _scene_from_plan(plan: CaseAdaptationPlan, adapted: AdaptedScene, language: 
             "board_reveal": list(adapted.board_reveal),
             "narrative_beat": adapted.narrative_beat,
             "plan_order": adapted.order,                # bảng ghim tích luỹ tính theo thứ tự trong kế hoạch, kể cả khi cảnh bị dời
+            "part_id": adapted.part_id,                 # cảnh cùng nhịp thì vẽ nối tiếp (ảnh cảnh trước làm tham chiếu)
         },
     )
     if kind in ("board", "disclaimer"):

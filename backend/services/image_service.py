@@ -35,6 +35,21 @@ MASTER_NEGATIVE_PROMPT: str = (
 )
 
 STYLE_PRESETS: Dict[str, Dict[str, Any]] = {
+    # 0a. HOẠT HÌNH 2D RÙNG RỢN: chủ dự án 26/10/2026 thích kiểu kênh "Thế Giới Kì Quái" hơn ảnh noir; thử thật trên Muse
+    # với đúng đoạn mô tả này: ra nhân vật đầu tròn trắng, nền vẽ tay tối màu, giữ được nhân vật khi đính kèm ảnh cảnh trước.
+    "horror_cartoon_2d": {
+        "id": "horror_cartoon_2d",
+        "name": "Hoạt hình 2D rùng rợn (nhân vật đầu tròn, nền vẽ tay tối)",
+        "prompt_suffix": (
+            "2D Chinese horror web-cartoon style, flat simple character design: characters have big perfectly round "
+            "white heads, tiny dot eyes, simple line mouth, thin simple bodies, thick clean outlines; backgrounds are "
+            "detailed dark painted illustrations with muted desaturated colors, cold blue-green night lighting, eerie "
+            "quiet mood, cinematic 16:9 frame, no text, no watermark"
+        ),
+        "negative_prompt": "photorealistic, realistic skin, 3d render, anime big eyes, chibi, bright cheerful colors, blood, gore",
+        "colors": ["#0f172a", "#334155", "#b91c1c"],
+        "description": "Hoạt hình 2D kiểu truyện ma web: nhân vật đầu tròn trắng nét đơn giản, nền vẽ tay chi tiết, tông lạnh u tối.",
+    },
     # 0. TRUE CRIME NEO-NOIR SILHOUETTE PRESET
     "neo_noir_silhouette": {
         "id": "neo_noir_silhouette",
@@ -556,6 +571,7 @@ async def generate_image(
     output_path: Optional[str] = None,
     scene_index: Optional[int] = None,
     reference_image: Optional[str] = None,
+    reference_role: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Generate an image using the selected provider with consistent styling.
@@ -643,6 +659,8 @@ async def generate_image(
                     "seed": seed,
                     "reference_image": ref_img,
                     "character_anchor": char_anchor_str,
+                    # "previous_scene": ảnh đính kèm là cảnh ngay trước (vẽ nối tiếp), không phải ảnh nhân vật mẫu
+                    "reference_role": reference_role,
                     "visual_details": prompt,
                     "lighting": "cinematic lighting, volumetric atmosphere, 8k resolution",
                 },

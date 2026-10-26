@@ -882,3 +882,45 @@ def test_board_cards_get_pictures_of_earlier_scenes_once_images_exist(isolated_p
 
     no_case = project.model_copy(update={"metadata": {}})
     assert redraw_board_images(no_case) == 0                          # không phải dự án vụ án: không làm gì
+
+
+def test_scenes_of_a_part_are_drawn_from_the_previous_frame(isolated_projects_dir, tmp_path):
+    """Chủ dự án 26/10/2026: mỗi ảnh như một câu chuyện riêng. Cảnh cùng nhịp vẽ nối tiếp: tham chiếu ảnh cảnh trước,
+    hoặc khung cuối clip Muse của cảnh trước; cảnh đầu nhịp và bảng ghim không có tham chiếu."""
+    import shutil as _shutil
+    import subprocess as _subprocess
+    from services.case_project_builder import previous_scene_frame
+    plan = build_plan()
+    project = make_vi_project(plan)
+    root = project_service._get_project_dir(project.id)
+    assert [(s.metadata or {}).get("part_id") for s in project.scenes] == [a.part_id for a in plan.scenes]
+    s2, s3, s4, s5 = (scene_by_order(project, o) for o in (2, 3, 4, 5))   # p1: 2,3,4 ; p2: 5,6(board),7
+    Image.new("RGB", (64, 36), (200, 30, 30)).save(root / "images" / "scene_002.jpg")
+    s2.image_path = str(root / "images" / "scene_002.jpg")
+
+    assert previous_scene_frame(project, s2) is None                  # cảnh đầu nhịp
+    assert previous_scene_frame(project, s3) == Path(s2.image_path)
+    assert previous_scene_frame(project, s4) is None                  # cảnh trước (3) chưa có hình
+    assert previous_scene_frame(project, s5) is None                  # sang nhịp khác: không nối
+    assert previous_scene_frame(project, scene_by_order(project, 7)) is None   # cảnh 6 là bảng ghim, cảnh 5 chưa có hình
+
+    if _shutil.which("ffmpeg"):
+        clip = root / "videos" / "scene_002_muse.mp4"
+        _subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=64x36:d=1",
+                         str(clip)], check=True)
+        s2.motion_video_path = str(clip)
+        frame = previous_scene_frame(project, s3)                     # có clip: khung cuối của clip
+        assert frame.name == "scene_002_khung_cuoi.jpg" and frame.is_file()
+        with Image.open(frame) as im:
+            r, g, b = im.convert("RGB").getpixel((32, 18))
+        assert b > 150 and r < 80
+
+
+def test_cartoon_style_is_offered_and_explained_to_the_prompt_writer():
+    """Chủ dự án 26/10/2026: thích kiểu hoạt hình như kênh mẫu; đã thử thật trên Muse với đoạn mô tả này."""
+    from services.case_adaptation_prompts import _style_detail
+    from services.image_service import STYLE_PRESETS
+    assert "round white heads" in STYLE_PRESETS["horror_cartoon_2d"]["prompt_suffix"]
+    assert "round white heads" in _style_detail("horror_cartoon_2d") and _style_detail("khong_co") == ""
+    html = (Path(__file__).resolve().parent.parent / "backend" / "static" / "index.html").read_text(encoding="utf-8")
+    assert html.count('<option value="horror_cartoon_2d">') == 2           # ô phong cách Hồ Sơ Kỳ Án và Bước 2

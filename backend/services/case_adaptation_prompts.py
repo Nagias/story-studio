@@ -681,6 +681,13 @@ Trả về đúng một JSON object, "scenes" có đúng {n} phần tử theo th
 
 # ---------------------------------------------------------------- G6: prompt hình
 
+def _style_detail(visual_style: str) -> str:
+    """Mô tả phong cách đi kèm id (để model viết prompt hợp phong cách, ví dụ nhân vật hoạt hình đầu tròn)."""
+    from services.image_service import STYLE_PRESETS   # nhập muộn: image_service nạp nhiều thứ không cần ở đây
+    preset = STYLE_PRESETS.get(visual_style)
+    return f" — {preset['prompt_suffix']}" if preset else ""
+
+
 def prompts_prompt(bible: CaseBible, part: StoryPart, scenes: list[dict], visual_style: str, *,
                    part_position: Optional[tuple[int, int]] = None) -> str:
     """`scenes`: mỗi cảnh có narration_vi, narration_en, visual_kind."""
@@ -694,9 +701,9 @@ def prompts_prompt(bible: CaseBible, part: StoryPart, scenes: list[dict], visual
     beats = " | ".join(NARRATIVE_BEATS)
     energies = " | ".join(BGM_ENERGIES)
     return f"""TASK: PROMPTS {part.id}
-Việc: viết prompt tạo hình bằng tiếng Anh (ảnh tĩnh, và clip 5 giây cho cảnh video) cho ĐÚNG {n} cảnh của {_where(part, part_position)}. Mỗi hình được tạo riêng bằng AI, không biết các cảnh khác, nên mỗi prompt phải đọc riêng vẫn hiểu.
+Việc: viết prompt tạo hình bằng tiếng Anh (ảnh tĩnh, và clip 5 giây cho cảnh video) cho ĐÚNG {n} cảnh của {_where(part, part_position)}. Các cảnh hình liền nhau trong nhịp được vẽ NỐI TIẾP: AI vẽ thấy ảnh của cảnh ngay trước, nên viết mỗi prompt như khung hình tiếp theo của cùng một đoạn phim (cùng nơi chốn, cùng nhân vật, đổi góc máy, hành động tiếp diễn); prompt vẫn phải đọc riêng là hiểu, vì cảnh đầu nhịp không có ảnh trước.
 
-PHONG CÁCH HÌNH: {visual_style}
+PHONG CÁCH HÌNH: {visual_style}{_style_detail(visual_style)}
 BỐI CẢNH CHUNG: {bible.setting_notes_en or "(không có)"}
 
 NHÂN VẬT (lời kể gọi bằng tên; prompt KHÔNG được ghi tên, chỉ tả bằng ngoại hình dưới đây, chép đủ các đặc điểm chính mỗi lần nhân vật xuất hiện để các cảnh giống nhau):

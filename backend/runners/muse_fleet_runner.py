@@ -204,7 +204,12 @@ class MusePromptFormatter:
         negative = task.get("negative_prompt", "")
 
         tags = []
-        if has_reference:
+        if has_reference and params.get("reference_role") == "previous_scene":
+            # vẽ nối tiếp (chủ dự án 26/10/2026: mỗi ảnh như một câu chuyện riêng, không liên quan nhau)
+            tags.append("Ảnh đính kèm là khung hình của cảnh ngay trước trong cùng câu chuyện: giữ đúng nhân vật (gương mặt, "
+                        "kiểu tóc, trang phục), cùng bối cảnh và cùng phong cách vẽ; vẽ khung hình TIẾP THEO theo mô tả "
+                        "dưới đây (đổi góc máy, hành động tiếp diễn), không chép lại ảnh đính kèm")
+        elif has_reference:
             tags.append("Giữ đúng gương mặt, trang phục và đặc điểm nhân vật trong ảnh tham chiếu đính kèm")
         if anchor:
             tags.append(f"Character Anchor: {anchor}")

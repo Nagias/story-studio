@@ -228,3 +228,13 @@ def test_server_waits_for_the_whole_runner_retry_cycle():
     for kind, timeout in (("image", mb.IMAGE_TASK_TIMEOUT_SEC), ("video", mb.VIDEO_TASK_TIMEOUT_SEC)):
         cycle = attempts * (launch_sec + mfr.MEDIA_WAIT_SEC[kind]) + (attempts - 1) * mfr.ACCOUNT_COOLDOWN_SEC
         assert timeout >= cycle, f"{kind}: server chờ {timeout}s, vòng thử lại của runner tới {cycle}s"
+
+
+def test_previous_scene_reference_asks_muse_for_the_next_frame():
+    """Ảnh đính kèm là cảnh trước (vẽ nối tiếp) thì dặn khác ảnh nhân vật mẫu."""
+    from runners.muse_fleet_runner import MusePromptFormatter
+    task = {"prompt": "she opens the back door", "parameters": {"reference_role": "previous_scene"}}
+    chained = MusePromptFormatter.format_image_prompt(task, has_reference=True)
+    assert "khung hình của cảnh ngay trước" in chained and "TIẾP THEO" in chained
+    plain = MusePromptFormatter.format_image_prompt({"prompt": "x", "parameters": {}}, has_reference=True)
+    assert "Giữ đúng gương mặt" in plain and "cảnh ngay trước" not in plain

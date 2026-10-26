@@ -92,7 +92,7 @@ from services import (
     deconstruct_script_offline,
     generate_youtube_thumbnail,
 )
-from services.case_project_builder import redraw_board_images
+from services.case_project_builder import previous_scene_frame, redraw_board_images
 from services.scene_sound import build_energy_bgm, energy_segments, mix_scene_sfx, scene_sfx_files
 from services.thumbnail_service import ThumbnailError
 
@@ -1599,12 +1599,15 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
             img_note = ""
             if _scene_render_input(scene, media) is None:
                 try:
+                    # Dự án vụ án: cảnh cùng nhịp vẽ nối tiếp, đính kèm khung hình cảnh trước (ảnh hoặc khung cuối clip)
+                    continuity = await asyncio.to_thread(previous_scene_frame, project, scene)
                     img_res = await generate_image(
                         prompt=scene.image_prompt or scene.text,
                         style_preset=project.style_preset,
                         character_anchor=project.character_anchor,
                         character=project.character,
-                        reference_image=project.character_reference_image,
+                        reference_image=str(continuity) if continuity else project.character_reference_image,
+                        reference_role="previous_scene" if continuity else None,
                         provider=project.image_provider,
                         output_path=str(media["image"]),
                         scene_index=scene.order,
