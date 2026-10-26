@@ -194,3 +194,37 @@ def test_off_ratio_image_is_center_cropped_to_16_9():
     Image.new("RGB", (1024, 1024), (90, 30, 30)).save(buf, "PNG")  # 1:1
     with Image.open(io.BytesIO(to_jpeg_bytes(buf.getvalue(), 16 / 9))) as img:
         assert img.size == (1024, 576)
+
+
+def test_old_media_is_recognised_by_content_not_by_link(tmp_path, monkeypatch):
+    """Gặp 26/10/2026: không mở được chat mới, Muse vẽ lại video cũ dưới link mới và runner nhận nhầm.
+    Video đã có trong muse_outputs hay đã giao trước đây phải bị nhận ra theo nội dung."""
+    from runners import muse_fleet_runner as mfr
+
+    outputs = tmp_path / "muse_outputs"
+    outputs.mkdir()
+    old_video = b"\x00\x00\x00\x18ftypmp42 video cu cua du an khac"
+    (outputs / "task_m_cu.mp4").write_bytes(old_video)
+    monkeypatch.setattr(mfr, "OUTPUTS_DIR", outputs)
+    monkeypatch.setattr(mfr, "DELIVERED_HASHES_FILE", outputs / ".delivered_media_hashes.json")
+    monkeypatch.setattr(mfr, "_delivered_hashes", None)
+
+    assert mfr.media_digest(old_video) in mfr.delivered_hashes()
+    new_image = b"anh moi tao"
+    assert mfr.media_digest(new_image) not in mfr.delivered_hashes()
+
+    mfr.remember_delivered(mfr.media_digest(new_image))
+    monkeypatch.setattr(mfr, "_delivered_hashes", None)  # lần chạy runner sau đọc lại sổ
+    assert mfr.media_digest(new_image) in mfr.delivered_hashes()
+
+
+def test_server_waits_for_the_whole_runner_retry_cycle():
+    """Gặp 26/10/2026: server chờ 240 s rồi trả tiền ảnh 9router, lượt thử lại của runner ra ảnh Muse 45 s sau."""
+    from routers import muse_bridge as mb
+    from runners import muse_fleet_runner as mfr
+
+    attempts = mb.MAX_TASK_RETRIES + 1
+    launch_sec = 30
+    for kind, timeout in (("image", mb.IMAGE_TASK_TIMEOUT_SEC), ("video", mb.VIDEO_TASK_TIMEOUT_SEC)):
+        cycle = attempts * (launch_sec + mfr.MEDIA_WAIT_SEC[kind]) + (attempts - 1) * mfr.ACCOUNT_COOLDOWN_SEC
+        assert timeout >= cycle, f"{kind}: server chờ {timeout}s, vòng thử lại của runner tới {cycle}s"

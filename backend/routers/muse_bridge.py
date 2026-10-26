@@ -37,9 +37,11 @@ MUSE_OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 OFFLINE_THRESHOLD_SEC = 60.0  # Coi là offline nếu không nhận heartbeat sau 60s
 # Task đã gán cho 1 tài khoản nhưng chờ quá lâu thì tài khoản rảnh khác CÙNG LOẠI được nhận thay
 REASSIGN_AFTER_SEC = 20.0
-# Thời gian chờ tối đa phía server cho 1 task (phải dài hơn thời gian runner xử lý)
-IMAGE_TASK_TIMEOUT_SEC = 240.0
-VIDEO_TASK_TIMEOUT_SEC = 420.0
+# Thời gian chờ tối đa phía server cho 1 task: phải phủ cả vòng thử lại (MAX_TASK_RETRIES + 1 lượt, mỗi lượt ~30 s mở
+# trình duyệt + MEDIA_WAIT_SEC của runner, nghỉ ACCOUNT_COOLDOWN_SEC giữa các lượt). Trước 26/10/2026 là 240 s: server bỏ
+# cuộc và trả tiền ảnh 9router trong khi lượt thử lại của runner ra ảnh Muse 45 s sau.
+IMAGE_TASK_TIMEOUT_SEC = 720.0
+VIDEO_TASK_TIMEOUT_SEC = 1200.0
 # Khóa tài khoản khi Muse báo hết quota / chặn vùng / mất phiên đăng nhập
 ACCOUNT_BLOCK_SEC = 900.0
 MAX_TASK_RETRIES = 2
