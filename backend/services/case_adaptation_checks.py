@@ -47,8 +47,10 @@ from services.case_fictionalizer import AnonymizerShield
 
 # Tốc độ đọc dùng để đổi lời kể ra số phút video (số chữ mỗi cảnh ở các bước viết, cảnh báo thời lượng).
 # - Lời Việt: giọng VieNeu đọc chậm lại theo tts_service.VIENEU_SPEED (0.87). Đo thật: tốc độ thường 229–230 chữ/phút
-#   (Edge vụ Nhũ Cô 21/10; VieNeu Mai Anh vụ Trạm Dung 26/10: 4.252 chữ / 18,45 phút), × 0.87 ≈ 200. Giọng Edge đọc
-#   nhanh hơn mức này nên video ra dài hơn số phút chọn (số phút chọn là mức tối thiểu).
+#   (Edge vụ Nhũ Cô 21/10; VieNeu Mai Anh vụ Trạm Dung 26/10: 4.252 chữ / 18,45 phút), × 0.87 ≈ 200; VieNeu còn ngừng
+#   sau mỗi câu (tts_service.split_for_pauses) nên thực tế chậm hơn, video ra dài hơn số phút chọn một chút. Giả định
+#   này chỉ đúng với giọng VieNeu (giọng mặc định của vụ án): giọng Edge đọc ~229 chữ/phút nên video NGẮN hơn số phút
+#   chọn khoảng 13%. Số này cần đo lại sau mỗi lần chạy thật.
 # - Lời Anh: giọng Edge 133 chữ/phút (21/10).
 VI_WORDS_PER_MINUTE = 200
 EN_WORDS_PER_MINUTE = 133

@@ -1077,6 +1077,7 @@ class MuseFleetRunner:
                     reject_hashes.append(h)
 
         logger.info(f"[{acc.account_id}] Bắt đầu task {task_id} ({mode}{', có ảnh đính kèm' if attach_path else ''})")
+        await asyncio.to_thread(delivered_hashes)   # lần đầu đọc mọi .mp4 trong muse_outputs: ở luồng phụ, không trễ heartbeat
         await self.update_task_progress(task_id, 10, "launching", f"Khởi động profile {acc.account_id}")
 
         context: Optional[BrowserContext] = None

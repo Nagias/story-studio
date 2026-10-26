@@ -1,5 +1,7 @@
 # Nguồn hiệu ứng âm thanh CC0 / Public Domain
 
+Trong repo chỉ có bản `<tên>.mp3` (160 kbps, 48 kHz stereo) chuyển từ `wav/<tên>.wav` mô tả dưới đây; thư mục `goc/` và `wav/` giữ ở máy làm (`.cache/sfx_cc0/`, không vào git). Nhạc nền nằm ở `backend/assets/bgm/`.
+
 Tải ngày 26/10/2026. Chỉ nhận file có giấy phép CC0 hoặc Public Domain, xem trực tiếp trên trang nguồn (Wikimedia Commons đọc qua API `extmetadata` + mã nguồn trang; OpenGameArt đọc khối "License(s)" trên trang). Không đăng nhập ở đâu.
 
 Xử lý: `goc/` giữ file gốc nguyên vẹn. `wav/<tên>.wav` = cắt đoạn (cột "Đoạn lấy"), chuyển 48 kHz / stereo / 16-bit, cắt im lặng đầu/cuối (tiếng nền: chỉ cắt im lặng tuyệt đối < -80 dBFS; tiếng đơn: ngưỡng thấp hơn đỉnh 60 dB), chuẩn hoá đỉnh -3 dBFS bằng ffmpeg. `bgm/<tên>.mp3` = 48 kHz stereo, 192 kbps, đỉnh -1 dBFS.

@@ -10,6 +10,7 @@ Dựng dự án Story Studio từ kế hoạch chuyển thể vụ án, và tạ
   mô tả bằng chứng có thể chứa tên thật nên không bao giờ được chép sang.
 """
 import asyncio
+import logging
 import shutil
 import subprocess
 import uuid
@@ -58,6 +59,9 @@ _ID_TRIES = 20      # số lần sinh id dự án mới khi trùng id một dự
 
 class BlockingFlagsError(Exception):
     """Kế hoạch còn cảnh hoặc nhãn bị đánh dấu (tên thật chưa có tên thay thế, ngày tháng...): chưa được tạo dự án."""
+
+
+logger = logging.getLogger("story_studio.case_project_builder")
 
 
 class LanguageVersionError(ValueError):
@@ -252,9 +256,12 @@ def previous_scene_frame(project: Project, scene: Scene) -> Optional[Path]:
         clip = Path(prev.motion_video_path) if prev.motion_video_path else None
         if clip and clip.is_file():
             frame = clip.with_name(f"{prev.id}_khung_cuoi.jpg")
-            subprocess.run(["ffmpeg", "-y", "-v", "error", "-sseof", "-0.2", "-i", str(clip), "-frames:v", "1",
-                            "-q:v", "2", str(frame)], check=True, timeout=60)
-            return frame
+            try:
+                subprocess.run(["ffmpeg", "-y", "-v", "error", "-sseof", "-0.2", "-i", str(clip), "-frames:v", "1",
+                                "-q:v", "2", str(frame)], check=True, timeout=60, capture_output=True)
+                return frame
+            except (OSError, subprocess.SubprocessError) as e:   # vẫn nối được bằng ảnh cảnh trước
+                logger.warning(f"Không lấy được khung cuối clip {clip.name} ({e}); dùng ảnh cảnh {prev.id}")
         if prev.image_path and Path(prev.image_path).is_file():
             return Path(prev.image_path)
         return None
