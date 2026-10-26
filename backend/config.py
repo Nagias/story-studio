@@ -12,6 +12,8 @@ BGM_DIR = ASSETS_DIR / "bgm"
 # Font đóng gói kèm app (giấy phép SIL OFL, file OFL-*.txt cùng thư mục): đủ chữ tiếng Việt, không phụ thuộc font
 # của Windows. Chủ dự án chọn 26/10/2026: Be Vietnam Pro (phụ đề, chữ thường), Oswald (thumbnail), Patrick Hand (nhãn bảng ghim).
 FONTS_DIR = ASSETS_DIR / "fonts"
+# Tiếng động thật CC0/Public Domain cho video vụ án (services/scene_sound.py; nguồn và giấy phép: NGUON.md cùng thư mục)
+SFX_LIBRARY_DIR = ASSETS_DIR / "sfx_cc0"
 COMIC_SLICES_DIR = STATIC_DIR / "comic_slices"
 
 # Load environment configuration

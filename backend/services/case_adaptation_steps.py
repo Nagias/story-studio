@@ -69,6 +69,7 @@ from models.case_adaptation_schemas import (
     TimelineEvent,
 )
 from services import case_adaptation_llm, case_store, video_service
+from services.scene_sound import normalize_cue
 from services.case_adaptation_checks import (
     DURATION_SHORT_RATIO,
     ForbiddenName,
@@ -1944,7 +1945,8 @@ def _validate_write_prompts(raw: Any, ctx: _PartContext, vi_scenes: list[dict], 
             "video_prompt": scene.video_prompt,
             "camera_motion": _norm_token(scene.camera_motion) or "zoom_in",
             "narrative_beat": beat if beat in NARRATIVE_BEATS else _BEAT_BY_KIND.get(ctx.part.kind, "setting"),
-            "sfx_cue": [c.strip() for c in scene.sfx_cue if isinstance(c, str) and c.strip()][:3],
+            # chỉ giữ tiếng có trong thư viện (tên cũ quy về tên thư viện): không có file thì dựng video không có tiếng đó
+            "sfx_cue": list(dict.fromkeys(c for c in (normalize_cue(x) for x in scene.sfx_cue) if c))[:2],
             "bgm_energy": energy if energy in BGM_ENERGIES else "tension_buildup",
         })
     return _raise_if_problems(problems, soft, {"scenes": scenes})

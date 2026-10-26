@@ -30,6 +30,7 @@ from services.case_adaptation_checks import (
     apply_aliases,
     build_forbidden_names,
 )
+from services.scene_sound import SFX_CUES
 from services.video_service import CAMERA_MOTIONS
 
 # Ngưỡng kiểm của bước đọc đoạn (spec 7.2). case_adaptation_steps dùng lại đúng các số này.
@@ -712,7 +713,7 @@ YÊU CẦU CHO TỪNG CẢNH
 2. "video_prompt": tiếng Anh, 15–40 từ, tả chuyển động của máy quay và của chủ thể trong 5 giây. Bắt buộc với cảnh "video" (ít nhất {MIN_VIDEO_PROMPT_WORDS} từ); cảnh khác để "".
 3. "camera_motion": một trong {motions}.
 4. "narrative_beat": một trong {beats}.
-5. "sfx_cue": 0–2 tiếng động ngắn, tiếng Anh, viết kiểu snake_case (ví dụ "heavy_rain_loop", "footsteps", "distant_thunder_subtle", "clock_ticking", "heartbeat_single_pulse", "rusty_iron_gate_creak"); không cần thì [].
+5. "sfx_cue": 0–2 tiếng động hợp bối cảnh của cảnh (thời tiết, nơi chốn, hành động) để tạo không khí; CHỈ chọn trong danh sách: {", ".join(SFX_CUES)}. Cảnh trong nhà ban đêm có thể dùng tiếng nền như "clock_ticking", "fluorescent_hum", "dark_drone"; khoảnh khắc căng thì "heartbeat", "impact_hit". Không hợp tiếng nào thì [].
 6. "bgm_energy": một trong {energies}.
 7. An toàn cho YouTube: không máu, không vết thương, không thi thể lộ rõ, không vũ khí đang gây thương tích; bạo lực chỉ được gợi qua bóng tối, hậu cảnh hoặc đồ vật (tấm bạt che, dây phong toả, đèn pin, bóng người).
 

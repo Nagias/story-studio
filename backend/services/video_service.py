@@ -773,6 +773,10 @@ def get_available_bgm_tracks(bgm_dir: Path) -> List[Dict[str, Any]]:
         {"id": "cinematic_adventure", "name": "Hùng tráng (Cinematic Adventure)", "mood": "adventure", "filename": "cinematic_adventure.mp3"},
         {"id": "mysterious_dark", "name": "Bí ẩn (Mysterious Dark)", "mood": "dark", "filename": "mysterious_dark.mp3"},
     ]
+    # Nhạc CC0 có sẵn trong assets/bgm (nguồn: assets/sfx_cc0/NGUON.md); thiếu file thì không liệt kê, không tự tạo
+    for track_id, name in (("bgm_dark_ambient", "U tối (Dark Ambient, CC0)"), ("bgm_suspense", "Hồi hộp (Suspense, CC0)")):
+        if (bgm_dir / f"{track_id}.mp3").exists():
+            tracks.append({"id": track_id, "name": name, "mood": "dark", "filename": f"{track_id}.mp3"})
 
     result = []
     for t in tracks:

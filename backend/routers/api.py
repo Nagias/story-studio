@@ -93,6 +93,7 @@ from services import (
     generate_youtube_thumbnail,
 )
 from services.case_project_builder import redraw_board_images
+from services.scene_sound import build_energy_bgm, energy_segments, mix_scene_sfx, scene_sfx_files
 from services.thumbnail_service import ThumbnailError
 
 from services.project_service import _get_project_dir, ensure_project_dirs, save_project
@@ -1655,9 +1656,20 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
             input_media = _scene_render_input(scene, media)
             if not input_media:
                 raise RuntimeError(f"Cảnh {i} không có ảnh hoặc video để dựng.")
+            # Dự án vụ án: trộn tiếng động thật (sfx_cue) vào giọng cảnh, ghi file riêng, không đè giọng gốc
+            scene_audio = str(media["audio"])
+            sfx_files = scene_sfx_files(scene.sfx_cue) if (project.metadata or {}).get("case_id") else []
+            if sfx_files and media["audio"].exists() and scene.duration:
+                try:
+                    scene_audio = await mix_scene_sfx(scene_audio, sfx_files,
+                                                      str(media["audio"].with_name(f"{scene.id}_sfx.mp3")), scene.duration)
+                except Exception as e:  # không có tiếng động vẫn dựng được: báo rõ trong nhật ký, dùng giọng gốc
+                    logger.warning(f"Cảnh {i}: không trộn được tiếng động ({e})")
+                    await broadcast_render_update(render_id, {"logs": active_renders[render_id]["logs"] + [
+                        f"[Giai đoạn 4/5] ⚠ Cảnh {i}: không trộn được tiếng động ({e}); dùng giọng không có tiếng động."]})
             v_res = await render_scene_video(
                 image_path=input_media,
-                audio_path=str(media["audio"]),
+                audio_path=scene_audio,
                 output_path=str(media["video"]),
                 duration=scene.duration,
                 camera_motion=motion,
@@ -1697,6 +1709,19 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
             candidate = BGM_DIR / f"{bgm_track_id}.mp3"
             if candidate.exists():
                 bgm_file_path = str(candidate)
+
+        # Dự án vụ án: nhạc nền đổi theo độ căng từng đoạn (bgm_energy của cảnh); người dùng chọn "không nhạc" thì thôi
+        if bgm_file_path and (project.metadata or {}).get("case_id") and any(s.bgm_energy for s in project.scenes):
+            try:
+                segments = energy_segments([s.bgm_energy for s in project.scenes],
+                                           [float(s.duration or 0) for s in project.scenes])
+                bgm_file_path = await build_energy_bgm(
+                    segments, str(render_paths["final_video"].with_name("nhac_nen_theo_do_cang.mp3")))
+                bgm_note = f"Nhạc nền theo độ căng: {len(segments)} đoạn."
+            except Exception as e:  # vẫn có nhạc nền chung của dự án: báo rõ, không dừng
+                logger.warning(f"Không ghép được nhạc nền theo độ căng: {e}")
+                bgm_note = f"⚠ Không ghép được nhạc nền theo độ căng ({e}); dùng nhạc nền chung của dự án."
+            await broadcast_render_update(render_id, {"logs": active_renders[render_id]["logs"] + [bgm_note]})
 
         def sync_progress(percent: int, step_num: int, message: str):
             mapped_p = int(85 + (percent / 100.0) * 15)

@@ -145,7 +145,7 @@ def test_full_pipeline_produces_plan(isolated_projects_dir):
     assert board.covers_event_ids == ["ev_1_3", "ev_1_4"]
     video = plan.scenes[6]
     assert video.visual_kind == "video" and video.video_prompt == pr["scenes"][2]["video_prompt"]
-    assert plan.scenes[1].camera_motion == "neo_noir_rain_motion" and plan.scenes[1].sfx_cue == ["heavy_rain_loop"]
+    assert plan.scenes[1].camera_motion == "neo_noir_rain_motion" and plan.scenes[1].sfx_cue == ["rain_heavy"]   # fixture viết "heavy_rain_loop": quy về tên thư viện
 
     # không lọt tên thật vào lời kể, prompt, dàn ý
     texts = [t for s in plan.scenes for t in (s.narration_vi, s.narration_en, s.image_prompt, s.video_prompt)]
@@ -1224,3 +1224,14 @@ def test_plan_warns_when_material_is_enough_but_narration_is_short():
     assert short_speech_warning(enough, 20) == []
     short = short_speech_warning(enough[: len(enough) * 9 // 10], 20)   # 18 phút
     assert len(short) == 1 and "ngắn hơn video 20 phút đã chọn" in short[0] and "18,0 phút" in short[0]
+
+
+def test_plan_keeps_only_sound_effects_that_exist_in_the_library(isolated_projects_dir):
+    """Prompt hình chỉ cho chọn tiếng trong thư viện CC0; tên cũ quy về tên thư viện, tên lạ bị bỏ."""
+    from services.scene_sound import SFX_CUES
+    pipeline = _new_pipeline()
+    llm, _calls = make_fake_llm()
+    _run_pipeline(pipeline, llm)
+    plan = case_store.load_plan(pipeline.case_id)
+    assert all(cue in SFX_CUES for scene in plan.scenes for cue in scene.sfx_cue)
+    assert "rain_heavy" in _prompt_for(llm, "PROMPTS p1") and "heartbeat" in _prompt_for(llm, "PROMPTS p1")
