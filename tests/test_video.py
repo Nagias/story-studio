@@ -1,4 +1,6 @@
+import asyncio
 import json
+import re
 import os
 import subprocess
 import sys
@@ -309,3 +311,30 @@ async def test_render_scene_video_action_fx(tmp_path):
     assert v_stream is not None
     assert v_stream["width"] == 1280
     assert v_stream["height"] == 720
+
+
+def _integrated_lufs(path: str) -> float:
+    out = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", path, "-af", "ebur128", "-f", "null", "-"],
+                         capture_output=True, text=True, encoding="utf-8", errors="replace").stderr
+    return float(re.findall(r"I:\s+(-?\d+(?:\.\d+)?) LUFS", out)[-1])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("with_bgm", [True, False])
+async def test_final_video_loudness_is_normalised(tmp_path, with_bgm):
+    """Gặp 26/10/2026: video vụ án ra trung bình -29 dB (amix chia đôi giọng, không chuẩn hoá). Giọng nhỏ (-35 dB)
+    vào thì video ra vẫn quanh -16 LUFS, có hay không có nhạc nền."""
+    img_p, aud_p, vid_p = str(tmp_path / "img.jpg"), str(tmp_path / "voice.wav"), str(tmp_path / "seg.mp4")
+    generate_mock_cinematic("scene", "cinematic_realistic", img_p, 1)
+    await asyncio.to_thread(subprocess.run, ["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
+                            "sine=frequency=330:duration=6", "-af", "volume=-35dB", aud_p], check=True)
+    seg = await render_scene_video(img_p, aud_p, vid_p, 6.0, "zoom_in", "720p", 25)
+    bgm = None
+    if with_bgm:
+        bgm = str(tmp_path / "bgm.mp3")
+        generate_default_bgm_track(bgm, "peaceful")
+    out = str(tmp_path / "final.mp4")
+    await assemble_full_video(scene_video_paths=[seg["video_path"]], scene_srt_infos=[{"srt_path": None, "duration": 6.0}],
+                              output_video_path=out, bgm_path=bgm, bgm_volume=0.2, ducking=True, hardsub=False,
+                              resolution="720p")
+    assert -18.5 <= await asyncio.to_thread(_integrated_lufs, out) <= -13.5

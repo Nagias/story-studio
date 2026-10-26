@@ -19,6 +19,10 @@ SEGMENT_AUDIO_ARGS = ["-c:a", "aac", "-b:a", "192k", "-ar", str(AUDIO_SAMPLE_RAT
 SILENT_AUDIO_SRC = f"anullsrc=r={AUDIO_SAMPLE_RATE}:cl=stereo"
 
 # Resolution presets
+# Độ to chuẩn của video thành phẩm: -16 LUFS, đỉnh -1.5 dBTP (mức các kênh YouTube hay dùng); loudnorm nâng tần số
+# mẫu lên 192 kHz nên lấy mẫu lại 48 kHz.
+LOUDNORM_FILTER = "loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000"
+
 RESOLUTIONS = {
     "1080p": (1920, 1080),
     "720p": (1280, 720),
@@ -653,41 +657,37 @@ async def assemble_full_video(
                 filter_complex_parts.append(f"[0:v]subtitles='{escaped_srt}':force_style='{sub_style}'[vout]")
                 video_map = "[vout]"
 
-        # Audio ducking filter
+        # Âm thanh: trộn nhạc nền (amix normalize=0: mặc định amix chia đôi âm lượng, giọng bị nhỏ ~6 dB) rồi chuẩn hoá
+        # độ to về mức YouTube. Gặp 26/10/2026: video ra trung bình -29 dB, nghe nhỏ hơn hẳn các kênh khác.
         if has_bgm:
             if ducking:
                 filter_complex_parts.append(
                     f"[1:a]volume={bgm_volume:.2f}[bgm_vol];"
                     f"[bgm_vol][0:a]sidechaincompress=threshold=0.08:ratio=4:attack=100:release=500[ducked_bgm];"
-                    f"[0:a][ducked_bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+                    f"[0:a][ducked_bgm]amix=inputs=2:duration=first:dropout_transition=2:normalize=0,{LOUDNORM_FILTER}[aout]"
                 )
             else:
                 filter_complex_parts.append(
                     f"[1:a]volume={bgm_volume:.2f}[bgm_vol];"
-                    f"[0:a][bgm_vol]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+                    f"[0:a][bgm_vol]amix=inputs=2:duration=first:dropout_transition=2:normalize=0,{LOUDNORM_FILTER}[aout]"
                 )
-            audio_map = "[aout]"
-
-        if filter_complex_parts:
-            cmd_final.extend([
-                "-filter_complex", ";".join(filter_complex_parts),
-                "-map", video_map,
-                "-map", audio_map,
-                "-c:v", "libx264",
-                "-preset", "fast",
-                "-threads", "0",
-                "-pix_fmt", "yuv420p",
-                "-c:a", "aac",
-                "-b:a", "192k",
-                "-movflags", "+faststart",
-                str(out_file),
-            ])
         else:
-            cmd_final.extend([
-                "-c", "copy",
-                "-movflags", "+faststart",
-                str(out_file),
-            ])
+            filter_complex_parts.append(f"[0:a]{LOUDNORM_FILTER}[aout]")
+        audio_map = "[aout]"
+
+        # Hình không qua bộ lọc nào (không in phụ đề) thì giữ nguyên, không mã hoá lại
+        video_codec = (["-c:v", "copy"] if video_map == "0:v"
+                       else ["-c:v", "libx264", "-preset", "fast", "-threads", "0", "-pix_fmt", "yuv420p"])
+        cmd_final.extend([
+            "-filter_complex", ";".join(filter_complex_parts),
+            "-map", video_map,
+            "-map", audio_map,
+            *video_codec,
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-movflags", "+faststart",
+            str(out_file),
+        ])
 
         p_final = await asyncio.create_subprocess_exec(
             *cmd_final,
