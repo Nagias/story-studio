@@ -627,3 +627,37 @@ async def test_vieneu_reads_sentence_by_sentence_slower_with_pauses(tmp_path, mo
     assert not res["fallback_used"]
     names = sorted(p.name for p in tmp_path.iterdir() if p.suffix in (".mp3", ".srt") or p.name.startswith(".cau_"))
     assert names == ["cau.mp3", "scene.mp3", "scene.srt"]           # thư mục tạm từng câu đã dọn
+
+
+@pytest.mark.asyncio
+async def test_muse_runner_is_started_before_paying_for_9router_images(tmp_path, monkeypatch):
+    """Gặp 27/10/2026: runner vừa tắt, server chỉ bật runner khi tạo task, mà tạo ảnh bỏ cuộc trước khi tạo task -> 4 ảnh
+    tính tiền 9router. Nay bật runner, chờ nó đăng ký rồi mới gửi việc cho Muse."""
+    from runners import single_instance
+    online = {"n": 0}
+    started = []
+
+    def is_online(kind):
+        online["n"] += 1
+        return online["n"] > 3                              # runner đăng ký sau vài lần hỏi
+
+    async def fake_enqueue(task):
+        _write_jpg(Path(task["output_path"]))
+        return {"output_path": task["output_path"]}
+
+    async def no_wait(seconds):
+        return None
+
+    async def must_not_pay(*args, **kwargs):
+        raise AssertionError("không được dùng ảnh trả phí khi bật được Muse")
+
+    monkeypatch.setattr(single_instance, "autostart_disabled", lambda: False)
+    monkeypatch.setattr(muse_bridge, "is_kind_online", is_online)
+    monkeypatch.setattr(muse_bridge, "ensure_local_fleet_runner", lambda: started.append(1))
+    monkeypatch.setattr(muse_bridge, "enqueue_and_wait_muse_task", fake_enqueue)
+    monkeypatch.setattr(image_service, "muse_wait_sleep", no_wait)
+    monkeypatch.setattr(image_service, "generate_9router_gemini", must_not_pay)
+
+    out = tmp_path / "scene.jpg"
+    res = await image_service.generate_image(prompt="a dark alley", provider="meta_muse_cloud", output_path=str(out))
+    assert res["success"] and res["provider"] == "meta_muse_cloud" and started == [1]

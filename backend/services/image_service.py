@@ -1,9 +1,11 @@
+import asyncio
 import base64
 import io
 import logging
 import math
 import random
 import shutil
+import time
 import urllib.parse
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -20,6 +22,10 @@ from config import (
 )
 
 logger = logging.getLogger("story_studio.image_service")
+
+# Muse chưa online thì bật Fleet Runner và chờ chừng này giây cho nó đăng ký (đo thật: ~15 s) trước khi dùng ảnh trả phí
+MUSE_RUNNER_START_WAIT_S = 60.0
+muse_wait_sleep = asyncio.sleep   # lấy lúc gọi; test thay bằng hàm không chờ thật
 
 # Tên provider được chấp nhận cho từng engine (giao diện và dữ liệu cũ dùng nhiều tên khác nhau)
 MUSE_PROVIDERS = ("meta_muse_cloud", "meta_muse", "muse", "muse_cloud")
@@ -637,7 +643,15 @@ async def generate_image(
     # 0. Meta Muse Fleet Runner / Cloud Worker (2K Masterpiece via Chromium Multi-Profile Fleet)
     if used_provider in MUSE_PROVIDERS:
         try:
-            from routers.muse_bridge import enqueue_and_wait_muse_task, is_kind_online
+            from routers.muse_bridge import enqueue_and_wait_muse_task, ensure_local_fleet_runner, is_kind_online
+            from runners import single_instance
+            # Runner chưa chạy thì bật và chờ nó đăng ký, rồi mới tính chuyện ảnh trả phí. Gặp 27/10/2026: runner
+            # vừa tắt, server chỉ bật runner khi tạo task, mà ở đây bỏ cuộc trước khi tạo task -> 4 ảnh tính tiền 9router.
+            if not is_kind_online("image") and not single_instance.autostart_disabled():
+                ensure_local_fleet_runner()
+                deadline = time.monotonic() + MUSE_RUNNER_START_WAIT_S
+                while not is_kind_online("image") and time.monotonic() < deadline:
+                    await muse_wait_sleep(2.0)
             if not is_kind_online("image"):
                 raise RuntimeError("Không có tài khoản Muse ảnh nào online (Fleet Runner)")
 
