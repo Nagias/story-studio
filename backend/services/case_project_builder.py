@@ -114,7 +114,8 @@ def _first_reveals(plan: CaseAdaptationPlan) -> dict[str, int]:
     return first
 
 
-def plan_board_items(plan: CaseAdaptationPlan, lang: Lang) -> tuple[list[EvidenceNode], list[RelationEdge]]:
+def plan_board_items(plan: CaseAdaptationPlan, lang: Lang,
+                     node_images: Optional[dict[str, str]] = None) -> tuple[list[EvidenceNode], list[RelationEdge]]:
     """Thẻ và sợi chỉ của bảng ghim, nhãn theo `lang`; toạ độ cố định, không phụ thuộc ngôn ngữ.
 
     - Thẻ: mỗi bằng chứng đã hiện ra ở ít nhất một cảnh; cộng thực thể (nhân vật, địa danh...) đứng ở đầu mút của
@@ -123,6 +124,7 @@ def plan_board_items(plan: CaseAdaptationPlan, lang: Lang) -> tuple[list[Evidenc
     - Bằng chứng/quan hệ không cảnh nào cho hiện ra thì không có trên bảng. Mô tả bằng chứng không bao giờ lên thẻ
       (check_plan không quét mô tả nên có thể còn tên thật).
     - Bản `en`: `metadata["badge_label"]` là nhãn huy hiệu tiếng Anh.
+    - `node_images` (id thẻ -> ảnh): ảnh minh hoạ trên thẻ thay cho biểu tượng (board_node_images).
     - Engine xếp chỗ một lần cho mọi thẻ của cả kế hoạch, nên vụ án nhiều bằng chứng không bị bỏ thẻ nào: lưới thêm
       ô, mọi thẻ cùng thu nhỏ theo `metadata["card_scale"]`, không thẻ nào đè thẻ nào, và cỡ thẻ giống nhau ở mọi cảnh
       và cả hai ngôn ngữ.
@@ -144,6 +146,8 @@ def plan_board_items(plan: CaseAdaptationPlan, lang: Lang) -> tuple[list[Evidenc
                             appearance_scene_order=appears[node_id])
         if lang == "en":
             node.metadata["badge_label"] = NODE_TYPE_LABELS_EN[node_type]
+        if node_images and node_id in node_images:
+            node.image_path = node_images[node_id]
         return node
 
     nodes: list[EvidenceNode] = []
@@ -170,13 +174,62 @@ def plan_board_items(plan: CaseAdaptationPlan, lang: Lang) -> tuple[list[Evidenc
     return nodes, edges
 
 
-def render_board_scene(plan: CaseAdaptationPlan, scene_order: int, lang: Lang, out_path) -> Path:
+def render_board_scene(plan: CaseAdaptationPlan, scene_order: int, lang: Lang, out_path,
+                       node_images: Optional[dict[str, str]] = None) -> Path:
     """Vẽ bảng ghim tích luỹ tới cảnh `scene_order`, nhãn và tiêu đề theo `lang`, ghi vào `out_path`."""
-    nodes, edges = plan_board_items(plan, lang)
+    nodes, edges = plan_board_items(plan, lang, node_images)
     state = get_cumulative_board_state(SimpleNamespace(nodes=nodes, edges=edges), scene_order)
     state.title = BOARD_TITLE[lang]
     render_board_image(state, str(out_path))
     return Path(out_path)
+
+
+def board_node_images(plan: CaseAdaptationPlan, project: Project, lang: Lang) -> dict[str, str]:
+    """id thẻ -> ảnh của một cảnh hình (không phải bảng ghim, thẻ miễn trừ) kể ngay trước lúc thẻ hiện ra, để thẻ có ảnh
+    minh hoạ thay biểu tượng kính lúp (gặp 26/10/2026: mọi thẻ cùng một biểu tượng). Các thẻ cùng hiện ở một cảnh lấy
+    ảnh của các cảnh khác nhau, lùi dần về trước; hết ảnh phía trước thì lấy cảnh sau."""
+    pictures: list[tuple[int, str]] = []
+    for scene in project.scenes:
+        meta = scene.metadata or {}
+        order = meta.get("plan_order")
+        if (meta.get("visual_kind") in ("board", "disclaimer") or order is None or not scene.image_path
+                or not Path(scene.image_path).is_file()):
+            continue
+        pictures.append((int(order), scene.image_path))
+    pictures.sort()
+    if not pictures:
+        return {}
+    nodes, _edges = plan_board_items(plan, lang)
+    by_order: dict[int, list[str]] = {}
+    for node in nodes:
+        by_order.setdefault(node.appearance_scene_order, []).append(node.id)
+    images: dict[str, str] = {}
+    for order, node_ids in by_order.items():
+        candidates = [p for o, p in reversed(pictures) if o <= order] + [p for o, p in pictures if o > order]
+        for k, node_id in enumerate(node_ids):
+            images[node_id] = candidates[k % len(candidates)]
+    return images
+
+
+def redraw_board_images(project: Project) -> int:
+    """Vẽ lại ảnh các cảnh bảng ghim của dự án vụ án, thẻ có ảnh minh hoạ lấy từ các cảnh hình đã có ảnh. Gọi sau khi
+    tạo ảnh (bước 3 sản xuất video). Trả số cảnh bảng ghim đã vẽ lại; dự án không phải vụ án thì 0."""
+    meta = project.metadata or {}
+    case_id = meta.get("case_id")
+    if not case_id:
+        return 0
+    lang: Lang = "en" if meta.get("language") == "en" else "vi"
+    plan = case_store.load_plan(case_id)
+    images = board_node_images(plan, project, lang)
+    if not images:
+        return 0
+    count = 0
+    for scene in project.scenes:
+        scene_meta = scene.metadata or {}
+        if scene_meta.get("visual_kind") == "board" and scene.image_path and scene_meta.get("plan_order") is not None:
+            render_board_scene(plan, int(scene_meta["plan_order"]), lang, scene.image_path, node_images=images)
+            count += 1
+    return count
 
 
 # ---------------------------------------------------------------- thẻ miễn trừ

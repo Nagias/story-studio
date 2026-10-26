@@ -23,7 +23,8 @@ from services import youtube_seo_rules as rules
 
 logger = logging.getLogger("story_studio.thumbnail_service")
 
-THUMB_FONT_FILES = ("seguibl.ttf", "arialbd.ttf", "segoeuib.ttf")   # ưu tiên trước; đều đủ chữ có dấu tiếng Việt
+THUMB_BUNDLED_FONT = "Oswald-Bold.ttf"   # font đóng gói (config.FONTS_DIR), chủ dự án chọn 26/10/2026
+THUMB_FONT_FILES = ("seguibl.ttf", "arialbd.ttf", "segoeuib.ttf")   # font Windows dự phòng; đều đủ chữ có dấu tiếng Việt
 CANVAS_W, CANVAS_H = 1920, 1080
 TEXT_LEFT = 70
 TEXT_MAX_W = 1100
@@ -37,6 +38,9 @@ class ThumbnailError(RuntimeError):
 
 
 def thumbnail_font_path() -> Optional[Path]:
+    bundled = config.FONTS_DIR / THUMB_BUNDLED_FONT
+    if bundled.exists():
+        return bundled
     fonts = config.WINDOWS_FONTS_DIR
     if fonts is None:
         return None

@@ -300,3 +300,42 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as td:
         test_render_board_image_and_video(Path(td))
     print("\n🎉 ALL INVESTIGATION BOARD ENGINE TESTS PASSED 100%!")
+
+
+# ---------------------------------------------------------------- font đóng gói (chủ dự án 26/10/2026: font mặc định sơ sài)
+
+VIETNAMESE_SAMPLE = "Hồ sơ điều tra: Dấu vết trên cửa thoát hiểm, ĐƯỜNG HÔ HẤP KHÔNG CÓ MUỘI THAN ữ ỹ ặ"
+
+
+def test_bundled_fonts_cover_vietnamese_and_ship_with_their_licence():
+    import config
+    from services import youtube_seo_rules as rules
+    from services.investigation_board_engine import get_font
+    from services.subtitle_engine import SUBTITLE_FONT
+    from services.thumbnail_service import thumbnail_font_path
+    fonts = sorted(config.FONTS_DIR.glob("*.ttf"))
+    assert {f.name for f in fonts} >= {"BeVietnamPro-Regular.ttf", "BeVietnamPro-Bold.ttf", "Oswald-Bold.ttf",
+                                       "PatrickHand-Regular.ttf"}
+    for font in fonts:
+        assert rules.missing_glyphs(font, VIETNAMESE_SAMPLE) == "", font.name
+    for licence in ("OFL-bevietnampro.txt", "OFL-oswald.txt", "OFL-patrickhand.txt"):
+        assert "SIL OPEN FONT LICENSE" in (config.FONTS_DIR / licence).read_text(encoding="utf-8").upper()
+    assert Path(get_font(20).path).name == "BeVietnamPro-Regular.ttf"
+    assert Path(get_font(20, bold=True).path).name == "BeVietnamPro-Bold.ttf"
+    assert Path(get_font(20, handwriting=True).path).name == "PatrickHand-Regular.ttf"
+    assert thumbnail_font_path().name == "Oswald-Bold.ttf"
+    from PIL import ImageFont
+    assert ImageFont.truetype(str(config.FONTS_DIR / "BeVietnamPro-Bold.ttf"), 20).getname()[0] == SUBTITLE_FONT
+
+
+def test_card_label_wraps_into_two_lines_instead_of_cutting_at_26_chars():
+    """Gặp 26/10/2026: nhãn Courier 14 px cắt ở 26 ký tự, xem video không đọc nổi."""
+    from PIL import ImageDraw
+    from services.investigation_board_engine import CARD_WIDTH, _card_label_lines
+    draw = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+    label = "Dấu lòng bàn tay thoát hiểm"
+    lines, font = _card_label_lines(draw, label)
+    assert 1 <= len(lines) <= 2 and " ".join(lines) == label and font.size >= 22
+    assert all(draw.textlength(line, font=font) <= CARD_WIDTH - 24 for line in lines)
+    long_lines, _font = _card_label_lines(draw, "Một nhãn rất rất dài " * 6)
+    assert len(long_lines) == 2 and long_lines[-1].endswith("…")

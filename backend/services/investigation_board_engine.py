@@ -32,7 +32,9 @@ import subprocess
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
-from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageColor
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageColor, ImageOps
+
+import config
 
 from models.evidence_schemas import (
     EvidenceNode,
@@ -84,8 +86,20 @@ PIN_COLORS = {
 # 1. PROCEDURAL CORKBOARD GENERATOR
 # ==============================================================================
 
-def get_font(size: int = 16, bold: bool = False, typewriter: bool = False) -> ImageFont.ImageFont:
-    """Load system font safely with fallback to default PIL font."""
+# Font đóng gói (config.FONTS_DIR); thiếu file thì dùng font Windows như trước. Chữ máy đánh chữ (con dấu "ALIBI"...) giữ
+# Courier của Windows.
+_BUNDLED_FONTS = {"regular": "BeVietnamPro-Regular.ttf", "bold": "BeVietnamPro-Bold.ttf",
+                  "handwriting": "PatrickHand-Regular.ttf"}
+
+
+def get_font(size: int = 16, bold: bool = False, typewriter: bool = False,
+             handwriting: bool = False) -> ImageFont.ImageFont:
+    """Font đóng gói nếu có (chữ thường, đậm, viết tay), không thì font hệ thống, cuối cùng là font mặc định của PIL."""
+    if not typewriter:
+        key = "handwriting" if handwriting else ("bold" if bold else "regular")
+        bundled = config.FONTS_DIR / _BUNDLED_FONTS[key]
+        if bundled.exists():
+            return ImageFont.truetype(str(bundled), size)
     font_candidates = []
     if typewriter:
         font_candidates = ["courbd.ttf", "cour.ttf", "consola.ttf", "arialbd.ttf", "arial.ttf"]
@@ -518,6 +532,31 @@ def render_node_placeholder_icon(draw: ImageDraw.ImageDraw, rect: List[int], nod
         draw.ellipse([cx - 10, cy - 10, cx, cy], fill=(255, 255, 255))
 
 
+_LABEL_SIZES = (30, 26, 22)          # cỡ chữ nhãn thẻ, thử từ lớn tới nhỏ
+_LABEL_MAX_W = CARD_WIDTH - 24
+
+
+def _card_label_lines(draw: ImageDraw.ImageDraw, label: str) -> tuple[list[str], ImageFont.ImageFont]:
+    """Ngắt nhãn thành tối đa 2 dòng vừa thẻ, chữ to nhất có thể; vẫn không vừa thì cắt dòng 2, thêm "…"."""
+    words = label.split()
+    font = None
+    for size in _LABEL_SIZES:
+        font = get_font(size=size, handwriting=True)
+        lines: list[str] = []
+        for word in words:
+            if lines and draw.textlength(f"{lines[-1]} {word}", font=font) <= _LABEL_MAX_W:
+                lines[-1] = f"{lines[-1]} {word}"
+            else:
+                lines.append(word)
+        if len(lines) <= 2 and all(draw.textlength(line, font=font) <= _LABEL_MAX_W for line in lines):
+            return lines, font
+    lines = lines[:2]
+    while lines and draw.textlength(lines[-1] + "…", font=font) > _LABEL_MAX_W and len(lines[-1]) > 1:
+        lines[-1] = lines[-1][:-1]
+    lines[-1] = lines[-1].rstrip() + "…"
+    return lines, font
+
+
 def render_polaroid_card(node: EvidenceNode) -> Image.Image:
     """
     Renders an individual Polaroid card with:
@@ -547,7 +586,8 @@ def render_polaroid_card(node: EvidenceNode) -> Image.Image:
         try:
             with Image.open(node.image_path) as pimg:
                 pimg_rgb = pimg.convert("RGBA")
-                pimg_resized = pimg_rgb.resize((PHOTO_WIDTH, PHOTO_HEIGHT), Image.Resampling.LANCZOS)
+                # cắt cho vừa khung ảnh thẻ, không kéo méo (ảnh cảnh 16:9 vào khung gần vuông)
+                pimg_resized = ImageOps.fit(pimg_rgb, (PHOTO_WIDTH, PHOTO_HEIGHT), Image.Resampling.LANCZOS)
                 card.paste(pimg_resized, (px1, py1))
                 loaded_photo = True
         except Exception:
@@ -570,17 +610,13 @@ def render_polaroid_card(node: EvidenceNode) -> Image.Image:
     draw.rounded_rectangle([bx1, by1, bx1 + badge_w, by1 + badge_h], radius=4, fill=(*palette["bg"], 235))
     draw.text((bx1 + 7, by1 + 2), badge_text, font=badge_font, fill=palette["text"])
 
-    # 4. Card Label / Title (Typewriter Courier font)
-    title_font = get_font(size=14, bold=True, typewriter=True)
-    clean_label = node.label.strip()
-    # Truncate if too long
-    if len(clean_label) > 28:
-        clean_label = clean_label[:26] + ".."
-
-    tw = int(draw.textlength(clean_label, font=title_font))
-    tx = (CARD_WIDTH - tw) // 2
-    ty = py2 + 14
-    draw.text((tx, ty), clean_label, font=title_font, fill=(28, 28, 30))
+    # 4. Nhãn thẻ: chữ viết tay to, tối đa 2 dòng (gặp 26/10/2026: chữ Courier 14 px cắt ở 26 ký tự, xem video không đọc nổi)
+    label_lines, title_font = _card_label_lines(draw, node.label.strip())
+    ty = py2 + 8
+    for line in label_lines:
+        tw = int(draw.textlength(line, font=title_font))
+        draw.text(((CARD_WIDTH - tw) // 2, ty), line, font=title_font, fill=(28, 28, 30))
+        ty += int(title_font.size * 1.12) if hasattr(title_font, "size") else 26
 
     # Optional sub-description line
     if node.description:
@@ -745,9 +781,9 @@ def draw_red_thread(
 
     # 4. Optional Evidence Thread Tag
     if label and progress >= 0.95:
-        tag_font = get_font(size=11, bold=True)
-        tw = int(canvas_draw.textlength(label, font=tag_font)) + 10
-        th = 18
+        tag_font = get_font(size=15, bold=True)
+        tw = int(canvas_draw.textlength(label, font=tag_font)) + 12
+        th = 24
         tx, ty = _label_spot(active_points, tw, th, label_avoid)
         tag_rect = (tx - tw // 2, ty - th // 2, tx + tw // 2, ty + th // 2)
         # Paper tag background
@@ -881,9 +917,9 @@ def title_banner_text_and_font(title: str):
     """Chữ in trên băng tiêu đề và font dùng cho nó. Font máy đánh chữ thiếu glyph nào thì đổi sang font đậm thường;
     hai ngôi sao hai bên vẽ bằng đa giác vì font Courier/Arial của Windows không có glyph "★" (hiện thành ô vuông)."""
     text = " ".join(str(title or "").upper().split())
-    font = get_font(size=16, bold=True, typewriter=True)
+    font = get_font(size=24, bold=True, typewriter=True)
     if font is not None and _missing_glyphs(font, text):
-        fallback = get_font(size=16, bold=True)
+        fallback = get_font(size=24, bold=True)
         if fallback is not None and not _missing_glyphs(fallback, text):
             font = fallback
     return text, font

@@ -852,3 +852,33 @@ def test_language_version_disclaimer_is_always_the_fixed_sentence(isolated_proje
     assert rewritten == [] and calls == []
     assert new.scenes[0].text == DISCLAIMER["en"]
     assert new.scenes[0].metadata["narration"] == dict(DISCLAIMER)
+
+
+def test_board_cards_get_pictures_of_earlier_scenes_once_images_exist(isolated_projects_dir):
+    """Gặp 26/10/2026: mọi thẻ bảng ghim cùng một biểu tượng kính lúp. Sau bước tạo ảnh, bảng ghim vẽ lại với ảnh
+    của các cảnh hình kể trước lúc thẻ hiện ra; các thẻ cùng hiện một lúc lấy ảnh khác nhau."""
+    from services.case_project_builder import board_node_images, redraw_board_images
+    plan = build_plan()
+    project = make_vi_project(plan)
+    root = project_service._get_project_dir(project.id)
+    colours = {2: (200, 30, 30), 3: (30, 200, 30), 4: (30, 30, 200), 5: (200, 200, 30)}
+    for order, colour in colours.items():
+        path = root / "images" / f"scene_{order:03d}.jpg"
+        Image.new("RGB", (320, 180), colour).save(path)
+        scene_by_order(project, order).image_path = str(path)
+    project_service.save_project(project)
+    project = project_service.get_project(project.id)
+
+    images = board_node_images(plan, project, "vi")
+    assert len(images) == 8                                           # evd_1..evd_8 hiện ở cảnh 6
+    assert set(images.values()) == {str(root / "images" / f"scene_{o:03d}.jpg") for o in colours}
+    board = root / "images" / "scene_006.jpg"
+    before = board.read_bytes()
+    assert redraw_board_images(project) == 1
+    assert board.read_bytes() != before
+    with Image.open(board) as im:
+        red = sum(1 for px in im.convert("RGB").getdata() if px[0] > 170 and px[1] < 70 and px[2] < 70)
+    assert red > 2000                                                 # ảnh cảnh 2 (đỏ) đã nằm trên thẻ
+
+    no_case = project.model_copy(update={"metadata": {}})
+    assert redraw_board_images(no_case) == 0                          # không phải dự án vụ án: không làm gì

@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable
 
+import config
 from services.tts_service import MediaDurationError, get_audio_duration
 
 logger = logging.getLogger("story_studio.video_service")
@@ -643,7 +644,9 @@ async def assemble_full_video(
         if hardsub:
             if has_ass:
                 escaped_ass = os.path.abspath(merged_ass_file).replace("\\", "/").replace(":", "\\:")
-                filter_complex_parts.append(f"[0:v]ass='{escaped_ass}'[vout]")
+                escaped_fonts = os.path.abspath(config.FONTS_DIR).replace("\\", "/").replace(":", "\\:")
+                # fontsdir: font đóng gói (Be Vietnam Pro) cho phụ đề, không phụ thuộc font cài trên máy
+                filter_complex_parts.append(f"[0:v]ass='{escaped_ass}':fontsdir='{escaped_fonts}'[vout]")
                 video_map = "[vout]"
             elif has_sub:
                 escaped_srt = os.path.abspath(merged_srt_file).replace("\\", "/").replace(":", "\\:")

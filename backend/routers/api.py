@@ -92,6 +92,7 @@ from services import (
     deconstruct_script_offline,
     generate_youtube_thumbnail,
 )
+from services.case_project_builder import redraw_board_images
 from services.thumbnail_service import ThumbnailError
 
 from services.project_service import _get_project_dir, ensure_project_dirs, save_project
@@ -1625,6 +1626,16 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
             })
 
         update_project(project_id, ProjectUpdateRequest(scenes=project.scenes))
+
+        # Dự án vụ án: vẽ lại bảng ghim, thẻ có ảnh minh hoạ lấy từ ảnh các cảnh vừa tạo (thay biểu tượng kính lúp)
+        if (project.metadata or {}).get("case_id"):
+            try:
+                redrawn = await asyncio.to_thread(redraw_board_images, project)
+                board_note = f"[Giai đoạn 3/5] Đã vẽ lại {redrawn} cảnh bảng ghim với ảnh minh hoạ của các cảnh."
+            except Exception as e:  # bảng ghim vẽ lúc tạo dự án vẫn dùng được: báo rõ, không dừng sản xuất
+                logger.warning(f"Không vẽ lại được bảng ghim dự án {project_id}: {e}", exc_info=True)
+                board_note = f"[Giai đoạn 3/5] ⚠ Không vẽ lại được bảng ghim với ảnh cảnh ({e}); dùng bảng ghim có sẵn."
+            await broadcast_render_update(render_id, {"logs": active_renders[render_id]["logs"] + [board_note]})
 
         # ----------------- PHASE 4: MOTION FX SCENE SEGMENTS (65% -> 85%) -----------------
         await broadcast_render_update(render_id, {

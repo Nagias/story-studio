@@ -9,6 +9,9 @@ PROJECTS_DIR = STORY_STUDIO_DIR / "projects"
 STATIC_DIR = BACKEND_DIR / "static"
 ASSETS_DIR = BACKEND_DIR / "assets"
 BGM_DIR = ASSETS_DIR / "bgm"
+# Font đóng gói kèm app (giấy phép SIL OFL, file OFL-*.txt cùng thư mục): đủ chữ tiếng Việt, không phụ thuộc font
+# của Windows. Chủ dự án chọn 26/10/2026: Be Vietnam Pro (phụ đề, chữ thường), Oswald (thumbnail), Patrick Hand (nhãn bảng ghim).
+FONTS_DIR = ASSETS_DIR / "fonts"
 COMIC_SLICES_DIR = STATIC_DIR / "comic_slices"
 
 # Load environment configuration

@@ -13,6 +13,9 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Union
 
 logger = logging.getLogger("story_studio.subtitle_engine")
+# Phụ đề dùng font đóng gói Be Vietnam Pro (backend/assets/fonts, ffmpeg nạp qua fontsdir; Bold=-1 trong kiểu ASS chọn file
+# BeVietnamPro-Bold). Chủ dự án 26/10/2026: font mặc định (Arial) sơ sài.
+SUBTITLE_FONT = "Be Vietnam Pro"
 
 def format_ass_time(seconds: float) -> str:
     """Format seconds into ASS timestamp string: H:MM:SS.cc"""
@@ -108,7 +111,7 @@ def extract_word_timestamps(
 def generate_karaoke_ass(
     scenes_data: List[Dict[str, Any]],
     output_ass_path: Union[str, Path],
-    font_name: str = "Arial",
+    font_name: str = SUBTITLE_FONT,
     font_size: int = 56,
     margin_v: int = 45,
     style_mode: str = "kinetic_pop",  # kinetic_pop, karaoke_sweep, classic
