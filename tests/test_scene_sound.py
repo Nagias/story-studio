@@ -61,3 +61,37 @@ def test_mixing_keeps_scene_length_and_energy_bgm_covers_the_video(tmp_path):
     bgm = tmp_path / "bgm.mp3"
     asyncio.run(scene_sound.build_energy_bgm([("bgm_dark_ambient", 6.0), ("bgm_suspense", 5.0)], str(bgm)))
     assert abs(_duration(bgm) - 11.0) < 0.3
+
+
+def _lufs(path) -> float:
+    err = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(path), "-ac", "1", "-af",
+                          "loudnorm=print_format=json", "-f", "null", "-"], capture_output=True, text=True,
+                         encoding="utf-8", errors="ignore").stderr
+    return float(err.split('"input_i" : "')[1].split('"')[0])
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="cần ffmpeg")
+def test_every_library_sound_reaches_the_same_level_under_the_voice(tmp_path):
+    """Lỗi 27/10/2026: fluorescent_hum (−6 LUFS) đè giọng ở 29 cảnh, footsteps_wet (−43 LUFS) không nghe thấy."""
+    for cue in scene_sound.SFX_CUES:
+        gain = scene_sound.sfx_gain_db(config.SFX_LIBRARY_DIR / f"{cue}.mp3")
+        assert gain < scene_sound.SFX_MAX_BOOST_DB, f"{cue}: quá nhỏ, kéo lên tối đa vẫn không tới mức chung"
+    silence = tmp_path / "silence.mp3"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono", "-t", "10",
+                    str(silence)], check=True)
+    for cue in ("fluorescent_hum", "footsteps_wet"):
+        mixed = tmp_path / f"{cue}.mp3"
+        asyncio.run(scene_sound.mix_scene_sfx(str(silence), scene_sound.scene_sfx_files([cue]), str(mixed), 10.0))
+        assert abs(_lufs(mixed) - scene_sound.SFX_TARGET_LUFS) < 3.0, cue
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="cần ffmpeg")
+def test_mixing_does_not_lower_the_voice(tmp_path):
+    """Lỗi 27/10/2026: giọng mono bị đổi sang stereo khi trộn nên cảnh có tiếng động nhỏ hơn cảnh không có ~3 dB."""
+    voice = tmp_path / "voice.mp3"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=330:duration=8:sample_rate=48000",
+                    "-ac", "1", str(voice)], check=True)   # khoảng −21 LUFS, gần giọng thật (−20)
+    mixed = tmp_path / "mixed.mp3"
+    asyncio.run(scene_sound.mix_scene_sfx(str(voice), scene_sound.scene_sfx_files(["dark_drone", "fluorescent_hum"]),
+                                          str(mixed), 8.0))
+    assert abs(_lufs(mixed) - _lufs(voice)) < 1.0

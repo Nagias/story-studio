@@ -9,8 +9,10 @@ Chủ dự án 26/10/2026: video không có sound effect hợp bối cảnh, kh�
 """
 import asyncio
 import logging
+import re
+import subprocess
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import config
 
@@ -48,7 +50,10 @@ CUE_ALIASES = {
     "distant_dog_bark": "dog_bark_distant",
     "dramatic_sub_drop": "impact_hit", "dramatic_hit": "impact_hit",
 }
-SFX_VOLUME = 0.28          # so với giọng đọc (1.0): nghe rõ không khí nhưng không lấn lời kể
+# File trong thư viện chênh nhau tới 36 LU (đo 27/10/2026: fluorescent_hum −6,4 LUFS, footsteps_wet −42,9 LUFS), nên một
+# hệ số âm lượng chung làm tiếng rè đè giọng còn tiếng bước chân không nghe thấy. Mỗi file được đo rồi đưa về cùng mức.
+SFX_TARGET_LUFS = -36.0    # giọng đọc Edge/VieNeu khoảng −20 LUFS: tiếng động nằm dưới giọng khoảng 16 LU
+SFX_MAX_BOOST_DB = 18.0    # file quá nhỏ không kéo lên quá mức này (kéo nhiều thì tiếng xì nền to theo)
 SFX_FADE_OUT_S = 1.2
 MAX_CUES_PER_SCENE = 2
 
@@ -89,16 +94,45 @@ async def _run_ffmpeg(cmd: List[str], what: str) -> None:
         raise RuntimeError(f"{what} lỗi (ffmpeg mã {proc.returncode}): {err.decode(errors='ignore')[-300:]}")
 
 
+_loudness_cache: Dict[Tuple[str, int], float] = {}
+
+
+def measure_loudness(path: Path) -> float:
+    """Độ to tích hợp (LUFS, đo ở dạng mono như lúc trộn) của một file âm thanh; nhớ theo đường dẫn + thời điểm sửa file.
+    File im lặng hoặc ffmpeg lỗi thì báo lỗi, không đoán."""
+    path = Path(path)
+    key = (str(path.resolve()), path.stat().st_mtime_ns)
+    if key in _loudness_cache:
+        return _loudness_cache[key]
+    proc = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(path), "-ac", "1",
+                           "-af", "loudnorm=print_format=json", "-f", "null", "-"],
+                          capture_output=True, text=True, encoding="utf-8", errors="ignore")
+    if proc.returncode != 0:
+        raise RuntimeError(f"đo độ to {path.name} lỗi (ffmpeg mã {proc.returncode}): {proc.stderr[-300:]}")
+    match = re.search(r'"input_i"\s*:\s*"([^"]+)"', proc.stderr)
+    if not match or not re.fullmatch(r"-?\d+(\.\d+)?", match.group(1)):
+        raise RuntimeError(f"không đo được độ to {path.name} (file im lặng hoặc hỏng)")
+    _loudness_cache[key] = float(match.group(1))
+    return _loudness_cache[key]
+
+
+def sfx_gain_db(path: Path) -> float:
+    """Số dB cần cộng để file tiếng động đạt SFX_TARGET_LUFS (kéo lên tối đa SFX_MAX_BOOST_DB)."""
+    return min(SFX_TARGET_LUFS - measure_loudness(path), SFX_MAX_BOOST_DB)
+
+
 async def mix_scene_sfx(voice_path: str, sfx_files: Sequence[Path], output_path: str, duration: float) -> str:
-    """Trộn tiếng động vào giọng một cảnh: tiếng động lặp cho đủ độ dài cảnh, nhỏ (SFX_VOLUME), nhỏ dần ở cuối.
-    Độ dài bằng giọng (duration=first). Ghi ra `output_path` (không đè file giọng gốc)."""
+    """Trộn tiếng động vào giọng một cảnh: mỗi tiếng đưa về cùng độ to SFX_TARGET_LUFS, lặp cho đủ độ dài cảnh, nhỏ dần
+    ở cuối. Giữ mono như giọng đọc để giọng không bị hạ khi đổi kênh. Độ dài bằng giọng (duration=first).
+    Ghi ra `output_path` (không đè file giọng gốc)."""
+    gains = [await asyncio.to_thread(sfx_gain_db, Path(path)) for path in sfx_files]
     cmd = ["ffmpeg", "-y", "-v", "error", "-i", str(voice_path)]
     for path in sfx_files:
         cmd += ["-stream_loop", "-1", "-i", str(path)]
     fade_start = max(0.0, float(duration) - SFX_FADE_OUT_S)
-    parts = ["[0:a]aformat=sample_rates=48000:channel_layouts=stereo[v]"]
-    for i in range(1, len(sfx_files) + 1):
-        parts.append(f"[{i}:a]aformat=sample_rates=48000:channel_layouts=stereo,volume={SFX_VOLUME},"
+    parts = ["[0:a]aformat=sample_rates=48000:channel_layouts=mono[v]"]
+    for i, gain in enumerate(gains, start=1):
+        parts.append(f"[{i}:a]aformat=sample_rates=48000:channel_layouts=mono,volume={gain:.2f}dB,"
                      f"afade=t=out:st={fade_start:.2f}:d={SFX_FADE_OUT_S}[s{i}]")
     inputs = "[v]" + "".join(f"[s{i}]" for i in range(1, len(sfx_files) + 1))
     parts.append(f"{inputs}amix=inputs={len(sfx_files) + 1}:duration=first:dropout_transition=0:normalize=0[out]")
