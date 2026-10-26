@@ -34,6 +34,7 @@ if sys.platform == "win32":
 import argparse
 import asyncio
 import base64
+import hashlib
 import io
 import json
 import logging
@@ -121,6 +122,48 @@ ACCOUNT_COOLDOWN_SEC = 60.0
 # Trường trạng thái do runner ghi xuống muse_fleet_accounts.json (các trường khác do backend quản lý)
 RUNTIME_FIELDS = ("status", "cooldown_until", "last_used", "success_count", "fail_count", "last_error", "has_profile")
 NOT_READY_STATUSES = ("busy", "offline", "needs_login", "reserved")
+
+
+# Dấu vân tay (sha256 nội dung gốc) của mọi ảnh/video đã giao. Khi không mở được chat mới, đoạn chat cũ có thể vẽ lại
+# video cũ dưới link mới (gặp 26/10/2026: task image-to-video nhận video lính La Mã của dự án khác sau 9 giây), nên
+# loại theo nội dung chứ không chỉ theo link.
+DELIVERED_HASHES_FILE = OUTPUTS_DIR / ".delivered_media_hashes.json"
+_delivered_hashes: Optional[set] = None
+
+
+def media_digest(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def delivered_hashes() -> set:
+    """Nạp một lần: sổ dấu vân tay đã lưu + mọi video .mp4 có sẵn trong muse_outputs (video lưu nguyên bản tải về)."""
+    global _delivered_hashes
+    if _delivered_hashes is None:
+        hashes: set = set()
+        try:
+            hashes.update(json.loads(DELIVERED_HASHES_FILE.read_text(encoding="utf-8")))
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError) as e:
+            logger.warning(f"Không đọc được {DELIVERED_HASHES_FILE.name} ({e}); chỉ dựa vào video có sẵn trong muse_outputs")
+        for p in OUTPUTS_DIR.glob("*.mp4"):
+            try:
+                hashes.add(media_digest(p.read_bytes()))
+            except OSError as e:
+                logger.warning(f"Không đọc được {p.name} để lấy dấu vân tay: {e}")
+        _delivered_hashes = hashes
+    return _delivered_hashes
+
+
+def remember_delivered(digest: str) -> None:
+    hashes = delivered_hashes()
+    hashes.add(digest)
+    tmp = DELIVERED_HASHES_FILE.with_suffix(".tmp")
+    try:
+        tmp.write_text(json.dumps(sorted(hashes)), encoding="utf-8")
+        tmp.replace(DELIVERED_HASHES_FILE)
+    except OSError as e:
+        logger.warning(f"Không ghi được sổ dấu vân tay media ({e}); lần chạy sau vẫn loại được video cũ theo file trong muse_outputs")
 
 
 class TaskFailure(Exception):
@@ -1122,6 +1165,11 @@ class MuseFleetRunner:
                     if not data:
                         rejected.add(src)
                         continue
+                    digest = media_digest(data)
+                    if digest in delivered_hashes():
+                        logger.warning(f"[{acc.account_id}] Bỏ qua media cũ (trùng nội dung một kết quả đã giao trước đây): {src[:80]}")
+                        rejected.add(src)
+                        continue
                     if kind == "image":
                         ok, info = validate_image_bytes(data, reject_hashes)
                         if ok:
@@ -1133,6 +1181,7 @@ class MuseFleetRunner:
                         if not ok:
                             dest_file.unlink(missing_ok=True)
                     if ok:
+                        remember_delivered(digest)
                         logger.info(f"[{acc.account_id}] Nhận {kind} hợp lệ sau {int(time.time() - started)}s: {info} -> {dest_file.name}")
                         await self.update_task_progress(task_id, 95, "downloaded", f"Đã nhận {kind} {info}")
                         return True, dest_file, "Thành công"
