@@ -9,6 +9,7 @@ G5–G7 của luồng chuyển thể vụ án: dàn ý, viết lời Việt → 
 """
 import asyncio
 import copy
+from types import SimpleNamespace
 import re
 import sys
 from datetime import datetime, timezone
@@ -606,7 +607,7 @@ def test_write_vi_short_narration_and_unknown_reveal_rejected(isolated_projects_
     _run_pipeline(pipeline, llm, stop_after="write_vi_p2")
     assert calls.count("WRITE_VI p2") == 2
     reason = _reason(llm)
-    assert "evd_99" in reason and "cần từ 22 đến 51 từ" in reason and "cảnh 1" in reason   # video 8 phút
+    assert "evd_99" in reason and "cần từ 25 đến 69 từ" in reason and "cảnh 1" in reason   # video 8 phút, dàn ý 7 cảnh
 
 
 def test_write_vi_accepts_ids_as_string_and_bare_scene_list(isolated_projects_dir):
@@ -707,7 +708,7 @@ def test_write_en_wrong_count_and_short_narration_retried(isolated_projects_dir)
     _run_pipeline(pipeline, llm, stop_after="write_en_p1")
     assert calls.count("WRITE_EN p1") == 2
     reason = _reason(llm)
-    assert "3 cảnh" in reason and "cần từ 13 đến 30 từ" in reason                           # video 8 phút
+    assert "3 cảnh" in reason and "cần từ 17 đến 46 từ" in reason                           # video 8 phút, dàn ý 7 cảnh
 
 
 def test_write_en_prompt_maps_vietnamese_aliases_to_english(isolated_projects_dir):
@@ -847,7 +848,7 @@ def test_rewrite_english_missing_order_or_short_text_retried(isolated_projects_d
     result = asyncio.run(rewrite_english(bible, items, llm=llm))
 
     assert calls == ["REWRITE_EN"] * 3
-    assert "5" in _reason(llm, 1) and "cần từ 15 đến 35 từ" in _reason(llm, 2)   # không biết thời lượng: 15 giây
+    assert "5" in _reason(llm, 1) and "cần từ 15 đến 42 từ" in _reason(llm, 2)   # không biết thời lượng: 15 giây
     assert sorted(result) == [3, 5]
     assert asyncio.run(rewrite_english(bible, [], llm=llm)) == {}
 
@@ -1068,32 +1069,34 @@ def test_word_budget_follows_the_chosen_video_length():
     from services.case_adaptation_prompts import EN_WORDS_PER_MINUTE, VI_WORDS_PER_MINUTE
     from services.case_adaptation_steps import scene_budget
     short, longer = scene_budget(8), scene_budget(20)
-    assert short.vi_limit == (22, 51) and short.en_limit == (13, 30)
+    assert short.vi_limit == (19, 53) and short.en_limit == (13, 35)
     assert longer.vi_aim[1] > short.vi_aim[1] and longer.en_limit[1] > short.en_limit[1]
-    for minutes in (8, 15, 20, 30):                       # đọc đúng mức nhắm thì video ra khoảng đúng số phút đã chọn
+    # Số phút chọn là mức tối thiểu (gặp 26/10/2026: chọn 20 phút ra 18:27): viết trong khoảng nhắm thì video không
+    # ngắn hơn số phút đã chọn, và không dài quá 15%.
+    for minutes in (8, 15, 20, 30):
         budget = scene_budget(minutes)
         lo, hi = TARGET_SCENES[minutes]
         scenes = (lo + hi) / 2
-        assert 0.85 * minutes <= scenes * budget.vi_aim[1] / VI_WORDS_PER_MINUTE <= 1.05 * minutes
-        assert 0.85 * minutes <= scenes * budget.en_aim[1] / EN_WORDS_PER_MINUTE <= 1.05 * minutes
+        for aim, rate in ((budget.vi_aim, VI_WORDS_PER_MINUTE), (budget.en_aim, EN_WORDS_PER_MINUTE)):
+            assert 0.99 * minutes <= scenes * aim[0] / rate and scenes * aim[1] / rate <= 1.15 * minutes
 
 
 def test_write_vi_and_en_reject_scenes_longer_than_the_budget(isolated_projects_dir):
-    pipeline = _new_pipeline()                                         # video 8 phút: tối đa 51 chữ Việt, 30 chữ Anh
+    pipeline = _new_pipeline()                    # video 8 phút, dàn ý 7 cảnh: tối đa 69 chữ Việt, 46 chữ Anh
     wordy_vi = copy.deepcopy(load_fixture("WRITE_VI p1"))
-    wordy_vi["scenes"][1]["narration_vi"] += " " + " ".join(["Mưa vẫn rơi."] * 4)       # 49 + 12 từ
+    wordy_vi["scenes"][1]["narration_vi"] += " " + " ".join(["Mưa vẫn rơi."] * 8)       # 49 + 24 từ
     wordy_en = copy.deepcopy(load_fixture("WRITE_EN p1"))
-    wordy_en["scenes"][1]["narration_en"] += " The rain kept falling all night long."   # 25 + 7 từ
+    wordy_en["scenes"][1]["narration_en"] += " The rain kept falling all night long." * 4   # 25 + 28 từ
     llm, calls = make_fake_llm({"WRITE_VI p1": [wordy_vi], "WRITE_EN p1": [wordy_en]})
 
     _run_pipeline(pipeline, llm, stop_after="write_en_p1")
 
     assert calls.count("WRITE_VI p1") == 2 and calls.count("WRITE_EN p1") == 2
-    assert "cảnh 2: narration_vi dài 61 từ, cần từ 22 đến 51 từ" in _retry_reasons(llm, "WRITE_VI p1")[0]
-    assert "cảnh 2: narration_en dài 32 từ, cần từ 13 đến 30 từ" in _retry_reasons(llm, "WRITE_EN p1")[0]
+    assert "cảnh 2: narration_vi dài 73 từ, cần từ 25 đến 69 từ" in _retry_reasons(llm, "WRITE_VI p1")[0]
+    assert "cảnh 2: narration_en dài 53 từ, cần từ 17 đến 46 từ" in _retry_reasons(llm, "WRITE_EN p1")[0]
     vi_prompt, en_prompt = _prompt_for(llm, "WRITE_VI p1"), _prompt_for(llm, "WRITE_EN p1")
-    assert "khoảng 37–46 từ (khoảng 13 giây đọc" in vi_prompt and "từ 22 đến 51 từ" in vi_prompt
-    assert "khoảng 21–27 từ tiếng Anh" in en_prompt and "từ 13 đến 30 từ" in en_prompt
+    assert "khoảng 56–61 từ (khoảng 17 giây đọc" in vi_prompt and "từ 25 đến 69 từ" in vi_prompt
+    assert "khoảng 37–41 từ tiếng Anh" in en_prompt and "từ 17 đến 46 từ" in en_prompt
 
 
 def test_open_question_must_differ_from_the_previous_part(isolated_projects_dir):
@@ -1105,10 +1108,11 @@ def test_open_question_must_differ_from_the_previous_part(isolated_projects_dir)
     _run_pipeline(pipeline, llm, stop_after="outline")
     outline = case_store.load_step_output(pipeline.case_id, "outline")
     p1, p2 = [StoryPart.model_validate(p) for p in outline["parts"]]
-    p3 = p2.model_copy(update={"id": "p3", "kind": "epilogue"})
+    parts = [p1, p2] + [p2.model_copy(update={"id": f"p{k}", "kind": "investigation"}) for k in (3, 4, 5)]
     prev = load_fixture("WRITE_VI p1")["scenes"][-2:]
 
-    prompt = write_vi_prompt(_bible(pipeline), p2, [], [], prev, outline_parts=[p1, p2, p3])
+    # nhịp thứ 4 (QUESTION_EVERY_PARTS) được kết bằng câu hỏi: phải hỏi khác câu hỏi nhịp trước
+    prompt = write_vi_prompt(_bible(pipeline), parts[3], [], [], prev, outline_parts=parts)
 
     assert '"Bóng người ấy là ai?"' in prompt and "không mở đầu bằng cùng từ" in prompt
     assert 'không mở đầu câu hỏi bằng "Liệu"' in prompt
@@ -1124,7 +1128,9 @@ def test_scene_budget_follows_outline_scene_count_without_padding():
     assert base.seconds == pytest.approx(12.8)
     many = scene_budget(8, total_scenes=45)                              # dàn ý 45 cảnh: mỗi cảnh ngắn lại
     assert many.seconds == pytest.approx(480 / 45) and many.vi_limit[1] < base.vi_limit[1]
-    assert scene_budget(8, total_scenes=20).seconds == pytest.approx(12.8)   # dàn ý ít cảnh: giữ mức chuẩn, không độn
+    # dàn ý ít cảnh: mỗi cảnh dài ra để video vẫn đạt số phút chọn, nhưng tối đa 1,3 lần mức chuẩn (không độn quá tay)
+    assert scene_budget(8, total_scenes=34).seconds == pytest.approx(480 / 34)
+    assert scene_budget(8, total_scenes=20).seconds == pytest.approx(12.8 * 1.3)
     assert scene_budget(8, total_scenes=12, supported_minutes=2).seconds == pytest.approx(10.0)  # bài chỉ đủ 2 phút
 
 
@@ -1154,3 +1160,67 @@ def test_plan_warns_when_narration_is_longer_than_target_minutes(isolated_projec
     en = [w for w in checked.check_warnings if "bản Anh" in w]
     assert vi and en, checked.check_warnings
     assert all("dài hơn video 1 phút" in w for w in vi + en), checked.check_warnings
+
+
+# ---------------------------------------------------------------- góp ý chủ dự án 26/10/2026 (vụ Trạm Dung)
+
+def test_extract_and_alias_prompts_cover_stage_names_roles_and_works():
+    """Gặp 26/10/2026: tên 2 bộ phim thật và 2 vai diễn của nạn nhân lọt vào lời kể (tra ra được người thật)."""
+    from services.case_adaptation_prompts import aliases_prompt, extract_prompt
+    extract = extract_prompt("Đoạn mẫu.", 0, 1, [])
+    assert "Nghệ danh" in extract and "tên vai diễn" in extract and "Tên tác phẩm" in extract
+    assert "tác phẩm, ban nhạc" in extract
+    aliases = aliases_prompt([], "Đoạn đầu.")
+    assert "Tác phẩm (phim, sách, bài hát, chương trình): tựa hư cấu" in aliases and "Tên vai diễn" in aliases
+
+
+def test_only_some_parts_end_with_a_question():
+    """Chủ dự án 26/10/2026: câu hỏi tu từ nhiều quá thành nhảm. Hỏi ở nhịp đầu và mỗi nhịp thứ 4, không hỏi nhịp cuối."""
+    from models.case_adaptation_schemas import StoryPart
+    from services.case_adaptation_prompts import asks_question
+    parts = [StoryPart(id=f"p{k}", kind="investigation", summary_vi="x", event_ids=["e"], scene_count=3)
+             for k in range(1, 10)]
+    assert [k for k, p in enumerate(parts, start=1) if asks_question(p, parts)] == [1, 4, 8]
+    assert not asks_question(parts[3], parts[:4])                     # nhịp cuối video: khép lại, không hỏi
+
+
+def test_question_rules_in_prompt_and_validator():
+    from models.case_adaptation_schemas import StoryPart
+    from services.case_adaptation_prompts import _ending_rule
+    from services.case_adaptation_steps import _question_issues
+    parts = [StoryPart(id=f"p{k}", kind="investigation", summary_vi="x", event_ids=["e"], scene_count=3)
+             for k in range(1, 6)]
+    bible = SimpleNamespace(entities=[])
+    assert "KHÔNG kết bằng câu hỏi" in _ending_rule(parts[1], parts, bible)
+    assert "PHẢI là một câu hỏi bỏ ngỏ" in _ending_rule(parts[3], parts, bible)
+
+    assert _question_issues(["Trời mưa.", "Ai đã đứng đó?"], wanted=False)        # nhịp không được hỏi
+    assert _question_issues(["Trời mưa.", "Cánh cửa vẫn khoá."], wanted=False) == []
+    assert _question_issues(["Ai gọi điện?", "Ai đã đứng đó?"], wanted=True)      # hỏi hai lần: lỗi nhẹ
+    assert _question_issues(["Trời mưa.", "Ai đã đứng đó?"], wanted=True) == []
+
+
+def test_write_vi_rejects_too_many_board_scenes(isolated_projects_dir):
+    """Gặp 26/10/2026: 41/75 cảnh là bảng ghim (10/18 phút video). Nhịp 3 cảnh tối đa 1 cảnh board."""
+    from services.case_adaptation_prompts import max_boards_in_part
+    assert [max_boards_in_part(n) for n in (2, 3, 4, 6, 8)] == [1, 1, 1, 2, 2]
+    pipeline = _new_pipeline()
+    boards = copy.deepcopy(load_fixture("WRITE_VI p2"))
+    boards["scenes"][0]["visual_kind"], boards["scenes"][0]["board_reveal"] = "board", ["evd_1"]
+    llm, calls = make_fake_llm({"WRITE_VI p2": [boards, load_fixture("WRITE_VI p2")]})
+    _run_pipeline(pipeline, llm, stop_after="write_vi_p2")
+    assert calls.count("WRITE_VI p2") == 2
+    assert "Có 2 cảnh board, nhịp này tối đa 1 cảnh board" in _retry_reasons(llm, "WRITE_VI p2")[0]
+    assert "TỐI ĐA 1 cảnh \"board\"" in _prompt_for(llm, "WRITE_VI p2")
+
+
+def test_plan_warns_when_material_is_enough_but_narration_is_short():
+    """Gặp 26/10/2026: chọn 20 phút, bài đủ tư liệu, video ra 18:27 mà không ai biết. Bước ráp kế hoạch gọi hàm này
+    khi supported_minutes ≥ số phút chọn (thiếu tư liệu thì đã có SHORT_MATERIAL_WARNING)."""
+    from services.case_adaptation_checks import VI_WORDS_PER_MINUTE
+    from services.case_adaptation_steps import short_speech_warning
+    scene = " ".join(["chữ"] * 50)
+    enough = [scene] * (20 * VI_WORDS_PER_MINUTE // 50)                  # đúng 20 phút đọc
+    assert short_speech_warning(enough, 20) == []
+    short = short_speech_warning(enough[: len(enough) * 9 // 10], 20)   # 18 phút
+    assert len(short) == 1 and "ngắn hơn video 20 phút đã chọn" in short[0] and "18,0 phút" in short[0]

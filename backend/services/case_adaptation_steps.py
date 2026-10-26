@@ -70,6 +70,7 @@ from models.case_adaptation_schemas import (
 )
 from services import case_adaptation_llm, case_store, video_service
 from services.case_adaptation_checks import (
+    DURATION_SHORT_RATIO,
     ForbiddenName,
     apply_aliases,
     build_forbidden_names,
@@ -85,6 +86,7 @@ from services.case_adaptation_checks import (
     identifying_numbers,
     is_kept_term,
     quote_source,
+    speech_minutes,
 )
 from services.case_adaptation_llm import BUSY_KIND, RETRYABLE_KINDS, LLMCall, LLMError
 from services.case_adaptation_prompts import (
@@ -103,9 +105,11 @@ from services.case_adaptation_prompts import (
     VISUAL_KINDS,
     WordBudget,
     aliases_prompt,
+    asks_question,
     cluster_prompt,
     dedupe_prompt,
     extract_prompt,
+    max_boards_in_part,
     max_deduped,
     max_dropped,
     max_events_per_scene,
@@ -171,6 +175,8 @@ _DEFAULT_TIMEOUT = 240.0
 _PREV_SCENES = 2                 # số cảnh cuối của nhịp trước đưa vào prompt lời Việt
 _MAX_LISTED_IDS = 40             # id ngắn nên liệt kê được nhiều hơn tên
 SHORT_MATERIAL_WARNING = "Bài chỉ đủ tư liệu cho khoảng {n} phút (bạn chọn {m} phút)."
+SHORT_SPEECH_WARNING = ("Lời kể bản Việt chỉ đọc mất khoảng {n} phút, ngắn hơn video {m} phút đã chọn; "
+                        "hãy viết thêm ở các cảnh ngắn.")
 _MIN_APPEARANCE_WORDS = 8      # prompt xin ít nhất 12 từ; ngưỡng loại nới hơn để không loại oan
 _MIN_SETTING_WORDS = 12        # prompt xin ít nhất 30 từ
 _MAX_LISTED = 12               # số mục tối đa liệt kê trong một lý do bị loại
@@ -1703,21 +1709,33 @@ def _norm_visual(value: Any) -> str:
     return key if key in VISUAL_KINDS else "image"
 
 
+def short_speech_warning(narrations_vi: list[str], target_minutes: int) -> list[str]:
+    """Bài đủ tư liệu mà lời Việt đọc ngắn hơn số phút đã chọn (số phút chọn là mức tối thiểu): một câu cảnh báo."""
+    minutes = speech_minutes(narrations_vi, "vi")
+    if target_minutes and minutes < target_minutes * DURATION_SHORT_RATIO:
+        return [SHORT_SPEECH_WARNING.format(n=f"{minutes:.1f}".replace(".", ","), m=target_minutes)]
+    return []
+
+
+MAX_SCENE_STRETCH = 1.3   # dàn ý ít cảnh: mỗi cảnh dài tối đa chừng này lần mức chuẩn để video đạt số phút chọn
+
+
 def scene_budget(target_minutes: int, total_scenes: Optional[int] = None,
                  supported_minutes: Optional[int] = None) -> WordBudget:
     """Số từ lời kể mỗi cảnh cho video `target_minutes` phút, đổi từ số giây mỗi cảnh theo tốc độ đọc đã đo.
 
     - Mức chuẩn: thời lượng chia số cảnh mục tiêu (giữa khoảng TARGET_SCENES); 8 phút (35–40 cảnh) là 12,8 giây.
-    - Biết dàn ý (`total_scenes`: tổng số cảnh của video, kể cả cảnh miễn trừ) thì không vượt số giây có được khi chia
-      đều thời lượng cho các cảnh đó, để dàn ý nhiều cảnh vẫn ra đúng số phút (8 phút, 45 cảnh: 10,7 giây). Dàn ý ít cảnh
-      thì giữ mức chuẩn: video ngắn theo, không kéo dài lời cho đủ giờ. Bài chỉ đủ tư liệu cho ít phút hơn
-      (`supported_minutes`) thì chia theo số phút đó."""
+    - Biết dàn ý (`total_scenes`: tổng số cảnh của video, kể cả cảnh miễn trừ) thì chia đều thời lượng cho các cảnh đó:
+      dàn ý nhiều cảnh thì mỗi cảnh ngắn lại (8 phút, 45 cảnh: 10,7 giây); dàn ý ít cảnh thì mỗi cảnh dài ra để video vẫn
+      đạt số phút đã chọn (số phút chọn là mức tối thiểu), nhưng không quá MAX_SCENE_STRETCH lần mức chuẩn. Bài chỉ đủ tư
+      liệu cho ít phút hơn (`supported_minutes`) thì chia theo số phút đó: không kéo dài lời quá chất liệu."""
     lo, hi = target_scenes(target_minutes)
     minutes = max(int(target_minutes), 1)
-    seconds = minutes * 60 / ((lo + hi) / 2)
+    standard = minutes * 60 / ((lo + hi) / 2)
+    seconds = standard
     if total_scenes:
         budget_minutes = min(minutes, supported_minutes) if supported_minutes else minutes
-        seconds = min(seconds, budget_minutes * 60 / total_scenes)
+        seconds = min(budget_minutes * 60 / total_scenes, standard * MAX_SCENE_STRETCH)
     return word_budget(seconds)
 
 
@@ -1765,12 +1783,17 @@ def _validate_write_vi(raw: Any, ctx: _PartContext, guard: _TextGuard, budget: O
         soft += [f"cảnh {k} {issue}" for issue in guard.narration(scene.narration_vi, "vi")]
         scenes.append({"narration_vi": scene.narration_vi, "visual_kind": visual,
                        "board_reveal": reveal, "covers_event_ids": covers})
+    boards = sum(1 for s in scenes if s["visual_kind"] == "board")
+    if boards > max_boards_in_part(n):
+        problems.append(f"Có {boards} cảnh board, nhịp này tối đa {max_boards_in_part(n)} cảnh board; đổi các cảnh còn "
+                        "lại thành image (kể bằng hình ảnh câu chuyện) và để board_reveal []")
     missing = [e for e in ctx.part.event_ids if e not in covered]
     if missing:
         problems.append(f"Các sự việc sau chưa được kể ở cảnh nào (covers_event_ids gộp lại còn thiếu): "
                         f"{_id_list(missing)}. Mọi sự việc của nhịp phải được kể")
     if parsed.scenes and next_part_of(ctx.part, ctx.outline.parts) is not None:
-        soft += _ending_question_issue(parsed.scenes[-1].narration_vi, len(parsed.scenes), "narration_vi")
+        soft += _question_issues([s.narration_vi for s in parsed.scenes],
+                                 asks_question(ctx.part, ctx.outline.parts))
     return _raise_if_problems(problems, soft, {"scenes": scenes})
 
 
@@ -1779,6 +1802,22 @@ _ENDS_WITH_QUESTION = re.compile(r"[?？][\"'”’»)\]]*\s*$")
 
 def ends_with_question(text: str) -> bool:
     return bool(_ENDS_WITH_QUESTION.search(text or ""))
+
+
+def _question_issues(narrations: list[str], wanted: bool) -> list[str]:
+    """Câu hỏi trong lời Việt của một nhịp (lỗi nhẹ). Nhịp được hỏi (asks_question): đúng một câu hỏi, ở cuối cảnh cuối.
+    Nhịp khác: không có câu hỏi nào (chủ dự án 26/10/2026: câu hỏi tu từ nhiều quá thành nhảm)."""
+    count = sum(len(re.findall(r"[?？]", t or "")) for t in narrations)
+    if wanted:
+        issues = _ending_question_issue(narrations[-1], len(narrations), "narration_vi")
+        if count > 1:
+            issues.append(f"nhịp có {count} câu hỏi; chỉ giữ một câu hỏi ở cuối cảnh cuối, các câu hỏi khác viết thành "
+                          "câu kể")
+        return issues
+    if count:
+        return [f"nhịp có {count} câu hỏi nhưng nhịp này không được dùng câu hỏi; viết lại thành câu kể, kết nhịp "
+                "bằng một chi tiết hay hình ảnh gợi điều sắp kể"]
+    return []
 
 
 def _ending_question_issue(text: str, k: int, field_name: str) -> list[str]:
@@ -1980,6 +2019,8 @@ async def _run_assemble(pipeline: CasePipeline, step: PipelineStep, llm: LLMCall
     warnings = []
     if outline.supported_minutes < pipeline.target_minutes:
         warnings.append(SHORT_MATERIAL_WARNING.format(n=outline.supported_minutes, m=pipeline.target_minutes))
+    else:
+        warnings += short_speech_warning([s.narration_vi for s in scenes], pipeline.target_minutes)
     plan = CaseAdaptationPlan(
         case_id=pipeline.case_id, created_at=datetime.now(timezone.utc).isoformat(),
         model=config.NINEROUTER_LLM_MODEL, target_minutes=pipeline.target_minutes,

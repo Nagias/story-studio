@@ -15,7 +15,14 @@ import re
 from dataclasses import dataclass
 from typing import Iterable, Optional, Sequence
 
-from models.case_adaptation_schemas import CaseBible, CaseEntity, StoryPart, TimelineEvent
+from models.case_adaptation_schemas import (
+    MAX_BOARD_RATIO,
+    QUESTION_EVERY_PARTS,
+    CaseBible,
+    CaseEntity,
+    StoryPart,
+    TimelineEvent,
+)
 from services.case_adaptation_checks import (
     EN_WORDS_PER_MINUTE,
     GENERIC_TERMS,
@@ -59,8 +66,8 @@ DEFAULT_SCENE_SECONDS = 60 / SCENES_PER_MINUTE   # 15 giây, khi không biết t
 @dataclass(frozen=True)
 class WordBudget:
     """Số từ lời kể của một cảnh. `*_aim`: khoảng nói với model (cảnh thường / cảnh video); `*_limit`: khoảng nhận,
-    ngoài khoảng này thì bị loại. Model hay viết sát mức trên của khoảng nhận (chạy thật 21/10: trung bình 92% mức
-    trên), nên mức trên chỉ hơn số từ đúng thời lượng 5%."""
+    ngoài khoảng này thì bị loại. Số phút người dùng chọn là MỨC TỐI THIỂU (CLAUDE.md mục 1: "Mức tối thiểu là 15 phút"):
+    model được dặn viết 100–110% số từ đúng thời lượng. Trước 26/10/2026 dặn 75–95% để không vượt: chọn 20 phút ra 18:27."""
     seconds: float
     vi_aim: tuple[int, int]
     vi_video_aim: tuple[int, int]
@@ -74,19 +81,33 @@ def word_budget(seconds_per_scene: float = DEFAULT_SCENE_SECONDS) -> WordBudget:
     """Số từ mỗi cảnh để lời đọc dài khoảng `seconds_per_scene` giây (theo tốc độ đọc đã đo của từng ngôn ngữ)."""
     def ranges(words_per_minute: int) -> tuple[tuple[int, int], tuple[int, int], tuple[int, int]]:
         mid = seconds_per_scene * words_per_minute / 60
-        return ((round(mid * 0.75), round(mid * 0.95)), (round(mid * 0.5), round(mid * 0.6)),
-                (round(mid * 0.45), round(mid * 1.05)))
+        return ((math.ceil(mid), round(mid * 1.1)), (round(mid * 0.6), round(mid * 0.7)),  # ceil: không nhắm ngắn hơn
+                (round(mid * 0.45), round(mid * 1.25)))
 
     vi_aim, vi_video_aim, vi_limit = ranges(VI_WORDS_PER_MINUTE)
     en_aim, en_video_aim, en_limit = ranges(EN_WORDS_PER_MINUTE)
     return WordBudget(seconds_per_scene, vi_aim, vi_video_aim, vi_limit, en_aim, en_video_aim, en_limit)
 
 
+def max_boards_in_part(scene_count: int) -> int:
+    """Số cảnh bảng ghim tối đa của một nhịp có `scene_count` cảnh."""
+    return max(1, round(scene_count * MAX_BOARD_RATIO))
+
+
+def asks_question(part: StoryPart, outline_parts: Sequence[StoryPart]) -> bool:
+    """Nhịp này kết bằng câu hỏi bỏ ngỏ: nhịp đầu và nhịp thứ QUESTION_EVERY_PARTS, 2×..., trừ nhịp cuối video."""
+    ids = [p.id for p in outline_parts]
+    if part.id not in ids or next_part_of(part, outline_parts) is None:
+        return False
+    position = ids.index(part.id) + 1
+    return position == 1 or position % QUESTION_EVERY_PARTS == 0
+
+
 def _span(pair: tuple[int, int]) -> str:
     return f"{pair[0]}–{pair[1]}"
 
 _KIND_HINTS = {
-    "hook": "mở đầu gây tò mò: hé lộ khoảnh khắc bí ẩn hoặc đáng sợ nhất, đặt câu hỏi; không tiết lộ hung thủ hay kết cục",
+    "hook": "mở đầu gây tò mò: hé lộ khoảnh khắc bí ẩn hoặc đáng sợ nhất; không tiết lộ hung thủ hay kết cục",
     "setup": "bối cảnh: nơi chốn, con người, cuộc sống và các mối quan hệ trước khi vụ án xảy ra",
     "discovery": "phát hiện vụ án: ai phát hiện, phát hiện ra sao, hiện trường lúc đó thế nào",
     "investigation": "điều tra: từng bước điều tra, lời khai, giám định, manh mối, nghi vấn",
@@ -208,7 +229,8 @@ Các tên đã gặp ở những đoạn trước. Nếu đoạn này nhắc l�
 YÊU CẦU
 1. "names": mọi tên riêng xuất hiện trong đoạn. Mỗi cách viết khác nhau là một mục riêng, chép nguyên văn (ví dụ họ tên đầy đủ, "ông/bà + tên", tên gọi tắt là ba mục khác nhau).
    - MỌI người được gọi bằng tên trong đoạn đều phải có trong "names", kể cả biệt danh (ví dụ "Hùng sẹo", "Sáu lùn"), tên gọi ở nhà và người chỉ được nhắc một lần.
-   - "kind": "person" (người), "place" (địa danh: thành phố, huyện, xã, đường, núi, sông, cảng, toà nhà...), "organization" (công ty, trường, bệnh viện hay đơn vị có tên cụ thể), "identifier" (biển số xe, số điện thoại, số giấy tờ, số tài khoản...).
+   - Nghệ danh, bút danh, tên vai diễn hay nhân vật mà một người thật từng đóng hoặc gắn với họ: cũng là tên cần đổi, "kind" "person". Tên tác phẩm gắn với người trong vụ (phim, phim truyền hình, sách, bài hát, chương trình, kênh, ban nhạc): "kind" "organization", "context" ghi rõ "tác phẩm" hay "ban nhạc". Chỉ cần tra những tên này là tìm ra người thật, nên không được bỏ sót.
+   - "kind": "person" (người), "place" (địa danh: thành phố, huyện, xã, đường, núi, sông, cảng, toà nhà...), "organization" (công ty, trường, bệnh viện hay đơn vị có tên cụ thể; tác phẩm, ban nhạc), "identifier" (biển số xe, số điện thoại, số giấy tờ, số tài khoản...).
    - "role" (người): {roles}. Nơi chốn, tổ chức, mã số ghi "other".
    - "context": một câu ngắn nói người/nơi đó là ai, ở đâu, liên quan thế nào trong đoạn.
    - KHÔNG đưa vào "names" (và không cần ghi vào "names" của sự việc, bằng chứng, quan hệ): tên quốc gia; tên hãng, mẫu xe; danh từ chung chỉ cơ quan, vai trò, nghề nghiệp, ví dụ {generic_terms}.
@@ -295,7 +317,8 @@ YÊU CẦU
      * Vụ của người Hoa (Đài Loan, Trung Quốc, Hồng Kông...): "alias_vi" là tên Hán-Việt, "alias_en" là pinyin của cùng tên đó (ví dụ "Lưu Vinh Phú" / "Liu Rongfu").
      * Vụ ở Mỹ hoặc nước nói tiếng Anh: tên kiểu Mỹ, giống nhau ở hai bản.
    - Địa danh: tên hư cấu cùng loại (đường thì là đường, cảng thì là cảng, thành phố thì là thành phố), cùng phong cách văn hoá, không dùng lại chữ riêng của tên thật; "alias_en" viết theo cách tự nhiên trong tiếng Anh (ví dụ "Cảng Hải Yến" / "Hai Yen Port").
-   - Tổ chức: tên hư cấu cùng loại hình (công ty vận tải thì là công ty vận tải).
+   - Tổ chức: tên hư cấu cùng loại hình (công ty vận tải thì là công ty vận tải). Tác phẩm (phim, sách, bài hát, chương trình): tựa hư cấu cùng thể loại, không giữ chữ nào đặc trưng của tựa thật; "alias_en" là tựa tiếng Anh tự nhiên của tựa hư cấu đó (ví dụ "Hoa Nở Sau Giông" / "Blossoms After the Storm").
+   - Tên vai diễn, nhân vật: tên hư cấu cùng kiểu (vai cổ trang thì tên cổ trang).
    - Mã số (biển số, số điện thoại...): giá trị giả cùng định dạng, giống nhau ở hai bản.
    - Mọi tên hư cấu phải khác nhau giữa các nhóm, và không được trùng hay chỉ khác dấu, khác hoa thường so với bất kỳ tên thật nào trong danh sách.
    - "gender": "male" hoặc "female" với người; "" với nhóm khác.
@@ -515,6 +538,10 @@ def _ending_rule(part: StoryPart, outline_parts: Sequence[StoryPart], bible: Cas
                     "lại, không mở thêm tình tiết mới.")
         return "Cảnh cuối của nhịp kết bằng một câu gợi tò mò về điều sẽ kể tiếp, không trả lời trước."
     summary = _one_line(_aliased(nxt.summary_vi, bible), 300) or "(không có tóm tắt)"
+    if not asks_question(part, outline_parts):
+        return (f"Cảnh cuối của nhịp này dẫn sang nhịp sau ({nxt.kind}: {summary}) bằng một chi tiết, một hình ảnh hoặc "
+                "một câu khẳng định nặng ký gợi điều sắp kể, không trả lời trước. KHÔNG kết bằng câu hỏi, và cả nhịp "
+                "không có câu hỏi nào: người xem đã được hỏi đủ ở các nhịp khác.")
     vary = ("Đổi cách hỏi qua từng nhịp: hỏi thẳng vào điều nhịp sau tiết lộ (\"Ai...\", \"Điều gì...\", \"Vì sao...\", "
             "\"Bằng cách nào...\", \"... sẽ dẫn tới đâu?\"), không mở đầu câu hỏi bằng \"Liệu\".")
     if prev_question:
@@ -590,7 +617,9 @@ HAI CẢNH CUỐI CỦA NHỊP TRƯỚC:
 {_chunks_block(source_chunks)}
 
 CÁCH VIẾT
-1. Mỗi cảnh có "narration_vi" dài khoảng {_span(budget.vi_aim)} từ (khoảng {round(budget.seconds)} giây đọc, để video ra đúng thời lượng đã chọn); bắt buộc từ {lo} đến {hi} từ, dài hơn {hi} từ sẽ bị trả lại. Câu gọn, mỗi câu một ý, không kể lan man. Lời kể ngôi thứ ba, giọng người kể chuyện điện ảnh, câu trọn vẹn, liền mạch từ cảnh này sang cảnh sau.
+1. Mỗi cảnh có "narration_vi" dài khoảng {_span(budget.vi_aim)} từ (khoảng {round(budget.seconds)} giây đọc; video phải đạt ít nhất thời lượng đã chọn, nên đừng viết ngắn hơn); bắt buộc từ {lo} đến {hi} từ, ngoài khoảng này sẽ bị trả lại. Câu gọn, mỗi câu một ý, không kể lan man. Lời kể ngôi thứ ba, giọng người kể chuyện điện ảnh, câu trọn vẹn, liền mạch từ cảnh này sang cảnh sau.
+   Viết để đọc chậm, có nhịp ngừng tạo căng thẳng: nhiều câu ngắn; dấu phẩy ở chỗ cần ngắt hơi; ở khoảnh khắc nặng nề nhất của cảnh có thể dùng một dấu ba chấm (…) để người đọc dừng lại (tối đa một lần mỗi cảnh).
+   Không dùng câu hỏi tu từ trong lời kể; câu hỏi chỉ được có ở chỗ quy tắc 11 cho phép.
 2. Kể đúng thứ tự sự việc. Mỗi cảnh kể 1–{per_scene} sự việc; sự việc quan trọng có thể kéo dài 2 cảnh. Kể cụ thể (ai, làm gì, ở đâu, bằng cách nào, thấy gì), không tóm gọn kiểu "sau đó cảnh sát vào cuộc điều tra".
 3. "Như phim" nhưng không bịa: được thêm không khí, ánh sáng, âm thanh, cảnh vật và cảm xúc người ngoài nhìn thấy được, chỉ từ những gì đoạn gốc có. KHÔNG đặt lời vào miệng nhân vật: lời nói trực tiếp trong ngoặc kép chỉ dùng khi đoạn gốc có đúng câu đó (chép lại nguyên văn, hoặc dịch sang tiếng Việt nếu bài viết bằng tiếng khác); đoạn gốc không có thì kể gián tiếp (bà báo cảnh sát rằng chồng mình không về nhà). Không kể suy nghĩ thầm kín của người thật mà đoạn gốc không nói. Không thêm sự kiện, nhân vật có vai trò trong vụ án, động cơ, nghi phạm hay bằng chứng mới; nhân vật phụ không tên (người qua đường, hàng xóm) thì được.
 4. Ngày giờ: không viết ngày, tháng, năm cụ thể (không "15 tháng 10", không "15/10", không "năm 2021"); năm đổi thành thời kỳ ("đầu những năm 2020"). Giữ giờ trong ngày ("khoảng 23 giờ 30"), mùa và các mốc tương đối ("chiều hôm đó", "hơn một giờ sau"). Tuổi để xấp xỉ hoặc viết bằng chữ.
@@ -598,7 +627,7 @@ CÁCH VIẾT
 6. Giữ tên quốc gia và tên chung của cơ quan ("cảnh sát", "công an", "toà án"). {_TONE_RULE_VI}
 7. Sự việc ghi [CHỈ GỢI] (nhịp mở đầu mượn của nhịp sau): chỉ hé lộ bằng một câu hỏi, một hình ảnh hoặc một chi tiết chưa có lời giải, trong một hai câu; không kể trọn diễn biến, không nói kết quả. Sự việc ghi [đã được hé lộ ở đoạn mở đầu]: giờ mới kể đầy đủ, không lặp lại câu mở đầu.
 8. "visual_kind" của từng cảnh:
-   - "board": cảnh nói về chính các bằng chứng hoặc mối quan hệ hiện lên bảng điều tra ở cảnh đó. "board_reveal" PHẢI có ít nhất 1 id (chỉ dùng id trong danh sách trên, ưu tiên những cái chưa hiện), và lời kể của cảnh nói rõ nội dung của đúng những bằng chứng/quan hệ ấy. Không dùng "board" cho lời kể chung chung (ví dụ "lời khai được ghi vào hồ sơ"); không có gì để hiện thì dùng "image".
+   - "board": cảnh nói về chính các bằng chứng hoặc mối quan hệ hiện lên bảng điều tra ở cảnh đó. "board_reveal" PHẢI có ít nhất 1 id (chỉ dùng id trong danh sách trên, ưu tiên những cái chưa hiện), và lời kể của cảnh nói rõ nội dung của đúng những bằng chứng/quan hệ ấy. Không dùng "board" cho lời kể chung chung (ví dụ "lời khai được ghi vào hồ sơ"); không có gì để hiện thì dùng "image". Nhịp này có TỐI ĐA {max_boards_in_part(n)} cảnh "board" (người xem cần hình ảnh câu chuyện hơn bảng ghim); chỉ dùng khi bằng chứng là trọng tâm của cảnh.
    - "video": một khoảnh khắc hành động ngắn (chạy, bỏ trốn, xe lao đi...). Tối đa 1 cảnh video trong nhịp này; lời cảnh video ngắn hơn, khoảng {_span(budget.vi_video_aim)} từ.
    - "image": mọi cảnh còn lại.
    Cảnh không phải "board" thì "board_reveal" là [].

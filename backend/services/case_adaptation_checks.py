@@ -45,12 +45,19 @@ from services.case_fictionalizer import AnonymizerShield
 
 # ---------------------------------------------------------------- thời lượng lời kể
 
-# Tốc độ đọc đo bằng giọng Edge khi chạy thật vụ Nhũ Cô (21/10): lời Việt 229 chữ/phút, lời Anh 133 chữ/phút (VieNeu
-# MaiAnh đo 218–234 tuỳ bài). Dùng để đổi lời kể ra số phút video (số chữ mỗi cảnh ở các bước viết, cảnh báo thời lượng).
-VI_WORDS_PER_MINUTE = 229
+# Tốc độ đọc dùng để đổi lời kể ra số phút video (số chữ mỗi cảnh ở các bước viết, cảnh báo thời lượng).
+# - Lời Việt: giọng VieNeu đọc chậm lại theo tts_service.VIENEU_SPEED (0.87). Đo thật: tốc độ thường 229–230 chữ/phút
+#   (Edge vụ Nhũ Cô 21/10; VieNeu Mai Anh vụ Trạm Dung 26/10: 4.252 chữ / 18,45 phút), × 0.87 ≈ 200. Giọng Edge đọc
+#   nhanh hơn mức này nên video ra dài hơn số phút chọn (số phút chọn là mức tối thiểu).
+# - Lời Anh: giọng Edge 133 chữ/phút (21/10).
+VI_WORDS_PER_MINUTE = 200
 EN_WORDS_PER_MINUTE = 133
-# Lời kể cả video đọc lâu hơn số phút đã chọn quá tỉ lệ này thì màn xem lại cảnh báo.
-DURATION_WARN_RATIO = 1.15
+# Lời kể cả video đọc lâu hơn số phút đã chọn quá tỉ lệ này thì màn xem lại cảnh báo (số phút chọn là mức tối thiểu,
+# model được dặn viết 100–110%, nên chỉ báo khi dài hẳn).
+DURATION_WARN_RATIO = 1.35
+# Bài đủ tư liệu mà lời Việt đọc ngắn hơn số phút đã chọn quá tỉ lệ này thì bước ráp kế hoạch báo (case_adaptation_steps;
+# gặp 26/10/2026: chọn 20 phút ra 18:27 mà không ai biết).
+DURATION_SHORT_RATIO = 0.97
 
 
 def speech_minutes(texts: Iterable[str], lang: Lang) -> float:

@@ -23,6 +23,10 @@ DISCLAIMER = {
 TARGET_SCENES = {8: (35, 40), 15: (50, 60), 20: (70, 80), 30: (100, 120)}
 MAX_SOURCE_CHARS = 200_000   # độ dài tối đa của bài gốc (ký tự)
 MAX_VIDEO_RATIO = 0.15       # tỉ lệ cảnh video tối đa trên tổng số cảnh
+# Cảnh bảng ghim tối đa mỗi nhịp: round(số cảnh × tỉ lệ), ít nhất 1. Gặp 26/10/2026: 41/75 cảnh là bảng ghim (10/18 phút).
+MAX_BOARD_RATIO = 0.25
+# Chỉ nhịp mở đầu và cứ mỗi QUESTION_EVERY_PARTS nhịp mới kết bằng câu hỏi bỏ ngỏ (chủ dự án 26/10/2026: hỏi nhiều quá thành nhảm).
+QUESTION_EVERY_PARTS = 4
 MAX_ATTEMPTS = 3             # số lần thử tối đa cho một việc nhỏ
 
 
