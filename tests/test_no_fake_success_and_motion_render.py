@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import shutil
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -565,3 +566,64 @@ async def test_assemble_succeeds_when_final_duration_cannot_be_measured(tmp_path
     )
     assert Path(res["video_path"]).exists()
     assert res["duration"] == 5.0
+
+
+def test_vieneu_text_is_split_into_sentences_with_pauses():
+    from services.tts_service import ELLIPSIS_PAUSE_S, SENTENCE_PAUSE_S, split_for_pauses
+    pieces = split_for_pauses("Hai giờ sáng… chiếc xe dừng lại. Cô chạy lên cầu thang! Không ai biết.")
+    assert pieces == [("Hai giờ sáng…", ELLIPSIS_PAUSE_S), ("chiếc xe dừng lại.", SENTENCE_PAUSE_S),
+                      ("Cô chạy lên cầu thang!", SENTENCE_PAUSE_S), ("Không ai biết.", 0.0)]
+    assert split_for_pauses("Một câu không dấu chấm") == [("Một câu không dấu chấm", 0.0)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="cần ffmpeg")
+async def test_vieneu_reads_sentence_by_sentence_slower_with_pauses(tmp_path, monkeypatch):
+    """Chủ dự án 26/10/2026: giọng VieNeu đọc nhanh, trôi tuồn tuột. Mỗi câu gửi riêng với tốc độ config.VIENEU_SPEED,
+    ghép lại có khoảng lặng; file tạm từng câu được dọn."""
+    import asyncio as _asyncio
+    import subprocess as _subprocess
+    import config
+    from services import tts_service
+
+    one_second = tmp_path / "cau.mp3"
+    await _asyncio.to_thread(_subprocess.run, ["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
+                             "sine=frequency=300:duration=1", "-ar", "48000", "-ac", "1", str(one_second)], check=True)
+    sent = []
+
+    class FakeResponse:
+        status_code = 200
+        content = one_second.read_bytes()
+        text = ""
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def post(self, url, json):
+            sent.append(json)
+            return FakeResponse()
+
+    async def server_ready():
+        return True
+
+    import httpx
+    monkeypatch.setattr(tts_service, "ensure_vieneu_server", server_ready)
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+    out = tmp_path / "scene.mp3"
+    res = await tts_service.generate_speech("Hai giờ sáng… chiếc xe dừng lại. Không ai biết.", voice="vieneu-MaiAnh",
+                                            output_audio_path=str(out))
+
+    assert [j["input"] for j in sent] == ["Hai giờ sáng…", "chiếc xe dừng lại.", "Không ai biết."]
+    assert all(j["speed"] == config.VIENEU_SPEED for j in sent)
+    expected = 3 * 1.0 + tts_service.ELLIPSIS_PAUSE_S + tts_service.SENTENCE_PAUSE_S
+    assert abs(res["duration"] - expected) < 0.3, res["duration"]
+    assert not res["fallback_used"]
+    names = sorted(p.name for p in tmp_path.iterdir() if p.suffix in (".mp3", ".srt") or p.name.startswith(".cau_"))
+    assert names == ["cau.mp3", "scene.mp3", "scene.srt"]           # thư mục tạm từng câu đã dọn

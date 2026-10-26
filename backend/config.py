@@ -67,6 +67,9 @@ WINDOWS_FONTS_DIR = Path(os.environ["WINDIR"]) / "Fonts" if os.environ.get("WIND
 # Server giọng VieNeu giữ model trong RAM (services/vieneu_server.py chạy tiến trình riêng)
 VIENEU_HOST = os.getenv("VIENEU_HOST", "127.0.0.1")
 VIENEU_PORT = int(os.getenv("VIENEU_PORT", "5005"))
+# Tốc độ đọc VieNeu (1.0 = tốc độ gốc). Chủ dự án 26/10/2026: giọng đọc nhanh, trôi tuồn tuột; 0.87 khớp
+# case_adaptation_checks.VI_WORDS_PER_MINUTE (200 chữ/phút). Đổi số này thì đo lại và sửa số chữ/phút đó.
+VIENEU_SPEED = float(os.getenv("VIENEU_SPEED", "0.87"))
 
 
 # Công tắc đọc lúc gọi (không phải lúc nạp module): test và server thử bật/tắt được khi đang chạy

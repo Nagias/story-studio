@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -17,6 +18,41 @@ logger = logging.getLogger("story_studio.tts_service")
 # dự án (ổ D), không rơi về ổ C. Thư mục này nằm trong .gitignore và bị chặn khi đóng gói.
 VIENEU_CACHE_DIR = Path(__file__).resolve().parents[2] / ".cache"
 VIENEU_URL = f"http://{config.VIENEU_HOST}:{config.VIENEU_PORT}"
+# Chủ dự án 26/10/2026: giọng VieNeu đọc nhanh, trôi tuồn tuột, không đọng lại gì. Đo 12 mẫu: VieNeu gần như không ngừng ở
+# dấu chấm (0 lần ngừng ≥ 0,4 s ở 3/5 giọng), nên đọc từng câu rồi ghép, chèn khoảng lặng sau mỗi câu; "…" ngừng lâu hơn.
+SENTENCE_PAUSE_S = 0.45
+ELLIPSIS_PAUSE_S = 0.8
+_SENTENCE = re.compile(r"[^.!?…]+(?:[.!?…]+[\"'”’»)\]]*)?")
+
+
+def split_for_pauses(text: str) -> List[tuple]:
+    """Tách lời kể thành [(câu, giây lặng sau câu)]: hết câu (. ! ?) lặng SENTENCE_PAUSE_S, "…" lặng ELLIPSIS_PAUSE_S,
+    câu cuối không lặng."""
+    pieces = []
+    for match in _SENTENCE.finditer(text or ""):
+        sentence = " ".join(match.group(0).split())
+        if not sentence:
+            continue
+        pause = ELLIPSIS_PAUSE_S if sentence.rstrip("\"'”’»)]").endswith(("…", "...")) else SENTENCE_PAUSE_S
+        pieces.append((sentence, pause))
+    if pieces:
+        pieces[-1] = (pieces[-1][0], 0.0)
+    return pieces
+
+
+async def join_with_pauses(chunks: List[tuple], output_path: Path) -> None:
+    """Ghép các file giọng [(đường dẫn, giây lặng sau)] thành một mp3, chèn khoảng lặng giữa các câu (ffmpeg)."""
+    cmd = ["ffmpeg", "-y", "-v", "error"]
+    for path, _pause in chunks:
+        cmd += ["-i", str(path)]
+    filters = [f"[{i}:a]aformat=sample_rates=48000:channel_layouts=mono,apad=pad_dur={pause:.2f}[a{i}]"
+               for i, (_path, pause) in enumerate(chunks)]
+    filters.append("".join(f"[a{i}]" for i in range(len(chunks))) + f"concat=n={len(chunks)}:v=0:a=1[out]")
+    cmd += ["-filter_complex", ";".join(filters), "-map", "[out]", "-c:a", "libmp3lame", "-q:a", "2", str(output_path)]
+    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    _out, err = await proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError(f"ghép câu VieNeu lỗi (ffmpeg mã {proc.returncode}): {err.decode(errors='ignore')[-300:]}")
 VIENEU_UV_CMD = ["uv", "run", "--with", "vieneu", "--python", "3.11"]
 VIENEU_SERVER_START_TIMEOUT = 240.0  # nạp model khi đã có cache ~20 s; lần cài đầu tiên lâu hơn nhiều
 VIENEU_SERVER_RETRY_AFTER = 600.0    # server vừa chết thì 10 phút sau mới thử bật lại
@@ -584,21 +620,35 @@ async def generate_speech(
         vieneu_success = False
         vieneu_errors: List[str] = []
 
-        # 1a. Server VieNeu giữ model trong RAM (tự bật nếu chưa chạy): mỗi cảnh chỉ tốn thời gian đọc
+        # 1a. Server VieNeu giữ model trong RAM (tự bật nếu chưa chạy): mỗi cảnh chỉ tốn thời gian đọc.
+        # Đọc từng câu ở tốc độ config.VIENEU_SPEED rồi ghép, có khoảng lặng giữa các câu (split_for_pauses).
         if await ensure_vieneu_server():
+            pieces = split_for_pauses(clean_text) or [(clean_text, 0.0)]
             try:
                 import httpx
-                # CPU đọc ~1 giây cho mỗi vài từ: câu dài cần timeout dài hơn
-                async with httpx.AsyncClient(timeout=max(60.0, len(clean_text) / 4)) as client:
-                    resp = await client.post(
-                        f"{VIENEU_URL}/v1/audio/speech",
-                        json={"input": clean_text, "voice": target_vieneu_voice, "response_format": "mp3"},
-                    )
-                if resp.status_code == 200 and len(resp.content) > 500:
-                    audio_path.write_bytes(resp.content)
-                    vieneu_success = True
-                else:
-                    vieneu_errors.append(f"server HTTP {resp.status_code}: {resp.text[:150]}")
+                # file giọng từng câu nằm trong thư mục tạm, tự dọn khi ra khỏi khối with
+                with tempfile.TemporaryDirectory(dir=str(audio_path.parent), prefix=".cau_") as tmp_dir:
+                    chunk_files: List[tuple] = []
+                    # CPU đọc ~1 giây cho mỗi vài từ: câu dài cần timeout dài hơn
+                    async with httpx.AsyncClient(timeout=max(60.0, len(clean_text) / 4)) as client:
+                        for i, (sentence, pause) in enumerate(pieces):
+                            resp = await client.post(
+                                f"{VIENEU_URL}/v1/audio/speech",
+                                json={"input": sentence, "voice": target_vieneu_voice, "response_format": "mp3",
+                                      "speed": config.VIENEU_SPEED},
+                            )
+                            if resp.status_code != 200 or len(resp.content) <= 500:
+                                vieneu_errors.append(f"server HTTP {resp.status_code} ở câu {i + 1}: {resp.text[:150]}")
+                                break
+                            chunk = Path(tmp_dir) / f"cau{i:02d}.mp3"
+                            chunk.write_bytes(resp.content)
+                            chunk_files.append((chunk, pause))
+                    if len(chunk_files) == len(pieces):
+                        if len(chunk_files) == 1:
+                            chunk_files[0][0].replace(audio_path)
+                        else:
+                            await join_with_pauses(chunk_files, audio_path)
+                        vieneu_success = True
             except Exception as e:
                 vieneu_errors.append(f"server: {e}")
         else:
