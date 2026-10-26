@@ -268,3 +268,25 @@ Chủ dự án giao: "Thiết kế và cài bộ skill cùng 2 agent giám khả
 - [x] Máy thiếu bộ nhớ ảo làm lần chấm T1 đầu hỏng test video; sau khi chủ dự án nới page file, chấm lại T1 9/9 điểm máy, không test nào phải chạy lại
 - [x] Sửa chấm oan T3 (chủ dự án duyệt 24/10/2026): `viec.json` thêm `bo_cham` + `ly_do_bo_cham` (test của lần sửa thật không chấm), `tools/bo_viec_mau.py tinh-dap-an` bỏ các test đó, test bổ sung `test_thong_bao_loc_chu_tu_loi_may_chu_va_nguoi_dung` nhận biến lọc lúc gán (kèm test tự kiểm bộ quét); `tests/test_bo_viec_mau.py` kiểm `bo_cham` có lý do và không còn được chấm. Bộ quét mới: bản gốc 18 chỗ chưa lọc, đáp án 0, bài T3 lần gốc 0, bài T3 lần này 0. `tinh-dap-an --viec T3` tự kiểm ĐẠT (3 test ẩn, 686 test cũ, 0 chập chờn). Chấm lại T3: 10/10 → lần đo sau cài skill **50/50**, bằng lần gốc
 - [x] Gộp nhánh `skill-agent-du-an` vào `master` (chủ dự án đồng ý 24/10/2026; fast-forward, `tools/check.py --full` trên `master`: 767 test đạt, 3 phút 28 giây)
+
+# Test trọn luồng vụ án thật (2026-10-26, nhánh `test-vu-an-tram-dung`)
+Chủ dự án giao: test trọn luồng với vụ án Trạm Dung (Đài Bắc 1993, bài 42.040 ký tự, lưu `.cache/samples/tram_dung.txt`, không vào git), kỳ vọng video từ 20 phút; xong báo video, thuật lại quy trình và lỗi còn gặp.
+- [x] Bật app thật cổng 8000 (cấu hình tạm `story-studio-8000` trong `.claude/launch.json`, đã trả lại sau khi test; lần đầu `run.py --no-browser`, sau đổi sang `uvicorn` trực tiếp, xem dòng sự cố 18:55); app, Fleet Runner, VieNeu đều tắt trước đó
+- [x] Phân tích vụ `case_71c574da` (20 phút): gửi 18:29, dàn ý xong 19:09 (16 đoạn; lần gọi LLM đầu chờ 9router ~14 phút). Sự cố 18:55: app bị tắt từ bên ngoài (mã -1, đúng lúc phiên Claude bên douyin-movie-studio khởi động lại app của nó bằng `run.py`); bật lại thì vụ tự chạy tiếp từ đoạn 14, không mất dữ liệu
+- [x] Dàn ý 25 nhịp, 74 cảnh (+1 miễn trừ), bài đủ tư liệu 20 phút; duyệt 19:10, viết lời Việt + Anh xong 20:04 (96/96 bước, 0 lỗi, 0 cờ)
+- [x] Xem lại: tên người, thành phố, đường đã đổi; **lọt tên 2 phim thật và 2 vai diễn** (bộ kiểm không bắt) → thêm 4 tên qua ô "Thêm tên" trên giao diện, app tự thay và ghi 6 chỗ; còn "Đài Loan/Taiwan" (cấp quốc gia, giữ)
+- [x] Tạo dự án bản Việt `proj_crime_f2512eac` (75 cảnh: 41 bảng ghim, 32 ảnh, 1 video, 1 miễn trừ; giọng VieNeu Mai Anh, ảnh Muse)
+- [x] Sản xuất bản Việt (nút "Sản Xuất Video Dài") 20:07–21:05 (58 phút): giọng 12 phút (75 file, tổng 18,45 phút), ảnh 33 phút (32 Muse ~55 s/ảnh, 1 ảnh dự phòng trả phí 9router ở cảnh 4), dựng + ghép 10 phút. `renders/story_final.mp4`: **18:27**, 1920×1080 25 fps, AAC 48 kHz, 372 MB, âm lượng trung bình −28,8 dB (đỉnh −9,2 dB). Xem 9 khung hình: ảnh Muse đúng phong cách noir, phụ đề karaoke đúng chữ; bảng ghim chiếm 10,3/18,4 phút, thẻ toàn biểu tượng kính lúp, chữ nhãn nhỏ
+- [x] Gói SEO: từ khoá gốc "vụ án chưa có lời giải" (10 gợi ý thật), chọn 3; AI viết đạt 18/18 luật, 7 chương theo video thật, có câu miễn trừ; tải .txt được. Thumbnail: nền ảnh Muse, chữ đủ dấu, không vệt sáng
+- [x] Bản tiếng Anh `proj_crime_58e75e48` (tạo 13 s, dùng lời Anh viết sẵn, dùng lại 75 ảnh, không gọi Muse): sản xuất 21:13–21:41 (28 phút), giọng Andrew tổng 18,07 phút; `renders/story_final.mp4` **18:04**, 1080p, 372 MB, âm lượng trung bình −30,4 dB. Gói SEO tiếng Anh ("unsolved murder case", 10 gợi ý thật, chọn 3) đạt 18/18 luật; thumbnail tạo lại ra chữ tiếng Anh
+- [x] Kiểm: xem 12 khung hình 2 bản + 2 thumbnail; `projects/` chỉ thêm 2 dự án và 1 vụ của lần này; gọi LLM: 96 bước phân tích (97 lượt, 1 lượt chạy lại sau sự cố) + 2 gói SEO; Muse 33 ảnh; ảnh trả phí 1
+- [ ] Chưa kiểm chứng: nghe giọng thật hai bản (máy không có công cụ nhận dạng giọng; chỉ đo được thời lượng, âm lượng, phụ đề khớp chữ)
+- Lỗi gặp (chưa sửa, chờ chủ dự án quyết):
+  - [ ] Độ dài: chọn 20 phút ra 18:27 (Việt) / 18:04 (Anh). `word_budget()` dặn AI viết 75–95% số chữ đúng thời lượng để không vượt; kiểm tra chỉ cảnh báo khi dài hơn, không cảnh báo khi ngắn hơn. Trái với "15 phút là mức tối thiểu" (CLAUDE.md 1)
+  - [ ] Lọt thông tin thật: tên phim, tên vai diễn không bị coi là tên cần đổi (bộ kiểm lọt tên không bắt); phải thêm tay ở màn Xem lại
+  - [ ] Bảng ghim chiếm 41/75 cảnh, 10,3/18,4 phút; thẻ toàn biểu tượng kính lúp, chữ nhãn nhỏ; có đoạn 6 cảnh bảng ghim liền nhau
+  - [ ] Muse: app chờ 240 s rồi chuyển ảnh trả phí 9router, trong khi Fleet Runner còn đang thử lại (150 s + nghỉ 60 s); lần thử lại ra ảnh sau 45 s → vừa tốn tiền vừa tốn lượt Muse (cảnh 4)
+  - [ ] Bản tiếng Anh chép nguyên thumbnail và dữ liệu từ khoá SEO tiếng Việt của bản Việt; không bấm tạo lại thì thumbnail bản Anh mang chữ Việt
+  - [ ] Âm lượng video nhỏ (trung bình −28,8 / −30,4 dB)
+  - [ ] Nhỏ: dòng trạng thái bước 2 ghi "Thu âm Edge-TTS" khi giọng là VieNeu; lần gọi LLM đầu chờ 9router ~14 phút không báo gì trên giao diện
+  - [ ] Môi trường: app chạy bằng `run.py` bị tắt khi phiên khác khởi động lại app của nó (nghi tắt theo tên lệnh `run.py`); hàng việc tự chạy tiếp, không mất dữ liệu
