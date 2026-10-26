@@ -290,3 +290,25 @@ Chủ dự án giao: test trọn luồng với vụ án Trạm Dung (Đài Bắc
   - [ ] Âm lượng video nhỏ (trung bình −28,8 / −30,4 dB)
   - [ ] Nhỏ: dòng trạng thái bước 2 ghi "Thu âm Edge-TTS" khi giọng là VieNeu; lần gọi LLM đầu chờ 9router ~14 phút không báo gì trên giao diện
   - [ ] Môi trường: app chạy bằng `run.py` bị tắt khi phiên khác khởi động lại app của nó (nghi tắt theo tên lệnh `run.py`); hàng việc tự chạy tiếp, không mất dữ liệu
+
+# Sửa lỗi và làm video vụ án rùng rợn hơn (2026-10-26, nhánh `sua-video-vu-an-rung-ron`, tách từ `test-vu-an-tram-dung`)
+Chủ dự án giao: "Sửa cả 8 lỗi" của lần test Trạm Dung + 6 góp ý (giọng chậm, có cảm xúc; sound effect; ảnh nối tiếp; font Việt đẹp; nghiên cứu phong cách hoạt hình như video mẫu; bớt câu hỏi tu từ). Lần test sau chỉ xuất bản Việt. Duyệt kế hoạch 26/10: thêm lựa chọn "Hoạt hình 2D rùng rợn"; font Be Vietnam Pro + Oswald (+ Patrick Hand cho nhãn bảng ghim); SFX tự tìm nguồn CC0; nối ảnh bằng ảnh cảnh trước làm tham chiếu.
+- [x] A9 Fleet Runner chỉ nhận media mới sinh sau khi gửi prompt (đã gặp: nhận video cũ trong chat, task_m_72445b82)
+- [x] A4 Thời gian chờ Muse phủ cả vòng thử lại
+- [x] A5 Bản ngôn ngữ mới không chép SEO/thumbnail của ngôn ngữ khác
+- [x] A6 Âm lượng: amix normalize=0 + loudnorm −16 LUFS
+- [x] A7 Nhãn bước thu âm đúng giọng; giao diện báo khi 9router bận
+- [x] A1 Số phút chọn là mức tối thiểu; cảnh báo khi ngắn hơn
+- [x] A2 Trích cả tên tác phẩm, vai diễn, nghệ danh để đổi
+- [x] B6 Bớt câu hỏi tu từ (hook + tối đa ~1/4 số nhịp)
+- [x] A3 Bảng ghim ≤ 25% số cảnh; thẻ dùng ảnh cảnh liên quan; chữ to hơn
+- [x] B4 Font đóng gói (Be Vietnam Pro, Oswald, Patrick Hand) cho phụ đề, bảng ghim, thumbnail
+- [x] B1 Giọng chậm hơn + ngắt nghỉ; mẫu giọng cho chủ dự án chọn
+- [x] B2 Hiệu ứng âm thanh CC0 theo `sfx_cue`; nhạc nền theo `bgm_energy`
+- [x] B3 Ảnh cảnh sau tham chiếu ảnh cảnh trước; khoá nhân vật dự án vụ án
+- [x] B5 Phong cách "Hoạt hình 2D rùng rợn"
+- [x] Chạy lại vụ Trạm Dung bản Việt, phong cách "Hoạt hình 2D rùng rợn" (`proj_crime_4a93fd60`, nút "Sản Xuất Video Dài" trên giao diện): `renders/story_final.mp4` **22:53**, 1080p, **−16,0 LUFS**, không có đoạn lặng ≥ 2 s, 0 cảnh báo trong nhật ký. So lần 1 (`proj_crime_f2512eac`): độ dài 18:27 → 22:53; bảng ghim 41/75 → 16/78 cảnh (thẻ có ảnh cảnh, nhãn Patrick Hand); câu hỏi 24 → 6; dấu "…" 0 → 68; âm lượng TB −28,8 dB → −16 LUFS. Tốc độ đọc đo thật 189,5 chữ/phút (VieNeu Mai Anh, 0,87; lần 1 ~230), `VI_WORDS_PER_MINUTE = 200` lệch 5%, giữ nguyên
+- [x] Xem 14 khung hình: đúng kiểu hoạt hình 2D, cảnh liền nhau cùng bối cảnh và nhân vật; phụ đề Be Vietnam Pro tô vàng từ khoá. Ảnh: 74 Muse, 4 trả phí 9router (cảnh 2–5, Fleet Runner chưa online → sửa ở commit `55ebf1e`)
+- [x] Lỗi mới khi chạy lại: thư viện tiếng động chênh 36 LU (fluorescent_hum −6,4 LUFS đè giọng ở 29 cảnh; footsteps_wet −42,9 LUFS không nghe thấy) và giọng mono bị hạ ~3 dB khi trộn sang stereo. Sửa: đo từng file rồi đưa về `SFX_TARGET_LUFS = −36`, trộn mono. Test mới đỏ trên code cũ, xanh trên code mới; dựng lại (không gọi Muse/9router): 77 cảnh có tiếng động, giọng sau trộn chỉ to hơn giọng gốc 0,11 LU (tối đa 0,18)
+- [ ] Chưa kiểm chứng: nghe bằng tai giọng, tiếng động, nhạc nền (máy chỉ đo được độ to); 5 tiếng CC0 "tạm" trong `NGUON.md`; nhân vật thám tử lúc vẽ mặt tròn trắng lúc vẽ mặt người thật; bảng ghim cuối video >30 thẻ, nhãn dây đỏ chồng nhau
+- [x] Giám khảo ĐẠT (không điểm chặn, tự đo lại khớp số), `check.py --full` ĐẠT: 794 passed, 0 lỗi, 3 phút 17 giây
