@@ -131,6 +131,9 @@ BUSY_FIRST_BACKOFF_S = 60.0      # lần chờ đầu khi 9router không báo ph
 BUSY_MIN_WAIT_S = 5.0            # chờ ít nhất chừng này, kể cả khi 9router báo 0 giây
 busy_sleep = asyncio.sleep       # lấy lúc gọi; test thay bằng hàm không chờ thật
 busy_clock = time.monotonic      # đồng hồ đo thời gian mất vì bận; test thay bằng đồng hồ giả
+# Câu báo cho giao diện khi đang chờ 9router bận (case_worker.pipeline_progress đọc). Mỗi lúc chỉ một lời gọi LLM trong
+# tiến trình (_LLM_GATE) nên một biến là đủ. Gặp 21/10 và 26/10/2026: chờ tới 14 phút mà giao diện chỉ hiện "Đang đọc đoạn 1".
+busy_notice: Optional[str] = None
 
 # Cổng "mỗi lúc một lần gọi LLM" cho cả tiến trình. Dùng threading.Lock chứ không dùng asyncio.Lock: asyncio.Lock gắn
 # với một event loop, còn lời gọi có thể đến từ loop khác (route đồng bộ chạy asyncio.run trong luồng riêng, hoặc mỗi
@@ -268,8 +271,14 @@ async def _call_llm(llm: LLMCall, prompt: str, *, temperature: float, timeout: f
         wait = min(max(wait, BUSY_MIN_WAIT_S), remaining)
         logger.warning("9router bận ở bước %s: chờ %.0f s rồi gọi lại (đã mất %.0f s vì bận)",
                        step_label, wait, busy.spent)
+        global busy_notice
+        busy_notice = (f"9router đang bận: chờ khoảng {max(1, math.ceil(wait / 60))} phút rồi gọi lại "
+                       f"(đã mất {math.floor(busy.spent / 60)} phút vì bận, tối đa {int(BUSY_WAIT_CAP_S // 60)} phút)")
         slept_from = busy_clock()
-        await busy_sleep(wait)
+        try:
+            await busy_sleep(wait)
+        finally:
+            busy_notice = None
         busy.spent += busy_clock() - slept_from
         busy.waits += 1
 

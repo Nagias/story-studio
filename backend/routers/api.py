@@ -1543,10 +1543,11 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
             ] + ([f"⚠ Chia cảnh: {analysis_note}"] if analysis_note else []),
         })
 
-        # ----------------- PHASE 2: EDGE-TTS & SRT (15% -> 40%) -----------------
+        # ----------------- PHASE 2: THU GIỌNG (VieNeu hoặc Edge-TTS) & SRT (15% -> 40%) -----------------
+        tts_engine = "VieNeu" if (project.voice or "").lower().startswith("vieneu") else "Edge-TTS"
         await broadcast_render_update(render_id, {
             "step": 2,
-            "step_label": f"Bước 2/5: Thu âm Edge-TTS tiếng Việt & trích xuất phụ đề SRT ({project.voice})...",
+            "step_label": f"Bước 2/5: Thu giọng {tts_engine} & trích xuất phụ đề SRT ({project.voice})...",
             "progress": 18,
         })
 

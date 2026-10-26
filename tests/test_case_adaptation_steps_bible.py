@@ -334,6 +334,26 @@ def test_busy_inside_pipeline_step(isolated_projects_dir, busy_sleeps):
     assert len(result.output["events"]) == 6
 
 
+def test_progress_tells_user_while_waiting_for_busy_9router(isolated_projects_dir, monkeypatch, fake_clock):
+    """Gặp 21/10 và 26/10/2026: chờ 9router tới 14 phút mà giao diện chỉ hiện "Đang đọc đoạn 1"."""
+    from services import case_worker
+    pipeline = _new_pipeline()
+    pipeline.status = "running"
+    pipeline.steps[0].status = "running"
+    labels: list[str] = []
+
+    async def fake_sleep(seconds):
+        labels.append(case_worker.pipeline_progress(pipeline)["step_label"])
+        fake_clock["now"] += seconds
+
+    monkeypatch.setattr(case_adaptation_steps, "busy_sleep", fake_sleep)
+    llm, _calls = make_fake_llm({"EXTRACT 0": [_busy(120)]})
+    _run(pipeline, "extract_00", llm)
+    assert len(labels) == 1 and "9router đang bận: chờ khoảng 2 phút" in labels[0]
+    assert case_adaptation_steps.busy_notice is None             # gọi lại được rồi thì hết báo
+    assert "9router" not in case_worker.pipeline_progress(pipeline)["step_label"]
+
+
 # ---------------------------------------------------------------- mỗi lúc một lần gọi LLM trong cả tiến trình
 
 def _overlap_counting_llm(state: dict, guard: threading.Lock):

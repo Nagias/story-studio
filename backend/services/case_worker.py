@@ -477,6 +477,8 @@ def pipeline_progress(p: CasePipeline) -> dict:
         label = "Đã phân tích xong"
     else:
         label = f"Đang {_step_phrase(p, current)}"
+        if case_adaptation_steps.busy_notice:
+            label += f" — {case_adaptation_steps.busy_notice}"
     error = ""
     if p.status == "failed":
         error = (failed.error if failed else "") or "Phân tích bị dừng. Bấm Thử lại để chạy tiếp."
