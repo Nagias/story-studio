@@ -328,11 +328,12 @@ async def render_scene_video(
         except Exception:
             has_video_audio = False
 
-        # -stream_loop -1: clip Muse (5-10s) ngắn hơn giọng đọc thì lặp lại, -t cắt đúng độ dài cảnh
-        cmd = ["ffmpeg", "-y", "-stream_loop", "-1", "-i", str(image_path)]
+        # Clip ngắn hơn lời kể thì giữ khung cuối cho phần còn lại (tpad clone), không lặp clip: lặp lại thì nhân vật
+        # nhảy về tư thế đầu giữa câu. Dài hơn thì -t cắt đúng độ dài cảnh.
+        cmd = ["ffmpeg", "-y", "-i", str(image_path)]
         filter_complex_parts = [
             f"[0:v]scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,"
-            f"setsar=1,fps={fps},setpts=PTS-STARTPTS{fade_vf}[vout]"
+            f"setsar=1,fps={fps},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration={duration:.3f}{fade_vf}[vout]"
         ]
 
         has_voice = audio_path and os.path.exists(audio_path)
@@ -349,7 +350,7 @@ async def render_scene_video(
         elif has_voice:
             audio_map = "1:a"
         elif has_video_audio:
-            filter_complex_parts.append("[0:a]volume=0.8[aout]")
+            filter_complex_parts.append("[0:a]volume=0.8,apad[aout]")   # tiếng của clip hết thì lặng tới hết cảnh
             audio_map = "[aout]"
         else:
             cmd.extend(["-f", "lavfi", "-i", SILENT_AUDIO_SRC])

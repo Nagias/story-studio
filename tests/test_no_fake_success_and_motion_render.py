@@ -5,16 +5,20 @@ Kiểm tra 2 nhóm sửa lỗi (2026-10-19):
    route gen-image/gen-voice ghi rõ lỗi hoặc engine dự phòng vào cảnh, mẫu giọng VieNeu
    không bị cache bằng bản Edge.
 2. Clip video Muse vào được bản dựng: clip lưu file riêng, bước dựng đọc clip và ghi ra
-   file segment khác, lệnh ffmpeg lặp clip và chuẩn hoá âm thanh 48 kHz stereo.
+   file segment khác, lệnh ffmpeg giữ khung cuối clip và chuẩn hoá âm thanh 48 kHz stereo.
 
-Mọi dữ liệu dự án nằm trong tmp_path; không gọi Muse, 9router hay Edge-TTS.
+Mọi dữ liệu dự án nằm trong tmp_path; không gọi Muse, 9router hay Edge-TTS. ffmpeg thật chỉ dùng ở test giữ khung cuối (cuối file).
 """
+import json
+import subprocess
+import asyncio
 import logging
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import shutil
+import numpy as np
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -469,7 +473,7 @@ def _has_pair(cmd, flag, value):
 
 
 @pytest.mark.asyncio
-async def test_video_clip_render_loops_clip_and_normalizes_audio(tmp_path, captured_ffmpeg):
+async def test_video_clip_render_holds_last_frame_and_normalizes_audio(tmp_path, captured_ffmpeg):
     clip = tmp_path / "s1_muse.mp4"
     clip.write_bytes(MP4_BYTES)
     voice = tmp_path / "s1.mp3"
@@ -482,8 +486,9 @@ async def test_video_clip_render_loops_clip_and_normalizes_audio(tmp_path, captu
     )
 
     cmd = captured_ffmpeg[-1]
-    loop_idx = cmd.index("-stream_loop")
-    assert cmd[loop_idx + 1] == "-1" and cmd[loop_idx + 3] == str(clip), "clip phải được lặp cho đủ độ dài giọng"
+    # Clip ngắn hơn giọng: giữ khung cuối (tpad clone) chứ không lặp clip (27/10/2026, video cảnh cao trào)
+    assert "-stream_loop" not in cmd and _has_pair(cmd, "-i", str(clip))
+    assert "tpad=stop_mode=clone" in cmd[cmd.index("-filter_complex") + 1]
     assert _has_pair(cmd, "-t", "14.0")
     assert _has_pair(cmd, "-ar", "48000") and _has_pair(cmd, "-ac", "2")
     assert "fps=25" in cmd[cmd.index("-filter_complex") + 1]
@@ -679,3 +684,49 @@ def test_muse_create_task_respects_duration_sec(api_client):
     for t in (task, r5.json()["task"], explicit.json()["task"]):
         muse_bridge.pending_tasks[:] = [p for p in muse_bridge.pending_tasks if p["task_id"] != t["task_id"]]
 
+
+# ------------------------------------------------------------------- dựng clip ngắn hơn lời kể: giữ khung cuối (ffmpeg thật)
+def _ff(args: list) -> None:
+    subprocess.run(["ffmpeg", "-y", "-v", "error", *args], check=True, capture_output=True, timeout=120)
+
+
+def _probe(path: Path) -> dict:
+    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", str(path)],
+                         capture_output=True, text=True, check=True).stdout
+    return json.loads(out)
+
+
+def _frames(path: Path, w: int, h: int, fps: int) -> list:
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-vf", f"scale={w}:{h},fps={fps}", "-f", "rawvideo",
+                          "-pix_fmt", "rgb24", "-"], capture_output=True, check=True, timeout=120).stdout
+    size = w * h * 3
+    return [np.frombuffer(raw[i:i + size], dtype=np.uint8).reshape(h, w, 3).astype(float)
+            for i in range(0, len(raw) - size + 1, size)]
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None, reason="cần ffmpeg/ffprobe")
+def test_render_scene_video_holds_last_frame_instead_of_looping(tmp_path):
+    """Clip 2 giây (nửa đầu đỏ, nửa sau xanh) dựng cho cảnh 4 giây: phần thêm là khung cuối (xanh), không lặp về đỏ."""
+    red, blue = tmp_path / "red.jpg", tmp_path / "blue.jpg"
+    Image.new("RGB", (320, 180), (220, 20, 20)).save(red)
+    Image.new("RGB", (320, 180), (20, 20, 220)).save(blue)
+    _ff(["-loop", "1", "-t", "1", "-i", str(red), "-loop", "1", "-t", "1", "-i", str(blue),
+         "-filter_complex", "[0:v]fps=24[a];[1:v]fps=24[b];[a][b]concat=n=2:v=1:a=0[o]", "-map", "[o]",
+         "-pix_fmt", "yuv420p", str(tmp_path / "clip.mp4")])
+    out = tmp_path / "seg.mp4"
+    asyncio.run(video_service.render_scene_video(image_path=str(tmp_path / "clip.mp4"), audio_path=None,
+                                                 output_path=str(out), duration=4.0, resolution="720p", fps=25))
+    assert abs(float(_probe(out)["format"]["duration"]) - 4.0) < 0.15
+    frames = _frames(out, 32, 18, 4)                                             # 0; 0,25; ...; 3,75 giây
+    for i, f in enumerate(frames):
+        t = i / 4
+        r, b = f[..., 0].mean(), f[..., 2].mean()
+        if t < 0.9:
+            assert r > b, f"giây {t}: phải còn đỏ"
+        elif t > 1.1:
+            assert b > r, f"giây {t}: phải giữ khung cuối xanh, không lặp lại đỏ"
+    # clip dài hơn cảnh thì cắt
+    out2 = tmp_path / "seg2.mp4"
+    asyncio.run(video_service.render_scene_video(image_path=str(tmp_path / "clip.mp4"), audio_path=None,
+                                                 output_path=str(out2), duration=1.0, resolution="720p", fps=25))
+    assert abs(float(_probe(out2)["format"]["duration"]) - 1.0) < 0.15
