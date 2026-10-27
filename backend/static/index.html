@@ -584,6 +584,14 @@
           <button id="btn-auto-gen-all" class="text-xs px-3.5 py-1.5 bg-gradient-to-r from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 text-amber-900 rounded-lg border border-amber-300 font-bold transition flex items-center gap-1.5 shadow-xs">
             <i class="fa-solid fa-bolt text-amber-600 text-xs"></i> <span>Auto-Gen Toàn Bộ</span>
           </button>
+
+          <!-- Video cảnh cao trào (chỉ dự án vụ án; code: climax_video.js). Tạo video tốn lượt Muse -->
+          <button id="btn-climax-video-pick" class="hidden text-xs px-3 py-1.5 bg-white hover:bg-indigo-50 text-purple-700 rounded-lg border border-purple-300 font-semibold shadow-xs transition flex items-center gap-1.5" title="Tự chọn tối đa một nửa số cảnh có dấu hiệu cao trào (nhịp climax, nhạc căng, tiếng tim đập...)">
+            <i class="fa-solid fa-wand-magic-sparkles text-xs"></i> <span>Chọn cảnh cao trào</span>
+          </button>
+          <button id="btn-climax-video-run" class="hidden text-xs px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg border border-purple-500 font-bold shadow-xs transition flex items-center gap-1.5" title="Muse vẽ ảnh 9-grid từ ảnh cảnh, làm clip 5 giây từ từng ô, chỉnh màu, kiểm rồi ghép thành video của cảnh">
+            <i class="fa-solid fa-film text-xs"></i> <span>Tạo video cho 0 cảnh cao trào</span>
+          </button>
         </div>
       </div>
 
@@ -2237,5 +2245,7 @@
   <script src="/static/true_crime.js?v=1.4.0"></script>
   <!-- Gói SEO YouTube ở Bước 4 (app.js gọi ytSeoLoad khi mở Bước 4) -->
   <script src="/static/youtube_seo.js?v=1.0.0"></script>
+  <!-- Video cảnh cao trào ở Bước 2 (dự án vụ án): gắn nhãn/nút lên thẻ cảnh sau mỗi lần renderSceneList vẽ lại -->
+  <script src="/static/climax_video.js?v=1.0.0"></script>
 </body>
 </html>
