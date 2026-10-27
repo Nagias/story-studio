@@ -488,7 +488,7 @@ def test_muse_error_retries_in_new_chat_on_another_account(isolated_projects_dir
     assert first["thread_url"] == THREAD and first["pin_account"] is True
     assert "thread_url" not in second and "pin_account" not in second           # chat mới
     assert second["avoid_accounts"] == ["muse_acc_vid_02"]                      # tránh tài khoản vừa báo quá tải
-    assert result["avoid_accounts"] == ["muse_acc_vid_02"]
+    assert result["avoid_accounts"] == []       # làm được rồi thì thôi tránh (duyệt độc lập 28/10/2026)
 
 
 @pytest.mark.parametrize("plan, words", [
