@@ -1285,6 +1285,10 @@ class MuseFleetRunner:
                     if ok:
                         remember_delivered(digest)
                         await page.wait_for_timeout(8000)   # chờ Muse viết xong lời kèm kết quả (tự kiểm, ghi chú)
+                        # Chat mới có địa chỉ thật (/thread/<uuid>) sau tin nhắn đầu, có khi chậm hơn kết quả: đọc lại ở đây
+                        # (gặp 28/10/2026: cảnh 41 nhận ảnh grid ngay, địa chỉ còn /thread/new nên không lưu được chat)
+                        if "/thread/" in page.url and not page.url.endswith("/thread/new"):
+                            task["_result_meta"]["thread_url"] = page.url
                         now_text = await page.evaluate(LOG_TEXT_JS)
                         new_text = now_text[len(text_before):] if now_text.startswith(text_before) else now_text[-2000:]
                         task["_result_meta"]["muse_reply"] = new_text.strip()[-2000:]
