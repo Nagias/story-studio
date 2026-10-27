@@ -327,3 +327,21 @@ Chủ dự án giao: những đoạn cao trào, gay cấn dùng video Muse thay 
   - Lượt 1 (prompt cũ): cảnh 12 (4 clip) và 28 (3 clip) **ready**, nhưng 7/7 clip zoom sát rồi vẽ lại mặt nhân vật kiểu tả thực/anime sau ~1 giây (đầu tròn trắng thành mặt có mắt mũi); mỗi chỗ nối clip giật về hình gốc; 1 clip mọc thêm bóng người. Máy kiểm cho qua cả 7 (SSIM khung đầu 0,78–0,84 nhưng tụt còn 0,12–0,36 giữa clip). Nguyên nhân zoom: task không nói máy quay nên `enqueue_and_wait_muse_task()` gắn "cinematic slow tracking pan", prompt còn xin "push-in"; runner không gửi negative_prompt của video
   - Lượt 2 (commit `baf25de`, máy quay đứng yên): hết zoom, bố cục giữ tốt hơn (SSIM thấp nhất 0,44–0,64), nhưng 4/4 clip cảnh 12 **vẫn vẽ lại mặt** sau ~1 giây. Cảnh 12 failed vì `MemoryError` (máy còn ~1 GB bộ nhớ ảo trống / 43 GB); cảnh 28 failed vì Fleet Runner treo khi vẽ grid (720 s). Dừng, chưa chạy cảnh 41, 53
 - [ ] Chưa đạt yêu cầu "phong cách giống ảnh 100%": Muse video vẽ lại mặt dù prompt khoá; máy kiểm không bắt được trôi phong cách. Chờ chủ dự án quyết hướng (không gộp / thêm luật kiểm "giữ giống ô gốc suốt clip" / clip ngắn hơn / cách khác)
+
+# Video cao trào theo bảng nhân vật (2026-10-28, nhánh `lam-bai`, kế hoạch `docs/superpowers/plans/2026-10-28-video-cao-trao-bang-nhan-vat.md`)
+Chủ dự án chốt 28/10: bảng nhân vật cho cả dự án, mỗi cảnh một side chat Muse, tài khoản video tự vẽ ảnh (chỉ video cao trào), không có kiểu tóc mặc định, giữ bước duyệt grid (đêm 28/10 agent duyệt thay), gộp bảng diễn viên thành 1 ảnh, làm Native; dùng thêm 4 tài khoản Muse của videopic-workflow, gọi từ từ.
+- [x] Task 1 muse_bridge: route_kind, pin_account, avoid_accounts, thread_url, attachments; trả thread_url, muse_reply
+- [x] Task 2 Fleet Runner: mở lại side chat, nhiều ảnh đính kèm, raw_prompt, dừng sớm khi Muse báo lỗi bằng chữ, profile Chrome ngoài (STORY_STUDIO_EXTRA_CHROME_PROFILES)
+- [x] Task 3–4 Bảng nhân vật: dịch vụ, API, cửa sổ `#btn-character-sheets`
+- [x] Task 5–6 Video cao trào hai pha (grid → duyệt → clip) trong side chat của cảnh; thẻ cảnh có nhân vật và duyệt grid
+- [x] `check.py --full` ĐẠT 01:36: 858 test đạt, 0 lỗi, 20 phút 15 giây (sau đó thêm 6 commit sửa từ lần chạy thật, mỗi commit qua hook nhanh + test liên quan)
+- [x] Kiểm giao diện server thử 8010 (dự án thử ảnh giả, không gọi Muse): mọi nút đúng, console chỉ 2 lỗi 400 cố ý
+- [x] Chạy thật 28/10 01:37–03:13 (repo thật tạm nhánh `thu-video-cao-trao`, bản sao Trạm Dung `proj_crime_thucaotrao`, xong về `master`, cấu hình tài khoản trả về bản cũ): 11 lượt Muse (2 bảng nhân vật, 4 grid, 5 lượt clip)
+  - Bảng Hàn Thụy Côn: lần 1 mặt người thật ở các góc nghiêng phải (Muse theo câu "gaunt facial features") → agent sửa thiết kế (đầu tròn, không mũi/tai/râu) + ghi chỗ sai → lần 2 nhất quán 9 góc (còn chấm mũi ở 1 hình, tai nhỏ), agent duyệt
+  - Grid cảnh 28: lần 1 sai ô 6–7 (gáy trắng) → ghi chỗ sai → lần 2 đúng cả 9 ô, agent duyệt
+  - Grid cảnh 41: ảnh cảnh vẽ Hàn Thụy Côn mặt người thật, mâu thuẫn bảng đầu tròn; vẽ lại còn tệ hơn (gán tóc rối cho cô gái, cậu bé) → để "chờ duyệt grid", chờ chủ dự án quyết
+  - Clip cảnh 28: không ra video nào. vid_02 trả lời "dịch vụ tạo video đã không khả dụng"; vid_01 hết phiên đăng nhập; vp_04, vp_01, vp_03 (videopic) chờ 300 s không có video (02:56–03:13). Dừng để khỏi dồn tài khoản
+  - Lỗi tìm ra khi chạy thật và đã sửa (mỗi lỗi có test): địa chỉ chat chưa lưu khi kết quả về sớm; tài khoản bị tránh vẫn nhận thay; NO_MEDIA chưa đổi tài khoản; khe Fleet Runner luôn giữ tài khoản active (việc tránh nó nằm chờ 30 phút); lỗi sau khi gửi prompt chưa kèm câu Muse nói
+  - Lỗi thao tác của agent: tắt Fleet Runner mà không bật lại → việc grid cảnh 28 chờ 12 phút rồi quá giờ (không tốn lượt Muse)
+- [ ] Chưa kiểm chứng: clip video trong side chat với bảng diễn viên (Muse không tạo video lúc chạy); video ghép cuối
+- [ ] Chờ chủ dự án: đăng nhập lại muse_acc_vid_01 và videopic muse_vid_02; cảnh 41 (vẽ lại ảnh cảnh hay đổi bảng Hàn Thụy Côn); duyệt lại thiết kế Hàn Thụy Côn agent đã sửa; chạy lại pha clip ban ngày
