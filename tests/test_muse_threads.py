@@ -45,6 +45,16 @@ def test_avoid_accounts_picks_another_account_of_same_kind(fleet):
     assert task["assigned_account"] == "muse_acc_vid_02"
 
 
+def test_avoided_account_never_takes_the_task_even_as_fallback(fleet):
+    """Chạy thật 28/10/2026: việc tránh vid_02 vẫn bị vid_02 nhận thay sau REASSIGN_AFTER_SEC."""
+    online("muse_acc_vid_02")   # chỉ tài khoản bị tránh đang online
+    task = mb.assign_task_account({"mode": "image-to-video", "avoid_accounts": ["muse_acc_vid_02"]})
+    task["queued_at"] = time.time() - 10 * mb.REASSIGN_AFTER_SEC
+    mb.pending_tasks.append(task)
+    assert mb._pick_task_for_account("muse_acc_vid_02", "video") == -1
+    assert mb._pick_task_for_account("muse_acc_vid_01", "video") == 0
+
+
 def test_pinned_task_never_reassigned(fleet):
     online("muse_acc_vid_01")   # vid_02 (chủ chat) offline
     task = mb.assign_task_account({"mode": "image-to-video", "assigned_account": "muse_acc_vid_02", "pin_account": True})

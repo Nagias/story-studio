@@ -904,6 +904,8 @@ def _pick_task_for_account(account_id: str, kind: str) -> int:
     for idx, t in enumerate(pending_tasks):
         if routing_kind(t) != kind:
             continue  # Rào chắn tuyệt đối: tài khoản ảnh không nhận video và ngược lại
+        if account_id in (t.get("avoid_accounts") or []):
+            continue  # tài khoản vừa lỗi với việc này (vd Muse quá tải): không nhận lại, kể cả nhận thay
         assigned = t.get("assigned_account")
         if assigned == account_id:
             return idx
