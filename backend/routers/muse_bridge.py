@@ -3,6 +3,7 @@ import base64
 import json
 import logging
 import os
+import re
 import shutil
 import socket
 import time
@@ -123,6 +124,43 @@ def _default_fleet_accounts() -> List[Dict[str, Any]]:
 def task_kind(mode: Optional[str]) -> str:
     """Loại task: 'video' cho image-to-video / text-to-video, còn lại là 'image'."""
     return "video" if "video" in str(mode or "").lower() else "image"
+
+
+# Side chat Muse dùng lại được (video cao trào, chủ dự án 28/10/2026): mỗi cảnh một chat trên một tài khoản video,
+# tài khoản đó vẽ cả ảnh grid. Các trường dưới đây đều tuỳ chọn; thiếu thì task chạy y như cũ.
+THREAD_URL_RE = re.compile(r"https://muse\.ai/thread/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+MUSE_REPLY_MAX_CHARS = 2000
+
+
+def routing_kind(task: Dict[str, Any]) -> str:
+    """Loại tài khoản nhận task: `route_kind` nếu có ("image"/"video"), không thì theo loại media của task.
+    Khác `task_kind(mode)`: loại media quyết định đuôi file và cách kiểm kết quả (ảnh grid vẫn là ảnh)."""
+    rk = task.get("route_kind")
+    return rk if rk in ("image", "video") else task_kind(task.get("mode"))
+
+
+def valid_thread_url(value: Any) -> Optional[str]:
+    """Địa chỉ side chat Muse hợp lệ (đúng dạng https://muse.ai/thread/<uuid>), không thì None."""
+    return value if isinstance(value, str) and THREAD_URL_RE.fullmatch(value) else None
+
+
+def validate_thread_fields(task: Dict[str, Any]) -> None:
+    """Kiểm các trường side chat của task trước khi xếp hàng; sai thì ValueError (không xếp hàng)."""
+    if task.get("route_kind") is not None and task["route_kind"] not in ("image", "video"):
+        raise ValueError(f"route_kind không hợp lệ: {task['route_kind']!r}")
+    if task.get("thread_url") is not None and not valid_thread_url(task["thread_url"]):
+        raise ValueError(f"thread_url không phải side chat Muse: {str(task['thread_url'])[:120]}")
+    atts = task.get("attachments")
+    if atts is not None:
+        if not isinstance(atts, list) or not all(isinstance(a, str) for a in atts):
+            raise ValueError("attachments phải là danh sách đường dẫn")
+        for a in atts:
+            if not (Path(a).is_file() and is_within(a, PROJECTS_DIR, STATIC_DIR)):
+                raise ValueError(f"Ảnh đính kèm không có hoặc nằm ngoài projects/ và backend/static/: {a}")
+        task["attachments"] = [str(Path(a).resolve()) for a in atts]
+    avoid = task.get("avoid_accounts")
+    if avoid is not None and (not isinstance(avoid, list) or not all(isinstance(a, str) for a in avoid)):
+        raise ValueError("avoid_accounts phải là danh sách id tài khoản")
 
 
 def account_kind(acc: Optional[Dict[str, Any]]) -> Optional[str]:
@@ -330,7 +368,7 @@ def assign_task_account(task: Dict[str, Any]) -> Dict[str, Any]:
     Gán tài khoản cho task theo loại NGHIÊM NGẶT: task ảnh -> tài khoản image, task video -> tài khoản video.
     Tài khoản client yêu cầu chỉ được dùng nếu đúng loại và đang dùng được; nếu không thì dùng tài khoản active cùng loại.
     """
-    kind = task_kind(task.get("mode"))
+    kind = routing_kind(task)
     task["task_kind"] = kind
     req_acc_id = task.get("assigned_account") or task.get("account_id")
     if not req_acc_id and isinstance(task.get("parameters"), dict):
@@ -339,14 +377,18 @@ def assign_task_account(task: Dict[str, Any]) -> Dict[str, Any]:
     selected = None
     if req_acc_id and req_acc_id not in LEGACY_ALIAS_ACCOUNTS:
         acc = find_account(req_acc_id)
-        if acc and account_kind(acc) == kind and is_account_available(acc):
-            selected = acc
+        if acc and account_kind(acc) == kind and (is_account_available(acc) or task.get("pin_account")):
+            selected = acc   # task ghim (side chat của tài khoản này) giữ đúng tài khoản; dùng được không thì người gọi báo lỗi
         elif acc:
             logger.warning(
                 f"Task {task.get('task_id')} ({kind}) yêu cầu tài khoản '{req_acc_id}' "
                 f"(loại {account_kind(acc)}, dùng được: {is_account_available(acc)}) -> chuyển sang tài khoản {kind} active."
             )
 
+    avoid = set(task.get("avoid_accounts") or [])
+    if selected is None and avoid:
+        selected = next((a for a in sorted(muse_accounts, key=lambda a: (not is_account_online(a["account_id"]), a["account_id"]))
+                         if account_kind(a) == kind and a["account_id"] not in avoid and is_account_available(a)), None)
     _set_task_account(task, selected or get_active_account(kind))
     return task
 
@@ -518,12 +560,20 @@ async def enqueue_and_wait_muse_task(task_dict: Dict[str, Any], timeout: Optiona
     Hàm gọi từ Python Service (image_service / video_service) để đưa task vào queue và chờ kết quả.
     Raise lỗi nếu không có tài khoản đúng loại đang online hoặc timeout để service fallback sang engine khác.
     """
-    kind = task_kind(task_dict.get("mode"))
-    if not is_kind_online(kind):
+    validate_thread_fields(task_dict)
+    kind = task_kind(task_dict.get("mode"))   # loại media: quyết định cách chuẩn hoá payload bên dưới
+    route = routing_kind(task_dict)           # loại tài khoản nhận việc
+    if not is_kind_online(route):
         raise RuntimeError(
-            f"Không có tài khoản Muse {'video' if kind == 'video' else 'ảnh'} nào đang online "
+            f"Không có tài khoản Muse {'video' if route == 'video' else 'ảnh'} nào đang online "
             f"(Fleet Runner chưa chạy hoặc tài khoản chưa đăng nhập / đang bị khóa)"
         )
+    if task_dict.get("pin_account"):
+        owner = task_dict.get("assigned_account")
+        acc = find_account(owner)
+        if not (acc and account_kind(acc) == route and is_account_available(acc) and is_account_online(owner)):
+            raise RuntimeError(f"Tài khoản {owner} của side chat này không dùng được (offline, bị khoá hoặc mất "
+                               f"đăng nhập): mở chat mới trên tài khoản khác")
 
     task_id = task_dict.get("task_id") or f"task_m_{uuid.uuid4().hex[:8]}"
     task_dict["task_id"] = task_id
@@ -849,13 +899,13 @@ def _pick_task_for_account(account_id: str, kind: str) -> int:
     now = time.time()
     fallback_idx = -1
     for idx, t in enumerate(pending_tasks):
-        if task_kind(t.get("mode")) != kind:
+        if routing_kind(t) != kind:
             continue  # Rào chắn tuyệt đối: tài khoản ảnh không nhận video và ngược lại
         assigned = t.get("assigned_account")
         if assigned == account_id:
             return idx
-        if fallback_idx != -1:
-            continue
+        if fallback_idx != -1 or t.get("pin_account"):
+            continue  # task ghim: side chat thuộc tài khoản đã gán, không tài khoản nào nhận thay
         if not assigned or assigned in LEGACY_ALIAS_ACCOUNTS:
             fallback_idx = idx
             continue
@@ -1135,6 +1185,11 @@ async def complete_task(
     task["provider"] = "meta_muse_cloud"
     task["success"] = True
     task["executed_by"] = parsed_meta.get("account_id") or task.get("assigned_account")
+    # Side chat: địa chỉ chat để lần sau mở lại, và chữ Muse trả lời (tự kiểm, báo lỗi) — chỉ nhận đúng dạng
+    if valid_thread_url(parsed_meta.get("thread_url")):
+        task["thread_url"] = parsed_meta["thread_url"]
+    if isinstance(parsed_meta.get("muse_reply"), str):
+        task["muse_reply"] = parsed_meta["muse_reply"][-MUSE_REPLY_MAX_CHARS:]
 
     # Web URL
     has_proj = bool(project_id and project_id != "None" and is_safe_id(str(project_id))
@@ -1224,7 +1279,7 @@ async def fail_task(task_id: str, req: TaskFailRequest):
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    kind = task_kind(task.get("mode"))
+    kind = routing_kind(task)
     err_str = str(req.error).lower()
     failed_acc = task.get("assigned_account")
     if failed_acc and any(kw in err_str for kw in SESSION_ERROR_KEYWORDS):
@@ -1236,7 +1291,9 @@ async def fail_task(task_id: str, req: TaskFailRequest):
         current_worker["active_task_id"] = None
 
     retry_count = int(task.get("retry_count", 0))
-    if retry_count < MAX_TASK_RETRIES and not task.get("abandoned"):
+    # Task ghim vào side chat của một tài khoản: không thử lại ở đây (tài khoản khác không mở được chat đó);
+    # người gọi tự quyết mở chat mới trên tài khoản khác.
+    if retry_count < MAX_TASK_RETRIES and not task.get("abandoned") and not task.get("pin_account"):
         nxt = pick_fallback_account(kind, exclude=failed_acc) or (
             find_account(failed_acc) if is_account_available(find_account(failed_acc)) else None
         )
