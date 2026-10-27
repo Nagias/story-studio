@@ -4,21 +4,28 @@
 - PUT  /api/projects/{project_id}/climax-video/scenes/{scene_id}   bật/tắt một cảnh
 - POST /api/projects/{project_id}/climax-video/run                  chạy nền các cảnh đã chọn (tốn lượt Muse)
 - GET  /api/projects/{project_id}/climax-video/status               tiến độ từng cảnh
+- GET  /api/projects/{project_id}/climax-video/scenes/{scene_id}/grid?i=1   ảnh grid đang chờ duyệt / đã duyệt
+- POST /api/projects/{project_id}/climax-video/scenes/{scene_id}/grid/approve
+- POST /api/projects/{project_id}/climax-video/scenes/{scene_id}/grid/reject  body {"feedback": "..."} (vẽ lại lượt sau)
+
+Mỗi cảnh hai pha (28/10/2026): "Tạo video" vẽ grid rồi dừng ở "grid_review"; duyệt grid xong, "Tạo video" lần nữa làm clip.
 
 Làm từng bước theo ý chủ dự án: không tự chạy trong "Sản xuất video dài".
 """
 import asyncio
 import logging
 import time
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 
 from models.schemas import Project
 from routers import muse_bridge
 from routers.muse_bridge import enqueue_and_wait_muse_task, ensure_local_fleet_runner, is_kind_online, routing_kind
 from runners import single_instance
-from security import validate_path_ids
+from security import is_within, validate_path_ids
 from services import climax_video, project_service
 
 logger = logging.getLogger("story_studio.climax_video_router")
@@ -26,7 +33,8 @@ logger = logging.getLogger("story_studio.climax_video_router")
 router = APIRouter(prefix="/api", tags=["Climax video"], dependencies=[Depends(validate_path_ids)])
 
 RUNNER_START_WAIT_S = 60   # như image_service: runner vừa bật cần chừng này để đăng ký tài khoản
-RUNNABLE = ("selected", "failed")
+RUNNABLE = ("selected", "failed", "grid_approved")
+KEEP_ON_PICK = ("ready", "grid_review", "grid_approved")   # "Chọn cảnh cao trào" không xoá công đã làm
 # Trạng thái đang làm; lúc không có lượt chạy nào mà cảnh còn ở đây là lượt trước bị ngắt (tắt server): chạy lại được
 WORKING = ("grid", "clips", "checking")
 # Một lượt chạy nền cho mỗi dự án (giữ tham chiếu để task không bị dọn giữa chừng)
@@ -35,6 +43,10 @@ _running: dict[str, asyncio.Task] = {}
 
 class SceneToggle(BaseModel):
     enabled: bool
+
+
+class GridFeedback(BaseModel):
+    feedback: str = Field(..., max_length=climax_video.FEEDBACK_MAX)
 
 
 def _is_running(project_id: str) -> bool:
@@ -74,7 +86,7 @@ async def pick_scenes(project_id: str):
     chosen = climax_video.pick_climax_scenes(project)
     for scene in project.scenes:
         status = _state(scene).get("status")
-        if status == "ready":
+        if status in KEEP_ON_PICK:
             continue
         if scene.id in chosen:
             _set_state(scene, {"status": "selected"})
@@ -98,7 +110,7 @@ async def toggle_scene(project_id: str, scene_id: str, req: SceneToggle):
                                                     "mới làm video cao trào được")
     status = _state(scene).get("status")
     if req.enabled:
-        if status not in ("selected", "ready"):
+        if status not in ("selected", *KEEP_ON_PICK):
             limit = climax_video.climax_limit(project)
             marked = sum(1 for s in project.scenes if _state(s).get("status") and s.id != scene_id)
             if marked >= limit:
@@ -157,6 +169,52 @@ async def run_scenes(project_id: str):
     return {"queued": queued}
 
 
+def _scene_of(project: Project, scene_id: str):
+    scene = next((s for s in project.scenes if s.id == scene_id), None)
+    if scene is None:
+        raise HTTPException(status_code=404, detail=f"Dự án không có cảnh {scene_id}")
+    return scene
+
+
+@router.get("/projects/{project_id}/climax-video/scenes/{scene_id}/grid")
+async def grid_image(project_id: str, scene_id: str, i: int = 1):
+    project = await _load(project_id)
+    paths = _state(_scene_of(project, scene_id)).get("grid_paths") or []
+    if not 1 <= i <= len(paths):
+        raise HTTPException(status_code=404, detail="Cảnh chưa có ảnh grid này")
+    path = Path(paths[i - 1])
+    if not path.is_file() or not is_within(path, project_service.get_scene_media_paths(project_id, scene_id)["video"].parent):
+        raise HTTPException(status_code=404, detail="Không còn file ảnh grid")
+    return FileResponse(path, media_type="image/jpeg")
+
+
+async def _grid_action(fn, *args) -> dict:
+    try:
+        return await asyncio.to_thread(fn, *args)
+    except climax_video.ClimaxVideoError as e:
+        raise HTTPException(status_code=400, detail=e.message) from None
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+
+
+@router.post("/projects/{project_id}/climax-video/scenes/{scene_id}/grid/approve")
+async def approve_grid(project_id: str, scene_id: str):
+    if _is_running(project_id):
+        raise HTTPException(status_code=409, detail="Đang tạo video cao trào cho dự án này, chờ xong rồi duyệt")
+    state = await _grid_action(climax_video.approve_grid, project_id, scene_id)
+    return {"scene_id": scene_id, "status": state.get("status")}
+
+
+@router.post("/projects/{project_id}/climax-video/scenes/{scene_id}/grid/reject")
+async def reject_grid(project_id: str, scene_id: str, body: GridFeedback):
+    if _is_running(project_id):
+        raise HTTPException(status_code=409, detail="Đang tạo video cao trào cho dự án này, chờ xong rồi sửa")
+    state = await _grid_action(climax_video.reject_grid, project_id, scene_id, body.feedback)
+    return {"scene_id": scene_id, "status": state.get("status")}
+
+
 @router.get("/projects/{project_id}/climax-video/status")
 async def climax_status(project_id: str):
     project = await _load(project_id)
@@ -165,7 +223,9 @@ async def climax_status(project_id: str):
         state = _state(scene)
         if state.get("status"):
             scenes.append({"scene_id": scene.id, "status": state["status"], "error": state.get("error"),
-                           **{k: state[k] for k in ("clips", "grids", "grid", "done", "attempts") if k in state}})
+                           **{k: state[k] for k in ("clips", "grids", "grid", "done", "attempts", "grid_version")
+                              if k in state},
+                           "grid_count": len(state.get("grid_paths") or [])})
     return {
         "running": _is_running(project_id),
         "limit": climax_video.climax_limit(project),
