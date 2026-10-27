@@ -223,7 +223,11 @@ def test_prompts_are_english_templates_with_style_lock():
     last = cv.clip_prompt(scene, 9, None)
     assert "panel 4" in mid and "panel 6" in mid and cv.STYLE_LOCK_EN in mid
     assert "panel 9" in last and cv.STYLE_LOCK_EN in last
-    assert "slow" in mid.lower() and "slightly" in mid.lower()
+    assert "slightly" in mid.lower()
+    # máy quay đứng yên (đo thật 27/10/2026: xin máy quay chuyển động thì Muse zoom sát rồi vẽ lại mặt nhân vật)
+    for p in (mid, last):
+        assert cv.CLIP_CAMERA_EN in p and "no zoom" in p and "push-in." not in p.replace("no push-in", "")
+        assert f"Avoid: {cv.CLIP_NEGATIVE_EN}" in p        # runner không gửi negative_prompt của video
 
 
 # ------------------------------------------------------------------------------------------------------ ảnh, video
@@ -356,6 +360,8 @@ def test_run_scene_success_attaches_joined_clip(isolated_projects_dir):
     for t in clip_tasks:
         assert t["duration"] == cv.CLIP_SECONDS and t["parameters"]["duration_sec"] == cv.CLIP_SECONDS
         assert cv.STYLE_LOCK_EN in t["prompt"]
+        assert t["camera_motion"] == t["parameters"]["camera_motion"] == cv.CLIP_CAMERA_EN
+        assert t["parameters"]["pacing"] == cv.CLIP_PACING_EN
     assert muse.status_during == ["grid", "clips", "clips", "clips"]
 
     scene = _scene_now(pid, sid)

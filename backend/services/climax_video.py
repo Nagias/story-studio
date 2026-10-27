@@ -45,8 +45,15 @@ STYLE_LOCK_EN = (
     "anime face). Same clothing, same setting, same lighting. Do not add any new people, no scene cuts, no text, "
     "no blood."
 )
-CLIP_NEGATIVE_EN = ("realistic face, anime face, changing face, new character, extra people, scene cut, flash, "
-                    "text, subtitles, watermark, blood, gore, darkening, fade to black")
+# Máy quay đứng yên. Đo thật 27/10/2026 (vụ Trạm Dung): khi task không nói gì về máy quay, enqueue_and_wait_muse_task
+# gắn "cinematic slow tracking pan", prompt cũ lại xin "slow push-in" -> Muse zoom sát rồi vẽ lại mặt kiểu tả thực sau
+# khoảng 1 giây ở mọi clip (nhân vật đầu tròn trắng cũng thành mặt có mắt mũi).
+CLIP_CAMERA_EN = ("static locked-off camera on a tripod: no zoom, no push-in, no pan, no tilt, the framing stays exactly "
+                  "as in the attached image for the whole clip")
+CLIP_PACING_EN = "slow and calm, minimal motion"
+CLIP_NEGATIVE_EN = ("realistic face, anime face, detailed face, changing face, zoom, close-up, camera movement, "
+                    "new character, extra people, scene cut, flash, text, subtitles, watermark, blood, gore, darkening, "
+                    "fade to black")
 
 ELIGIBLE_KINDS = ("image", "video")
 OUT_W, OUT_H = 1920, 1080
@@ -167,13 +174,16 @@ def clip_prompt(scene: Scene, panel: int, next_panel: Optional[int]) -> str:
         path = (f"This is panel {panel} of a 3x3 storyboard and the last frame of this part: hold the composition, "
                 "with only subtle breathing and tiny natural movements.")
     else:
-        path = (f"This is panel {panel} of a 3x3 storyboard: move gently and naturally toward the moment of panel "
+        path = (f"This is panel {panel} of a 3x3 storyboard: the characters move a little toward the moment of panel "
                 f"{next_panel}, as a small continuation of the same shot.")
     return "\n".join([
         path,
-        "Very slow, smooth camera push-in. Characters move only slightly: small head turns, blinking, breathing, "
-        "light cloth movement. No fast motion, no camera cuts, no new objects, keep the same brightness.",
+        f"Camera: {CLIP_CAMERA_EN}. Characters move only slightly: small head turns, blinking, breathing, light cloth "
+        "movement. No fast motion, no camera cuts, no new objects, keep the same brightness.",
+        "Every frame stays a flat 2D drawing exactly like the attached image: never redraw a face with more detail, "
+        "never add eyes, nose, mouth or wrinkles that are not in the attached image.",
         STYLE_LOCK_EN,
+        f"Avoid: {CLIP_NEGATIVE_EN}.",   # Fleet Runner không gửi negative_prompt của video cho Muse: ghi thẳng vào prompt
     ])
 
 
@@ -474,8 +484,9 @@ async def _make_clip(muse_call: MuseCall, scene: Scene, panel: Path, panel_no: i
         raw = work / f"{tag}_lan{attempt}_muse.mp4"
         task = {
             "mode": "image-to-video", "prompt": prompt, "action_prompt": prompt, "negative_prompt": CLIP_NEGATIVE_EN,
-            "input_image_url": str(panel), "duration": CLIP_SECONDS,
-            "parameters": {"duration_sec": CLIP_SECONDS}, "output_path": str(raw),
+            "input_image_url": str(panel), "duration": CLIP_SECONDS, "camera_motion": CLIP_CAMERA_EN,
+            "parameters": {"duration_sec": CLIP_SECONDS, "camera_motion": CLIP_CAMERA_EN, "pacing": CLIP_PACING_EN},
+            "output_path": str(raw),
         }
         try:
             result = await muse_call(task)
