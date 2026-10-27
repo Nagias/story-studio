@@ -533,7 +533,10 @@ def _thread_dirty_error(err: BaseException) -> bool:
 def _muse_error_switch_account(err: BaseException) -> bool:
     """Muse trả lời lỗi (quá tải 503...) hoặc tài khoản hỏng: lần thử sau đổi sang tài khoản video khác, chat mới."""
     text = str(err)
-    return _thread_dirty_error(err) or "MUSE_REPLIED_ERROR" in text or "503" in text or "quá tải" in text
+    # NO_MEDIA: runner chờ hết giờ không có video (chạy thật 28/10/2026: tài khoản báo "dịch vụ tạo video không khả
+    # dụng"); Muse có thể còn làm dở trong chat đó nên cũng bỏ chat.
+    return (_thread_dirty_error(err) or "MUSE_REPLIED_ERROR" in text or "NO_MEDIA" in text or "503" in text
+            or "quá tải" in text)
 
 
 class SceneThread:

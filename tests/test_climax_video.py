@@ -159,6 +159,8 @@ class FakeMuse:
             raise TimeoutError("Meta Muse task timed out after 900s")
         if kind == "busy":
             raise RuntimeError("Muse task failed: MUSE_REPLIED_ERROR: Lệnh tạo video báo lỗi hệ thống quá tải (503)")
+        if kind == "no_media":
+            raise RuntimeError("Muse task failed: NO_MEDIA: Không nhận được video hợp lệ sau 300s cho task x")
         panel = Path(task["input_image_url"])
         if kind == "dark_cut":   # nửa sau là âm bản của ô: chỉnh màu từng khung xong vẫn là một cú cắt rõ
             negative = out.with_suffix(".am_ban.jpg")
@@ -475,10 +477,11 @@ def test_run_scene_retries_a_bad_clip_once(isolated_projects_dir):
     assert clip_tasks[1]["thread_url"] == THREAD                                 # clip lỗi kiểm (không phải lỗi Muse): vẫn chat cũ
 
 
-def test_muse_error_retries_in_new_chat_on_another_account(isolated_projects_dir):
+@pytest.mark.parametrize("first_error", ["busy", "no_media"])
+def test_muse_error_retries_in_new_chat_on_another_account(isolated_projects_dir, first_error):
     project = _climax_project(duration=4.0)
     pid, sid = project.id, "scene_003"
-    muse = FakeMuse(pid, sid, clip_plan=lambda n: "busy" if n == 1 else "good")
+    muse = FakeMuse(pid, sid, clip_plan=lambda n: first_error if n == 1 else "good")
     result = _run_full(pid, sid, muse)
     assert result["status"] == "ready"
     first, second = [t for t in muse.tasks if t["mode"] == "image-to-video"]
