@@ -181,3 +181,9 @@ def test_backend_passes_extra_profile_dirs_to_runner_via_accounts_file(fleet, tm
     mb.save_muse_accounts(fleet["accounts"])
     data = json.loads(mb.MUSE_FLEET_ACCOUNTS_FILE.read_text(encoding="utf-8"))
     assert data["extra_profiles_dirs"] == [str(ext)]
+
+
+def test_muse_new_text_only_returns_what_muse_added():
+    before = "Bạn: tạo cho tôi 1 video 5s"
+    assert runner.muse_new_text(before, before) == ""
+    assert runner.muse_new_text(before, before + "\n\nDịch vụ tạo video  đang bận.") == "Dịch vụ tạo video đang bận."

@@ -103,6 +103,14 @@ def muse_reply_error(text_before: str, text_now: str) -> Optional[str]:
     return new.strip()[-600:] if any(w in low for w in MUSE_ERROR_WORDS) else None
 
 
+def muse_new_text(text_before: str, text_now: str) -> str:
+    """Phần chữ Muse viết thêm sau khi gửi prompt (bỏ phần đã có trước đó)."""
+    if not text_now or text_now == text_before:
+        return ""
+    new = text_now[len(text_before):] if text_now.startswith(text_before) else text_now[-1500:]
+    return " ".join(new.split())
+
+
 def task_attachments(task: Dict[str, Any]) -> List[str]:
     """Ảnh đính kèm theo thứ tự: `attachments` nếu có, không thì một ảnh như cũ (ảnh đầu vào của video, ảnh tham chiếu
     của ảnh)."""
@@ -1168,6 +1176,8 @@ class MuseFleetRunner:
         await self.update_task_progress(task_id, 10, "launching", f"Khởi động profile {acc.account_id}")
 
         context: Optional[BrowserContext] = None
+        page: Optional[Page] = None
+        text_before: Optional[str] = None
         try:
             context = await self.create_browser_context(acc, headless=True)
             page = context.pages[0] if context.pages else await context.new_page()
@@ -1308,8 +1318,21 @@ class MuseFleetRunner:
             raise TaskFailure("NO_MEDIA", f"Không nhận được {kind} hợp lệ sau {MEDIA_WAIT_SEC[kind]}s cho task {task_id}")
 
         except TaskFailure as tf:
-            logger.error(f"[{acc.account_id}] Task {task_id} lỗi: {tf}")
-            return False, None, str(tf)
+            msg = str(tf)
+            # Đã gửi prompt: kèm câu Muse vừa viết và địa chỉ chat để biết vì sao (chạy thật 28/10/2026: 3 tài khoản
+            # NO_MEDIA liền, không ai biết Muse nói gì)
+            if text_before is not None and page is not None and not page.is_closed() and tf.code != "MUSE_REPLIED_ERROR":
+                try:
+                    now_text = await page.evaluate(LOG_TEXT_JS)
+                    said = muse_new_text(text_before, now_text)
+                    if said:
+                        msg += f" | Muse nói: {said[-400:]}"
+                    if "/thread/" in page.url and not page.url.endswith("/thread/new"):
+                        msg += f" | chat {page.url}"
+                except Exception as e:   # trang hỏng giữa chừng: giữ lỗi gốc
+                    logger.warning(f"[{acc.account_id}] Không đọc được chữ Muse sau lỗi: {e}")
+            logger.error(f"[{acc.account_id}] Task {task_id} lỗi: {msg}")
+            return False, None, msg
         except Exception as e:
             logger.error(f"[{acc.account_id}] Lỗi xử lý browser task {task_id}: {e}", exc_info=True)
             return False, None, f"BROWSER_ERROR: {e}"
