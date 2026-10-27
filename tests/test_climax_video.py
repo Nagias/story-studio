@@ -582,3 +582,18 @@ def test_router_muse_call_uses_current_muse_bridge_function(monkeypatch):
     monkeypatch.setattr(muse_bridge, "enqueue_and_wait_muse_task", fake)
     assert asyncio.run(climax_router._muse_call({"mode": "text-to-image", "prompt": "p"})) == {"output_path": "x"}
     assert seen == [{"mode": "text-to-image", "prompt": "p"}]
+
+
+def test_unexpected_error_names_its_type(isolated_projects_dir, monkeypatch):
+    """Đo thật 27/10/2026: MemoryError không có chữ nào, lý do hiện ra rỗng ("Lỗi ngoài dự kiến: ")."""
+    project = _climax_project(duration=4.0)
+    pid, sid = project.id, "scene_003"
+
+    def out_of_memory(*a, **k):
+        raise MemoryError()
+
+    monkeypatch.setattr(cv, "match_clip_colors", out_of_memory)
+    with pytest.raises(MemoryError):
+        asyncio.run(cv.run_scene_climax_video(pid, sid, muse_call=FakeMuse(pid, sid)))
+    state = _scene_now(pid, sid).metadata["climax_video"]
+    assert state["status"] == "failed" and "MemoryError" in state["error"]

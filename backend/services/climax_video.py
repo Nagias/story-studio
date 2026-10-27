@@ -575,5 +575,5 @@ async def run_scene_climax_video(project_id: str, scene_id: str, muse_call: Muse
     except Exception as e:
         logger.exception(f"Video cao trào {project_id}/{scene_id}: lỗi ngoài dự kiến")
         await asyncio.to_thread(_set_climax, project_id, scene_id,
-                                {"status": "failed", "error": f"Lỗi ngoài dự kiến: {e}"})
+                                {"status": "failed", "error": f"Lỗi ngoài dự kiến: {type(e).__name__}: {e}"})
         raise
