@@ -111,3 +111,63 @@ def test_complete_ignores_bad_thread_url_from_worker(fleet):
     fleet["client"].post(f"/api/muse-bridge/tasks/{task['task_id']}/complete",
                          files={"file": ("x.jpg", jpeg_bytes(), "image/jpeg")}, data={"metadata": json.dumps(meta)})
     assert mb.task_history[0].get("thread_url") is None
+
+
+# ------------------------------------------------------------------------------------------------- Fleet Runner
+from runners import muse_fleet_runner as runner  # noqa: E402
+
+
+def test_muse_reply_error_detects_new_overload_text():
+    before = "Bảng character sheet đã xong.\n👍"
+    now = before + "\nVideo 5s thì chưa tạo được. Lệnh tạo video báo lỗi hệ thống quá tải (503) nên mình không chạy lại."
+    err = runner.muse_reply_error(before, now)
+    assert err and "503" in err and "Bảng character sheet" not in err
+
+
+def test_muse_reply_error_ignores_old_text_and_normal_reply():
+    assert runner.muse_reply_error("lỗi 503 cũ", "lỗi 503 cũ") is None
+    assert runner.muse_reply_error("", "Bảng character sheet đã xong. Tóc bắt đầu từ đỉnh đầu ở mọi góc.") is None
+
+
+def test_task_attachments_keeps_order_and_falls_back():
+    assert runner.task_attachments({"attachments": ["a.jpg", "b.jpg"], "mode": "image-to-video"}) == ["a.jpg", "b.jpg"]
+    assert runner.task_attachments({"mode": "image-to-video", "input_image_url": "x.jpg"}) == ["x.jpg"]
+    assert runner.task_attachments({"mode": "text-to-image", "reference_image_path": "r.jpg"}) == ["r.jpg"]
+    assert runner.task_attachments({"mode": "text-to-image"}) == []
+
+
+def test_raw_prompt_is_sent_verbatim_otherwise_wrapped():
+    raw = {"mode": "image-to-video", "prompt": "tạo cho tôi 1 video 5s: cô gái bước chậm", "raw_prompt": True}
+    assert runner.MusePromptFormatter.build_prompt(raw, has_attachment=True) == "tạo cho tôi 1 video 5s: cô gái bước chậm"
+    wrapped = runner.MusePromptFormatter.build_prompt({"mode": "image-to-video", "prompt": "x"}, has_attachment=True)
+    assert wrapped.startswith("tạo cho tôi 1 video") and "Action: x" in wrapped
+
+
+def test_external_profile_dir_is_allowed_only_when_declared(tmp_path):
+    ext = tmp_path / "videopic_profiles"
+    (ext / "muse_vid_01").mkdir(parents=True)
+    raw = {"account_id": "muse_acc_vp_01", "type": "video", "profile_dir": str(ext / "muse_vid_01")}
+    runner.set_extra_profiles_dirs(None)
+    acc = runner.FleetAccount(raw)
+    assert acc.profile_dir == (runner.DEFAULT_PROFILES_DIR / "muse_acc_vp_01").resolve() and not acc.is_external
+    runner.set_extra_profiles_dirs([str(ext)])
+    try:
+        acc = runner.FleetAccount(raw)
+        assert acc.profile_dir == (ext / "muse_vid_01").resolve() and acc.is_external
+    finally:
+        runner.set_extra_profiles_dirs(None)
+
+
+def test_profile_in_use_reads_lockfile_without_deleting(tmp_path):
+    assert runner.profile_in_use(tmp_path) is False            # Chrome chưa mở: không có lockfile
+    (tmp_path / "lockfile").write_bytes(b"")
+    assert runner.profile_in_use(tmp_path) is False            # lockfile còn sót nhưng không ai giữ
+    assert (tmp_path / "lockfile").exists()
+
+
+def test_backend_passes_extra_profile_dirs_to_runner_via_accounts_file(fleet, tmp_path, monkeypatch):
+    ext = tmp_path / "videopic_profiles"
+    monkeypatch.setattr(mb, "EXTRA_CHROME_PROFILES_DIRS", [ext])
+    mb.save_muse_accounts(fleet["accounts"])
+    data = json.loads(mb.MUSE_FLEET_ACCOUNTS_FILE.read_text(encoding="utf-8"))
+    assert data["extra_profiles_dirs"] == [str(ext)]

@@ -65,6 +65,10 @@ YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")        # gói SEO: xem video 
 
 # Thư mục font của Windows (thumbnail cần font đủ chữ có dấu tiếng Việt); không phải Windows thì None
 WINDOWS_FONTS_DIR = Path(os.environ["WINDIR"]) / "Fonts" if os.environ.get("WINDIR") else None
+# Thư mục profile Chrome đã đăng nhập Muse của app khác (vd videopic-workflow), cách nhau bằng ";". Tài khoản trong
+# muse_fleet_accounts.json được trỏ profile_dir vào đây; Fleet Runner không dọn khoá và không mở khi app kia đang dùng.
+EXTRA_CHROME_PROFILES_DIRS = [Path(x.strip()) for x in os.getenv("STORY_STUDIO_EXTRA_CHROME_PROFILES", "").split(";")
+                              if x.strip()]
 
 # Server giọng VieNeu giữ model trong RAM (services/vieneu_server.py chạy tiến trình riêng)
 VIENEU_HOST = os.getenv("VIENEU_HOST", "127.0.0.1")

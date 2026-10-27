@@ -75,6 +75,14 @@ STATIC_DIR = BACKEND_DIR / "static"
 OUTPUTS_DIR = STATIC_DIR / "muse_outputs"
 PROJECTS_DIR = STORY_STUDIO_DIR / "projects"
 WORK_DIR = RUNNERS_DIR / ".work"  # ảnh đính kèm tải tạm
+# Thư mục profile Chrome của app khác được phép dùng (vd tài khoản Muse của videopic-workflow). Backend ghi danh sách này
+# (từ config.EXTRA_CHROME_PROFILES_DIRS) vào muse_fleet_accounts.json, khoá "extra_profiles_dirs"; runner đọc từ đó.
+EXTRA_PROFILES_DIRS: List[Path] = []
+
+
+def set_extra_profiles_dirs(values: Any) -> None:
+    global EXTRA_PROFILES_DIRS
+    EXTRA_PROFILES_DIRS = [Path(v) for v in values if isinstance(v, str) and v.strip()] if isinstance(values, list) else []
 
 
 def is_path_within(path: Path, *bases: Path) -> bool:
@@ -84,6 +92,48 @@ def is_path_within(path: Path, *bases: Path) -> bool:
     except (OSError, ValueError):
         return False
     return any(target.is_relative_to(Path(b).resolve()) for b in bases)
+
+
+def muse_reply_error(text_before: str, text_now: str) -> Optional[str]:
+    """Phần chữ Muse mới viết (so với trước khi gửi prompt) nếu có từ báo lỗi, không thì None."""
+    if not text_now or text_now == text_before:
+        return None
+    new = text_now[len(text_before):] if text_now.startswith(text_before) else text_now[-1500:]
+    low = new.lower()
+    return new.strip()[-600:] if any(w in low for w in MUSE_ERROR_WORDS) else None
+
+
+def task_attachments(task: Dict[str, Any]) -> List[str]:
+    """Ảnh đính kèm theo thứ tự: `attachments` nếu có, không thì một ảnh như cũ (ảnh đầu vào của video, ảnh tham chiếu
+    của ảnh)."""
+    atts = task.get("attachments")
+    if isinstance(atts, list) and atts:
+        return [str(a) for a in atts]
+    params = task.get("parameters") or {}
+    if "video" in str(task.get("mode", "")).lower():
+        keys = ("input_image_url", "input_image_path")
+    else:
+        keys = ("reference_image_path", "reference_image_url", "reference_image")
+    for k in keys:
+        v = task.get(k) or params.get(k)
+        if v:
+            return [str(v)]
+    return []
+
+
+def profile_in_use(profile_dir: Path) -> bool:
+    """Chrome khác (vd app videopic) đang mở profile này: Windows giữ khoá độc quyền file "lockfile" khi Chrome chạy."""
+    lock = Path(profile_dir) / "lockfile"
+    if not lock.exists():
+        return False
+    try:
+        with open(lock, "r+b"):
+            return False
+    except PermissionError:
+        return True
+    except OSError as e:
+        logger.warning(f"Không kiểm được khoá profile {profile_dir}: {e}")
+        return True
 
 
 # Ensure directories exist
@@ -119,6 +169,12 @@ MIN_IMAGE_SIDE = 512
 MIN_VIDEO_SECONDS = 3.0
 MIN_VIDEO_SIDE = 360
 ACCOUNT_COOLDOWN_SEC = 60.0
+# Muse trả lời bằng chữ có từ báo lỗi (vd "hệ thống quá tải (503)") mà sau chừng này giây vẫn không có media: thất bại
+# ngay thay vì chờ hết MEDIA_WAIT_SEC (đo 27/10/2026: hai lần 503, runner cũ chờ trọn 7 phút)
+MUSE_REPLY_GRACE_SEC = 45
+MUSE_ERROR_WORDS = ("503", "quá tải", "overload", "không tạo được", "chưa tạo được", "can't", "cannot", "error", "lỗi")
+LOG_TEXT_JS = "() => ((document.querySelector('[role=log]') || document.body).innerText || '')"
+SCROLL_LOG_JS = "() => document.querySelectorAll('[role=log]').forEach(l => { l.scrollTop = l.scrollHeight; })"
 # Trường trạng thái do runner ghi xuống muse_fleet_accounts.json (các trường khác do backend quản lý)
 RUNTIME_FIELDS = ("status", "cooldown_until", "last_used", "success_count", "fail_count", "last_error", "has_profile")
 NOT_READY_STATUSES = ("busy", "offline", "needs_login", "reserved")
@@ -249,6 +305,15 @@ class MusePromptFormatter:
         tags.append("16:9 landscape")
 
         return f"tạo cho tôi 1 video {duration}s: " + ", ".join(tags)
+
+    @staticmethod
+    def build_prompt(task: Dict[str, Any], has_attachment: bool = False) -> str:
+        """Prompt gửi Muse: `raw_prompt` thì gửi nguyên văn (người gọi tự viết, kể cả câu mở đầu), không thì bọc khuôn."""
+        if task.get("raw_prompt"):
+            return str(task.get("prompt") or "").strip()
+        if "video" in str(task.get("mode", "")).lower():
+            return MusePromptFormatter.format_video_prompt(task, has_input_image=has_attachment)
+        return MusePromptFormatter.format_image_prompt(task, has_reference=has_attachment)
 
 
 # -------------------------------------------------------------
@@ -570,11 +635,14 @@ class FleetAccount:
         p_dir = raw.get("profile_dir") or f"chrome_profiles/{self.account_id}"
         p_path = Path(p_dir)
         profile = p_path.resolve() if p_path.is_absolute() else (BACKEND_DIR / p_path).resolve()
-        # Profile Chrome chỉ được nằm trong backend/chrome_profiles
-        if not is_path_within(profile, DEFAULT_PROFILES_DIR) or profile == DEFAULT_PROFILES_DIR.resolve():
+        # Profile Chrome chỉ được nằm trong backend/chrome_profiles hoặc thư mục profile ngoài được khai báo
+        roots = [DEFAULT_PROFILES_DIR, *EXTRA_PROFILES_DIRS]
+        if not is_path_within(profile, *roots) or any(profile == r.resolve() for r in roots):
             logger.warning(f"[{self.account_id}] profile_dir ngoài chrome_profiles bị bỏ qua: {p_dir}")
             profile = (DEFAULT_PROFILES_DIR / self.account_id).resolve()
         self.profile_dir: Path = profile
+        # Profile của app khác: không dọn file khoá của nó, và không mở khi app đó đang dùng
+        self.is_external: bool = not is_path_within(profile, DEFAULT_PROFILES_DIR)
 
     @property
     def is_active(self) -> bool:
@@ -674,6 +742,7 @@ class MuseFleetRunner:
             self.create_default_config()
 
         data = self._read_config()
+        set_extra_profiles_dirs(data.get("extra_profiles_dirs"))
         self.accounts.clear()
         for item in data.get("accounts", []):
             if isinstance(item, dict) and item.get("account_id") and item["account_id"] not in ("muse_acc_image", "muse_acc_video"):
@@ -690,6 +759,7 @@ class MuseFleetRunner:
     def refresh_accounts_from_disk(self) -> None:
         """Nạp lại cờ active / loại / tài khoản mới do backend thay đổi, giữ nguyên trạng thái chạy trong RAM."""
         data = self._read_config()
+        set_extra_profiles_dirs(data.get("extra_profiles_dirs"))
         seen = set()
         for item in data.get("accounts", []):
             if not isinstance(item, dict) or not item.get("account_id"):
@@ -922,7 +992,11 @@ class MuseFleetRunner:
     # ---------------------------------------------------------
     async def create_browser_context(self, acc: FleetAccount, headless: bool = True) -> BrowserContext:
         """Khởi tạo Chromium Persistent Context cho profile của tài khoản."""
-        clean_singleton_locks(acc.profile_dir)
+        if acc.is_external:
+            if profile_in_use(acc.profile_dir):
+                raise TaskFailure("PROFILE_IN_USE", f"Profile {acc.profile_dir} đang được app khác mở, để lượt sau")
+        else:
+            clean_singleton_locks(acc.profile_dir)
 
         if not self.playwright:
             self.playwright = await async_playwright().start()
@@ -1056,27 +1130,34 @@ class MuseFleetRunner:
         mode = task.get("mode", "text-to-image")
         kind = "video" if "video" in mode.lower() else "image"
 
-        # Bảo vệ định tuyến nghiêm ngặt: tài khoản ảnh không xử lý video và ngược lại
-        if acc.type != kind:
+        # Bảo vệ định tuyến nghiêm ngặt: tài khoản ảnh không xử lý video và ngược lại (route_kind cho phép tài khoản
+        # video vẽ ảnh grid trong side chat của cảnh)
+        route = task.get("route_kind") if task.get("route_kind") in ("image", "video") else kind
+        if acc.type != route:
             err = f"ROUTING: tài khoản {acc.type} '{acc.account_id}' không được xử lý task {kind} '{task_id}'"
             logger.error(err)
             return False, None, err
 
-        # Chuẩn bị ảnh đính kèm
-        attach_path: Optional[Path] = None
+        # Chuẩn bị ảnh đính kèm (một hay nhiều ảnh, theo thứ tự). Ảnh đính kèm hiện lại trong tin nhắn đã gửi, cùng cỡ
+        # với kết quả (gặp 27/10/2026): loại theo nội dung MỌI ảnh đính kèm.
+        attach_paths: List[Path] = []
         reject_hashes: List[int] = []
-        if kind == "video" and mode != "text-to-video":
-            attach_path = await self.resolve_task_image(task, ("input_image_url", "input_image_path"))
-            if not attach_path:
-                return False, None, f"INPUT_IMAGE_MISSING: task image-to-video {task_id} không có ảnh đầu vào dùng được"
-        elif kind == "image":
-            attach_path = await self.resolve_task_image(task, ("reference_image_path", "reference_image_url", "reference_image"))
-            if attach_path:
-                h = file_average_hash(attach_path)
-                if h is not None:
-                    reject_hashes.append(h)
+        for i, raw in enumerate(task_attachments(task)):
+            got = await self.resolve_task_image({"task_id": f"{task_id}_{i}", "src": raw}, ("src",))
+            if not got:
+                return False, None, f"INPUT_IMAGE_MISSING: task {task_id} không lấy được ảnh đính kèm {str(raw)[:120]}"
+            attach_paths.append(got)
+            h = file_average_hash(got)
+            if h is not None:
+                reject_hashes.append(h)
+        if kind == "video" and mode != "text-to-video" and not attach_paths:
+            return False, None, f"INPUT_IMAGE_MISSING: task image-to-video {task_id} không có ảnh đầu vào dùng được"
+        attach_path: Optional[Path] = attach_paths[0] if attach_paths else None
+        thread_url = task.get("thread_url")
+        task["_result_meta"] = {}
 
-        logger.info(f"[{acc.account_id}] Bắt đầu task {task_id} ({mode}{', có ảnh đính kèm' if attach_path else ''})")
+        logger.info(f"[{acc.account_id}] Bắt đầu task {task_id} ({mode}, {len(attach_paths)} ảnh đính kèm"
+                    f"{', chat ' + thread_url if thread_url else ''})")
         await asyncio.to_thread(delivered_hashes)   # lần đầu đọc mọi .mp4 trong muse_outputs: ở luồng phụ, không trễ heartbeat
         await self.update_task_progress(task_id, 10, "launching", f"Khởi động profile {acc.account_id}")
 
@@ -1086,11 +1167,13 @@ class MuseFleetRunner:
             page = context.pages[0] if context.pages else await context.new_page()
 
             await self.update_task_progress(task_id, 20, "navigating", "Truy cập Muse AI...")
-            await page.goto(self.muse_web_url, wait_until="domcontentloaded", timeout=45000)
-            await page.wait_for_timeout(3000)
+            await page.goto(thread_url or self.muse_web_url, wait_until="domcontentloaded", timeout=90000)
+            await page.wait_for_timeout(6000 if thread_url else 3000)
 
             input_el = await self._find_chat_input(page, 20000)
             if not input_el:
+                if thread_url:
+                    raise TaskFailure("THREAD_OPEN_FAILED", f"Không mở được side chat {thread_url} (không thấy ô chat)")
                 if await page.evaluate(LOGIN_WALL_JS):
                     raise TaskFailure("SESSION_EXPIRED", f"Tài khoản {acc.account_id} cần đăng nhập lại (chạy setup_muse_accounts.bat)")
                 raise TaskFailure("INPUT_NOT_FOUND", "Không tìm thấy ô nhập chat của Muse (giao diện có thể đã đổi)")
@@ -1115,8 +1198,11 @@ class MuseFleetRunner:
                         pass
                 page.on("response", on_response)
 
-            # Mở đoạn chat mới để không lẫn với kết quả cũ
-            if await self._open_new_chat(page):
+            # Mở đoạn chat mới để không lẫn với kết quả cũ (task có thread_url: dùng lại đúng chat đó)
+            if thread_url:
+                await page.evaluate(SCROLL_LOG_JS)
+                await page.wait_for_timeout(3000)
+            elif await self._open_new_chat(page):
                 input_el = await self._find_chat_input(page, 10000) or input_el
             else:
                 logger.warning(f"[{acc.account_id}] Không thấy nút New side chat, dùng đoạn chat hiện tại")
@@ -1124,9 +1210,10 @@ class MuseFleetRunner:
                 await page.evaluate("() => document.querySelectorAll('[role=log]').forEach(l => { l.scrollTop = l.scrollHeight; })")
                 await page.wait_for_timeout(3000)
 
-            if attach_path:
-                await self.update_task_progress(task_id, 35, "attaching", "Đính kèm ảnh...")
-                await self._attach_file(page, attach_path, acc.account_id)
+            if attach_paths:
+                await self.update_task_progress(task_id, 35, "attaching", f"Đính kèm {len(attach_paths)} ảnh...")
+                for ap in attach_paths:
+                    await self._attach_file(page, ap, acc.account_id)
 
             # Đánh dấu media đang có trên trang (kể cả ảnh vừa đính kèm, avatar mascot) để loại trừ
             pre_srcs = await page.evaluate(MARK_EXISTING_MEDIA_JS)
@@ -1134,11 +1221,9 @@ class MuseFleetRunner:
                                                  or (task.get("parameters") or {}).get("duration_sec")
                                                  or task.get("duration") or 5)
 
-            if kind == "video":
-                prompt = MusePromptFormatter.format_video_prompt(task, has_input_image=bool(attach_path))
-            else:
-                prompt = MusePromptFormatter.format_image_prompt(task, has_reference=bool(attach_path))
+            prompt = MusePromptFormatter.build_prompt(task, has_attachment=bool(attach_path))
             logger.info(f"[{acc.account_id}] Prompt: {prompt[:140]}...")
+            text_before = await page.evaluate(LOG_TEXT_JS)
 
             await self.update_task_progress(task_id, 45, "prompting", "Gửi prompt lên Muse...")
             await input_el.fill(prompt)
@@ -1147,6 +1232,7 @@ class MuseFleetRunner:
             submitted["v"] = True
             await self._submit_prompt(page, input_el, prompt)
             logger.info(f"[{acc.account_id}] Đã gửi prompt, chờ Muse tạo {kind} (tối đa {MEDIA_WAIT_SEC[kind]}s)...")
+            error_since: Optional[float] = None
             await self.update_task_progress(task_id, 60, "generating", f"Muse đang tạo {kind}...")
 
             ext =".mp4" if kind == "video" else ".jpg"
@@ -1160,6 +1246,16 @@ class MuseFleetRunner:
                 if page.is_closed():
                     raise TaskFailure("PAGE_CLOSED", "Trang Muse đã bị đóng giữa chừng")
                 await self._click_allow_if_asked(page, acc.account_id)
+                if "/thread/" in page.url and not page.url.endswith("/thread/new"):
+                    task["_result_meta"]["thread_url"] = page.url
+                reply_err = muse_reply_error(text_before, await page.evaluate(LOG_TEXT_JS))
+                if reply_err:
+                    error_since = error_since or time.time()
+                    if time.time() - error_since >= MUSE_REPLY_GRACE_SEC:
+                        task["_result_meta"]["muse_reply"] = reply_err
+                        raise TaskFailure("MUSE_REPLIED_ERROR", reply_err[:400])
+                else:
+                    error_since = None
 
                 candidates = await page.evaluate(FIND_NEW_MEDIA_JS, [kind, pre_srcs, list(rejected)])
                 srcs = [c["src"] for c in candidates] + [u for u in net_candidates if u not in rejected]
@@ -1188,6 +1284,10 @@ class MuseFleetRunner:
                             dest_file.unlink(missing_ok=True)
                     if ok:
                         remember_delivered(digest)
+                        await page.wait_for_timeout(8000)   # chờ Muse viết xong lời kèm kết quả (tự kiểm, ghi chú)
+                        now_text = await page.evaluate(LOG_TEXT_JS)
+                        new_text = now_text[len(text_before):] if now_text.startswith(text_before) else now_text[-2000:]
+                        task["_result_meta"]["muse_reply"] = new_text.strip()[-2000:]
                         logger.info(f"[{acc.account_id}] Nhận {kind} hợp lệ sau {int(time.time() - started)}s: {info} -> {dest_file.name}")
                         await self.update_task_progress(task_id, 95, "downloaded", f"Đã nhận {kind} {info}")
                         return True, dest_file, "Thành công"
@@ -1209,8 +1309,9 @@ class MuseFleetRunner:
                     await context.close()
                 except Exception:
                     pass
-            if attach_path and is_path_within(attach_path, WORK_DIR):
-                attach_path.unlink(missing_ok=True)
+            for ap in attach_paths:
+                if is_path_within(ap, WORK_DIR):
+                    ap.unlink(missing_ok=True)
 
     # ---------------------------------------------------------
     # Worker Task Loop with Concurrency Semaphore (N <= 2 slots)
@@ -1250,6 +1351,7 @@ class MuseFleetRunner:
                                 "scene_id": task.get("scene_id"),
                                 "account_id": account.account_id,
                                 "estimated_tokens_used": 60000 if "video" in task.get("mode", "") else 15000,
+                                **(task.get("_result_meta") or {}),   # thread_url, muse_reply của side chat
                             }
                             ok, detail = await self.complete_task_to_backend(task_id, out_path, meta)
                             if ok:
@@ -1267,7 +1369,7 @@ class MuseFleetRunner:
                             if err_msg.startswith("SESSION_EXPIRED"):
                                 account.status = "needs_login"
                                 logger.error(f"[{account.account_id}] Phiên đăng nhập hết hạn - tạm ngừng tài khoản, cần chạy setup lại")
-                            elif err_msg.startswith(("INPUT_IMAGE_MISSING", "ROUTING")):
+                            elif err_msg.startswith(("INPUT_IMAGE_MISSING", "ROUTING", "PROFILE_IN_USE")):
                                 account.status = "ready"  # lỗi dữ liệu task, không phải lỗi tài khoản
                             else:
                                 account.set_cooldown(ACCOUNT_COOLDOWN_SEC)

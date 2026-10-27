@@ -16,7 +16,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query, Req
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from config import PROJECTS_DIR, STATIC_DIR
+from config import EXTRA_CHROME_PROFILES_DIRS, PROJECTS_DIR, STATIC_DIR
 from security import (
     MEDIA_EXTS,
     MAX_UPLOAD_BYTES,
@@ -220,6 +220,8 @@ def save_muse_accounts(accounts: List[Dict[str, Any]]) -> None:
             merged.append(item)
         data["accounts"] = merged
         data.setdefault("concurrency_limit", 2)
+        # Fleet Runner là tiến trình riêng, không đọc .env: chuyển danh sách thư mục profile ngoài qua file này
+        data["extra_profiles_dirs"] = [str(p) for p in EXTRA_CHROME_PROFILES_DIRS]
         MUSE_FLEET_ACCOUNTS_FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = MUSE_FLEET_ACCOUNTS_FILE.with_suffix(".json.tmp")
         with open(tmp, "w", encoding="utf-8") as f:
@@ -247,6 +249,7 @@ def ensure_local_fleet_runner():
     from runners import autostart
     if fleet_runner_proc is not None and fleet_runner_proc.poll() is None:
         return  # vừa spawn, runner chưa kịp lấy lock
+    save_muse_accounts(muse_accounts)   # để runner thấy đúng danh sách thư mục profile ngoài (extra_profiles_dirs)
     try:
         proc = autostart.start_fleet_runner_daemon(PORT)
     except OSError as e:
@@ -273,7 +276,7 @@ def is_account_profile_installed(acc: Dict[str, Any]) -> bool:
     if not p_dir:
         return False
     full_p = (BACKEND_DIR / p_dir).resolve() if not Path(p_dir).is_absolute() else Path(p_dir).resolve()
-    if not is_within(full_p, CHROME_PROFILES_DIR):
+    if not is_within(full_p, CHROME_PROFILES_DIR, *EXTRA_CHROME_PROFILES_DIRS):
         return False
     default_p = full_p / "Default"
     if not default_p.exists():
