@@ -437,7 +437,8 @@ class TaskCreateRequest(BaseModel):
     character_anchor: Optional[str] = None
     camera_motion: Optional[str] = None
     action_prompt: Optional[str] = None
-    duration: Optional[int] = 5
+    # None: lấy parameters.duration / duration_sec (nút "Muse Video" chỉ gửi duration_sec), không có thì 5 giây
+    duration: Optional[int] = None
     aspect_ratio: Optional[str] = "16:9"
     assigned_account: Optional[str] = None
     profile_dir: Optional[str] = None

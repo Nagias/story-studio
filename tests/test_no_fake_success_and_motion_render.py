@@ -7,7 +7,7 @@ Kiểm tra 2 nhóm sửa lỗi (2026-10-19):
 2. Clip video Muse vào được bản dựng: clip lưu file riêng, bước dựng đọc clip và ghi ra
    file segment khác, lệnh ffmpeg lặp clip và chuẩn hoá âm thanh 48 kHz stereo.
 
-Mọi dữ liệu dự án nằm trong tmp_path; không gọi Muse, 9router, Edge-TTS hay ffmpeg thật.
+Mọi dữ liệu dự án nằm trong tmp_path; không gọi Muse, 9router hay Edge-TTS.
 """
 import logging
 import sys
@@ -661,3 +661,21 @@ async def test_muse_runner_is_started_before_paying_for_9router_images(tmp_path,
     out = tmp_path / "scene.jpg"
     res = await image_service.generate_image(prompt="a dark alley", provider="meta_muse_cloud", output_path=str(out))
     assert res["success"] and res["provider"] == "meta_muse_cloud" and started == [1]
+
+
+def test_muse_create_task_respects_duration_sec(api_client):
+    """Trước đây `duration` mặc định 5 nên parameters.duration_sec (nút \"Muse Video\") không bao giờ có tác dụng."""
+    client = api_client
+    r = client.post("/api/muse-bridge/tasks/create", json={
+        "mode": "image-to-video", "prompt": "slow push in", "parameters": {"duration_sec": 10}})
+    assert r.status_code == 200
+    task = r.json()["task"]
+    assert task["duration"] == 10 and task["parameters"]["duration_sec"] == 10
+    r5 = client.post("/api/muse-bridge/tasks/create", json={"mode": "image-to-video", "prompt": "x"})
+    assert r5.json()["task"]["duration"] == 5
+    explicit = client.post("/api/muse-bridge/tasks/create", json={
+        "mode": "image-to-video", "prompt": "x", "duration": 10, "parameters": {"duration_sec": 5}})
+    assert explicit.json()["task"]["duration"] == 10
+    for t in (task, r5.json()["task"], explicit.json()["task"]):
+        muse_bridge.pending_tasks[:] = [p for p in muse_bridge.pending_tasks if p["task_id"] != t["task_id"]]
+
