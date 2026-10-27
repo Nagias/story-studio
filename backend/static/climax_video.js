@@ -7,13 +7,15 @@
 (function () {
   const el = (id) => document.getElementById(id);
   const POLL_MS = 4000;
-  const cx = { polling: null, running: false, lastSignature: '' };
+  const cx = { polling: null, running: false, lastSignature: '', cast: null };
 
   const LABEL = {
     selected: ['🎬 Sẽ làm video', 'bg-purple-50 text-purple-700 border-purple-200'],
     grid: ['🎬 Muse vẽ ảnh 9-grid…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
     clips: ['🎬 Muse làm clip…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
     checking: ['🎬 Đang ghép clip…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
+    grid_review: ['🎬 Chờ duyệt grid', 'bg-amber-50 text-amber-700 border-amber-200'],
+    grid_approved: ['🎬 Grid đã duyệt, chờ làm clip', 'bg-purple-50 text-purple-700 border-purple-200'],
     ready: ['🎬 Đã có video cao trào', 'bg-emerald-50 text-emerald-700 border-emerald-200'],
     failed: ['🎬 Video lỗi, giữ ảnh', 'bg-red-50 text-red-700 border-red-200'],
   };
@@ -66,7 +68,11 @@
 
   function countRunnable() {
     return (project()?.scenes || []).filter(s => isEligible(s)
-      && ['selected', 'failed', ...WORKING].includes(climaxState(s).status)).length;
+      && ['selected', 'failed', 'grid_approved', ...WORKING].includes(climaxState(s).status)).length;
+  }
+
+  function countGridApproved() {
+    return (project()?.scenes || []).filter(s => climaxState(s).status === 'grid_approved').length;
   }
 
   function refreshButtons() {
@@ -80,7 +86,10 @@
     const n = countRunnable();
     const label = run.querySelector('span');
     if (label) {
-      label.textContent = cx.running ? 'Đang tạo video cao trào…' : `Tạo video cho ${n} cảnh cao trào`;
+      const clips = countGridApproved();
+      label.textContent = cx.running ? 'Đang tạo video cao trào…'
+        : (clips && clips === n ? `Làm clip cho ${n} cảnh đã duyệt grid`
+          : (clips ? `Tạo video cho ${n} cảnh (${clips} cảnh làm clip)` : `Vẽ grid cho ${n} cảnh cao trào`));
     }
     const disabled = cx.running || n === 0;
     run.disabled = disabled;
@@ -124,6 +133,116 @@
     return btn;
   }
 
+  function node(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+
+  function smallButton(label, cls, onClick) {
+    const b = node('button', `text-[10px] px-2 py-0.5 rounded border font-semibold transition ${cls}`, label);
+    b.type = 'button';
+    b.disabled = cx.running;
+    if (cx.running) b.classList.add('opacity-30', 'cursor-not-allowed');
+    b.addEventListener('click', (ev) => { ev.stopPropagation(); onClick(); });
+    return b;
+  }
+
+  // Nhân vật của các cảnh (API Bảng nhân vật); tải lại sau mỗi lần đổi
+  async function loadCast() {
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(project().id)}/characters`);
+      cx.cast = res.ok ? await res.json() : null;
+    } catch (err) {
+      console.warn('climax-video cast', err);
+      cx.cast = null;
+    }
+  }
+
+  async function setCast(sceneId, ids) {
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(project().id)}/scenes/${encodeURIComponent(sceneId)}/cast`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entity_ids: ids }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
+      await loadCast();
+      decorateCards();
+    } catch (err) {
+      showToast(`Không đổi được nhân vật của cảnh: ${escapeHtml(err.message)}`, 'error', 7000);
+    }
+  }
+
+  async function gridAction(sceneId, action, body) {
+    try {
+      await call('POST', `/scenes/${encodeURIComponent(sceneId)}/grid/${action}`, body);
+      await pullScenes([sceneId]);
+      renderSceneList();
+      showToast(action === 'approve' ? 'Đã duyệt grid. Bấm nút tạo video để làm clip.' : 'Đã ghi chỗ sai. Bấm nút tạo video để vẽ lại grid.', 'success', 5000);
+    } catch (err) {
+      showToast(`Grid: ${escapeHtml(err.message)}`, 'error', 7000);
+    }
+  }
+
+  // Dòng dưới thanh trên của thẻ cảnh đang làm video: nhân vật của cảnh, ảnh grid chờ duyệt
+  function panelFor(scene) {
+    const state = climaxState(scene);
+    const box = node('div', 'climax-video-panel mb-3 p-2 rounded-lg border border-purple-200 bg-purple-50 space-y-2 text-[11px]');
+    const chars = Object.fromEntries((cx.cast?.characters || []).map(c => [c.entity_id, c]));
+    const ids = (cx.cast?.scene_cast || {})[scene.id] || [];
+    const row = node('div', 'flex items-center gap-1 flex-wrap');
+    row.appendChild(node('span', 'font-semibold text-slate-700', 'Nhân vật:'));
+    if (!ids.length) row.appendChild(node('span', 'text-red-700', 'chưa chọn (bắt buộc để khoá nhân vật)'));
+    for (const eid of ids) {
+      const c = chars[eid];
+      const ok = c && c.status === 'approved';
+      const chip = node('span', `px-2 py-0.5 rounded border ${ok ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`,
+        `${c ? c.name_vi : eid}${ok ? '' : ' (chưa duyệt bảng)'}`);
+      row.appendChild(chip);
+      row.appendChild(smallButton('×', 'bg-white text-slate-600 border-slate-300', () => setCast(scene.id, ids.filter(x => x !== eid))));
+    }
+    const add = node('select', 'text-[10px] border border-slate-300 rounded px-1 py-0.5 bg-white');
+    add.appendChild(node('option', '', '+ thêm nhân vật'));
+    for (const c of cx.cast?.characters || []) {
+      if (ids.includes(c.entity_id)) continue;
+      const o = node('option', '', c.name_vi);
+      o.value = c.entity_id;
+      add.appendChild(o);
+    }
+    add.disabled = cx.running;
+    add.addEventListener('change', () => { if (add.value) setCast(scene.id, [...ids, add.value]); });
+    row.appendChild(add);
+    box.appendChild(row);
+
+    if (state.status === 'grid_review' && state.grid_count !== 0) {
+      const grids = node('div', 'flex gap-2 flex-wrap');
+      const n = (state.grid_paths || []).length || 1;
+      for (let i = 1; i <= n; i++) {
+        const url = `/api/projects/${encodeURIComponent(project().id)}/climax-video/scenes/${encodeURIComponent(scene.id)}/grid?i=${i}&v=${state.grid_version || 1}`;
+        const a = node('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        const img = node('img', 'rounded border border-slate-300');
+        img.src = url;
+        img.alt = `Ảnh 9-grid ${i}`;
+        img.style.width = '220px';
+        a.appendChild(img);
+        grids.appendChild(a);
+      }
+      box.appendChild(grids);
+      const act = node('div', 'flex gap-1 flex-wrap items-center');
+      act.appendChild(smallButton('Duyệt grid', 'bg-emerald-50 text-emerald-700 border-emerald-200', () => gridAction(scene.id, 'approve')));
+      const note = node('input', 'flex-1 min-w-0 border border-slate-300 rounded px-2 py-0.5 text-[11px]');
+      note.placeholder = 'Grid sai chỗ nào? (bắt buộc khi vẽ lại)';
+      act.appendChild(note);
+      act.appendChild(smallButton('Vẽ lại grid', 'bg-amber-50 text-amber-700 border-amber-200', () => gridAction(scene.id, 'reject', { feedback: note.value })));
+      box.appendChild(act);
+    }
+    if (state.error) box.appendChild(node('p', 'text-red-700', state.error));
+    return box;
+  }
+
   // Gắn nhãn và nút vào thẻ cảnh do renderSceneList() (app.js) vẽ
   function decorateCards() {
     refreshButtons();
@@ -137,11 +256,15 @@
       const badge = badgeFor(scene);
       if (badge) bar.appendChild(badge);
       bar.appendChild(toggleFor(scene));
+      card.querySelectorAll('.climax-video-panel').forEach(n => n.remove());
+      if (climaxState(scene).status && climaxState(scene).status !== 'ready' && cx.cast) {
+        bar.parentElement.insertAdjacentElement('afterend', panelFor(scene));
+      }
     }
   }
 
   function signature(scenes) {
-    return JSON.stringify((scenes || []).map(s => [s.scene_id, s.status, s.done, s.error]));
+    return JSON.stringify((scenes || []).map(s => [s.scene_id, s.status, s.done, s.error, s.grid_version]));
   }
 
   async function toggleScene(sceneId, enabled) {
@@ -149,6 +272,7 @@
       await flushProjectSave({ silent: true });
       await call('PUT', `/scenes/${encodeURIComponent(sceneId)}`, { enabled });
       await pullScenes([sceneId]);
+      await loadCast();
       renderSceneList();
     } catch (err) {
       showToast(`Không đổi được cảnh: ${escapeHtml(err.message)}`, 'error', 7000);
@@ -160,6 +284,7 @@
       await flushProjectSave({ silent: true });
       const data = await call('POST', '/pick');
       await pullScenes(null);
+      await loadCast();
       renderSceneList();
       const n = (data.scene_ids || []).length;
       showToast(n
@@ -173,8 +298,9 @@
   async function run() {
     const n = countRunnable();
     if (!n) return;
-    const ok = window.confirm(`Tạo video cho ${n} cảnh bằng Muse?\n\nMỗi cảnh: 1 ảnh 9-grid (thêm 1 grid cho mỗi 45 giây lời kể) `
-      + 'và 1 clip 5 giây cho mỗi 5 giây lời kể; clip lỗi thì thử lại 1 lần. Chạy nền, có thể mất nhiều phút mỗi cảnh.');
+    const ok = window.confirm(`Chạy Muse (tài khoản video) cho ${n} cảnh?\n\nCảnh chưa có grid: vẽ ảnh 9-grid (1 grid mỗi 45 giây lời kể) `
+      + 'rồi dừng chờ bạn duyệt. Cảnh đã duyệt grid: 1 clip 5 giây cho mỗi 5 giây lời kể, clip lỗi thử lại 1 lần (lỗi Muse thì '
+      + 'sang tài khoản khác). Chạy nền, nghỉ 15 giây giữa các lượt Muse.');
     if (!ok) return;
     try {
       await flushProjectSave({ silent: true });
@@ -204,6 +330,7 @@
     if (sig !== cx.lastSignature || wasRunning !== cx.running) {
       cx.lastSignature = sig;
       await pullScenes((data.scenes || []).map(s => s.scene_id));
+      await loadCast();
       renderSceneList();
     }
     if (wasRunning && !cx.running) {
@@ -233,6 +360,7 @@
       cx.running = Boolean(data.running);
       cx.lastSignature = signature(data.scenes);
       if (cx.running) startPolling();
+      await loadCast();
       decorateCards();
     } catch (err) {
       console.warn('climax-video status', err);
