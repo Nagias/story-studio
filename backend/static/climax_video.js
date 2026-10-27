@@ -175,6 +175,7 @@
 
   async function gridAction(sceneId, action, body) {
     try {
+      if (!(await flushProjectSave({ silent: true }))) throw new Error('chưa lưu được dự án, thử lại sau');
       await call('POST', `/scenes/${encodeURIComponent(sceneId)}/grid/${action}`, body);
       await pullScenes([sceneId]);
       renderSceneList();

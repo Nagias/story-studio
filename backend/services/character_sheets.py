@@ -51,7 +51,7 @@ BOARD_W = 2048
 BOARD_H = 1152
 FEEDBACK_MAX = 500
 
-_locks: dict[str, threading.Lock] = {}
+_locks: dict[str, threading.RLock] = {}
 _locks_guard = threading.Lock()
 
 
@@ -79,9 +79,9 @@ class CastError(ValueError):
 
 
 # ------------------------------------------------------------------------------------------------------ lưu trữ
-def _lock(project_id: str) -> threading.Lock:
+def _lock(project_id: str) -> threading.RLock:
     with _locks_guard:
-        return _locks.setdefault(project_id, threading.Lock())
+        return _locks.setdefault(project_id, threading.RLock())
 
 
 def characters_dir(project_id: str) -> Path:
@@ -144,13 +144,15 @@ def save_cast(project_id: str, cast: ProjectCast) -> None:
 
 
 def _update(project_id: str, entity_id: str, change: Callable[[CharacterSheet], None]) -> CharacterSheet:
-    cast = load_cast(project_id)
-    sheet = cast.characters.get(entity_id)
-    if sheet is None:
-        raise CastError(f"Dự án không có nhân vật {entity_id}")
-    change(sheet)
-    save_cast(project_id, cast)
-    return sheet
+    _project(project_id)
+    with _lock(project_id):   # cả đọc-sửa-ghi trong một khoá: hai lần vẽ xong cùng lúc không mất bản nào
+        cast = load_cast(project_id)
+        sheet = cast.characters.get(entity_id)
+        if sheet is None:
+            raise CastError(f"Dự án không có nhân vật {entity_id}")
+        change(sheet)
+        save_cast(project_id, cast)
+        return sheet
 
 
 # ------------------------------------------------------------------------------------------- nhân vật của cảnh
@@ -206,13 +208,14 @@ def set_scene_cast(project_id: str, scene_id: str, entity_ids: list[str]) -> lis
     project = _project(project_id)
     if not any(s.id == scene_id for s in project.scenes):
         raise LookupError(f"Dự án không có cảnh {scene_id}")
-    cast = load_cast(project_id)
-    unknown = [e for e in entity_ids if e not in cast.characters]
-    if unknown:
-        raise CastError(f"Không có nhân vật: {', '.join(unknown)}")
-    cast.scene_cast[scene_id] = list(dict.fromkeys(entity_ids))
-    save_cast(project_id, cast)
-    return cast.scene_cast[scene_id]
+    with _lock(project_id):
+        cast = load_cast(project_id)
+        unknown = [e for e in entity_ids if e not in cast.characters]
+        if unknown:
+            raise CastError(f"Không có nhân vật: {', '.join(unknown)}")
+        cast.scene_cast[scene_id] = list(dict.fromkeys(entity_ids))
+        save_cast(project_id, cast)
+        return cast.scene_cast[scene_id]
 
 
 def reference_image(project: Project, cast: ProjectCast, entity_id: str) -> Optional[Path]:

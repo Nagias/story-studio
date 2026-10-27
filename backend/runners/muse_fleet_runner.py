@@ -94,13 +94,28 @@ def is_path_within(path: Path, *bases: Path) -> bool:
     return any(target.is_relative_to(Path(b).resolve()) for b in bases)
 
 
-def muse_reply_error(text_before: str, text_now: str) -> Optional[str]:
-    """Phần chữ Muse mới viết (so với trước khi gửi prompt) nếu có từ báo lỗi, không thì None."""
+def _muse_reply_part(text_before: str, text_now: str, prompt: str = "") -> str:
+    """Chữ Muse viết sau prompt: bỏ phần chat có từ trước VÀ chính prompt vừa gửi (khung chat hiện lại prompt; prompt có
+    thể chứa "terror", "lỗi" do chủ dự án ghi chú — duyệt độc lập 28/10/2026)."""
     if not text_now or text_now == text_before:
-        return None
-    new = text_now[len(text_before):] if text_now.startswith(text_before) else text_now[-1500:]
-    low = new.lower()
-    return new.strip()[-600:] if any(w in low for w in MUSE_ERROR_WORDS) else None
+        return ""
+    new = text_now[len(text_before):] if text_now.startswith(text_before) else text_now
+    flat = " ".join(new.split())
+    norm = " ".join((prompt or "").split())
+    # Khung chat có thể hiện prompt khác chút (markdown): thử đuôi prompt dài trước, ngắn dần
+    key = next((norm[-n:] for n in (200, 80, 40) if norm and norm[-n:] in flat), "")
+    if key:
+        flat = flat[flat.rfind(key) + len(key):]
+    elif not text_now.startswith(text_before):
+        return ""   # không xác định được phần mới: thà bỏ qua còn hơn bắt nhầm lỗi cũ trong chat dài
+    return flat.strip()
+
+
+def muse_reply_error(text_before: str, text_now: str, prompt: str = "") -> Optional[str]:
+    """Câu Muse trả lời (sau prompt) nếu có cụm báo lỗi rõ ràng, không thì None."""
+    said = _muse_reply_part(text_before, text_now, prompt)
+    low = said.lower()
+    return said[-600:] if said and any(w in low for w in MUSE_ERROR_WORDS) else None
 
 
 def muse_new_text(text_before: str, text_now: str) -> str:
@@ -184,7 +199,10 @@ MUSE_REPLY_GRACE_SEC = 45
 # luôn giữ tài khoản "active": việc tránh tài khoản đó (avoid_accounts) hay ghim vào tài khoản khác không ai nhận (gặp
 # 28/10/2026: việc clip tránh muse_acc_vid_02 nằm chờ 30 phút, 3 tài khoản videopic online không được hỏi lần nào).
 EMPTY_POLL_BACKOFF_SEC = 30
-MUSE_ERROR_WORDS = ("503", "quá tải", "overload", "không tạo được", "chưa tạo được", "can't", "cannot", "error", "lỗi")
+# Cụm báo lỗi rõ ràng (không dùng chữ trơn "error", "lỗi": Muse hay nhắc lại yêu cầu "không lỗi", "no error"...)
+MUSE_ERROR_WORDS = ("503", "quá tải", "overload", "không tạo được", "chưa tạo được", "không khả dụng", "unavailable",
+                    "báo lỗi", "gặp lỗi", "bị lỗi hệ thống", "failed to generate", "couldn't generate",
+                    "could not generate", "không thể tạo")
 LOG_TEXT_JS = "() => ((document.querySelector('[role=log]') || document.body).innerText || '')"
 SCROLL_LOG_JS = "() => document.querySelectorAll('[role=log]').forEach(l => { l.scrollTop = l.scrollHeight; })"
 # Trường trạng thái do runner ghi xuống muse_fleet_accounts.json (các trường khác do backend quản lý)
@@ -1178,6 +1196,7 @@ class MuseFleetRunner:
         context: Optional[BrowserContext] = None
         page: Optional[Page] = None
         text_before: Optional[str] = None
+        prompt = ""
         try:
             context = await self.create_browser_context(acc, headless=True)
             page = context.pages[0] if context.pages else await context.new_page()
@@ -1264,7 +1283,7 @@ class MuseFleetRunner:
                 await self._click_allow_if_asked(page, acc.account_id)
                 if "/thread/" in page.url and not page.url.endswith("/thread/new"):
                     task["_result_meta"]["thread_url"] = page.url
-                reply_err = muse_reply_error(text_before, await page.evaluate(LOG_TEXT_JS))
+                reply_err = muse_reply_error(text_before, await page.evaluate(LOG_TEXT_JS), prompt)
                 if reply_err:
                     error_since = error_since or time.time()
                     if time.time() - error_since >= MUSE_REPLY_GRACE_SEC:
@@ -1324,7 +1343,7 @@ class MuseFleetRunner:
             if text_before is not None and page is not None and not page.is_closed() and tf.code != "MUSE_REPLIED_ERROR":
                 try:
                     now_text = await page.evaluate(LOG_TEXT_JS)
-                    said = muse_new_text(text_before, now_text)
+                    said = _muse_reply_part(text_before, now_text, prompt)
                     if said:
                         msg += f" | Muse nói: {said[-400:]}"
                     if "/thread/" in page.url and not page.url.endswith("/thread/new"):

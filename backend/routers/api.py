@@ -234,16 +234,23 @@ SERVER_OWNED_MEDIA_FIELDS = (
 
 
 def _keep_server_media(existing: Optional[Project], incoming_scenes: List[Scene]) -> None:
-    if not existing:
-        return
-    server_scenes = {s.id: s for s in existing.scenes}
+    server_scenes = {s.id: s for s in existing.scenes} if existing else {}
     for sc in incoming_scenes:
         old = server_scenes.get(sc.id)
+        # Trạng thái video cao trào chỉ server ghi (services/climax_video.py, routers/climax_video.py): bản giao diện
+        # gửi lên có thể cũ (duyệt grid rồi bị tự lưu đè — duyệt độc lập 28/10/2026), luôn lấy bản của server;
+        # cảnh mới (vd nhân bản cảnh) không được mang theo trạng thái của cảnh khác.
+        sc.metadata = dict(sc.metadata or {})
         if not old:
+            sc.metadata.pop("climax_video", None)
             continue
         for field in SERVER_OWNED_MEDIA_FIELDS:
             if not getattr(sc, field, None) and getattr(old, field, None):
                 setattr(sc, field, getattr(old, field))
+        if "climax_video" in (old.metadata or {}):
+            sc.metadata["climax_video"] = old.metadata["climax_video"]
+        else:
+            sc.metadata.pop("climax_video", None)
 
 
 def _resolve_studio_path(value: str) -> Path:

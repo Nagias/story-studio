@@ -535,8 +535,8 @@ def _muse_error_switch_account(err: BaseException) -> bool:
     text = str(err)
     # NO_MEDIA: runner chờ hết giờ không có video (chạy thật 28/10/2026: tài khoản báo "dịch vụ tạo video không khả
     # dụng"); Muse có thể còn làm dở trong chat đó nên cũng bỏ chat.
-    return (_thread_dirty_error(err) or "MUSE_REPLIED_ERROR" in text or "NO_MEDIA" in text or "503" in text
-            or "quá tải" in text)
+    return (_thread_dirty_error(err) or any(code in text for code in (
+        "MUSE_REPLIED_ERROR", "NO_MEDIA", "PROFILE_IN_USE", "SESSION_EXPIRED", "BROWSER_ERROR", "503", "quá tải")))
 
 
 class SceneThread:
@@ -558,6 +558,7 @@ class SceneThread:
         if isinstance(result, dict):
             self.url = result.get("thread_url") or self.url
             self.account = result.get("executed_by") or self.account
+            self.avoid = []   # làm được rồi: thôi tránh (danh sách cũ không được chặn mãi các lần chạy sau)
 
     def drop(self, switch_account: bool) -> None:
         if switch_account and self.account and self.account not in self.avoid:
@@ -757,6 +758,8 @@ async def run_scene_clips(project_id: str, scene_id: str, muse_call: MuseCall) -
         people, positions, board = await asyncio.to_thread(_cast_for, project, scene)
         plan = grid_plan(clip_count(seconds))
         grid_files = [Path(p) for p in old["grid_paths"]]
+        if not all(is_within(p, work) for p in grid_files):
+            raise ClimaxVideoError("Đường dẫn ảnh grid nằm ngoài thư mục làm việc của cảnh: vẽ lại grid")
         if len(grid_files) != len(plan) or not all(p.is_file() for p in grid_files):
             raise ClimaxVideoError("Ảnh grid đã duyệt không khớp độ dài lời kể hiện tại: vẽ lại grid")
         clips: list[Path] = []

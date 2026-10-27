@@ -86,8 +86,8 @@ async def pick_scenes(project_id: str):
     chosen = climax_video.pick_climax_scenes(project)
     for scene in project.scenes:
         status = _state(scene).get("status")
-        if status in KEEP_ON_PICK:
-            continue
+        if status in KEEP_ON_PICK or _state(scene).get("grid_approved"):
+            continue   # đã có công (grid đã duyệt, kể cả khi làm clip lỗi): không xoá
         if scene.id in chosen:
             _set_state(scene, {"status": "selected"})
         elif status == "selected":
@@ -110,7 +110,7 @@ async def toggle_scene(project_id: str, scene_id: str, req: SceneToggle):
                                                     "mới làm video cao trào được")
     status = _state(scene).get("status")
     if req.enabled:
-        if status not in ("selected", *KEEP_ON_PICK):
+        if status not in ("selected", *KEEP_ON_PICK) and not _state(scene).get("grid_approved"):
             limit = climax_video.climax_limit(project)
             marked = sum(1 for s in project.scenes if _state(s).get("status") and s.id != scene_id)
             if marked >= limit:

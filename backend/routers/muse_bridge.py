@@ -407,11 +407,14 @@ def enqueue_task(task: Dict[str, Any]) -> Dict[str, Any]:
     return task
 
 
-def pick_fallback_account(kind: str, exclude: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """Tài khoản dự phòng cùng loại, ưu tiên đang online, không bị khóa."""
+def pick_fallback_account(kind: str, exclude: Optional[str] = None,
+                          avoid: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
+    """Tài khoản dự phòng cùng loại, ưu tiên đang online, không bị khóa, không nằm trong `avoid`."""
+    skip = set(avoid or [])
     candidates = [
         a for a in muse_accounts
-        if account_kind(a) == kind and a["account_id"] != exclude and is_account_available(a)
+        if account_kind(a) == kind and a["account_id"] != exclude and a["account_id"] not in skip
+        and is_account_available(a)
     ]
     candidates.sort(key=lambda a: (not is_account_online(a["account_id"]), a["account_id"]))
     return candidates[0] if candidates else None
@@ -571,6 +574,12 @@ async def enqueue_and_wait_muse_task(task_dict: Dict[str, Any], timeout: Optiona
             f"Không có tài khoản Muse {'video' if route == 'video' else 'ảnh'} nào đang online "
             f"(Fleet Runner chưa chạy hoặc tài khoản chưa đăng nhập / đang bị khóa)"
         )
+    avoid = set(task_dict.get("avoid_accounts") or [])
+    if avoid and not task_dict.get("pin_account") and not any(
+            account_kind(a) == route and a["account_id"] not in avoid and is_account_available(a)
+            and is_account_online(a["account_id"]) for a in muse_accounts):
+        raise RuntimeError(f"Mọi tài khoản Muse {route} đang online đều vừa lỗi với việc này "
+                           f"({', '.join(sorted(avoid))}): chờ lúc khác hoặc thêm tài khoản")
     if task_dict.get("pin_account"):
         owner = task_dict.get("assigned_account")
         acc = find_account(owner)
@@ -1299,7 +1308,7 @@ async def fail_task(task_id: str, req: TaskFailRequest):
     # Task ghim vào side chat của một tài khoản: không thử lại ở đây (tài khoản khác không mở được chat đó);
     # người gọi tự quyết mở chat mới trên tài khoản khác.
     if retry_count < MAX_TASK_RETRIES and not task.get("abandoned") and not task.get("pin_account"):
-        nxt = pick_fallback_account(kind, exclude=failed_acc) or (
+        nxt = pick_fallback_account(kind, exclude=failed_acc, avoid=task.get("avoid_accounts")) or (
             find_account(failed_acc) if is_account_available(find_account(failed_acc)) else None
         )
         if nxt:

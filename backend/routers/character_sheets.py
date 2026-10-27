@@ -25,7 +25,7 @@ logger = logging.getLogger("story_studio.character_sheets_router")
 
 router = APIRouter(prefix="/api", tags=["Character sheets"], dependencies=[Depends(validate_path_ids)])
 
-NEEDED_STATUSES = ("selected", "failed", "grid", "grid_review", "clips", "checking")
+NEEDED_STATUSES = ("selected", "failed", "grid", "grid_review", "grid_approved", "clips", "checking")
 _drawing: dict[tuple[str, str], asyncio.Task] = {}
 
 
