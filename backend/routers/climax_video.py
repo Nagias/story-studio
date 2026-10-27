@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from models.schemas import Project
 from routers import muse_bridge
-from routers.muse_bridge import enqueue_and_wait_muse_task, ensure_local_fleet_runner, is_kind_online, task_kind
+from routers.muse_bridge import enqueue_and_wait_muse_task, ensure_local_fleet_runner, is_kind_online, routing_kind
 from runners import single_instance
 from security import validate_path_ids
 from services import climax_video, project_service
@@ -114,10 +114,10 @@ async def toggle_scene(project_id: str, scene_id: str, req: SceneToggle):
     return {"scene_id": scene_id, "status": _state(scene).get("status")}
 
 
-async def _muse_call(task: dict) -> dict:
+async def muse_call_starting_runner(task: dict) -> dict:
     """enqueue_and_wait_muse_task, nhưng Fleet Runner chưa chạy thì bật và chờ nó đăng ký trước (không thì cảnh thất
     bại ngay vì "không có tài khoản online"). Test tắt tự bật runner bằng STORY_STUDIO_DISABLE_FLEET_AUTOSTART."""
-    kind = task_kind(task.get("mode"))
+    kind = routing_kind(task)   # việc ảnh grid chạy trên tài khoản video (route_kind)
     if not is_kind_online(kind) and not single_instance.autostart_disabled():
         ensure_local_fleet_runner()
         deadline = time.monotonic() + RUNNER_START_WAIT_S
@@ -130,12 +130,13 @@ async def _muse_call(task: dict) -> dict:
 
 
 _ENQUEUE_ORIGINAL = enqueue_and_wait_muse_task
+_muse_call = muse_call_starting_runner   # tên cũ (test)
 
 
 async def _run_all(project_id: str, scene_ids: list[str]) -> None:
     for scene_id in scene_ids:
         try:
-            await climax_video.run_scene_climax_video(project_id, scene_id, muse_call=_muse_call)
+            await climax_video.run_scene_climax_video(project_id, scene_id, muse_call=muse_call_starting_runner)
         except Exception:   # cảnh này đã được ghi "failed" kèm lý do; làm tiếp cảnh sau
             logger.exception(f"Video cao trào {project_id}/{scene_id}: lỗi ngoài dự kiến")
 

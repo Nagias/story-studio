@@ -37,6 +37,7 @@ REQUIRED_FILES = [
     "backend/static/true_crime.js",  # modal Hồ Sơ Kỳ Án (index.html nạp sau app.js)
     "backend/static/youtube_seo.js",  # gói SEO YouTube ở Bước 4 (index.html nạp sau true_crime.js)
     "backend/static/climax_video.js",  # video cảnh cao trào ở Bước 2 (index.html nạp sau youtube_seo.js)
+    "backend/static/character_sheets.js",  # cửa sổ Bảng nhân vật ở Bước 2 (index.html nạp sau climax_video.js)
     "backend/static/tailwind.css",  # CSS Tailwind build sẵn (index.html không còn dùng CDN)
     "run.py",
     "run.bat",
@@ -186,7 +187,8 @@ def verify_zip(zip_path: Path) -> list[str]:
                 problems.append(f"thiếu file {f}")
         # Mọi file /static/... mà giao diện gọi cố định phải có trong gói (tránh gửi bản thiếu CSS/ảnh)
         for ui_file in ("backend/static/index.html", "backend/static/app.js", "backend/static/true_crime.js",
-                        "backend/static/youtube_seo.js", "backend/static/climax_video.js"):
+                        "backend/static/youtube_seo.js", "backend/static/climax_video.js",
+                        "backend/static/character_sheets.js"):
             arc = f"{TOP}/{ui_file}"
             if arc not in names:
                 continue

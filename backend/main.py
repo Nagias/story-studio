@@ -24,6 +24,7 @@ from routers.true_crime import router as true_crime_router
 from routers.language_versions import router as language_versions_router
 from routers.youtube_seo import router as youtube_seo_router
 from routers.climax_video import router as climax_video_router
+from routers.character_sheets import router as character_sheets_router
 from services import case_worker
 from services.project_service import ProjectUnreadableError
 from services.video_service import get_available_bgm_tracks
@@ -112,6 +113,7 @@ app.include_router(true_crime_router)
 app.include_router(language_versions_router)
 app.include_router(youtube_seo_router)
 app.include_router(climax_video_router)
+app.include_router(character_sheets_router)
 
 # WebSocket endpoint for real-time render progress
 @app.websocket("/ws/render/{render_id}")

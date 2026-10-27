@@ -84,10 +84,10 @@
     }
     const disabled = cx.running || n === 0;
     run.disabled = disabled;
-    run.classList.toggle('opacity-50', disabled);
+    run.classList.toggle('opacity-30', disabled);
     run.classList.toggle('cursor-not-allowed', disabled);
     pick.disabled = cx.running;
-    pick.classList.toggle('opacity-50', cx.running);
+    pick.classList.toggle('opacity-30', cx.running);
   }
 
   function badgeFor(scene) {
@@ -113,13 +113,13 @@
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = `climax-video-toggle text-[10px] px-2 py-0.5 rounded border font-semibold transition ${on
-      ? 'bg-purple-600 text-white border-purple-500' : 'bg-white text-purple-700 border-purple-300'}`;
+      ? 'bg-purple-600 text-white border-purple-300' : 'bg-white text-purple-700 border-purple-300'}`;
     btn.textContent = on ? '🎬 Bỏ video' : '🎬 Làm video';
     btn.title = on
       ? 'Bỏ cảnh này khỏi danh sách làm video cao trào (cảnh đã có video thì về lại ảnh, clip vẫn giữ trên đĩa)'
       : 'Làm video cho cảnh này bằng Muse (ảnh 9-grid rồi các clip 5 giây)';
     btn.disabled = cx.running;
-    if (cx.running) btn.classList.add('opacity-50', 'cursor-not-allowed');
+    if (cx.running) btn.classList.add('opacity-30', 'cursor-not-allowed');
     btn.addEventListener('click', (ev) => { ev.stopPropagation(); toggleScene(scene.id, !on); });
     return btn;
   }

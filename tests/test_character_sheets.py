@@ -206,3 +206,103 @@ def test_reference_image_is_first_scene_with_the_person(isolated_projects_dir):
     cast = cs.load_cast(PID)
     assert cs.reference_image(project, cast, "person_2").name == "scene_012.jpg"
     assert cs.reference_image(project, cast, "person_15") is None
+
+
+# --------------------------------------------------------------------------------------------------------- API
+from fastapi import FastAPI  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
+from routers import character_sheets as cs_router  # noqa: E402
+
+
+@pytest.fixture
+def client(isolated_projects_dir):
+    app = FastAPI()
+    app.include_router(cs_router.router)
+    with TestClient(app, base_url="http://127.0.0.1:8000") as c:
+        yield c
+    cs_router._drawing.clear()
+
+
+def _wait_not_drawing(client, eid, seconds=10):
+    import time
+    end = time.time() + seconds
+    while time.time() < end:
+        chars = {c["entity_id"]: c for c in client.get(f"/api/projects/{PID}/characters").json()["characters"]}
+        if not chars[eid]["drawing"]:
+            return chars[eid]
+        time.sleep(0.1)
+    raise AssertionError("vẽ không xong")
+
+
+def test_api_ids_and_missing_project(client):
+    _make_project()
+    assert client.get("/api/projects/proj_khong_co/characters").status_code == 404
+    assert client.get("/api/projects/_cases/characters").status_code == 400
+    assert client.post(f"/api/projects/{PID}/characters/bad%20id/approve").status_code == 400
+    assert client.post(f"/api/projects/{PID}/characters/person_99/approve").status_code == 400
+    assert client.put(f"/api/projects/{PID}/scenes/scene_999/cast", json={"entity_ids": []}).status_code == 404
+    assert client.put(f"/api/projects/{PID}/scenes/scene_028/cast", json={"entity_ids": ["x y"]}).status_code == 400
+
+
+def test_api_flow_draw_review_reject_redraw_approve(client, monkeypatch):
+    project = _make_project()
+    p = project_service.get_project(PID)
+    for s in p.scenes:
+        if s.id == "scene_028":
+            s.metadata["climax_video"] = {"status": "selected"}
+    project_service.save_project(p)
+    muse = FakeMuse()
+    monkeypatch.setattr(cs_router, "muse_call_starting_runner", muse)
+    base = f"/api/projects/{PID}/characters"
+    data = client.get(base).json()
+    assert data["needed"] == ["person_1"] and data["scene_cast"]["scene_012"] == ["person_2"]
+    assert all("thread_url" not in c for c in data["characters"])   # không lộ địa chỉ chat ra giao diện
+
+    assert client.post(f"{base}/person_1/reject", json={"feedback": ""}).status_code == 400
+    assert client.post(f"{base}/person_1/draw").status_code == 200
+    c = _wait_not_drawing(client, "person_1")
+    assert c["status"] == "review" and c["sheet_url"] and c["versions"] == 1
+    assert client.get(c["sheet_url"]).status_code == 200
+    assert client.post(f"{base}/person_1/reject", json={"feedback": "tóc sai ở góc sau"}).json()["status"] == "draft"
+    client.post(f"{base}/person_1/draw")
+    c = _wait_not_drawing(client, "person_1")
+    assert c["versions"] == 2 and muse.tasks[1]["thread_url"] == THREAD
+    assert client.post(f"{base}/person_1/approve").json()["status"] == "approved"
+    r = client.put(f"{base}/person_1", json={"design_en": "Thiết kế mới"})
+    assert r.status_code == 200 and r.json()["status"] == "draft"
+    # người chưa có cảnh nào có ảnh: không vẽ được, báo rõ
+    r = client.post(f"{base}/person_15/draw")
+    assert r.status_code == 400 and "Gia tộc họ Tiền" in r.json()["detail"]
+    assert project is not None
+
+
+def test_api_draw_conflict_while_drawing(client, monkeypatch):
+    _make_project()
+    gate = {"open": False}
+
+    async def slow(task):
+        while not gate["open"]:
+            await asyncio.sleep(0.05)
+        return await FakeMuse()(task)
+
+    monkeypatch.setattr(cs_router, "muse_call_starting_runner", slow)
+    base = f"/api/projects/{PID}/characters"
+    assert client.post(f"{base}/person_2/draw").status_code == 200
+    assert client.post(f"{base}/person_2/draw").status_code == 409
+    assert client.put(f"{base}/person_2", json={"design_en": "x"}).status_code == 409
+    gate["open"] = True
+    assert _wait_not_drawing(client, "person_2")["status"] == "review"
+
+
+def test_project_put_does_not_touch_cast_file(isolated_projects_dir):
+    from main import app
+    _make_project()
+    cs.set_scene_cast(PID, "scene_028", ["person_2"])
+    path = isolated_projects_dir / PID / "characters" / "characters.json"
+    before = path.read_text(encoding="utf-8")
+    with TestClient(app, base_url="http://127.0.0.1:8000", client=("127.0.0.1", 50000)) as c:
+        body = c.get(f"/api/projects/{PID}").json()
+        body["name"] = "Đổi tên"
+        assert c.put(f"/api/projects/{PID}", json=body).status_code == 200
+    assert path.read_text(encoding="utf-8") == before
