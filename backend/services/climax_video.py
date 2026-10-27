@@ -764,7 +764,8 @@ async def run_scene_clips(project_id: str, scene_id: str, muse_call: MuseCall) -
             panels = await asyncio.to_thread(slice_grid, grid_file, work, scene_id, g)
             for i, panel_no in enumerate(panels_used):
                 await asyncio.to_thread(_merge_climax, project_id, scene_id,
-                                        {"status": "clips", "grid": g, "done": len(clips), **thread.state()})
+                                        {"status": "clips", "grid": g, "done": len(clips), "error": None,
+                                         **thread.state()})
                 if clips:
                     await _pace()
                 next_no = panels_used[i + 1] if i + 1 < len(panels_used) else None

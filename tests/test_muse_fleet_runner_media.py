@@ -57,6 +57,17 @@ def test_select_account_never_crosses_kind(tmp_path):
     assert runner.select_available_account("image-to-video", require_login=False) is None
 
 
+def test_account_with_empty_poll_yields_turn_to_others(tmp_path):
+    """Chạy thật 28/10/2026: khe video luôn giữ tài khoản active nên việc tránh nó không ai nhận."""
+    runner = make_runner(tmp_path)
+    assert runner.select_available_account("image-to-video", require_login=False).account_id == "muse_acc_vid_01"
+    runner.accounts["muse_acc_vid_01"].last_empty_poll = time.time()
+    assert runner.select_available_account("image-to-video", require_login=False).account_id == "muse_acc_vid_02"
+    runner.accounts["muse_acc_vid_02"].last_empty_poll = time.time()
+    # mọi tài khoản đều vừa hỏi rỗng: quay về thứ tự thường (active trước)
+    assert runner.select_available_account("image-to-video", require_login=False).account_id == "muse_acc_vid_01"
+
+
 def test_reserve_does_not_hand_out_same_account_twice(tmp_path, monkeypatch):
     runner = make_runner(tmp_path)
     monkeypatch.setattr(FleetAccount, "is_logged_in", lambda self: True)

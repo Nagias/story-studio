@@ -172,6 +172,10 @@ ACCOUNT_COOLDOWN_SEC = 60.0
 # Muse trả lời bằng chữ có từ báo lỗi (vd "hệ thống quá tải (503)") mà sau chừng này giây vẫn không có media: thất bại
 # ngay thay vì chờ hết MEDIA_WAIT_SEC (đo 27/10/2026: hai lần 503, runner cũ chờ trọn 7 phút)
 MUSE_REPLY_GRACE_SEC = 45
+# Tài khoản vừa hỏi việc mà không có: nhường lượt hỏi cho tài khoản cùng loại khác trong chừng này giây. Không có thì khe
+# luôn giữ tài khoản "active": việc tránh tài khoản đó (avoid_accounts) hay ghim vào tài khoản khác không ai nhận (gặp
+# 28/10/2026: việc clip tránh muse_acc_vid_02 nằm chờ 30 phút, 3 tài khoản videopic online không được hỏi lần nào).
+EMPTY_POLL_BACKOFF_SEC = 30
 MUSE_ERROR_WORDS = ("503", "quá tải", "overload", "không tạo được", "chưa tạo được", "can't", "cannot", "error", "lỗi")
 LOG_TEXT_JS = "() => ((document.querySelector('[role=log]') || document.body).innerText || '')"
 SCROLL_LOG_JS = "() => document.querySelectorAll('[role=log]').forEach(l => { l.scrollTop = l.scrollHeight; })"
@@ -616,6 +620,7 @@ class FleetAccount:
         self.success_count: int = int(raw.get("success_count", 0) or 0)
         self.fail_count: int = int(raw.get("fail_count", 0) or 0)
         self.last_error: Optional[str] = raw.get("last_error")
+        self.last_empty_poll: float = 0.0   # chỉ trong RAM: lần cuối hỏi việc mà không có
         self.apply_config(raw)
 
     def apply_config(self, raw: Dict[str, Any]) -> None:
@@ -825,7 +830,8 @@ class MuseFleetRunner:
         candidates = [a for a in self.accounts.values() if a.type == target_type and a.is_ready(require_login=require_login)]
         if not candidates:
             return None
-        candidates.sort(key=lambda a: (not a.is_active, a.last_used))
+        now = time.time()
+        candidates.sort(key=lambda a: (now - a.last_empty_poll < EMPTY_POLL_BACKOFF_SEC, not a.is_active, a.last_used))
         return candidates[0]
 
     def _reserve_account(self, kinds: List[str]) -> Optional[FleetAccount]:
@@ -1336,6 +1342,7 @@ class MuseFleetRunner:
 
                 task = await self.poll_task_from_backend(account)
                 if not task:
+                    account.last_empty_poll = time.time()   # nhường lượt hỏi cho tài khoản khác cùng loại
                     self._release_account(account)
                     await asyncio.sleep(1.0)
                     continue
