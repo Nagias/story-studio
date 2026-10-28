@@ -75,6 +75,7 @@ Pha 1 giữ nguyên: lưới 9 ô làm trong chat riêng của cảnh → chủ 
    - `done_token` riêng cho mỗi việc (`XONG-<task_id>`) để không khớp nhầm chữ của việc khác trong cùng chat.
 3. **App nhận kết quả** (`climax_video.py`): kiểm file bằng ffprobe (video hợp lệ, có hình, dài ≥ 5 giây và ≤ 2 × mục tiêu + 1), không kiểm SSIM khung đầu nữa (Muse được phép vẽ lại ảnh cảnh để sửa tóc). Lưu báo cáo của Muse vào trạng thái cảnh, gắn video làm clip của cảnh, hiện báo cáo trên thẻ cảnh. Không đạt kiểm file → cảnh "Video lỗi, giữ ảnh" kèm lý do, như hiện tại.
 4. **Giao diện**: nút và trạng thái giữ như nhánh `thu-video-cao-trao` (chọn cảnh, duyệt lưới, chạy); thẻ cảnh thêm ô "Báo cáo của Muse" và nút "Làm lại cảnh này" (tốn thêm tối đa 6 video + 4 ảnh; hỏi xác nhận trước khi bấm).
+6. **Ảnh cảnh đã sửa tóc**: bản giao việc dặn: nếu phải vẽ lại ảnh cảnh, tin cuối gửi kèm đúng một ảnh đó (cùng khung với ảnh cảnh), ghi rõ trong báo cáo dòng `ANH_CANH_MOI: có`. Runner tải cả ảnh trong tin cuối. App: có ảnh mới thì chép ảnh cũ sang `images/<scene_id>.truoc_sua_toc.jpg` (không ghi đè nếu đã có bản dự phòng), lưu ảnh mới làm ảnh cảnh (`image_path` giữ nguyên tên file để mọi chỗ đang trỏ vẫn đúng), ghi qua `project_service.save_project()`. Ảnh mới hỏng (không mở được, không phải 16:9) thì giữ ảnh cũ và ghi lý do.
 5. **Làm lại, hết giờ**: thất bại hay hết giờ thì đánh dấu chat của cảnh là bẩn (`thread_dirty`), vì Muse có thể vẫn đang làm và gửi kết quả muộn. "Làm lại" mở chat mới trên cùng tài khoản nếu tài khoản đó còn dùng được, gửi lại lưới đã duyệt (file có sẵn trên máy) làm ảnh đính kèm thứ ba; không vẽ lại lưới.
 
 ### 3.3 Nhánh code
@@ -108,5 +109,7 @@ Nhánh mới từ `master`, lấy lần lượt các commit của `thu-video-cao
 ## 7. Cần chủ dự án quyết
 
 1. ~~Quy tắc tóc có đúng ý không?~~ Đã trả lời — **[Nguyên văn chủ dự án]** (28/10/2026): "Ý tôi là khi làm tóc cho nữa thì nên là phủ nhiều trên đầu thay vì chỉ có chút tóc ở phần gáy thôi, như vậy nhìn sẽ rất xấu." Câu quy tắc ở mục 3.1 đã sửa theo ý này.
-2. Quy tắc tóc chỉ áp cho phong cách đầu tròn (`horror_cartoon_2d`), hay cho mọi phong cách? App có 16 phong cách; chỉ `horror_cartoon_2d` vẽ đầu tròn trắng, 15 phong cách kia vẽ đầu người bình thường nên tóc vốn đã tự nhiên. Đề xuất của agent: chỉ áp cho phong cách đầu tròn.
-3. Dự án cũ (ảnh cảnh vẽ đầu trọc): khi Muse vẽ lại ảnh cảnh để sửa tóc trong lúc làm video, có tải ảnh đó về và thay ảnh tĩnh của cảnh không? Có thì ảnh tĩnh khớp video nhưng runner phải tải thêm ảnh; không thì ảnh tĩnh và video của cảnh đó lệch tóc nhau.
+2. ~~Áp cho phong cách nào?~~ **[Nguyên văn chủ dự án]** (28/10/2026): "Câu 2: chỉ áp cho phong cách đầu tròn."
+3. ~~Thay ảnh tĩnh bằng ảnh Muse đã sửa tóc?~~ **[Nguyên văn chủ dự án]** (28/10/2026): "Câu 3: có, tải ảnh Muse đã sửa tóc về thay ảnh tĩnh, giữ ảnh cũ làm bản dự phòng." Cách làm: mục 3.2 bước 6.
+
+Chủ dự án duyệt bản thiết kế ngày 28/10/2026 ("Viết kế hoạch code").
