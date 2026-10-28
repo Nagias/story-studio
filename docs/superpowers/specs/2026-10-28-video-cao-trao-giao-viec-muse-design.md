@@ -45,7 +45,7 @@ Muse tự khai (hỏi thẳng trong chat, 28/10/2026): mỗi tài khoản có m�
 ### 3.1 Quy tắc tóc nhân vật nữ
 
 Một quy tắc, hai chỗ đọc, cùng một hằng số (không chép hai lần):
-- Hằng số mới `FEMALE_HAIR_RULE_EN` trong `services/image_service.py`, cạnh `STYLE_PRESETS`. Nội dung đề xuất: *"Female characters always have hair growing on the top of the head: the hair covers the crown and frames the white face, then falls to the length given in the design; never a bald round head with only a small tuft at the back."*
+- Hằng số mới `FEMALE_HAIR_RULE_EN` trong `services/image_service.py`, cạnh `STYLE_PRESETS`. Nội dung đề xuất: *"Female characters always have thick, full hair covering most of the top of the head: a generous mass of hair on the crown that frames the white face, then falls to the length given in the design; never a bald round head with only a little hair at the nape."*
 - Phong cách `horror_cartoon_2d` (preset có nhân vật đầu tròn) ghép thêm câu này vào `prompt_suffix` → mọi ảnh cảnh vẽ sau đó đều có (prompt ảnh cảnh đã lấy `prompt_suffix` qua `case_adaptation_prompts` và `image_service`).
 - Bảng nhân vật và bản giao việc video: câu này được ghép **lúc dựng prompt** (`character_sheets.sheet_prompt()` và `climax_brief.scene_brief()`) cho người `gender == "female"` khi dự án dùng `horror_cartoon_2d`, không ghi cứng vào `design_en` đã lưu. Nhờ vậy thiết kế cũ (kể cả đã duyệt) cũng nhận quy tắc mà không phải sửa dữ liệu. Chỗ nào thiết kế đã lưu nói khác về vị trí tóc (ví dụ "chỉ phủ nửa sau đầu"), prompt ghi rõ quy tắc tóc thắng.
 - Kiểu tóc (dài, xoăn, buộc…) vẫn lấy từ `appearance_en` của từng người. Quy tắc chỉ nói tóc phải có trên đỉnh đầu.
@@ -107,6 +107,6 @@ Nhánh mới từ `master`, lấy lần lượt các commit của `thu-video-cao
 
 ## 7. Cần chủ dự án quyết
 
-1. Hôm 28/10 chủ dự án đã chốt "không có kiểu tóc mặc định". Quy tắc mới chỉ ép tóc nữ phải có trên đỉnh đầu, độ dài và kiểu vẫn theo từng người. Có đúng ý không?
-2. Quy tắc tóc chỉ áp cho phong cách đầu tròn (`horror_cartoon_2d`), hay cho mọi phong cách?
+1. ~~Quy tắc tóc có đúng ý không?~~ Đã trả lời — **[Nguyên văn chủ dự án]** (28/10/2026): "Ý tôi là khi làm tóc cho nữa thì nên là phủ nhiều trên đầu thay vì chỉ có chút tóc ở phần gáy thôi, như vậy nhìn sẽ rất xấu." Câu quy tắc ở mục 3.1 đã sửa theo ý này.
+2. Quy tắc tóc chỉ áp cho phong cách đầu tròn (`horror_cartoon_2d`), hay cho mọi phong cách? App có 16 phong cách; chỉ `horror_cartoon_2d` vẽ đầu tròn trắng, 15 phong cách kia vẽ đầu người bình thường nên tóc vốn đã tự nhiên. Đề xuất của agent: chỉ áp cho phong cách đầu tròn.
 3. Dự án cũ (ảnh cảnh vẽ đầu trọc): khi Muse vẽ lại ảnh cảnh để sửa tóc trong lúc làm video, có tải ảnh đó về và thay ảnh tĩnh của cảnh không? Có thì ảnh tĩnh khớp video nhưng runner phải tải thêm ảnh; không thì ảnh tĩnh và video của cảnh đó lệch tóc nhau.
