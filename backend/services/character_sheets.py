@@ -230,13 +230,33 @@ def reference_image(project: Project, cast: ProjectCast, entity_id: str) -> Opti
 
 
 # ------------------------------------------------------------------------------------------------- vẽ, duyệt
-def sheet_prompt(sheet: CharacterSheet) -> str:
+def hair_rule_for(project: Project, entity_id: str) -> str:
+    """Câu quy tắc tóc nếu người này là nữ và dự án dùng phong cách đầu tròn; không thì chuỗi rỗng.
+    Ghép lúc dựng prompt (không ghi vào design_en đã lưu) để thiết kế cũ, kể cả đã duyệt, cũng nhận quy tắc."""
+    from services.image_service import FEMALE_HAIR_RULE_EN, ROUND_HEAD_STYLES   # nạp muộn như default_design
+    if project.style_preset not in ROUND_HEAD_STYLES:
+        return ""
+    person = next((e for e in case_people(project) if e.id == entity_id), None)
+    return FEMALE_HAIR_RULE_EN if person is not None and person.gender == "female" else ""
+
+
+def hair_rule_line(design_en: str, hair_rule: str) -> str:
+    """Dòng chèn vào prompt: quy tắc tóc thắng chỗ thiết kế cũ nói khác; rỗng nếu không có quy tắc hoặc đã có sẵn."""
+    if not hair_rule or hair_rule in design_en:
+        return ""
+    return f"This hair rule overrides any other hair placement in the design: {hair_rule}"
+
+
+def sheet_prompt(sheet: CharacterSheet, hair_rule: str = "") -> str:
     lines = [
         "tạo cho tôi 1 hình ảnh 2K tỉ lệ 16:9: CHARACTER TURNAROUND SHEET of ONE character, drawn in exactly the same "
         "art style as the attached scene image.",
         f"CHARACTER DESIGN:\n{sheet.design_en.strip()}",
-        SHEET_LAYOUT_EN,
     ]
+    rule = hair_rule_line(sheet.design_en, hair_rule)
+    if rule:
+        lines.append(rule)
+    lines.append(SHEET_LAYOUT_EN)
     for fb in sheet.feedback:
         lines.append(f"Bản trước SAI: {fb.strip()} — sửa đúng chỗ này, các góc còn lại giữ nguyên thiết kế.")
     return "\n".join(lines)
@@ -256,7 +276,10 @@ async def draw_sheet(project_id: str, entity_id: str, muse_call: MuseCall, refer
     n = len(sheet.versions) + 1
     out = characters_dir(project_id) / entity_id / f"sheet_v{n}.jpg"
     out.parent.mkdir(parents=True, exist_ok=True)
-    task = {"mode": "text-to-image", "route_kind": "video", "raw_prompt": True, "prompt": sheet_prompt(sheet),
+    project = await asyncio.to_thread(_project, project_id)
+    hair_rule = await asyncio.to_thread(hair_rule_for, project, entity_id)
+    task = {"mode": "text-to-image", "route_kind": "video", "raw_prompt": True,
+            "prompt": sheet_prompt(sheet, hair_rule),
             "attachments": [str(reference)], "aspect_ratio": "16:9", "parameters": {"aspect_ratio": "16:9"},
             "output_path": str(out)}
     if sheet.thread_url and sheet.account_id:

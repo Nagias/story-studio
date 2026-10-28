@@ -40,6 +40,15 @@ MASTER_NEGATIVE_PROMPT: str = (
     "jpeg artifacts, signature, watermark, username, inconsistent clothing, modern artifacts in historical scene"
 )
 
+# Chủ dự án 28/10/2026: tóc nhân vật nữ "phủ nhiều trên đầu thay vì chỉ có chút tóc ở phần gáy". Chỉ phong cách đầu tròn
+# (đầu là quả bóng trắng nên Muse hay quên vẽ tóc lên đỉnh); các phong cách khác vẽ đầu người bình thường.
+FEMALE_HAIR_RULE_EN = (
+    "Female characters always have thick, full hair covering most of the top of the head: a generous mass of hair on "
+    "the crown that frames the white face, then falls to the length given in the design; never a bald round head with "
+    "only a little hair at the nape."
+)
+ROUND_HEAD_STYLES = ("horror_cartoon_2d",)
+
 STYLE_PRESETS: Dict[str, Dict[str, Any]] = {
     # 0a. HOẠT HÌNH 2D RÙNG RỢN: chủ dự án 26/10/2026 thích kiểu kênh "Thế Giới Kì Quái" hơn ảnh noir; thử thật trên Muse
     # với đúng đoạn mô tả này: ra nhân vật đầu tròn trắng, nền vẽ tay tối màu, giữ được nhân vật khi đính kèm ảnh cảnh trước.
@@ -50,7 +59,7 @@ STYLE_PRESETS: Dict[str, Dict[str, Any]] = {
             "2D Chinese horror web-cartoon style, flat simple character design: characters have big perfectly round "
             "white heads, tiny dot eyes, simple line mouth, thin simple bodies, thick clean outlines; backgrounds are "
             "detailed dark painted illustrations with muted desaturated colors, cold blue-green night lighting, eerie "
-            "quiet mood, cinematic 16:9 frame, no text, no watermark"
+            "quiet mood, cinematic 16:9 frame, no text, no watermark. " + FEMALE_HAIR_RULE_EN
         ),
         "negative_prompt": "photorealistic, realistic skin, 3d render, anime big eyes, chibi, bright cheerful colors, blood, gore",
         "colors": ["#0f172a", "#334155", "#b91c1c"],
