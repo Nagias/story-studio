@@ -354,3 +354,15 @@ Chủ dự án chốt 28/10: bảng nhân vật cho cả dự án, mỗi cảnh 
   - Máy kiểm (khung đầu, cắt cảnh, độ sáng) cho qua cả 3 clip sai nhân vật: chưa có luật "giữ giống ô gốc suốt clip"
 - [ ] Chưa đạt "giống ảnh 100%" ở pha clip; chờ chủ dự án quyết hướng
 - [ ] Chờ chủ dự án: đăng nhập lại muse_acc_vid_01 và videopic muse_vid_02; cảnh 41 (vẽ lại ảnh cảnh hay đổi bảng Hàn Thụy Côn); duyệt lại thiết kế Hàn Thụy Côn agent đã sửa; chạy lại pha clip ban ngày
+
+# Video cao trào: giao việc nhiều bước cho Muse + tóc nhân vật nữ (2026-10-28 tối, nhánh `video-cao-trao-giao-viec`)
+Thiết kế `docs/superpowers/specs/2026-10-28-video-cao-trao-giao-viec-muse-design.md`, kế hoạch `docs/superpowers/plans/2026-10-28-video-cao-trao-giao-viec-muse.md` (chủ dự án duyệt, làm kiểu Native). Nhánh = `master` + các commit của `thu-video-cao-trao` trừ `3bef9ee` (giữ đội agent).
+- [x] Thí nghiệm trước khi code (28/10 chiều, script nháp, `.cache/thu-muse-AB-28/`, `.cache/thu-muse-28-lan2/`): một yêu cầu Muse nhiều bước giữ đầu tròn; đoạn quay lưng bắt đầu từ ảnh góc sau vẽ riêng thì hết đĩa trắng. Chủ dự án loại hướng dựng bằng code
+- [x] Task 1 nhánh; Task 2 quy tắc tóc nữ (`FEMALE_HAIR_RULE_EN`, chỉ phong cách đầu tròn); Task 3 bản giao việc `services/climax_brief.py`; Task 4 runner `agent-video` (`runners/muse_agent_turn.py`, `_finish_agent_turn()`); Task 5 bridge + pha clip mới + `redo`; Task 6 thẻ cảnh (báo cáo Muse, cảnh báo, làm lại)
+- [x] Bộ test mặc định chạy từng file (máy còn ~2,4 GB bộ nhớ ảo, `check.py --full` chết vì MemoryError): 60 file, 900 đạt, 0 lỗi, 390 s
+- [x] Bấm thử 8010 (dự án ảnh giả `proj_crime_uiagent`, không gọi Muse; xong chuyển sang `.cache/climax_try/ui_agent/`, `projects/` như trước): thẻ cảnh hiện báo cáo, cảnh báo vượt ngân sách, "Đã thay ảnh cảnh (bản cũ: scene_003.truoc_sua_toc.jpg)", chữ HTML trong báo cáo không thành thẻ; "Làm lại" hỏi xác nhận rồi về "grid_approved"; console sạch
+- [x] Chạy thật cảnh 28 (`proj_crime_thucaotrao`, vid_02, 21:16–21:36): Muse làm xong và tự báo ĐẠT nhưng app **không tải được** video (blob bị Muse tạo lại, "Failed to fetch") và bridge **tự giao lại** → tốn **2 yêu cầu Muse** (số video mỗi lần do Muse tự đếm, xem chat). Đã sửa cả hai, mỗi lỗi một test đỏ→xanh (commit `5e72941`)
+- [x] Kết quả thật của lần 2 (chat https://muse.ai/thread/6a8b1802-dc4c-4b6c-959b-9e73cb93efd2) tải bằng script chỉ đọc, cho đi qua pha clip của app: video 12,0 s đạt kiểm, cảnh "ready", ảnh cảnh thay bằng ảnh Muse sửa tóc (giống ảnh cũ 0,922; ảnh bìa video 0,68 bị bỏ), bản cũ `images/scene_028.truoc_sua_toc.jpg`. Xem từng giây (`.cache/live28_do_video/khung_video_cuoi.jpg`): 0–3 s chạy thật tới cửa, 4–7 s đẩy cửa vào, 8–12 s hành lang quay lưng; mặt tròn, tóc dày trên đầu suốt video, không đĩa trắng. Muse tự chia đoạn từ bản giao việc
+- [ ] Chưa chạy lại trọn từ nút sau khi sửa tải video (để khỏi tốn thêm yêu cầu Muse): đường tải mới chỉ kiểm bằng test và bằng script dò cùng cách đọc địa chỉ
+- [ ] Cảnh 41 chờ chủ dự án: bảng Hàn Thụy Côn đầu tròn mâu thuẫn ảnh cảnh vẽ mặt người; cô gái và cậu bé chưa có bảng nhân vật
+- [ ] muse_acc_vid_01 hết phiên đăng nhập (runner tự tạm ngừng)
