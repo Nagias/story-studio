@@ -545,7 +545,9 @@ class SceneThread:
     def __init__(self, state: dict):
         self.url: Optional[str] = None if state.get("thread_dirty") else state.get("thread_url")
         self.account: Optional[str] = None if state.get("thread_dirty") else state.get("account_id")
-        self.avoid: list[str] = list(state.get("avoid_accounts") or [])
+        # Mỗi lần bấm chạy là một lần thử mới: tài khoản quá tải lúc trước có thể đã ổn (chạy thật 28/10/2026: đêm qua
+        # lỗi hết thì sáng hôm sau không thử được tài khoản nào). Chỉ tránh tài khoản lỗi ngay trong lần chạy này.
+        self.avoid: list[str] = []
 
     def apply(self, task: dict) -> dict:
         if self.url and self.account:

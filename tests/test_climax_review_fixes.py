@@ -69,8 +69,14 @@ def test_bridge_retry_never_moves_task_to_avoided_account(fleet):  # noqa: F811
     assert mb.pick_fallback_account("video", exclude="muse_acc_vid_01")["account_id"] == "muse_acc_vid_02"
 
 
+def test_new_run_does_not_carry_over_avoid_list_from_earlier_run():
+    assert cv.SceneThread({"avoid_accounts": ["muse_acc_vid_01", "muse_acc_vid_02"]}).avoid == []
+
+
 def test_success_clears_avoid_list():
-    thread = cv.SceneThread({"avoid_accounts": ["muse_acc_vid_01"]})
+    thread = cv.SceneThread({})
+    thread.drop(switch_account=True)
+    thread.avoid.append("muse_acc_vid_01")
     thread.remember({"thread_url": "https://muse.ai/thread/2d353dc3-3d3d-44b3-a3e7-51f54a295757",
                      "executed_by": "muse_acc_vid_02"})
     assert thread.state()["avoid_accounts"] == []
