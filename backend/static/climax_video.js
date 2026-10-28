@@ -12,8 +12,8 @@
   const LABEL = {
     selected: ['🎬 Sẽ làm video', 'bg-purple-50 text-purple-700 border-purple-200'],
     grid: ['🎬 Muse vẽ ảnh 9-grid…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
-    clips: ['🎬 Muse làm clip…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
-    checking: ['🎬 Đang ghép clip…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
+    clips: ['🎬 Muse đang làm video (nhiều bước, 10–45 phút)…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
+    checking: ['🎬 Đang kiểm video của Muse…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
     grid_review: ['🎬 Chờ duyệt grid', 'bg-amber-50 text-amber-700 border-amber-200'],
     grid_approved: ['🎬 Grid đã duyệt, chờ làm clip', 'bg-purple-50 text-purple-700 border-purple-200'],
     ready: ['🎬 Đã có video cao trào', 'bg-emerald-50 text-emerald-700 border-emerald-200'],
@@ -126,7 +126,7 @@
     btn.textContent = on ? '🎬 Bỏ video' : '🎬 Làm video';
     btn.title = on
       ? 'Bỏ cảnh này khỏi danh sách làm video cao trào (cảnh đã có video thì về lại ảnh, clip vẫn giữ trên đĩa)'
-      : 'Làm video cho cảnh này bằng Muse (ảnh 9-grid rồi các clip 5 giây)';
+      : 'Làm video cho cảnh này bằng Muse (ảnh 9-grid, duyệt, rồi giao Muse một việc nhiều bước)';
     btn.disabled = cx.running;
     if (cx.running) btn.classList.add('opacity-30', 'cursor-not-allowed');
     btn.addEventListener('click', (ev) => { ev.stopPropagation(); toggleScene(scene.id, !on); });
@@ -241,7 +241,47 @@
       box.appendChild(act);
     }
     if (state.error) box.appendChild(node('p', 'text-red-700', state.error));
+    if (state.status === 'ready' || state.status === 'failed') box.appendChild(resultFor(scene, state));
     return box;
+  }
+
+  // Kết quả của việc giao Muse nhiều bước: báo cáo của Muse, cảnh báo, ảnh cảnh đã thay, nút làm lại
+  function resultFor(scene, state) {
+    const wrap = node('div', 'space-y-1');
+    if (state.scene_image_updated) {
+      const name = String(state.backup_image || '').split(/[\\/]/).pop();
+      wrap.appendChild(node('p', 'text-emerald-700', `Đã thay ảnh cảnh bằng ảnh Muse sửa (bản cũ: ${name})`));
+    }
+    for (const w of state.warnings || []) wrap.appendChild(node('p', 'text-amber-700', `⚠ ${w}`));
+    if (state.muse_report) {
+      const det = node('details', 'bg-white rounded border border-slate-200 px-2 py-1');
+      det.appendChild(node('summary', 'cursor-pointer font-semibold text-slate-700', 'Báo cáo của Muse'));
+      const pre = node('pre', 'whitespace-pre-wrap text-[10px] text-slate-700 max-h-48 overflow-auto', state.muse_report);
+      pre.dataset.climaxReport = scene.id;
+      det.appendChild(pre);
+      wrap.appendChild(det);
+    }
+    if (state.grid_approved) {
+      const b = smallButton('↻ Làm lại cảnh này', 'bg-white text-purple-700 border-purple-300', () => redo(scene.id));
+      b.dataset.climaxRedo = scene.id;
+      wrap.appendChild(b);
+    }
+    return wrap;
+  }
+
+  async function redo(sceneId) {
+    const ok = window.confirm('Làm lại video cảnh này? Muse làm lại từ đầu trong chat mới, tốn tối đa 6 video + 4 ảnh '
+      + 'Muse (10–45 phút). Grid đã duyệt giữ nguyên; ảnh cảnh gốc vẫn giữ ở bản dự phòng.');
+    if (!ok) return;
+    try {
+      await flushProjectSave({ silent: true });
+      await call('POST', `/scenes/${encodeURIComponent(sceneId)}/redo`);
+      await pullScenes([sceneId]);
+      renderSceneList();
+      showToast('Cảnh đã về chờ làm video. Bấm nút tạo video để chạy.', 'info', 6000);
+    } catch (err) {
+      showToast(`Không làm lại được: ${escapeHtml(err.message)}`, 'error', 7000);
+    }
   }
 
   // Gắn nhãn và nút vào thẻ cảnh do renderSceneList() (app.js) vẽ
@@ -258,14 +298,14 @@
       if (badge) bar.appendChild(badge);
       bar.appendChild(toggleFor(scene));
       card.querySelectorAll('.climax-video-panel').forEach(n => n.remove());
-      if (climaxState(scene).status && climaxState(scene).status !== 'ready' && cx.cast) {
+      if (climaxState(scene).status && cx.cast) {
         bar.parentElement.insertAdjacentElement('afterend', panelFor(scene));
       }
     }
   }
 
   function signature(scenes) {
-    return JSON.stringify((scenes || []).map(s => [s.scene_id, s.status, s.done, s.error, s.grid_version]));
+    return JSON.stringify((scenes || []).map(s => [s.scene_id, s.status, s.done, s.error, s.grid_version, s.video_seconds]));
   }
 
   async function toggleScene(sceneId, enabled) {
@@ -299,9 +339,11 @@
   async function run() {
     const n = countRunnable();
     if (!n) return;
-    const ok = window.confirm(`Chạy Muse (tài khoản video) cho ${n} cảnh?\n\nCảnh chưa có grid: vẽ ảnh 9-grid (1 grid mỗi 45 giây lời kể) `
-      + 'rồi dừng chờ bạn duyệt. Cảnh đã duyệt grid: 1 clip 5 giây cho mỗi 5 giây lời kể, clip lỗi thử lại 1 lần (lỗi Muse thì '
-      + 'sang tài khoản khác). Chạy nền, nghỉ 15 giây giữa các lượt Muse.');
+    const ok = window.confirm(`Chạy Muse (tài khoản video) cho ${n} cảnh?
+
+Cảnh chưa có grid: vẽ ảnh 9-grid (1 grid mỗi 45 giây lời kể) `
+      + 'rồi dừng chờ bạn duyệt. Cảnh đã duyệt grid: giao Muse một việc nhiều bước (Muse tự làm, tự kiểm, làm lại), tối đa '
+      + '6 video + 4 ảnh Muse và 10–45 phút mỗi cảnh; lỗi thì giữ ảnh, không tự thử lại. Chạy nền, lần lượt từng cảnh.');
     if (!ok) return;
     try {
       await flushProjectSave({ silent: true });
