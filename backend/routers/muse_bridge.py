@@ -1340,7 +1340,9 @@ async def fail_task(task_id: str, req: TaskFailRequest):
     retry_count = int(task.get("retry_count", 0))
     # Task ghim vào side chat của một tài khoản: không thử lại ở đây (tài khoản khác không mở được chat đó);
     # người gọi tự quyết mở chat mới trên tài khoản khác.
-    if retry_count < MAX_TASK_RETRIES and not task.get("abandoned") and not task.get("pin_account"):
+    # Việc giao nhiều bước (agent-video) không tự thử lại: mỗi lần Muse làm tốn tới 6 video (chạy thật 28/10/2026)
+    if (retry_count < MAX_TASK_RETRIES and not task.get("abandoned") and not task.get("pin_account")
+            and task.get("mode") != AGENT_VIDEO_MODE):
         nxt = pick_fallback_account(kind, exclude=failed_acc, avoid=task.get("avoid_accounts")) or (
             find_account(failed_acc) if is_account_available(find_account(failed_acc)) else None
         )

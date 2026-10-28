@@ -1170,8 +1170,8 @@ class MuseFleetRunner:
         return None
 
     async def _finish_agent_turn(self, acc: FleetAccount, page: Page, context: BrowserContext, task: Dict[str, Any],
-                                 text_before: str, prompt: str, pre_srcs: List[str],
-                                 net_candidates: List[str]) -> Tuple[bool, Optional[Path], str]:
+                                 text_before: str, prompt: str,
+                                 pre_srcs: List[str]) -> Tuple[bool, Optional[Path], str]:
         """Việc `agent-video`: chờ Muse làm xong lượt (chữ kết thúc bằng done_token và đứng yên), rồi lấy video cuối và
         mọi ảnh mới Muse gửi sau prompt (ảnh nộp kèm dạng file phụ). Không bỏ ngang vì chữ "lỗi" trong báo cáo."""
         task_id = task["task_id"]
@@ -1205,15 +1205,22 @@ class MuseFleetRunner:
         task["_result_meta"]["muse_reply"] = said[-agent_turn.REPLY_MAX_CHARS:]
         await page.evaluate(SCROLL_LOG_JS)
         await page.wait_for_timeout(3000)
-        videos = [c["src"] for c in await page.evaluate(FIND_NEW_MEDIA_JS, ["video", pre_srcs, []])]
-        videos += [u for u in net_candidates if u not in videos]
-        images = [c["src"] for c in await page.evaluate(FIND_NEW_MEDIA_JS, ["image", pre_srcs, []])]
-        final = agent_turn.pick_final_video(videos)
+        # Muse tạo lại địa chỉ blob của video liên tục (chạy thật 28/10/2026: địa chỉ vừa đọc đã bị huỷ, "Failed to
+        # fetch"): chỉ lấy địa chỉ đang có trên trang (không dùng blob bắt từ mạng, đã cũ) và đọc lại trang trước mỗi lần thử
+        data, final, videos = None, None, []
+        for _ in range(agent_turn.DOWNLOAD_TRIES):
+            videos = [c["src"] for c in await page.evaluate(FIND_NEW_MEDIA_JS, ["video", pre_srcs, []])]
+            final = agent_turn.pick_final_video(videos)
+            if final is not None:
+                data = await self._download_media(page, context, final)
+                if data:
+                    break
+            await page.wait_for_timeout(2000)
         if final is None:
             raise TaskFailure("NO_FINAL", "Muse ghi dòng kết thúc nhưng không có video nào sau prompt")
-        data = await self._download_media(page, context, final)
         if not data:
-            raise TaskFailure("NO_FINAL", f"Không tải được video cuối của Muse: {final[:100]}")
+            raise TaskFailure("NO_FINAL", f"Không tải được video cuối của Muse sau {agent_turn.DOWNLOAD_TRIES} lần: {final[:100]}")
+        images = [c["src"] for c in await page.evaluate(FIND_NEW_MEDIA_JS, ["image", pre_srcs, []])]
         dest_file = OUTPUTS_DIR / f"{task_id}.mp4"
         dest_file.write_bytes(data)
         ok, info = validate_video_file(dest_file, 2 * target + 1)
@@ -1358,8 +1365,7 @@ class MuseFleetRunner:
             submitted["v"] = True
             await self._submit_prompt(page, input_el, prompt)
             if mode == agent_turn.AGENT_VIDEO_MODE:
-                return await self._finish_agent_turn(acc, page, context, task, text_before, prompt, pre_srcs,
-                                                     net_candidates)
+                return await self._finish_agent_turn(acc, page, context, task, text_before, prompt, pre_srcs)
             logger.info(f"[{acc.account_id}] Đã gửi prompt, chờ Muse tạo {kind} (tối đa {MEDIA_WAIT_SEC[kind]}s)...")
             error_since: Optional[float] = None
             await self.update_task_progress(task_id, 60, "generating", f"Muse đang tạo {kind}...")

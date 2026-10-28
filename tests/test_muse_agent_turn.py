@@ -8,7 +8,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 from runners.muse_agent_turn import (AGENT_STABLE_SEC, STREAMING_JS, budget_warnings, pick_final_video,  # noqa: E402
                                      turn_done)
-from runners.muse_fleet_runner import _muse_reply_part  # noqa: E402
+from runners.muse_fleet_runner import MuseFleetRunner, _muse_reply_part  # noqa: E402
 
 TOKEN = "XONG-ab12cd34"
 PROMPT = "Làm video cho một cảnh...\nDòng cuối cùng của tin nhắn cuối cùng ghi đúng nguyên văn: " + TOKEN
@@ -104,3 +104,61 @@ def test_constants():
     assert AGENT_VIDEO_MODE == SERVICE_MODE == "agent-video"     # runner và dịch vụ phải gọi cùng một tên
     assert AGENT_STABLE_SEC == 90
     assert "data-hatch-markdown-streaming" in STREAMING_JS
+
+
+def test_finish_agent_turn_rescans_page_when_blob_is_revoked(tmp_path, monkeypatch):
+    """Chạy thật 28/10/2026 21:27 và 21:35: Muse tạo lại địa chỉ blob của video cuối liên tục; runner tải địa chỉ đã bị
+    huỷ (cả blob bắt từ mạng) -> "Failed to fetch", NO_FINAL dù Muse đã làm xong. Phải quét lại trang lấy địa chỉ mới."""
+    import asyncio
+    from runners import muse_fleet_runner as mfr
+
+    monkeypatch.setattr(mfr, "OUTPUTS_DIR", tmp_path)
+    monkeypatch.setattr(mfr, "WORK_DIR", tmp_path / "work")
+    monkeypatch.setattr(mfr, "SCAN_INTERVAL_SEC", 0)
+    monkeypatch.setattr(mfr.agent_turn, "AGENT_STABLE_SEC", 0)
+    monkeypatch.setattr(mfr, "validate_video_file", lambda path, max_seconds=None: (True, "12.0s"))
+    monkeypatch.setattr(mfr, "remember_delivered", lambda digest: None)
+    prompt = "brief ... " + TOKEN
+
+    class FakePage:
+        url = "https://muse.ai/thread/6a8b1802-dc4c-4b6c-959b-9e73cb93efd2"
+
+        def __init__(self):
+            self.video_scans = 0
+
+        def is_closed(self):
+            return False
+
+        async def wait_for_timeout(self, ms):
+            return None
+
+        async def evaluate(self, js, arg=None):
+            if js == mfr.LOG_TEXT_JS:
+                return "You:\n" + prompt + "\nĐã xong, gửi file.\n" + TOKEN
+            if js == mfr.agent_turn.STREAMING_JS:
+                return False
+            if js == mfr.FIND_NEW_MEDIA_JS:
+                if arg[0] == "video":
+                    self.video_scans += 1
+                    return [{"src": "blob:cu" if self.video_scans == 1 else "blob:moi"}]
+                return []
+            return None
+
+    runner = MuseFleetRunner.__new__(MuseFleetRunner)
+    tried = []
+
+    async def download(page, context, src):
+        tried.append(src)
+        return b"\x00\x00\x00\x18ftypmp42" + b"v" * 5000 if src == "blob:moi" else None
+
+    async def noop(*a, **k):
+        return None
+
+    runner._download_media, runner.update_task_progress, runner._click_allow_if_asked = download, noop, noop
+    task = {"task_id": "t_agent1", "_result_meta": {},
+            "agent": {"done_token": TOKEN, "wait_sec": 60, "target_seconds": 12}}
+    from types import SimpleNamespace
+    acc = SimpleNamespace(account_id="muse_acc_vid_02")
+    ok, path, _ = asyncio.run(runner._finish_agent_turn(acc, FakePage(), None, task, "", prompt, []))
+    assert ok and path.is_file()
+    assert tried == ["blob:cu", "blob:moi"]                   # đọc lại trang lấy địa chỉ mới sau lần tải hỏng

@@ -14,6 +14,7 @@ AGENT_STABLE_SEC = 90          # chữ đứng yên chừng này sau dòng kết
 AGENT_MAX_VIDEOS = 6           # giới hạn Muse tự khai cho một yêu cầu; chỉ để cảnh báo, runner không chặn được Muse
 AGENT_MAX_IMAGES = 4
 REPLY_MAX_CHARS = 8000
+DOWNLOAD_TRIES = 5             # đọc lại trang rồi tải lại khi địa chỉ blob vừa bị Muse huỷ
 
 # Trang Muse đánh dấu tin đang gõ: data-hatch-markdown-streaming="true" (đo DOM 28/10/2026)
 STREAMING_JS = ("() => !!document.querySelector('[role=log] [data-hatch-markdown-streaming=\"true\"], "

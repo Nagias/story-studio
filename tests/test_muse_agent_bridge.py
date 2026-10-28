@@ -98,3 +98,15 @@ def test_normal_video_task_keeps_short_reply(fleet, tmp_path):
                              data={"metadata": json.dumps({"muse_reply": "x" * 5000})})
     assert r.status_code == 200
     assert len(mb.task_history[0]["muse_reply"]) == 2000 and "extra_images" not in mb.task_history[0]
+
+
+def test_failed_agent_task_is_not_retried(fleet):
+    """Chạy thật 28/10/2026: việc giao nhiều bước lỗi lúc tải bị bridge tự giao lại (vid_01 rồi vid_02) -> Muse làm
+    trọn lần thứ hai. Mỗi lần tốn tới 6 video: lỗi thì dừng, chủ dự án tự bấm làm lại."""
+    online("muse_acc_vid_01", "muse_acc_vid_02")
+    task = mb.enqueue_task({"mode": "agent-video", "route_kind": "video", "prompt": "brief"})
+    poll(fleet["client"], task["assigned_account"])
+    r = fleet["client"].post(f"/api/muse-bridge/tasks/{task['task_id']}/fail",
+                             json={"task_id": task["task_id"], "error": "NO_FINAL: Không tải được video cuối"})
+    assert r.status_code == 200 and r.json()["auto_failover"] is False
+    assert not mb.pending_tasks and mb.task_history[0]["status"] == "failed"
