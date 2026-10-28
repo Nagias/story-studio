@@ -23,6 +23,7 @@ import logging
 import math
 import os
 import shutil
+import unicodedata
 import subprocess
 import uuid
 from pathlib import Path
@@ -36,7 +37,7 @@ from models.schemas import Project, Scene
 from security import is_within
 from services import character_sheets as cs
 from services import project_service
-from services.climax_brief import AGENT_REPLY_MAX_CHARS, AGENT_VIDEO_MODE, scene_brief, target_seconds
+from services.climax_brief import AGENT_REPLY_MAX_CHARS, AGENT_VIDEO_MODE, NEW_SCENE_IMAGE_TAG, scene_brief, target_seconds
 from services.tts_service import MediaDurationError, get_audio_duration
 
 logger = logging.getLogger("story_studio.climax_video")
@@ -281,15 +282,33 @@ def check_agent_video(path: Path, target: int) -> float:
     return seconds
 
 
-def choose_scene_image(old: Path, candidates: list[Path]) -> Optional[Path]:
+def video_frame_size(path: Path) -> tuple[int, int]:
+    """Cỡ khung (rộng, cao) của video; ảnh bìa video Muse gửi kèm có đúng cỡ này."""
+    proc = _run_media(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
+                       "-of", "csv=p=0", str(path)], "đo cỡ khung video của Muse")
+    w, h = proc.stdout.decode("utf-8", errors="ignore").strip().split(",")[:2]
+    return int(w), int(h)
+
+
+def muse_redrew_scene(report: str) -> bool:
+    """Muse ghi "ANH_CANH_MOI: có" trong báo cáo (bản giao việc dặn) thì mới coi là có ảnh cảnh vẽ lại."""
+    text = unicodedata.normalize("NFC", report or "").lower()
+    return f"{NEW_SCENE_IMAGE_TAG.lower()}: có" in text
+
+
+def choose_scene_image(old: Path, candidates: list[Path],
+                       exclude_size: Optional[tuple[int, int]] = None) -> Optional[Path]:
     """Trong các ảnh Muse gửi kèm, ảnh cảnh đã sửa tóc = ảnh 16:9 giống ảnh cảnh cũ nhất (ảnh góc sau khác hẳn bố cục).
-    Không ảnh nào đủ giống: None (giữ ảnh cũ)."""
+    Ảnh đúng cỡ khung video (`exclude_size`) là ảnh bìa của video: không bao giờ chọn (giám khảo 28/10/2026: ảnh bìa
+    thật giống ảnh cảnh 0,68, vượt ngưỡng). Không ảnh nào đủ giống: None (giữ ảnh cũ)."""
     ref = _luma(_load_rgb(old, (CHECK_W, CHECK_H)))
     best, best_score = None, SCENE_IMAGE_MIN_SIMILARITY
     for cand in candidates:
         try:
             with Image.open(cand) as img:
                 w, h = img.size
+            if exclude_size is not None and (w, h) == tuple(exclude_size):
+                continue
             if abs(w / h - 16 / 9) > SCENE_IMAGE_RATIO_TOL * 16 / 9:
                 continue
             score = _ssim_global(ref, _luma(_load_rgb(cand, (CHECK_W, CHECK_H))))
@@ -628,7 +647,10 @@ async def run_scene_clips(project_id: str, scene_id: str, muse_call: MuseCall) -
         final = project_service.get_scene_media_paths(project_id, scene_id)["motion_video"]
         await asyncio.to_thread(_keep_copy, got, final)
         extras = [Path(x) for x in (result.get("extra_images") or []) if isinstance(x, str)]
-        chosen = await asyncio.to_thread(choose_scene_image, image, extras)
+        chosen = None
+        if extras and muse_redrew_scene(str(result.get("muse_reply") or "")):
+            frame = await asyncio.to_thread(video_frame_size, got)
+            chosen = await asyncio.to_thread(choose_scene_image, image, extras, frame)
         backup = await asyncio.to_thread(replace_scene_image, project_id, scene_id, chosen) if chosen else None
         state = {**old, **thread.state(), "status": "ready", "clips": 1, "grids": len(grid_files), "attempts": 1,
                  "clip_version": version, "video_seconds": round(length, 1),

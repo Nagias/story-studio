@@ -965,8 +965,10 @@ class MuseFleetRunner:
         meta = dict(meta)
         extras = [Path(p) for p in meta.pop("_extra_files", []) or []]   # ảnh phụ của việc agent-video (đường dẫn máy này)
         try:
-            files = [("file", (file_path.name, file_path.read_bytes(), mime))]
-            files += [("extras", (p.name, p.read_bytes(), "image/jpeg")) for p in extras if p.is_file()]
+            files = [("file", (file_path.name, await asyncio.to_thread(file_path.read_bytes), mime))]
+            for p in extras:
+                if p.is_file():
+                    files.append(("extras", (p.name, await asyncio.to_thread(p.read_bytes), "image/jpeg")))
             resp = await self.http.post(
                 f"{self.loopback_url}/tasks/{task_id}/complete",
                 files=files,
@@ -1241,11 +1243,11 @@ class MuseFleetRunner:
                 continue
             path = WORK_DIR / f"{task_id}_extra_{i + 1}.jpg"
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(to_jpeg_bytes(img, parse_aspect("16:9")))
+            path.write_bytes(to_jpeg_bytes(img, None))   # giữ nguyên khung: app tự kiểm tỉ lệ để bỏ ảnh không phải cảnh
             extra_files.append(str(path))
         task["_result_meta"].update(
             media_count={"video": len(videos), "image": len(images)},
-            warnings=agent_turn.budget_warnings(len(videos), len(images), final_videos=1),
+            warnings=agent_turn.budget_warnings(len(videos), len(images), final_videos=len(videos)),
             _extra_files=extra_files)
         logger.info(f"[{acc.account_id}] Muse xong lượt sau {int(time.time() - started)}s: {info}, "
                     f"{len(videos)} video, {len(images)} ảnh -> {dest_file.name}")

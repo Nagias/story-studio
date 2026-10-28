@@ -138,3 +138,39 @@ def test_api_redo_resets_state_and_409_while_running(client, monkeypatch):  # no
     assert client.post(f"/api/projects/{pid}/climax-video/scenes/scene_002/redo").status_code == 400
     st = client.get(f"/api/projects/{pid}/climax-video/status").json()["scenes"][0]
     assert st["scene_image_updated"] is True and "ANH_CANH_MOI" in st["muse_report"]
+
+
+def _poster_of(video: Path, out: Path) -> Path:
+    """Ảnh bìa như Muse: một khung của chính video cuối, cùng cỡ khung video."""
+    import subprocess
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", "0.5", "-i", str(video), "-frames:v", "1", str(out)], check=True)
+    return out
+
+
+def test_video_poster_never_replaces_scene_image(isolated_projects_dir, tmp_path):
+    """Giám khảo 28/10/2026: ảnh bìa video thật giống ảnh cảnh 0,68 (> 0,45) nên bị chọn thay ảnh cảnh."""
+    from tests.test_climax_video import _clip_from_image
+    project = _climax_project(duration=6.0)
+    pid, sid = project.id, "scene_003"
+    scene_img = project_service.get_scene_media_paths(pid, sid)["image"]
+    video = _clip_from_image(scene_img, tmp_path / "final.mp4", seconds=6.0, darken=False, size="1248x704")
+    poster = _poster_of(video, tmp_path / "poster.jpg")
+    assert cv.choose_scene_image(scene_img, [poster], exclude_size=(1248, 704)) is None
+
+
+def test_scene_image_replaced_only_when_muse_says_so(isolated_projects_dir):
+    project = _climax_project(duration=6.0)
+    pid, sid = project.id, "scene_003"
+    scene_img = project_service.get_scene_media_paths(pid, sid)["image"]
+    original = scene_img.read_bytes()
+    muse = FakeMuse(pid, sid)
+    real_agent = muse._agent
+
+    def says_no(task, out, kind):
+        r = real_agent(task, out, kind)
+        r["muse_reply"] = "Ảnh 1 đã đúng tóc nên không vẽ lại. ANH_CANH_MOI: không. ĐẠT."
+        return r
+    muse._agent = says_no
+    state = _run_full(pid, sid, muse)
+    assert state["status"] == "ready" and state["scene_image_updated"] is False
+    assert scene_img.read_bytes() == original

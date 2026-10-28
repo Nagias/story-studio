@@ -28,6 +28,12 @@ def test_done_only_when_muse_text_ends_with_token():
     assert not turn_done(said("You:\n" + PROMPT + "\nMình sẽ ghi " + TOKEN + " khi xong, giờ làm clip 1"), TOKEN)
 
 
+def test_done_token_followed_by_punctuation_or_markdown():
+    """Giám khảo 28/10/2026: Muse thêm dấu chấm hay in đậm sau dòng kết thúc thì runner chờ hết 45 phút."""
+    assert turn_done(said("You:\n" + PROMPT + "\nĐã xong.\n**" + TOKEN + "**."), TOKEN)
+    assert turn_done(said("You:\n" + PROMPT + "\nĐã xong.\n`" + TOKEN + "`"), TOKEN)
+
+
 def test_old_chat_text_before_prompt_is_ignored():
     before = "You:\nviệc cũ " + TOKEN + "\n" + TOKEN
     assert not turn_done(said(before + "\nYou:\n" + PROMPT, text_before=before), TOKEN)

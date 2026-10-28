@@ -84,6 +84,25 @@ def test_brief_lists_attachments_in_order(isolated_projects_dir):
 
 def test_long_design_is_cut(isolated_projects_dir):
     project, scene, nu, _ = _setup(isolated_projects_dir)
-    nu.design_en = "x" * 2000
+    nu.design_en = "x" * 3000
     b = scene_brief(project, scene, [nu], grid_count=1, seconds=11, done_token=TOKEN)
-    assert "x" * 600 in b and "x" * 601 not in b
+    assert "x" * 1500 in b and "x" * 1501 not in b
+
+
+def test_hair_rule_survives_default_design_and_long_approved_design(isolated_projects_dir):
+    """Giám khảo 28/10/2026: thiết kế mặc định chép phong cách (có câu quy tắc tóc ở sau ký tự ~400); cắt 600 ký tự
+    làm rơi câu quy tắc, mà dòng 'thắng' cũng không thêm. Thiết kế thật 920–1340 ký tự còn mất CLOTHES."""
+    from services.character_sheets import default_design
+    project, scene, _, _ = _setup(isolated_projects_dir)
+    entity = CaseEntity(id="person_1", kind="person", real_names=["X"], role="victim", alias_vi="Thẩm Nhã Uyên",
+                        alias_en="Ya", gender="female",
+                        appearance_en="a slender East Asian woman in her early 20s with shoulder-length wavy dark hair, "
+                                      "wearing a vintage pastel blouse and high-waisted slacks")
+    nu = CharacterSheet(entity_id="person_1", name_vi="Thẩm Nhã Uyên", status="approved",
+                        design_en=default_design(entity, "horror_cartoon_2d"))
+    b = scene_brief(project, scene, [nu], grid_count=1, seconds=11, done_token=TOKEN)
+    assert b.count(FEMALE_HAIR_RULE_EN) == 1 and "This hair rule overrides" in b
+    long_design = "HEAD: round. " + "x" * 1000 + " CLOTHES: pale blue-grey blouse. FIXED in every view."
+    nu2 = CharacterSheet(entity_id="person_1", name_vi="Thẩm Nhã Uyên", status="approved", design_en=long_design)
+    b2 = scene_brief(project, scene, [nu2], grid_count=1, seconds=11, done_token=TOKEN)
+    assert "CLOTHES: pale blue-grey blouse" in b2 and "FIXED in every view" in b2

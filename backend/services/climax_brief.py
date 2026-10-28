@@ -10,13 +10,13 @@ from __future__ import annotations
 import math
 
 from models.schemas import Project, Scene
-from services.character_sheets import CharacterSheet, hair_rule_for, hair_rule_line
+from services.character_sheets import CharacterSheet, hair_rule_for
 
 AGENT_MAX_VIDEOS = 6        # giới hạn của Muse cho một yêu cầu (Muse tự khai 28/10/2026)
 AGENT_MAX_IMAGES = 4
 AGENT_MAX_SECONDS = 24      # 6 video ~10 giây mà còn chừa lượt làm lại; lời kể dài hơn: giữ khung cuối khi dựng
 AGENT_MIN_SECONDS = 5
-DESIGN_MAX_CHARS = 600
+DESIGN_MAX_CHARS = 1500       # thiết kế đã duyệt thật dài 920–1340 ký tự (đo 28/10/2026): giữ đủ phần quần áo, luật FIXED
 NEW_SCENE_IMAGE_TAG = "ANH_CANH_MOI"
 AGENT_VIDEO_MODE = "agent-video"   # chế độ việc giao nhiều bước (Fleet Runner nhận ra theo tên này)
 AGENT_REPLY_MAX_CHARS = 8000        # báo cáo của Muse giữ lại tối đa chừng này ký tự
@@ -42,11 +42,13 @@ def _attachment_lines(grid_count: int) -> list[str]:
 def _cast_lines(project: Project, people: list[CharacterSheet]) -> list[str]:
     lines = []
     for p in people:
-        design = " ".join(p.design_en.split())[:DESIGN_MAX_CHARS]
-        lines.append(f"- {p.name_vi}: {design}")
-        rule = hair_rule_line(p.design_en, hair_rule_for(project, p.entity_id))
+        rule = hair_rule_for(project, p.entity_id)
+        # Câu quy tắc có thể nằm sẵn trong thiết kế (thiết kế mặc định chép phong cách vẽ), ở sau chỗ cắt: bỏ khỏi thiết
+        # kế rồi luôn ghi một dòng riêng, để cắt bao nhiêu cũng không rơi mất (giám khảo 28/10/2026)
+        design = p.design_en.replace(rule, " ") if rule else p.design_en
+        lines.append(f"- {p.name_vi}: {' '.join(design.split())[:DESIGN_MAX_CHARS]}")
         if rule:
-            lines.append(f"  {rule}")
+            lines.append(f"  This hair rule overrides any other hair placement in the design: {rule}")
     return lines
 
 
