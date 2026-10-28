@@ -1357,7 +1357,7 @@ class MuseFleetRunner:
             pre_net.update(pre_srcs)
             submitted["v"] = True
             await self._submit_prompt(page, input_el, prompt)
-            if mode == "agent-video":
+            if mode == agent_turn.AGENT_VIDEO_MODE:
                 return await self._finish_agent_turn(acc, page, context, task, text_before, prompt, pre_srcs,
                                                      net_candidates)
             logger.info(f"[{acc.account_id}] Đã gửi prompt, chờ Muse tạo {kind} (tối đa {MEDIA_WAIT_SEC[kind]}s)...")

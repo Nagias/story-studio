@@ -57,6 +57,10 @@ ALLOWED_HOSTS_EXTRA = [h.lower() for h in _env_list("STORY_STUDIO_ALLOWED_HOSTS"
 ALLOWED_ORIGINS_EXTRA = _env_list("STORY_STUDIO_ALLOWED_ORIGINS")
 MAX_UPLOAD_MB = int(os.getenv("STORY_STUDIO_MAX_UPLOAD_MB", "200"))
 
+# Video cao trào: thời gian tối đa chờ Muse làm xong một yêu cầu nhiều bước (tạo, tự kiểm, làm lại, ghép).
+# Đo thật 28/10/2026: 10–21 phút cho tối đa 6 video + 4 ảnh.
+MUSE_AGENT_WAIT_MIN = int(os.getenv("STORY_STUDIO_MUSE_AGENT_WAIT_MIN") or "45")   # để trống trong .env = mặc định
+
 # Khoá dịch vụ tuỳ chọn: để trống thì nhánh đó tự bỏ qua
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")          # chia cảnh gọi Gemini trực tiếp khi không có 9router
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")  # chia cảnh qua OpenRouter khi không có 9router

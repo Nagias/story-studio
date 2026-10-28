@@ -16,7 +16,8 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query, Req
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from config import EXTRA_CHROME_PROFILES_DIRS, PROJECTS_DIR, STATIC_DIR
+from config import EXTRA_CHROME_PROFILES_DIRS, MUSE_AGENT_WAIT_MIN, PROJECTS_DIR, STATIC_DIR
+from services.climax_brief import AGENT_REPLY_MAX_CHARS, AGENT_VIDEO_MODE
 from security import (
     MEDIA_EXTS,
     MAX_UPLOAD_BYTES,
@@ -130,6 +131,9 @@ def task_kind(mode: Optional[str]) -> str:
 # tài khoản đó vẽ cả ảnh grid. Các trường dưới đây đều tuỳ chọn; thiếu thì task chạy y như cũ.
 THREAD_URL_RE = re.compile(r"https://muse\.ai/thread/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 MUSE_REPLY_MAX_CHARS = 2000
+# Giao việc nhiều bước cho Muse (video cao trào): runner chờ Muse làm xong lượt, nộp video cuối + ảnh phụ + báo cáo dài
+AGENT_MAX_EXTRAS = 4
+AGENT_MAX_WARNINGS = 10
 
 
 def routing_kind(task: Dict[str, Any]) -> str:
@@ -519,6 +523,8 @@ def is_muse_worker_online(account_id: Optional[str] = None) -> bool:
 
 
 def _task_timeout(task: Dict[str, Any]) -> float:
+    if task.get("mode") == AGENT_VIDEO_MODE:
+        return MUSE_AGENT_WAIT_MIN * 60 + 120
     return VIDEO_TASK_TIMEOUT_SEC if task_kind(task.get("mode")) == "video" else IMAGE_TASK_TIMEOUT_SEC
 
 
@@ -594,7 +600,8 @@ async def enqueue_and_wait_muse_task(task_dict: Dict[str, Any], timeout: Optiona
     # Chuẩn hóa và phân tách payload chuẩn cho Image vs Video
     params = task_dict.setdefault("parameters", {})
     if kind == "video":
-        task_dict["mode"] = "image-to-video" if (task_dict.get("input_image_url") or params.get("input_image_url")) else "text-to-video"
+        if task_dict.get("mode") != AGENT_VIDEO_MODE:   # việc nhiều bước giữ nguyên chế độ để runner nhận ra
+            task_dict["mode"] = "image-to-video" if (task_dict.get("input_image_url") or params.get("input_image_url")) else "text-to-video"
         camera_motion = task_dict.get("camera_motion") or params.get("camera_motion") or "cinematic slow tracking pan, smooth camera motion"
         duration = task_dict.get("duration") or params.get("duration") or params.get("duration_sec") or 5
         action_prompt = task_dict.get("action_prompt") or task_dict.get("prompt")
@@ -1097,6 +1104,7 @@ async def complete_task(
     request: Request,
     file: Optional[UploadFile] = File(None),
     metadata: Optional[str] = Form(None),
+    extras: List[UploadFile] = File(default=[]),
 ):
     """
     Worker upload kết quả media sau khi hoàn thành.
@@ -1202,8 +1210,17 @@ async def complete_task(
     # Side chat: địa chỉ chat để lần sau mở lại, và chữ Muse trả lời (tự kiểm, báo lỗi) — chỉ nhận đúng dạng
     if valid_thread_url(parsed_meta.get("thread_url")):
         task["thread_url"] = parsed_meta["thread_url"]
+    is_agent = task.get("mode") == AGENT_VIDEO_MODE
     if isinstance(parsed_meta.get("muse_reply"), str):
-        task["muse_reply"] = parsed_meta["muse_reply"][-MUSE_REPLY_MAX_CHARS:]
+        task["muse_reply"] = parsed_meta["muse_reply"][-(AGENT_REPLY_MAX_CHARS if is_agent else MUSE_REPLY_MAX_CHARS):]
+    if is_agent:
+        counts = parsed_meta.get("media_count")
+        if isinstance(counts, dict) and counts and all(isinstance(v, int) for v in counts.values()):
+            task["media_count"] = {str(k)[:20]: int(v) for k, v in counts.items()}
+        warns = parsed_meta.get("warnings")
+        if isinstance(warns, list) and all(isinstance(w, str) for w in warns):
+            task["warnings"] = [w[:300] for w in warns[:AGENT_MAX_WARNINGS]]
+        task["extra_images"] = await _save_extra_images(task_id, extras)
 
     # Web URL
     has_proj = bool(project_id and project_id != "None" and is_safe_id(str(project_id))
@@ -1275,6 +1292,22 @@ async def complete_task(
         "media_url": task.get("media_url"),
         "abandoned": abandoned,
     }
+
+async def _save_extra_images(task_id: str, extras: List[UploadFile]) -> List[str]:
+    """Ảnh phụ của việc nhiều bước (vd ảnh cảnh Muse đã sửa tóc): tối đa AGENT_MAX_EXTRAS ảnh, chỉ nhận đúng ảnh,
+    lưu vào muse_outputs theo task_id. Người gọi (dịch vụ video cao trào) tự chọn ảnh nào dùng."""
+    saved: List[str] = []
+    for upload in extras or []:
+        if len(saved) >= AGENT_MAX_EXTRAS:
+            break
+        data = await read_upload_limited(upload)
+        if detect_media_kind(data) != "image":
+            logger.warning(f"Task {task_id}: bỏ ảnh phụ {upload.filename!r} (không phải ảnh)")
+            continue
+        dest = (MUSE_OUTPUTS_DIR / f"{task_id}_extra_{len(saved) + 1}.jpg").resolve()
+        await asyncio.to_thread(dest.write_bytes, data)
+        saved.append(str(dest))
+    return saved
 
 @router.post("/tasks/{task_id}/fail")
 async def fail_task(task_id: str, req: TaskFailRequest):

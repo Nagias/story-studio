@@ -215,6 +215,16 @@ async def reject_grid(project_id: str, scene_id: str, body: GridFeedback):
     return {"scene_id": scene_id, "status": state.get("status")}
 
 
+@router.post("/projects/{project_id}/climax-video/scenes/{scene_id}/redo")
+async def redo_scene(project_id: str, scene_id: str):
+    """"Làm lại cảnh này": cảnh đã xong hoặc lỗi (grid đã duyệt) về chờ làm clip ở chat mới. Bấm "Tạo video" để chạy;
+    mỗi lần tốn tới 6 video + 4 ảnh Muse."""
+    if _is_running(project_id):
+        raise HTTPException(status_code=409, detail="Đang tạo video cao trào cho dự án này, chờ xong rồi làm lại")
+    state = await _grid_action(climax_video.redo_scene, project_id, scene_id)
+    return {"scene_id": scene_id, "status": state.get("status")}
+
+
 @router.get("/projects/{project_id}/climax-video/status")
 async def climax_status(project_id: str):
     project = await _load(project_id)
@@ -223,7 +233,9 @@ async def climax_status(project_id: str):
         state = _state(scene)
         if state.get("status"):
             scenes.append({"scene_id": scene.id, "status": state["status"], "error": state.get("error"),
-                           **{k: state[k] for k in ("clips", "grids", "grid", "done", "attempts", "grid_version")
+                           **{k: state[k] for k in ("clips", "grids", "grid", "done", "attempts", "grid_version",
+                                                    "muse_report", "media_count", "warnings", "scene_image_updated",
+                                                    "backup_image", "video_seconds")
                               if k in state},
                            "grid_count": len(state.get("grid_paths") or [])})
     return {

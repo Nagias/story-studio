@@ -155,6 +155,8 @@ class FakeMuse:
             return {"output_path": str(out), "status": "completed", "thread_url": THREAD, "executed_by": self.account}
         self.clip_calls += 1
         kind = self.clip_plan(self.clip_calls)
+        if task["mode"] == "agent-video":
+            return self._agent(task, out, kind)
         if kind == "error":
             raise TimeoutError("Meta Muse task timed out after 900s")
         if kind == "busy":
@@ -173,11 +175,33 @@ class FakeMuse:
         return {"output_path": str(out), "status": "completed",
                 "thread_url": task.get("thread_url") or THREAD, "executed_by": task.get("assigned_account") or self.account}
 
+    def _agent(self, task: dict, out: Path, kind: str) -> dict:
+        """Việc giao nhiều bước: video cuối (từ ảnh cảnh) + ảnh phụ: ảnh cảnh đã "sửa tóc" (giống ảnh cũ) và ảnh góc
+        sau khác hẳn. kind: "good" | "short" (video 2 giây) | "error" | "busy" | "no_media" | "back_only"."""
+        if kind == "error":
+            raise TimeoutError("Meta Muse task timed out after 2820s")
+        if kind == "busy":
+            raise RuntimeError("Muse task failed: MUSE_REPLIED_ERROR: Lệnh tạo video báo lỗi hệ thống quá tải (503)")
+        if kind == "no_media":
+            raise RuntimeError("Muse task failed: NO_FINAL: Muse ghi dòng kết thúc nhưng không có video nào sau prompt")
+        scene_img = Path(task["attachments"][0])
+        seconds = 2.0 if kind == "short" else float(task["agent"]["target_seconds"])
+        _clip_from_image(scene_img, out, seconds=seconds, darken=False)
+        fixed = out.with_name(out.stem + "_extra_1.jpg")
+        Image.open(scene_img).convert("RGB").point(lambda v: min(255, v + 12)).save(fixed, "JPEG", quality=92)
+        back = _picture(out.with_name(out.stem + "_extra_2.jpg"), seed=4242)
+        extras = [str(back)] if kind == "back_only" else [str(fixed), str(back)]
+        return {"output_path": str(out), "status": "completed", "mode": task["mode"],
+                "thread_url": task.get("thread_url") or THREAD,
+                "executed_by": task.get("assigned_account") or self.account,
+                "muse_reply": "Danh sách clip: 1) chạy tới cửa 2) hành lang. ANH_CANH_MOI: có. ĐẠT.",
+                "media_count": {"video": 3, "image": 2}, "warnings": [], "extra_images": extras}
+
 
 # ---------------------------------------------------------------------------------------------------- chấm điểm, chọn
 def test_constants_match_contract():
-    assert (cv.CLIMAX_RATIO, cv.CLIP_SECONDS, cv.PANELS_PER_GRID, cv.MAX_CLIP_ATTEMPTS) == (0.5, 5, 9, 2)
-    assert (cv.MIN_FIRST_SIMILARITY, cv.MAX_FRAME_JUMP, cv.MAX_BRIGHTNESS_CHANGE) == (0.45, 45.0, 0.15)
+    assert (cv.CLIMAX_RATIO, cv.CLIP_SECONDS, cv.PANELS_PER_GRID) == (0.5, 5, 9)
+    assert (cv.SCENE_IMAGE_MIN_SIMILARITY, cv.BACKUP_SUFFIX) == (0.45, ".truoc_sua_toc.jpg")
     lock = cv.STYLE_LOCK_EN.lower()
     for word in ("style", "line", "palette", "face", "dot eyes", "clothing", "setting", "lighting", "no text",
                  "no blood", "no scene cuts"):
@@ -253,15 +277,6 @@ def test_prompts_are_english_templates_with_style_lock():
         assert "No text, no numbers" in p and scene.image_prompt in p and cv.STYLE_LOCK_EN in p
     assert "Panel 1 (top left) is exactly the attached image" in first and "previous segment" not in first
     assert "last frame of the previous segment" in later and "exactly the attached image;" not in later
-    mid = cv.clip_prompt(scene, 4, 6)
-    last = cv.clip_prompt(scene, 9, None)
-    assert "panel 4" in mid and "panel 6" in mid and cv.STYLE_LOCK_EN in mid
-    assert "panel 9" in last and cv.STYLE_LOCK_EN in last
-    assert "slightly" in mid.lower()
-    # máy quay đứng yên (đo thật 27/10/2026: xin máy quay chuyển động thì Muse zoom sát rồi vẽ lại mặt nhân vật)
-    for p in (mid, last):
-        assert cv.CLIP_CAMERA_EN in p and "no zoom" in p and "push-in." not in p.replace("no push-in", "")
-        assert f"Avoid: {cv.CLIP_NEGATIVE_EN}" in p        # runner không gửi negative_prompt của video
 
 
 # ------------------------------------------------------------------------------------------------------ ảnh, video
@@ -301,68 +316,6 @@ def test_slice_grid_rejects_bad_images(tmp_path):
         cv.slice_grid(broken, tmp_path, "scene_001", 1)
 
 
-def test_match_clip_colors_restores_brightness_and_format(tmp_path):
-    panel = _picture(tmp_path / "o1.jpg", seed=3)
-    dark = _clip_from_image(panel, tmp_path / "muse.mp4", seconds=5, darken=True, size="1248x704")
-    before = cv.check_clip(dark, panel, 5)
-    assert not before["ok"] and before["brightness_change"] < -0.3
-    assert any("sáng/tối" in r for r in before["reasons"])
-
-    fixed = cv.match_clip_colors(dark, panel, tmp_path / "fixed.mp4")
-    info = _probe(fixed)
-    streams = info["streams"]
-    assert [s["codec_type"] for s in streams] == ["video"]                      # không tiếng
-    assert (streams[0]["width"], streams[0]["height"], streams[0]["r_frame_rate"]) == (1920, 1080, "25/1")
-    assert abs(float(info["format"]["duration"]) - 5.0) < 0.15
-    after = cv.check_clip(fixed, panel, 5)
-    assert after["ok"], after
-    assert abs(after["brightness_change"]) < 0.1
-
-
-def test_check_clip_rejects_cut_wrong_start_and_bad_duration(tmp_path):
-    panel = _picture(tmp_path / "o1.jpg", seed=5)
-    good = cv.check_clip(_clip_from_image(panel, tmp_path / "good.mp4", darken=False), panel, 5)
-    assert good["ok"] and good["reasons"] == []
-    assert set(good) == {"ok", "reasons", "first_similarity", "max_jump", "brightness_change", "duration"}
-    assert good["first_similarity"] > 0.9 and good["max_jump"] < 5
-
-    cut = cv.check_clip(_cut_clip(panel, _picture(tmp_path / "x.jpg", seed=99), tmp_path / "cut.mp4"), panel, 5)
-    assert not cut["ok"] and cut["max_jump"] > cv.MAX_FRAME_JUMP
-    assert any("cắt cảnh" in r for r in cut["reasons"])
-
-    other = cv.check_clip(_clip_from_image(_picture(tmp_path / "y.jpg", seed=42), tmp_path / "o.mp4", darken=False),
-                          panel, 5)
-    assert not other["ok"] and other["first_similarity"] < cv.MIN_FIRST_SIMILARITY
-    assert any("khung đầu không giống ô gốc" in r for r in other["reasons"])
-
-    short = cv.check_clip(_clip_from_image(panel, tmp_path / "short.mp4", seconds=2, darken=False), panel, 5)
-    assert not short["ok"] and any("thời lượng" in r for r in short["reasons"])
-    long_ = cv.check_clip(_clip_from_image(panel, tmp_path / "long.mp4", seconds=11, darken=False), panel, 5)
-    assert not long_["ok"] and any("thời lượng" in r for r in long_["reasons"])
-    ok10 = cv.check_clip(_clip_from_image(panel, tmp_path / "ten.mp4", seconds=10, darken=False), panel, 5)
-    assert ok10["ok"], ok10
-
-
-def test_concat_clips_joins_in_order(tmp_path):
-    a = _clip_from_image(_picture(tmp_path / "a.jpg", seed=1), tmp_path / "a.mp4", seconds=2, darken=False)
-    b = _clip_from_image(_picture(tmp_path / "b.jpg", seed=2), tmp_path / "b.mp4", seconds=3, darken=False,
-                         size="640x360")
-    out = cv.concat_clips([a, b], tmp_path / "joined.mp4")
-    info = _probe(out)
-    assert [s["codec_type"] for s in info["streams"]] == ["video"]
-    v = info["streams"][0]
-    assert (v["width"], v["height"], v["r_frame_rate"]) == (1920, 1080, "25/1")
-    assert abs(float(info["format"]["duration"]) - 5.0) < 0.2
-    # khung đầu là clip a, khung cuối là clip b
-    first = cv._read_frames(out, 320, 180, 8)
-    ref_a = cv._load_rgb(tmp_path / "a.jpg", (320, 180))
-    ref_b = cv._load_rgb(tmp_path / "b.jpg", (320, 180))
-    assert np.abs(first[0] - ref_a).mean() < np.abs(first[0] - ref_b).mean()
-    assert np.abs(first[-1] - ref_b).mean() < np.abs(first[-1] - ref_a).mean()
-    with pytest.raises(ValueError):
-        cv.concat_clips([], tmp_path / "none.mp4")
-
-
 # ----------------------------------------------------------------------------------------------- chạy trọn một cảnh
 def _climax_project(duration=12.0, cast="approved"):
     scenes = [_scene("scene_001", kind="disclaimer"), _scene("scene_002"),
@@ -398,119 +351,21 @@ def test_grid_phase_runs_on_video_account_with_scene_image_and_cast_board(isolat
         asyncio.run(cv.run_scene_clips(pid, sid, muse))                         # chưa duyệt grid: không làm clip
 
 
-def test_run_scene_success_attaches_joined_clip(isolated_projects_dir):
-    project = _climax_project(duration=12.0)          # 12 giây -> 3 clip, 1 grid, ô 1, 5, 9
+def test_long_narration_draws_second_grid_and_sends_both_to_muse(isolated_projects_dir):
+    project = _climax_project(duration=50.0)          # 50 giây -> 10 ô -> grid 1 (9 ô) + grid 2
     pid, sid = project.id, "scene_003"
     muse = FakeMuse(pid, sid)
     result = _run_full(pid, sid, muse)
 
-    assert {k: result[k] for k in ("status", "clips", "grids", "attempts")} == \
-        {"status": "ready", "clips": 3, "grids": 1, "attempts": 3}
-    grid_tasks = [t for t in muse.tasks if t["mode"] == "text-to-image"]
-    clip_tasks = [t for t in muse.tasks if t["mode"] == "image-to-video"]
-    assert len(grid_tasks) == 1 and len(clip_tasks) == 3
-    assert [Path(t["input_image_url"]).name for t in clip_tasks] == [
-        f"{sid}_grid1_o1.jpg", f"{sid}_grid1_o5.jpg", f"{sid}_grid1_o9.jpg"]
-    for t in muse.tasks:
-        assert "project_id" not in t and "scene_id" not in t           # Muse không tự gắn kết quả vào cảnh
-        for a in t["attachments"]:
-            assert Path(a).resolve().is_relative_to(isolated_projects_dir.resolve())
-    for t in clip_tasks:
-        assert t["duration"] == cv.CLIP_SECONDS and t["parameters"]["duration_sec"] == cv.CLIP_SECONDS
-        assert cv.STYLE_LOCK_EN in t["prompt"] and t["raw_prompt"] is True
-        assert t["prompt"].startswith("tạo cho tôi 1 video 5s:") and "STRICT CHARACTER LOCK" in t["prompt"]
-        assert t["camera_motion"] == t["parameters"]["camera_motion"] == cv.CLIP_CAMERA_EN
-        assert t["parameters"]["pacing"] == cv.CLIP_PACING_EN
-        assert t["attachments"][0] == t["input_image_url"] and Path(t["attachments"][1]).name.startswith("board_")
-        # cùng side chat của cảnh (chat của grid), ghim tài khoản
-        assert t["thread_url"] == THREAD and t["pin_account"] is True and t["assigned_account"] == "muse_acc_vid_02"
-    assert muse.status_during == ["grid", "clips", "clips", "clips"]
-
-    scene = _scene_now(pid, sid)
-    final = project_service.get_scene_media_paths(pid, sid)["motion_video"]
-    assert Path(scene.motion_video_path) == final and final.is_file()
-    assert scene.media_view_mode == "video" and scene.status_video == "ready"
-    assert scene.metadata["climax_video"]["status"] == "ready"
-    assert scene.image_path and Path(scene.image_path).is_file()               # ảnh gốc còn nguyên
-    info = _probe(final)
-    v = info["streams"][0]
-    assert [s["codec_type"] for s in info["streams"]] == ["video"]
-    assert (v["width"], v["height"], v["r_frame_rate"]) == (1920, 1080, "25/1")
-    assert abs(float(info["format"]["duration"]) - 15.0) < 0.3
-    # đã chỉnh màu: khung cuối của video ghép không tối đi như clip Muse giả
-    last = cv._read_frames(final, 320, 180, 8)[-1]
-    panel9 = cv._load_rgb(final.parent / "climax" / f"{sid}_grid1_o9.jpg", (320, 180))
-    assert abs(cv._luma(last.astype(np.float64)).mean() / cv._luma(panel9).mean() - 1) < cv.MAX_BRIGHTNESS_CHANGE
-    # cảnh khác không bị đụng
-    assert "climax_video" not in _scene_now(pid, "scene_002").metadata
-
-
-def test_run_scene_long_narration_uses_second_grid_from_panel_9(isolated_projects_dir, monkeypatch):
-    project = _climax_project(duration=50.0)          # 50 giây -> 10 clip -> grid 1 (9 clip) + grid 2 (ô 1)
-    pid, sid = project.id, "scene_003"
-    # phần chỉnh màu/ghép thật đã có test riêng; ở đây chỉ xem thứ tự grid và ô, cho nhanh
-    monkeypatch.setattr(cv, "match_clip_colors", lambda clip, panel, out: Path(shutil.copy2(clip, out)))
-    joined = []
-    monkeypatch.setattr(cv, "concat_clips", lambda clips, out: (joined.extend(clips), Path(shutil.copy2(clips[0], out)))[1])
-    muse = FakeMuse(pid, sid, darken=False)
-    result = _run_full(pid, sid, muse)
-
-    assert (result["status"], result["clips"], result["grids"], result["attempts"]) == ("ready", 10, 2, 10)
+    assert (result["status"], result["grids"]) == ("ready", 2)
     grids = [t for t in muse.tasks if t["mode"] == "text-to-image"]
     assert len(grids) == 2
     assert Path(grids[1]["attachments"][0]).name == f"{sid}_grid1_o9.jpg"
     assert "last frame of the previous segment" in grids[1]["prompt"]
     assert grids[1]["thread_url"] == THREAD                                      # grid 2 cùng chat với grid 1
-    clips = [Path(t["input_image_url"]).name for t in muse.tasks if t["mode"] == "image-to-video"]
-    assert clips == [f"{sid}_grid1_o{i}.jpg" for i in range(1, 10)] + [f"{sid}_grid2_o1.jpg"]
-    assert [p.name for p in joined] == [f"{sid}_grid1_o{i}_lan1.mp4" for i in range(1, 10)] + [f"{sid}_grid2_o1_lan1.mp4"]
-
-
-def test_run_scene_retries_a_bad_clip_once(isolated_projects_dir):
-    project = _climax_project(duration=4.0)           # 1 clip
-    pid, sid = project.id, "scene_003"
-    muse = FakeMuse(pid, sid, clip_plan=lambda n: "dark_cut" if n == 1 else "good")
-    result = _run_full(pid, sid, muse)
-    assert (result["status"], result["clips"], result["attempts"]) == ("ready", 1, 2)
-    assert _scene_now(pid, sid).media_view_mode == "video"
-    clip_tasks = [t for t in muse.tasks if t["mode"] == "image-to-video"]
-    assert clip_tasks[1]["thread_url"] == THREAD                                 # clip lỗi kiểm (không phải lỗi Muse): vẫn chat cũ
-
-
-@pytest.mark.parametrize("first_error", ["busy", "no_media"])
-def test_muse_error_retries_in_new_chat_on_another_account(isolated_projects_dir, first_error):
-    project = _climax_project(duration=4.0)
-    pid, sid = project.id, "scene_003"
-    muse = FakeMuse(pid, sid, clip_plan=lambda n: first_error if n == 1 else "good")
-    result = _run_full(pid, sid, muse)
-    assert result["status"] == "ready"
-    first, second = [t for t in muse.tasks if t["mode"] == "image-to-video"]
-    assert first["thread_url"] == THREAD and first["pin_account"] is True
-    assert "thread_url" not in second and "pin_account" not in second           # chat mới
-    assert second["avoid_accounts"] == ["muse_acc_vid_02"]                      # tránh tài khoản vừa báo quá tải
-    assert result["avoid_accounts"] == []       # làm được rồi thì thôi tránh (duyệt độc lập 28/10/2026)
-
-
-@pytest.mark.parametrize("plan, words", [
-    (lambda n: "dark_cut", "cắt cảnh"),
-    (lambda n: "other", "khung đầu không giống ô gốc"),
-    (lambda n: "error", "timed out"),
-])
-def test_run_scene_fails_after_max_attempts_and_keeps_image(isolated_projects_dir, plan, words):
-    project = _climax_project(duration=8.0)           # 2 clip; clip đầu hỏng cả hai lần
-    pid, sid = project.id, "scene_003"
-    before = _scene_now(pid, sid)
-    muse = FakeMuse(pid, sid, clip_plan=plan)
-    result = _run_full(pid, sid, muse)
-
-    assert result["status"] == "failed" and words in result["error"]
-    assert muse.clip_calls == cv.MAX_CLIP_ATTEMPTS                              # dừng ở clip hỏng, không gọi tiếp
-    scene = _scene_now(pid, sid)
-    assert scene.metadata["climax_video"] == result
-    assert result["grid_approved"] is True                                       # chạy lại thì làm tiếp clip, không vẽ lại grid
-    assert scene.motion_video_path is None and scene.media_view_mode == before.media_view_mode == "image"
-    assert scene.image_path == before.image_path and Path(scene.image_path).is_file()
-    assert not project_service.get_scene_media_paths(pid, sid)["motion_video"].exists()
+    agent = [t for t in muse.tasks if t["mode"] == "agent-video"]
+    assert len(agent) == 1 and [Path(x).name for x in agent[0]["attachments"][2:]] ==         [f"{sid}_grid1_v1.jpg", f"{sid}_grid2_v1.jpg"]
+    assert agent[0]["agent"]["target_seconds"] == 24 and "Ảnh 4" in agent[0]["prompt"]
 
 
 def test_run_scene_fails_cleanly_when_grid_or_voice_missing(isolated_projects_dir):
@@ -557,18 +412,6 @@ def test_reject_grid_redraws_with_feedback_in_same_chat(isolated_projects_dir):
     assert second["thread_url"] == THREAD and second["pin_account"] is True
     with pytest.raises(cv.ClimaxVideoError):
         cv.approve_grid(pid, "scene_002")                                        # không có grid chờ duyệt
-
-
-def test_timeout_drops_chat_for_next_task(isolated_projects_dir):
-    project = _climax_project(duration=4.0)
-    pid, sid = project.id, "scene_003"
-    asyncio.run(cv.run_scene_climax_video(pid, sid, muse_call=FakeMuse(pid, sid)))
-    cv.approve_grid(pid, sid)
-    muse = FakeMuse(pid, sid, clip_plan=lambda n: "error")
-    result = asyncio.run(cv.run_scene_climax_video(pid, sid, muse_call=muse))
-    assert result["status"] == "failed" and "thread_url" not in result           # chat bẩn đã bỏ
-    first, second = muse.tasks
-    assert first["thread_url"] == THREAD and "thread_url" not in second
 
 
 def test_run_scene_rejects_wrong_scene_before_calling_muse(isolated_projects_dir):
@@ -727,7 +570,7 @@ def test_unexpected_error_names_its_type(isolated_projects_dir, monkeypatch):
 
     asyncio.run(cv.run_scene_climax_video(pid, sid, muse_call=FakeMuse(pid, sid)))   # grid
     cv.approve_grid(pid, sid)
-    monkeypatch.setattr(cv, "match_clip_colors", out_of_memory)
+    monkeypatch.setattr(cv, "check_agent_video", out_of_memory)
     with pytest.raises(MemoryError):
         asyncio.run(cv.run_scene_climax_video(pid, sid, muse_call=FakeMuse(pid, sid)))
     state = _scene_now(pid, sid).metadata["climax_video"]

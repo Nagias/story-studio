@@ -18,6 +18,8 @@ AGENT_MAX_SECONDS = 24      # 6 video ~10 giây mà còn chừa lượt làm l�
 AGENT_MIN_SECONDS = 5
 DESIGN_MAX_CHARS = 600
 NEW_SCENE_IMAGE_TAG = "ANH_CANH_MOI"
+AGENT_VIDEO_MODE = "agent-video"   # chế độ việc giao nhiều bước (Fleet Runner nhận ra theo tên này)
+AGENT_REPLY_MAX_CHARS = 8000        # báo cáo của Muse giữ lại tối đa chừng này ký tự
 
 
 def target_seconds(narration_sec: float) -> int:

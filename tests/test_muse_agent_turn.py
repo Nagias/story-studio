@@ -99,5 +99,8 @@ def test_discard_temp_file_only_inside_runner_temp_dirs(tmp_path, monkeypatch):
 
 
 def test_constants():
+    from runners.muse_agent_turn import AGENT_VIDEO_MODE
+    from services.climax_brief import AGENT_VIDEO_MODE as SERVICE_MODE
+    assert AGENT_VIDEO_MODE == SERVICE_MODE == "agent-video"     # runner và dịch vụ phải gọi cùng một tên
     assert AGENT_STABLE_SEC == 90
     assert "data-hatch-markdown-streaming" in STREAMING_JS

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+AGENT_VIDEO_MODE = "agent-video"   # trùng services/climax_brief.AGENT_VIDEO_MODE (runner là tiến trình riêng, không nạp services)
 AGENT_STABLE_SEC = 90          # chữ đứng yên chừng này sau dòng kết thúc mới tải (Muse gửi file sau cùng)
 AGENT_MAX_VIDEOS = 6           # giới hạn Muse tự khai cho một yêu cầu; chỉ để cảnh báo, runner không chặn được Muse
 AGENT_MAX_IMAGES = 4

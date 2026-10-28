@@ -13,35 +13,41 @@ Module này không import routers/: hàm gọi Muse được truyền vào (`mus
 Từ 28/10/2026 (chủ dự án chốt sau lần chạy thật 27/10: mọi clip bị vẽ lại mặt): mỗi cảnh làm trong MỘT side chat Muse
 của một tài khoản video — tài khoản đó vẽ cả ảnh grid; mỗi tin nhắn đính kèm ảnh (ảnh cảnh hoặc ô) và "bảng diễn viên"
 (bảng nhân vật đủ góc đã duyệt, services/character_sheets.py). Grid phải được duyệt rồi mới làm clip.
+
+Pha clip từ 28/10/2026 chiều (thay bước 2–4 ở trên): không gửi từng clip nữa mà giao MỘT việc nhiều bước cho Muse
+(services/climax_brief.py; đo thật: 14/14 clip gửi lẻ bị vẽ lại đầu tròn, việc giao nhiều bước đạt suốt 12 giây).
+Thiết kế: docs/superpowers/specs/2026-10-28-video-cao-trao-giao-viec-muse-design.md.
 """
 import asyncio
 import logging
 import math
+import os
 import shutil
 import subprocess
+import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Optional
 
-import cv2
 import numpy as np
 from PIL import Image, UnidentifiedImageError
 
-from config import PROJECTS_DIR, STATIC_DIR
+from config import MUSE_AGENT_WAIT_MIN, PROJECTS_DIR, STATIC_DIR
 from models.schemas import Project, Scene
 from security import is_within
 from services import character_sheets as cs
 from services import project_service
+from services.climax_brief import AGENT_REPLY_MAX_CHARS, AGENT_VIDEO_MODE, scene_brief, target_seconds
 from services.tts_service import MediaDurationError, get_audio_duration
 
 logger = logging.getLogger("story_studio.climax_video")
 
 CLIMAX_RATIO = 0.5
-CLIP_SECONDS = 5
+CLIP_SECONDS = 5            # một ô lưới ứng với ~5 giây lời kể (số ô, số lưới); Muse tự quyết độ dài từng clip
 PANELS_PER_GRID = 9
-MAX_CLIP_ATTEMPTS = 2
-MIN_FIRST_SIMILARITY = 0.45
-MAX_FRAME_JUMP = 45.0
-MAX_BRIGHTNESS_CHANGE = 0.15
+SCENE_IMAGE_MIN_SIMILARITY = 0.45   # ảnh Muse gửi kèm phải giống ảnh cảnh cũ chừng này mới thay (ảnh góc sau thì không)
+SCENE_IMAGE_RATIO_TOL = 0.03
+BACKUP_SUFFIX = ".truoc_sua_toc.jpg"
+MIN_AGENT_VIDEO_SEC = 5.0
 
 STYLE_LOCK_EN = (
     "Keep exactly the same art style as the attached image: the same drawing style, the same line work and outlines, "
@@ -50,16 +56,6 @@ STYLE_LOCK_EN = (
     "anime face). Same clothing, same setting, same lighting. Do not add any new people, no scene cuts, no text, "
     "no blood."
 )
-# Máy quay đứng yên. Đo thật 27/10/2026 (vụ Trạm Dung): khi task không nói gì về máy quay, enqueue_and_wait_muse_task
-# gắn "cinematic slow tracking pan", prompt cũ lại xin "slow push-in" -> Muse zoom sát rồi vẽ lại mặt kiểu tả thực sau
-# khoảng 1 giây ở mọi clip (nhân vật đầu tròn trắng cũng thành mặt có mắt mũi).
-CLIP_CAMERA_EN = ("static locked-off camera on a tripod: no zoom, no push-in, no pan, no tilt, the framing stays exactly "
-                  "as in the attached image for the whole clip")
-CLIP_PACING_EN = "slow and calm, minimal motion"
-CLIP_NEGATIVE_EN = ("realistic face, anime face, detailed face, changing face, zoom, close-up, camera movement, "
-                    "new character, extra people, scene cut, flash, text, subtitles, watermark, blood, gore, darkening, "
-                    "fade to black")
-
 # Muse: nghỉ giữa hai lượt gọi để khỏi dồn tài khoản (chủ dự án 28/10: "cứ gọi từ từ thôi kẻo chết tài khoản")
 MUSE_PACE_SEC = 15
 # Trạng thái metadata["climax_video"]["status"]
@@ -69,9 +65,7 @@ FEEDBACK_MAX = 500
 
 ELIGIBLE_KINDS = ("image", "video")
 OUT_W, OUT_H = 1920, 1080
-OUT_FPS = 25
 CHECK_W, CHECK_H = 320, 180
-CHECK_FPS = 8
 MIN_GRID_W, MIN_GRID_H = 300, 168
 PANEL_TRIM = 0.03
 MEDIA_TIMEOUT_SEC = 600
@@ -206,35 +200,6 @@ def grid_prompt(scene: Scene, project: Project, first_grid: bool, cast: Optional
     return "\n".join(parts)
 
 
-def clip_prompt(scene: Scene, panel: int, next_panel: Optional[int], cast: Optional[list] = None,
-                positions: Optional[list[str]] = None) -> str:
-    """Prompt clip (tiếng Anh): chỉ cử động nhẹ, máy quay đứng yên, từ ô `panel` tới ô `next_panel` của storyboard.
-    Có `cast`: mở đầu "tạo cho tôi 1 video 5s:" (gửi nguyên văn) và khoá từng nhân vật theo bảng diễn viên."""
-    if next_panel is None:
-        path = (f"This is panel {panel} of a 3x3 storyboard and the last frame of this part: hold the composition, "
-                "with only subtle breathing and tiny natural movements.")
-    else:
-        path = (f"This is panel {panel} of a 3x3 storyboard: the characters move a little toward the moment of panel "
-                f"{next_panel}, as a small continuation of the same shot.")
-    head = []
-    if cast:
-        head = [f"tạo cho tôi 1 video {CLIP_SECONDS}s: [Image-to-Video] The FIRST attached image is the exact first "
-                "frame; keep its composition.",
-                "STRICT CHARACTER LOCK — the SECOND attached image is the approved character reference board. Every "
-                "character must keep exactly the head shape, face, hair, clothes and colours of their sheet for the "
-                "whole video, from any angle; never redraw a face in another style:"]
-        head += _cast_lines(cast, positions)
-    return "\n".join(head + [
-        path,
-        f"Camera: {CLIP_CAMERA_EN}. Characters move only slightly: small head turns, blinking, breathing, light cloth "
-        "movement. No fast motion, no camera cuts, no new objects, keep the same brightness.",
-        "Every frame stays a flat 2D drawing exactly like the attached image: never redraw a face with more detail, "
-        "never add eyes, nose, mouth or wrinkles that are not in the attached image.",
-        STYLE_LOCK_EN,
-        f"Avoid: {CLIP_NEGATIVE_EN}.",   # Fleet Runner không gửi negative_prompt của video cho Muse: ghi thẳng vào prompt
-    ])
-
-
 # ------------------------------------------------------------------------------------------------------------ ảnh
 def slice_grid(grid_path: Path, out_dir: Path, scene_id: str, grid_index: int) -> list[Path]:
     """Cắt ảnh 3x3 thành 9 ảnh 1920x1080 (bỏ viền ngăn: cắt 3% mỗi cạnh của từng ô)."""
@@ -297,143 +262,58 @@ def _run_media(cmd: list[str], what: str) -> subprocess.CompletedProcess:
     return proc
 
 
-def _read_frames(clip_path: Path, width: int, height: int, fps: int) -> list[np.ndarray]:
-    """Mọi khung của clip (RGB uint8 width x height) lấy theo `fps` khung/giây."""
-    proc = _run_media(["ffmpeg", "-v", "error", "-nostdin", "-i", str(clip_path),
-                       "-vf", f"scale={width}:{height},setsar=1,fps={fps}", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
-                      f"đọc khung hình {Path(clip_path).name}")
-    size = width * height * 3
-    data = proc.stdout
-    n = len(data) // size
-    if n == 0:
-        raise ValueError(f"Clip {Path(clip_path).name} không có khung hình nào")
-    return [np.frombuffer(data, dtype=np.uint8, count=size, offset=i * size).reshape(height, width, 3)
-            for i in range(n)]
-
-
-def _color_matched(frame: bytes, p_mean: np.ndarray, p_std: np.ndarray) -> bytes:
-    """Một khung RGB đã chỉnh: (x − TB khung) × (ĐLC ô / ĐLC khung) + TB ô, từng kênh; cv2 làm tròn và chặn 0–255."""
-    f = np.frombuffer(frame, dtype=np.uint8).reshape(OUT_H, OUT_W, 3)
-    mean, std = (v.ravel() for v in cv2.meanStdDev(f))
-    scale = np.where(std > 1e-3, p_std / np.maximum(std, 1e-3), 1.0)   # khung một màu: chỉ dời trung bình
-    matrix = np.zeros((3, 4))
-    matrix[[0, 1, 2], [0, 1, 2]] = scale
-    matrix[:, 3] = p_mean - mean * scale
-    return cv2.transform(f, matrix).tobytes()
-
-
-def _proc_error(proc: subprocess.Popen, what: str) -> Optional[str]:
+def check_agent_video(path: Path, target: int) -> float:
+    """Video cuối của Muse: có hình, dài 5 giây tới 2 × mục tiêu + 1. Trả số giây; sai thì ClimaxVideoError."""
     try:
-        code = proc.wait(timeout=MEDIA_TIMEOUT_SEC)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        return f"ffmpeg chạy quá {MEDIA_TIMEOUT_SEC} giây ({what})"
-    if code != 0:
-        err = (proc.stderr.read() if proc.stderr else b"").decode("utf-8", errors="ignore").strip()[-400:]
-        return f"ffmpeg lỗi khi {what} (mã {code}): {err}"
-    return None
-
-
-def match_clip_colors(clip_path: Path, panel_path: Path, out_path: Path) -> Path:
-    """Chỉnh từng khung của clip cho trung bình và độ lệch chuẩn từng kênh màu bằng của ô gốc (Muse làm clip tối dần).
-    Ra mp4 1920x1080, 25 khung/giây, không tiếng, cùng thời lượng. Xử lý từng khung (không giữ cả clip trong RAM)."""
-    panel = _load_rgb(Path(panel_path), (OUT_W, OUT_H)).reshape(-1, 3)
-    p_mean, p_std = panel.mean(axis=0), panel.std(axis=0)
-    out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    size = OUT_W * OUT_H * 3
+        proc = _run_media(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                           "stream=codec_type:format=duration", "-of", "default=nw=1", str(path)], "đo video của Muse")
+    except RuntimeError as e:
+        raise ClimaxVideoError(f"Video Muse gửi không đọc được: {e}") from e
+    out = proc.stdout.decode("utf-8", errors="ignore")
+    if "codec_type=video" not in out:
+        raise ClimaxVideoError("Video Muse gửi không có hình")
     try:
-        dec = subprocess.Popen(
-            ["ffmpeg", "-v", "error", "-nostdin", "-i", str(clip_path),
-             "-vf", f"scale={OUT_W}:{OUT_H},setsar=1,fps={OUT_FPS}", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        enc = subprocess.Popen(
-            ["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{OUT_W}x{OUT_H}",
-             "-r", str(OUT_FPS), "-i", "-", "-an", "-c:v", "libx264", "-preset", "fast", "-crf", "18",
-             "-pix_fmt", "yuv420p", str(out_path)],
-            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-    except FileNotFoundError as e:
-        raise RuntimeError("Không tìm thấy ffmpeg trong PATH (chỉnh màu clip)") from e
-    frames = 0
-    try:
-        src, sink = dec.stdout, enc.stdin
-        assert src is not None and sink is not None   # Popen(..., PIPE) luôn có hai luồng này
-        while True:
-            frame = src.read(size)
-            if len(frame) < size:
-                break
-            sink.write(_color_matched(frame, p_mean, p_std))
-            frames += 1
-    except (BrokenPipeError, OSError) as e:   # bộ ghi đã dừng: lý do thật nằm ở stderr của nó, báo ngay dưới
-        logger.warning(f"Chỉnh màu {Path(clip_path).name}: ghi khung bị ngắt ({e})")
-    finally:
-        for stream in (enc.stdin, dec.stdout):
-            try:
-                if stream is not None:
-                    stream.close()
-            except OSError as e:
-                logger.warning(f"Chỉnh màu {Path(clip_path).name}: đóng luồng lỗi ({e})")
-    problems = [p for p in (_proc_error(dec, "đọc clip để chỉnh màu"), _proc_error(enc, "ghi clip đã chỉnh màu")) if p]
-    if problems:
-        raise RuntimeError("; ".join(problems))
-    if frames == 0:
-        raise ValueError(f"Clip {Path(clip_path).name} không có khung hình nào")
-    return out_path
+        seconds = float(next(line.split("=", 1)[1] for line in out.splitlines() if line.startswith("duration=")))
+    except (StopIteration, ValueError) as e:
+        raise ClimaxVideoError("Không đo được độ dài video Muse gửi") from e
+    if not MIN_AGENT_VIDEO_SEC <= seconds <= 2 * target + 1:
+        raise ClimaxVideoError(f"Video Muse gửi dài {seconds:.1f} giây, cần {MIN_AGENT_VIDEO_SEC:.0f}–{2 * target + 1} giây")
+    return seconds
 
 
-def check_clip(clip_path: Path, panel_path: Path, requested_seconds: float) -> dict:
-    """Máy kiểm clip (đã chỉnh màu) so với ô gốc: khung đầu giống ô, không cắt cảnh, không sáng/tối lệch, đúng độ dài."""
-    panel = _load_rgb(Path(panel_path), (CHECK_W, CHECK_H))
-    frames = [f.astype(np.float64) for f in _read_frames(Path(clip_path), CHECK_W, CHECK_H, CHECK_FPS)]
-    try:
-        duration = float(get_audio_duration(str(clip_path)))
-    except MediaDurationError as e:
-        raise ValueError(f"Không đo được thời lượng clip {Path(clip_path).name}: {e}") from e
-
-    first_similarity = _ssim_global(_luma(frames[0]), _luma(panel))
-    max_jump = max((float(np.abs(b - a).mean()) for a, b in zip(frames, frames[1:])), default=0.0)
-    panel_light = float(_luma(panel).mean())
-    brightness_change = float(_luma(frames[-1]).mean()) / max(panel_light, 1e-6) - 1
-
-    reasons = []
-    if first_similarity < MIN_FIRST_SIMILARITY:
-        reasons.append(f"khung đầu không giống ô gốc (độ giống {first_similarity:.2f}, cần ≥ {MIN_FIRST_SIMILARITY})")
-    if max_jump > MAX_FRAME_JUMP:
-        reasons.append(f"có cắt cảnh (hai khung liền nhau lệch {max_jump:.1f}, tối đa {MAX_FRAME_JUMP})")
-    if abs(brightness_change) > MAX_BRIGHTNESS_CHANGE:
-        reasons.append(f"sáng/tối lệch ô gốc ({brightness_change:+.0%}, tối đa ±{MAX_BRIGHTNESS_CHANGE:.0%})")
-    lo, hi = requested_seconds - 2, 2 * requested_seconds + 0.5
-    if not lo <= duration <= hi:
-        reasons.append(f"thời lượng {duration:.1f} giây nằm ngoài khoảng {lo:g}–{hi:g} giây")
-    return {
-        "ok": not reasons,
-        "reasons": reasons,
-        "first_similarity": round(first_similarity, 4),
-        "max_jump": round(max_jump, 2),
-        "brightness_change": round(brightness_change, 4),
-        "duration": duration,
-    }
+def choose_scene_image(old: Path, candidates: list[Path]) -> Optional[Path]:
+    """Trong các ảnh Muse gửi kèm, ảnh cảnh đã sửa tóc = ảnh 16:9 giống ảnh cảnh cũ nhất (ảnh góc sau khác hẳn bố cục).
+    Không ảnh nào đủ giống: None (giữ ảnh cũ)."""
+    ref = _luma(_load_rgb(old, (CHECK_W, CHECK_H)))
+    best, best_score = None, SCENE_IMAGE_MIN_SIMILARITY
+    for cand in candidates:
+        try:
+            with Image.open(cand) as img:
+                w, h = img.size
+            if abs(w / h - 16 / 9) > SCENE_IMAGE_RATIO_TOL * 16 / 9:
+                continue
+            score = _ssim_global(ref, _luma(_load_rgb(cand, (CHECK_W, CHECK_H))))
+        except (OSError, ValueError, UnidentifiedImageError, ZeroDivisionError):
+            logger.warning(f"Bỏ ảnh Muse gửi kèm không đọc được: {cand}")
+            continue
+        if score >= best_score:
+            best, best_score = cand, score
+    return best
 
 
-def concat_clips(clips: list[Path], out_path: Path) -> Path:
-    """Nối các clip theo thứ tự: 1920x1080, 25 khung/giây, không tiếng."""
-    if not clips:
-        raise ValueError("Không có clip nào để ghép")
-    cmd = ["ffmpeg", "-y", "-v", "error", "-nostdin"]
-    for clip in clips:
-        cmd += ["-i", str(clip)]
-    norm = ";".join(
-        f"[{i}:v]scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=decrease,"
-        f"pad={OUT_W}:{OUT_H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={OUT_FPS},format=yuv420p[v{i}]"
-        for i in range(len(clips)))
-    joined = "".join(f"[v{i}]" for i in range(len(clips)))
-    out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    cmd += ["-filter_complex", f"{norm};{joined}concat=n={len(clips)}:v=1:a=0[out]", "-map", "[out]", "-an",
-            "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p", "-r", str(OUT_FPS),
-            str(out_path)]
-    _run_media(cmd, "ghép clip")
-    return out_path
+def replace_scene_image(project_id: str, scene_id: str, new: Path) -> Path:
+    """Thay ảnh cảnh bằng ảnh Muse đã sửa (chủ dự án 28/10/2026: "giữ ảnh cũ làm bản dự phòng"). Bản dự phòng chỉ chép
+    lần đầu (làm lại nhiều lần vẫn giữ ảnh gốc ban đầu). Ghi đè đúng file ảnh cảnh để mọi chỗ đang trỏ vẫn đúng."""
+    _, scene = _load_scene(project_id, scene_id)
+    current = _scene_image(scene, project_id)
+    backup = current.with_name(f"{scene_id}{BACKUP_SUFFIX}")
+    if not backup.exists():
+        shutil.copy2(current, backup)
+    tmp = current.with_name(f"{current.stem}.moi.tmp.jpg")
+    with Image.open(new) as img:
+        img.convert("RGB").save(tmp, "JPEG", quality=95)
+    os.replace(tmp, current)
+    return backup
 
 
 # ------------------------------------------------------------------------------------------------- lưu trạng thái
@@ -589,44 +469,6 @@ async def _muse(muse_call: MuseCall, thread: SceneThread, task: dict) -> dict:
     return result
 
 
-async def _make_clip(muse_call: MuseCall, scene: Scene, panel: Path, panel_no: int, next_no: Optional[int],
-                     work: Path, tag: str, thread: Optional[SceneThread] = None, board: Optional[Path] = None,
-                     cast: Optional[list] = None, positions: Optional[list[str]] = None) -> tuple[Path, int]:
-    """Một clip đạt kiểm; trả (clip đã chỉnh màu, số lần gọi Muse). Hết lượt thử thì ClimaxVideoError.
-    Có `thread` + `board`: clip làm trong side chat của cảnh, đính kèm [ô, bảng diễn viên], prompt gửi nguyên văn."""
-    prompt = clip_prompt(scene, panel_no, next_no, cast, positions)
-    thread = thread or SceneThread({})
-    problems = []
-    for attempt in range(1, MAX_CLIP_ATTEMPTS + 1):
-        raw = work / f"{tag}_lan{attempt}_muse.mp4"
-        task = {
-            "mode": "image-to-video", "prompt": prompt, "action_prompt": prompt, "negative_prompt": CLIP_NEGATIVE_EN,
-            "input_image_url": str(panel), "duration": CLIP_SECONDS, "camera_motion": CLIP_CAMERA_EN,
-            "parameters": {"duration_sec": CLIP_SECONDS, "camera_motion": CLIP_CAMERA_EN, "pacing": CLIP_PACING_EN},
-            "output_path": str(raw),
-        }
-        if board is not None:
-            task.update(raw_prompt=True, attachments=[str(panel), str(board)])
-        try:
-            if attempt > 1:
-                await _pace()
-            result = await _muse(muse_call, thread, task)
-            got = await asyncio.to_thread(_keep_copy, _result_file(result, "clip"), raw)
-            fixed = work / f"{tag}_lan{attempt}.mp4"
-            await asyncio.to_thread(match_clip_colors, got, panel, fixed)
-            report = await asyncio.to_thread(check_clip, fixed, panel, CLIP_SECONDS)
-        except (RuntimeError, TimeoutError, ValueError, OSError) as e:   # Muse lỗi hoặc clip hỏng: tính một lần thử
-            logger.warning(f"Clip {tag} lần {attempt}: {e}")
-            problems.append(f"lần {attempt}: {e}")
-            continue
-        if report["ok"]:
-            return fixed, attempt
-        logger.info(f"Clip {tag} lần {attempt} không đạt: {report}")
-        problems.append(f"lần {attempt}: " + "; ".join(report["reasons"]))
-    raise ClimaxVideoError(f"Clip từ ô {panel_no} không đạt sau {MAX_CLIP_ATTEMPTS} lần ({' | '.join(problems)})",
-                           attempts=MAX_CLIP_ATTEMPTS)
-
-
 def _prepare(scene: Scene, project_id: str) -> tuple[float, Path]:
     return _scene_seconds(scene), _scene_image(scene, project_id)
 
@@ -746,55 +588,62 @@ def reject_grid(project_id: str, scene_id: str, feedback: str) -> dict:
 
 
 async def run_scene_clips(project_id: str, scene_id: str, muse_call: MuseCall) -> dict:
-    """Pha 2 (sau khi duyệt grid): mỗi 5 giây lời kể một clip trong side chat của cảnh, đính kèm [ô, bảng diễn viên];
-    chỉnh màu, kiểm, ghép, gắn làm clip của cảnh. Clip lỗi vì Muse/chat: lần thử sau chat mới trên tài khoản khác."""
+    """Pha 2 (sau khi duyệt grid): MỘT việc giao nhiều bước cho Muse trong side chat của cảnh (services/climax_brief.py):
+    Muse tự chia đoạn, tự trích khung kiểm, tự làm lại, gửi một video cuối và ảnh cảnh đã sửa tóc (nếu có). App kiểm
+    video, gắn làm clip của cảnh, thay ảnh cảnh (giữ bản cũ). Lỗi: giữ ảnh, bỏ chat (lần sau chat mới), không tự thử lại."""
     project, scene = await asyncio.to_thread(_load_scene, project_id, scene_id)
     old = _scene_state(scene)
     if not old.get("grid_approved") or not old.get("grid_paths"):
         raise ClimaxVideoError("Grid của cảnh chưa được duyệt")
     work = project_service.get_scene_media_paths(project_id, scene_id)["video"].parent / "climax"
     thread = SceneThread(old)
-    attempts = 0
+    called = False
     try:
-        seconds, _ = await asyncio.to_thread(_prepare, scene, project_id)
-        people, positions, board = await asyncio.to_thread(_cast_for, project, scene)
-        plan = grid_plan(clip_count(seconds))
+        seconds, image = await asyncio.to_thread(_prepare, scene, project_id)
+        people, _positions, board = await asyncio.to_thread(_cast_for, project, scene)
         grid_files = [Path(p) for p in old["grid_paths"]]
         if not all(is_within(p, work) for p in grid_files):
             raise ClimaxVideoError("Đường dẫn ảnh grid nằm ngoài thư mục làm việc của cảnh: vẽ lại grid")
-        if len(grid_files) != len(plan) or not all(p.is_file() for p in grid_files):
+        if len(grid_files) != len(grid_plan(clip_count(seconds))) or not all(p.is_file() for p in grid_files):
             raise ClimaxVideoError("Ảnh grid đã duyệt không khớp độ dài lời kể hiện tại: vẽ lại grid")
-        clips: list[Path] = []
-        for g, (grid_file, panels_used) in enumerate(zip(grid_files, plan), start=1):
-            panels = await asyncio.to_thread(slice_grid, grid_file, work, scene_id, g)
-            for i, panel_no in enumerate(panels_used):
-                await asyncio.to_thread(_merge_climax, project_id, scene_id,
-                                        {"status": "clips", "grid": g, "done": len(clips), "error": None,
-                                         **thread.state()})
-                if clips:
-                    await _pace()
-                next_no = panels_used[i + 1] if i + 1 < len(panels_used) else None
-                try:
-                    clip, used = await _make_clip(muse_call, scene, panels[panel_no - 1], panel_no, next_no, work,
-                                                  f"{scene_id}_grid{g}_o{panel_no}", thread, board, people, positions)
-                except ClimaxVideoError as e:
-                    attempts += e.attempts
-                    raise
-                attempts += used
-                clips.append(clip)
-
-        await asyncio.to_thread(_merge_climax, project_id, scene_id, {"status": "checking", "clips": len(clips)})
-        joined = await asyncio.to_thread(concat_clips, clips, work / f"{scene_id}_ghep.mp4")
+        target = target_seconds(seconds)
+        token = f"XONG-{uuid.uuid4().hex[:8]}"
+        version = int(old.get("clip_version") or 0) + 1
+        out = work / f"{scene_id}_agent_v{version}.mp4"
+        task = {"mode": AGENT_VIDEO_MODE, "route_kind": "video", "raw_prompt": True,
+                "prompt": scene_brief(project, scene, people, len(grid_files), seconds, token),
+                "attachments": [str(image), str(board), *(str(p) for p in grid_files)],
+                "agent": {"done_token": token, "wait_sec": MUSE_AGENT_WAIT_MIN * 60, "target_seconds": target},
+                "output_path": str(out)}
+        await asyncio.to_thread(_merge_climax, project_id, scene_id,
+                                {"status": "clips", "error": None, **thread.state()})
+        called = True
+        try:
+            result = await _muse(muse_call, thread, task)
+        except (RuntimeError, TimeoutError, OSError, ValueError) as e:
+            raise ClimaxVideoError(f"Muse chưa làm xong video của cảnh: {e}") from e
+        got = await asyncio.to_thread(_keep_copy, _result_file(result, "video"), out)
+        length = await asyncio.to_thread(check_agent_video, got, target)
+        await asyncio.to_thread(_merge_climax, project_id, scene_id, {"status": "checking"})
         final = project_service.get_scene_media_paths(project_id, scene_id)["motion_video"]
-        await asyncio.to_thread(_keep_copy, joined, final)
-        state = {**old, **thread.state(), "status": "ready", "clips": len(clips), "grids": len(plan),
-                 "attempts": attempts, "grid": None, "done": None, "error": None}
+        await asyncio.to_thread(_keep_copy, got, final)
+        extras = [Path(x) for x in (result.get("extra_images") or []) if isinstance(x, str)]
+        chosen = await asyncio.to_thread(choose_scene_image, image, extras)
+        backup = await asyncio.to_thread(replace_scene_image, project_id, scene_id, chosen) if chosen else None
+        state = {**old, **thread.state(), "status": "ready", "clips": 1, "grids": len(grid_files), "attempts": 1,
+                 "clip_version": version, "video_seconds": round(length, 1),
+                 "muse_report": str(result.get("muse_reply") or "")[-AGENT_REPLY_MAX_CHARS:],
+                 "media_count": result.get("media_count"), "warnings": list(result.get("warnings") or []),
+                 "scene_image_updated": chosen is not None, "backup_image": str(backup) if backup else None,
+                 "grid": None, "done": None, "error": None}
         state = {k: v for k, v in state.items() if v is not None}
         await asyncio.to_thread(_mark_ready, project_id, scene_id, final, state)
-        logger.info(f"Video cao trào {project_id}/{scene_id}: {len(clips)} clip, {len(plan)} grid, {attempts} lần gọi")
+        logger.info(f"Video cao trào {project_id}/{scene_id}: {length:.1f} s, thay ảnh cảnh: {chosen is not None}")
         return state
     except ClimaxVideoError as e:
-        logger.warning(f"Clip cao trào {project_id}/{scene_id} thất bại sau {attempts} lần gọi clip: {e.message}")
+        if called:
+            thread.drop(switch_account=False)   # Muse có thể vẫn đang làm và gửi kết quả muộn vào chat này
+        logger.warning(f"Clip cao trào {project_id}/{scene_id} thất bại: {e.message}")
         return await asyncio.to_thread(_merge_climax, project_id, scene_id, {
             "status": "failed", "error": e.message, "grid": None, "done": None, **thread.state()})
     except Exception as e:
@@ -802,6 +651,15 @@ async def run_scene_clips(project_id: str, scene_id: str, muse_call: MuseCall) -
         await asyncio.to_thread(_merge_climax, project_id, scene_id,
                                 {"status": "failed", "error": f"Lỗi ngoài dự kiến: {type(e).__name__}: {e}"})
         raise
+
+
+def redo_scene(project_id: str, scene_id: str) -> dict:
+    """"Làm lại cảnh này": cảnh đã có kết quả (xong hoặc lỗi) với grid đã duyệt quay về chờ làm clip, chat mới."""
+    _, scene = _load_scene(project_id, scene_id)
+    state = _scene_state(scene)
+    if not state.get("grid_approved") or state.get("status") not in ("ready", "failed"):
+        raise ClimaxVideoError("Cảnh chưa có video hay lần làm lỗi với grid đã duyệt để làm lại")
+    return _merge_climax(project_id, scene_id, {"status": GRID_APPROVED, "thread_dirty": True, "error": None})
 
 
 async def run_scene_climax_video(project_id: str, scene_id: str, muse_call: MuseCall) -> dict:
