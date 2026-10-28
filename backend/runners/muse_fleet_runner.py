@@ -59,8 +59,10 @@ from PIL import Image
 
 try:
     from runners.single_instance import acquire_runner_lock, release_runner_lock
+    from runners import muse_agent_turn as agent_turn
 except ImportError:  # chạy trực tiếp: python backend/runners/muse_fleet_runner.py
     from single_instance import acquire_runner_lock, release_runner_lock
+    import muse_agent_turn as agent_turn
 
 # -------------------------------------------------------------
 # Path Resolution
@@ -92,6 +94,13 @@ def is_path_within(path: Path, *bases: Path) -> bool:
     except (OSError, ValueError):
         return False
     return any(target.is_relative_to(Path(b).resolve()) for b in bases)
+
+
+def discard_temp_file(path: Path) -> None:
+    """Xoá MỘT file tạm do runner tự tạo: ảnh đính kèm/ảnh phụ trong .work, video tải về không hợp lệ trong muse_outputs.
+    Chỗ xoá duy nhất cho file tạm của runner (đường cấm 12): file nằm ngoài hai thư mục này thì không xoá."""
+    if is_path_within(path, WORK_DIR, OUTPUTS_DIR) and Path(path).is_file():
+        Path(path).unlink(missing_ok=True)
 
 
 def _muse_reply_part(text_before: str, text_now: str, prompt: str = "") -> str:
@@ -953,17 +962,23 @@ class MuseFleetRunner:
         if not file_path.exists() or file_path.stat().st_size == 0:
             return False, f"File kết quả không tồn tại hoặc rỗng: {file_path}"
         mime = "video/mp4" if file_path.suffix.lower() == ".mp4" else "image/jpeg"
+        meta = dict(meta)
+        extras = [Path(p) for p in meta.pop("_extra_files", []) or []]   # ảnh phụ của việc agent-video (đường dẫn máy này)
         try:
-            with open(file_path, "rb") as f:
-                resp = await self.http.post(
-                    f"{self.loopback_url}/tasks/{task_id}/complete",
-                    files={"file": (file_path.name, f, mime)},
-                    data={"metadata": json.dumps(meta)},
-                    timeout=120.0,
-                )
+            files = [("file", (file_path.name, file_path.read_bytes(), mime))]
+            files += [("extras", (p.name, p.read_bytes(), "image/jpeg")) for p in extras if p.is_file()]
+            resp = await self.http.post(
+                f"{self.loopback_url}/tasks/{task_id}/complete",
+                files=files,
+                data={"metadata": json.dumps(meta)},
+                timeout=120.0,
+            )
         except httpx.HTTPError as e:
             self._warn_backend_unreachable(e)
             return False, f"Không gửi được kết quả: {e}"
+        finally:
+            for p in extras:   # file tạm do runner tải về .work (như ảnh đính kèm), không phải dữ liệu người dùng
+                discard_temp_file(p)
         if resp.status_code != 200:
             return False, f"Backend từ chối kết quả (HTTP {resp.status_code}): {resp.text[:200]}"
         return True, "ok"
@@ -1154,6 +1169,82 @@ class MuseFleetRunner:
             logger.warning(f"Lỗi tải media {src[:80]}: {e}")
         return None
 
+    async def _finish_agent_turn(self, acc: FleetAccount, page: Page, context: BrowserContext, task: Dict[str, Any],
+                                 text_before: str, prompt: str, pre_srcs: List[str],
+                                 net_candidates: List[str]) -> Tuple[bool, Optional[Path], str]:
+        """Việc `agent-video`: chờ Muse làm xong lượt (chữ kết thúc bằng done_token và đứng yên), rồi lấy video cuối và
+        mọi ảnh mới Muse gửi sau prompt (ảnh nộp kèm dạng file phụ). Không bỏ ngang vì chữ "lỗi" trong báo cáo."""
+        task_id = task["task_id"]
+        agent = task.get("agent") or {}
+        token = str(agent.get("done_token") or "")
+        wait_sec = int(agent.get("wait_sec") or 2700)
+        target = int(agent.get("target_seconds") or 10)
+        if not token:
+            raise TaskFailure("AGENT_BAD_TASK", "Việc agent-video thiếu done_token")
+        logger.info(f"[{acc.account_id}] Đã gửi bản giao việc, chờ Muse làm xong lượt (tối đa {wait_sec}s)...")
+        await self.update_task_progress(task_id, 60, "generating", "Muse đang làm nhiều bước (tạo, tự kiểm, làm lại)...")
+        started = time.time()
+        last_text, stable_since = "", time.time()
+        while True:
+            if page.is_closed():
+                raise TaskFailure("PAGE_CLOSED", "Trang Muse đã bị đóng giữa chừng")
+            if time.time() - started > wait_sec:
+                raise TaskFailure("AGENT_TIMEOUT", f"Muse chưa xong sau {wait_sec}s (chưa thấy dòng kết thúc {token})")
+            await self._click_allow_if_asked(page, acc.account_id)
+            if "/thread/" in page.url and not page.url.endswith("/thread/new"):
+                task["_result_meta"]["thread_url"] = page.url
+            now_text = await page.evaluate(LOG_TEXT_JS)
+            if now_text != last_text:
+                last_text, stable_since = now_text, time.time()
+            said = _muse_reply_part(text_before, now_text, prompt)
+            if (agent_turn.turn_done(said, token) and time.time() - stable_since >= agent_turn.AGENT_STABLE_SEC
+                    and not await page.evaluate(agent_turn.STREAMING_JS)):
+                break
+            await asyncio.sleep(SCAN_INTERVAL_SEC * 5)
+
+        task["_result_meta"]["muse_reply"] = said[-agent_turn.REPLY_MAX_CHARS:]
+        await page.evaluate(SCROLL_LOG_JS)
+        await page.wait_for_timeout(3000)
+        videos = [c["src"] for c in await page.evaluate(FIND_NEW_MEDIA_JS, ["video", pre_srcs, []])]
+        videos += [u for u in net_candidates if u not in videos]
+        images = [c["src"] for c in await page.evaluate(FIND_NEW_MEDIA_JS, ["image", pre_srcs, []])]
+        final = agent_turn.pick_final_video(videos)
+        if final is None:
+            raise TaskFailure("NO_FINAL", "Muse ghi dòng kết thúc nhưng không có video nào sau prompt")
+        data = await self._download_media(page, context, final)
+        if not data:
+            raise TaskFailure("NO_FINAL", f"Không tải được video cuối của Muse: {final[:100]}")
+        dest_file = OUTPUTS_DIR / f"{task_id}.mp4"
+        dest_file.write_bytes(data)
+        ok, info = validate_video_file(dest_file, 2 * target + 1)
+        if not ok:
+            discard_temp_file(dest_file)
+            raise TaskFailure("NO_FINAL", f"Video cuối của Muse không dùng được: {info}")
+        remember_delivered(media_digest(data))
+
+        extra_files: List[str] = []
+        for i, src in enumerate(images[:agent_turn.AGENT_MAX_IMAGES]):
+            img = await self._download_media(page, context, src)
+            if not img:
+                logger.warning(f"[{acc.account_id}] Bỏ ảnh phụ {i + 1} (không tải được): {src[:80]}")
+                continue
+            good, why = validate_image_bytes(img, [])
+            if not good:
+                logger.warning(f"[{acc.account_id}] Bỏ ảnh phụ {i + 1} ({why}): {src[:80]}")
+                continue
+            path = WORK_DIR / f"{task_id}_extra_{i + 1}.jpg"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(to_jpeg_bytes(img, parse_aspect("16:9")))
+            extra_files.append(str(path))
+        task["_result_meta"].update(
+            media_count={"video": len(videos), "image": len(images)},
+            warnings=agent_turn.budget_warnings(len(videos), len(images), final_videos=1),
+            _extra_files=extra_files)
+        logger.info(f"[{acc.account_id}] Muse xong lượt sau {int(time.time() - started)}s: {info}, "
+                    f"{len(videos)} video, {len(images)} ảnh -> {dest_file.name}")
+        await self.update_task_progress(task_id, 95, "downloaded", f"Đã nhận video cuối {info}")
+        return True, dest_file, "Thành công"
+
     async def execute_task_with_browser(self, acc: FleetAccount, task: Dict[str, Any]) -> Tuple[bool, Optional[Path], str]:
         """
         Thực thi 1 task trên trình duyệt của tài khoản. Trả (thành công, file kết quả, thông điệp lỗi).
@@ -1266,6 +1357,9 @@ class MuseFleetRunner:
             pre_net.update(pre_srcs)
             submitted["v"] = True
             await self._submit_prompt(page, input_el, prompt)
+            if mode == "agent-video":
+                return await self._finish_agent_turn(acc, page, context, task, text_before, prompt, pre_srcs,
+                                                     net_candidates)
             logger.info(f"[{acc.account_id}] Đã gửi prompt, chờ Muse tạo {kind} (tối đa {MEDIA_WAIT_SEC[kind]}s)...")
             error_since: Optional[float] = None
             await self.update_task_progress(task_id, 60, "generating", f"Muse đang tạo {kind}...")
@@ -1316,7 +1410,7 @@ class MuseFleetRunner:
                         dest_file.write_bytes(data)
                         ok, info = validate_video_file(dest_file, max_video_seconds(requested_sec))
                         if not ok:
-                            dest_file.unlink(missing_ok=True)
+                            discard_temp_file(dest_file)
                     if ok:
                         remember_delivered(digest)
                         await page.wait_for_timeout(8000)   # chờ Muse viết xong lời kèm kết quả (tự kiểm, ghi chú)
@@ -1362,8 +1456,7 @@ class MuseFleetRunner:
                 except Exception:
                     pass
             for ap in attach_paths:
-                if is_path_within(ap, WORK_DIR):
-                    ap.unlink(missing_ok=True)
+                discard_temp_file(ap)
 
     # ---------------------------------------------------------
     # Worker Task Loop with Concurrency Semaphore (N <= 2 slots)

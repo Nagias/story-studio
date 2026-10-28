@@ -436,7 +436,7 @@ ALLOWED_DELETES = {
     "backend/routers/muse_bridge.py": 2,  # delete_gallery_item(), clear_all_gallery(): xoá ảnh/video Muse
     # Hợp lệ: chỉ dọn file tạm, file khoá hay file hỏng do chính code vừa tạo
     "backend/routers/api.py": 4,  # file zip/srt tạm sau khi gửi tải về
-    "backend/runners/muse_fleet_runner.py": 4,  # khoá SingletonLock của Chrome (2), video tải về không hợp lệ, ảnh đính kèm tạm
+    "backend/runners/muse_fleet_runner.py": 3,  # khoá SingletonLock của Chrome (2), discard_temp_file (file tạm của runner trong .work/muse_outputs)
     "backend/services/safe_files.py": 1,  # file tạm khi ghi an toàn thất bại
     "backend/services/thumbnail_service.py": 1,  # file thumbnail tạm
     "backend/services/tts_service.py": 1,  # file .words.json cũ trước khi thu lại giọng
