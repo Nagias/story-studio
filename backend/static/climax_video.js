@@ -12,7 +12,7 @@
   const LABEL = {
     selected: ['🎬 Sẽ làm video', 'bg-purple-50 text-purple-700 border-purple-200'],
     grid: ['🎬 Muse vẽ ảnh 9-grid…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
-    clips: ['🎬 Muse đang làm video (nhiều bước, 10–45 phút)…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
+    clips: ['🎬 Muse đang làm video (nhiều bước, 10–75 phút)…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
     checking: ['🎬 Đang kiểm video của Muse…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
     grid_review: ['🎬 Chờ duyệt grid', 'bg-amber-50 text-amber-700 border-amber-200'],
     grid_approved: ['🎬 Grid đã duyệt, chờ làm clip', 'bg-purple-50 text-purple-700 border-purple-200'],
@@ -271,7 +271,7 @@
 
   async function redo(sceneId) {
     const ok = window.confirm('Làm lại video cảnh này? Muse làm lại từ đầu trong chat mới, tốn tối đa 6 video + 4 ảnh '
-      + 'Muse (10–45 phút). Grid đã duyệt giữ nguyên; ảnh cảnh gốc vẫn giữ ở bản dự phòng.');
+      + 'Muse (10–75 phút). Grid đã duyệt giữ nguyên; ảnh cảnh gốc vẫn giữ ở bản dự phòng.');
     if (!ok) return;
     try {
       await flushProjectSave({ silent: true });
@@ -343,7 +343,7 @@
 
 Cảnh chưa có grid: vẽ ảnh 9-grid (1 grid mỗi 45 giây lời kể) `
       + 'rồi dừng chờ bạn duyệt. Cảnh đã duyệt grid: giao Muse một việc nhiều bước (Muse tự làm, tự kiểm, làm lại), tối đa '
-      + '6 video + 4 ảnh Muse và 10–45 phút mỗi cảnh; lỗi thì giữ ảnh, không tự thử lại. Chạy nền, lần lượt từng cảnh.');
+      + '6 video + 4 ảnh Muse và 10–75 phút mỗi cảnh; lỗi thì giữ ảnh, không tự thử lại. Chạy nền, lần lượt từng cảnh.');
     if (!ok) return;
     try {
       await flushProjectSave({ silent: true });
