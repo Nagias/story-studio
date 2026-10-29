@@ -1,8 +1,10 @@
 """Test ẩn bổ sung của bộ việc mẫu T6 (docs/bo-viec-mau): chỉ chép vào tests/ của bản chấm, không thuộc bộ test dự án.
 
 Thay cho test của lần sửa thật `test_finish_agent_turn_rescans_page_when_blob_is_revoked` (bỏ chấm: test đó đòi đúng
-thứ tự tải ["blob:cu", "blob:moi"], bài làm đúng theo cách khác bị chấm oan). Ở đây chỉ kiểm kết quả: trang đổi địa
-chỉ blob sau mỗi lần đọc, địa chỉ cũ tải hỏng, thì runner vẫn lấy được video cuối đang có trên trang.
+thứ tự tải ["blob:cu", "blob:moi"], bài làm đúng theo cách khác bị chấm oan). Ở đây kiểm kết quả, không đòi thứ tự tải:
+trang đổi địa chỉ blob sau mỗi lần đọc, địa chỉ cũ tải hỏng, thì runner vẫn lấy được video cuối đang có trên trang.
+Trang giả chỉ hiểu các đoạn JS có sẵn và tải qua `_download_media()` (ràng buộc ghi trong đề T6, thêm 30/10/2026 sau
+lần đo đầu: bài làm tải bằng đoạn JS mới trong trang bị chấm oan).
 """
 import asyncio
 import inspect

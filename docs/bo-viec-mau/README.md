@@ -24,7 +24,7 @@ Mỗi việc là một lần sửa lỗi có thật trong lịch sử git, có t
 | T6 (khó) | Muse làm xong video cao trào mà app báo lỗi tải, rồi tự giao lại nên Muse làm lần hai | Muse / Fleet Runner, lỗi ở 2 file | `5e72941` (gốc `487cc60`) | xem `T6/dap-an.json` | xem `T6/dap-an.json` |
 | T7 (khó) | Video thành phẩm nhỏ tiếng, có nhạc nền thì giọng càng nhỏ | Dựng video (ffmpeg), đo độ to thật | `70fa508` (gốc `fae2d62`) | xem `T7/dap-an.json` | xem `T7/dap-an.json` |
 
-Vì sao chọn 5 việc này:
+Vì sao chọn 5 việc đầu (T1–T5):
 - **Đại diện loại việc hay gặp.** Trong 106 commit (23/10/2026), pipeline LLM true-crime chiếm nhiều nhất (khoảng 28 commit), nên có T4. Các việc còn lại đại diện giao diện (T3), Muse (T1), giọng đọc (T2), ảnh và tài liệu (T5).
 - **Đều là lỗi thật đã sửa và có test.** Cỡ mỗi lần sửa từ 15 đến 70 dòng, nên mỗi lần đo không mất cả ngày.
 
@@ -34,7 +34,7 @@ Việc khó (T6, T7, thêm 29/10/2026 theo CLAUDE.md mục 1.2 câu 13: "cứ th
 
 Về cột "Test ẩn":
 - Gồm test của lần sửa thật cộng test bổ sung (`T*/test_an_*.py`). Test bổ sung được viết cho những yêu cầu trong đề mà lần sửa thật không có test.
-- Mọi test ẩn đều đã chạy thử: hỏng ở bản gốc, đạt ở đáp án (mục 4).
+- Mọi test ẩn đều đã chạy thử: hỏng ở bản gốc, đạt ở đáp án (mục 4). Riêng vài test bổ sung chỉ chặn tụt chất lượng (ví dụ `T7/test_an_t7_dinh_am_va_giong.py`: đỉnh âm, đủ hình tiếng, đúng độ dài) đạt cả ở bản gốc nên vào danh sách test cũ phải giữ (p2p), không phải test ẩn.
 
 ## 2. Thang điểm: 10 điểm mỗi việc (7 việc: 70 điểm cả bộ)
 
@@ -92,7 +92,7 @@ Chạy lại lệnh này khi thêm hay sửa việc mẫu, đổi test bổ sung
   - người làm bài: khoảng 1,2 triệu token, 11–18 phút mỗi việc, tổng khoảng 75 phút;
   - giám khảo: khoảng 0,6 triệu token, dưới 1 phút mỗi việc;
   - máy chấm: khoảng 2,5–3 phút mỗi việc.
-- **5 việc là ít.** Chênh từ 1 điểm trở xuống ở một việc có thể chỉ là dao động giữa hai lần chạy. Muốn chắc thì đo mỗi bên 2 lần. Chuyên gia "Multi-Agent Systems Architect" khuyên từ 20 ca trở lên; chủ dự án chọn 3–5 việc để mỗi lần đo không quá lâu.
+- **Số việc còn ít (7 việc; 23/10/2026 chủ dự án chọn 3–5, 29/10/2026 cho thêm việc khó).** Chênh từ 1 điểm trở xuống ở một việc có thể chỉ là dao động giữa hai lần chạy. Muốn chắc thì đo mỗi bên 2 lần. Chuyên gia "Multi-Agent Systems Architect" khuyên từ 20 ca trở lên; chủ dự án chọn 3–5 việc để mỗi lần đo không quá lâu.
 - **Người làm bài vẫn đọc được đáp án nếu cố tình.** Thư mục dự án thật và lịch sử git của nó (có đáp án) vẫn mở. Lời dặn chung cấm đọc ra ngoài thư mục làm bài, nhưng máy không chặn được, giám khảo cũng không thấy được. Đã gặp ở lần đo điểm gốc: agent làm T3 tự khai đã lỡ đọc `CLAUDE.md` của dự án thật.
 - **Bài làm đúng theo cách khác có thể bị chấm oan.** Test ẩn viết theo lần sửa thật, nên bài làm đúng theo cách khác hẳn có thể mất điểm ở A hoặc B. Điểm tụt thì đọc test nào hỏng trước khi kết luận. Lần đo điểm gốc đã gặp và sửa 2 lần chấm oan:
   - T1: bản chấm thiếu file test mới mà bài làm đã ghi vào `FEATURE_MAP.md`;
