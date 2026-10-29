@@ -381,3 +381,9 @@ Thiết kế `docs/superpowers/specs/2026-10-28-video-cao-trao-giao-viec-muse-de
   - **Lỗi thao tác của agent:** lệnh "vẽ lại grid" bị máy chủ từ chối (chữ tiếng Việt trong lệnh curl hỏng mã hoá) mà vẫn bấm chạy, nên app làm thẳng video với lưới cũ, bỏ qua bước chủ dự án duyệt lưới mới. Tốn 1 yêu cầu Muse (3 video + 1 ảnh, 10 phút)
   - Kết quả: 0–10 s ba người đầu tròn, không còn người thừa (Muse theo ảnh cảnh, không theo lưới cũ); 10–21 s quay lưng, hai cảnh sát đội mũ phớt, dáng to giống người thật hơn đoạn trước
 - [x] Dựng lại video hoàn chỉnh (17 phút): 22:53,6, −16,0 LUFS, khung tại cảnh 41 đúng bản mới
+
+# Vẽ lại ảnh tĩnh cho đồng bộ phong cách (2026-10-29, nhánh `ve-lai-anh-toc-nu`)
+- [x] Nguyên nhân: 78 ảnh cảnh dự án thử Trạm Dung vẽ ngày 27/10, trước khi có quy tắc tóc nữ; quy tắc chỉ áp cho ảnh vẽ sau đó. Xem bằng mắt cả 61 ảnh cảnh (`.cache/toc_nu/tam_1..4.jpg`): 10 ảnh nữ đầu trọc (002, 020, 021, 022, 023, 029, 031, 033, 034, 037; lọc theo chữ trong prompt bỏ sót 033, 034) và 4 ảnh lệch sang mặt người (006 ảnh chân dung trong khung, 007, 053, 067)
+- [x] Vẽ lại cả 14 ảnh (chủ dự án chọn "Vẽ lại cả 14 ảnh"): server thử 8010, tài khoản ảnh img_01, prompt cảnh + câu phong cách đầu tròn đầy đủ + dòng dặn riêng từng cảnh (`.cache/redraw14/`). **14 yêu cầu Muse ảnh**, 13:41–13:57, mỗi ảnh 50–80 s, không lỗi, không gọi ảnh trả phí. Ảnh cũ và video final cũ chép dự phòng ở `.cache/backup/anh_truoc_ve_lai_29-10/`
+- [x] Xem từng ảnh mới (`.cache/redraw14/tam_moi.jpg`): nữ có tóc phủ kín đỉnh đầu, mọi người mặt tròn trắng chấm mắt. Cảnh 023 và 034 nay không có nhân vật chính, cảnh 033 thám tử đội mũ trùm: đúng prompt và lời kể (ảnh cũ vẽ thừa người)
+- [x] Dựng lại video hoàn chỉnh (nút "Sản xuất video dài", 17 phút, không thêm việc Muse): 22:53,6, 1920×1080 25 fps, −16,0 LUFS; khung tại 12 cảnh vẽ lại đều là ảnh mới (`.cache/redraw14/khung_final.jpg`). `projects/` như trước
