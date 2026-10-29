@@ -1182,6 +1182,7 @@ function formatDisplayVoice(rawVoice) {
   if (!rawVoice) rawVoice = "vi-VN-NamMinhNeural";
   const str = String(rawVoice).trim();
   // Vietnamese voices identified FIRST
+  if (str.startsWith("vieneu-review-")) return formatDisplayVoice("vieneu-" + str.slice("vieneu-review-".length)) + " · review";
   if (str.includes("NamMinh") || str.includes("Nam Minh") || str === "vi-VN-NamMinhNeural") return "🇻🇳 Nam Minh";
   if (str.includes("HoaiMy") || str.includes("Hoài My") || str === "vi-VN-HoaiMyNeural") return "🇻🇳 Hoài My";
   if (str.includes("MaiAnh") || str.includes("Mai Anh") || str === "vieneu-MaiAnh") return "🇻🇳 VieNeu Mai Anh";

@@ -25,15 +25,25 @@ ELLIPSIS_PAUSE_S = 0.8
 _SENTENCE = re.compile(r"[^.!?…]+(?:[.!?…]+[\"'”’»)\]]*)?")
 
 
-def split_for_pauses(text: str) -> List[tuple]:
-    """Tách lời kể thành [(câu, giây lặng sau câu)]: hết câu (. ! ?) lặng SENTENCE_PAUSE_S, "…" lặng ELLIPSIS_PAUSE_S,
+# Nhịp review (chủ dự án 29/10/2026, theo 2 video mẫu đọc 240–272 chữ/phút): giọng "vieneu-review-*" đọc ở tốc độ gốc
+# của model (không kéo giãn bằng atempo như VIENEU_SPEED) và ngừng ngắn. Đo thử cảnh 2–5 Trạm Dung ở tốc độ 1,0:
+# Trúc Ly 261, Thiện Minh 240, Mai Anh 221 chữ/phút (.cache/thu_giong_review/).
+REVIEW_VOICE_PREFIX = "vieneu-review-"
+REVIEW_SPEED = 1.0
+REVIEW_SENTENCE_PAUSE_S = 0.2
+REVIEW_ELLIPSIS_PAUSE_S = 0.6
+
+
+def split_for_pauses(text: str, sentence_pause: float = SENTENCE_PAUSE_S,
+                     ellipsis_pause: float = ELLIPSIS_PAUSE_S) -> List[tuple]:
+    """Tách lời kể thành [(câu, giây lặng sau câu)]: hết câu (. ! ?) lặng sentence_pause, "…" lặng ellipsis_pause,
     câu cuối không lặng."""
     pieces = []
     for match in _SENTENCE.finditer(text or ""):
         sentence = " ".join(match.group(0).split())
         if not sentence:
             continue
-        pause = ELLIPSIS_PAUSE_S if sentence.rstrip("\"'”’»)]").endswith(("…", "...")) else SENTENCE_PAUSE_S
+        pause = ellipsis_pause if sentence.rstrip("\"'”’»)]").endswith(("…", "...")) else sentence_pause
         pieces.append((sentence, pause))
     if pieces:
         pieces[-1] = (pieces[-1][0], 0.0)
@@ -190,6 +200,33 @@ AVAILABLE_VOICES: List[Dict[str, Any]] = [
         "locale": "vi-VN",
         "language": "Tiếng Việt",
         "sample": "Xin chào, tôi là Thiện Minh, giọng nam truyền cảm kể chuyện.",
+        "recommended": False,
+    },
+    {
+        "id": "vieneu-review-TrucLy",
+        "name": "VieNeu Trúc Ly · nhịp review (Nữ - giọng cao, đọc nhanh như video review phim)",
+        "gender": "Female",
+        "locale": "vi-VN",
+        "language": "Tiếng Việt",
+        "sample": "Đúng lúc đó, cánh cửa khóa trái bỗng bật mở. Và đó mới chỉ là bắt đầu.",
+        "recommended": False,
+    },
+    {
+        "id": "vieneu-review-MaiAnh",
+        "name": "VieNeu Mai Anh · nhịp review (Nữ - đọc nhanh, ngừng ngắn)",
+        "gender": "Female",
+        "locale": "vi-VN",
+        "language": "Tiếng Việt",
+        "sample": "Đúng lúc đó, cánh cửa khóa trái bỗng bật mở. Và đó mới chỉ là bắt đầu.",
+        "recommended": False,
+    },
+    {
+        "id": "vieneu-review-ThienMinh",
+        "name": "VieNeu Thiện Minh · nhịp review (Nam - đọc nhanh, ngừng ngắn)",
+        "gender": "Male",
+        "locale": "vi-VN",
+        "language": "Tiếng Việt",
+        "sample": "Đúng lúc đó, cánh cửa khóa trái bỗng bật mở. Và đó mới chỉ là bắt đầu.",
         "recommended": False,
     },
     {
@@ -613,17 +650,24 @@ async def generate_speech(
             "vieneu-myduyen": "Mỹ Duyên",
             "vieneu-thienminh": "Thiện Minh",
             "vieneu-haidang": "Hải Đăng",
+            "vieneu-review-trucly": "Trúc Ly",
+            "vieneu-review-maianh": "Mai Anh",
+            "vieneu-review-thienminh": "Thiện Minh",
         }
         target_vieneu_voice = vieneu_map.get(voice.lower(), "Mai Anh")
+        review_pace = voice.lower().startswith(REVIEW_VOICE_PREFIX)
+        vieneu_speed = REVIEW_SPEED if review_pace else config.VIENEU_SPEED
+        pauses = (REVIEW_SENTENCE_PAUSE_S, REVIEW_ELLIPSIS_PAUSE_S) if review_pace else (SENTENCE_PAUSE_S, ELLIPSIS_PAUSE_S)
         worker_script = Path(__file__).resolve().parent / "vieneu_worker.py"
 
         vieneu_success = False
         vieneu_errors: List[str] = []
 
         # 1a. Server VieNeu giữ model trong RAM (tự bật nếu chưa chạy): mỗi cảnh chỉ tốn thời gian đọc.
-        # Đọc từng câu ở tốc độ config.VIENEU_SPEED rồi ghép, có khoảng lặng giữa các câu (split_for_pauses).
+        # Đọc từng câu ở tốc độ config.VIENEU_SPEED (giọng nhịp review: REVIEW_SPEED) rồi ghép, có khoảng lặng giữa các
+        # câu (split_for_pauses).
         if await ensure_vieneu_server():
-            pieces = split_for_pauses(clean_text) or [(clean_text, 0.0)]
+            pieces = split_for_pauses(clean_text, *pauses) or [(clean_text, 0.0)]
             try:
                 import httpx
                 # file giọng từng câu nằm trong thư mục tạm, tự dọn khi ra khỏi khối with
@@ -635,7 +679,7 @@ async def generate_speech(
                             resp = await client.post(
                                 f"{VIENEU_URL}/v1/audio/speech",
                                 json={"input": sentence, "voice": target_vieneu_voice, "response_format": "mp3",
-                                      "speed": config.VIENEU_SPEED},
+                                      "speed": vieneu_speed},
                             )
                             if resp.status_code != 200 or len(resp.content) <= 500:
                                 vieneu_errors.append(f"server HTTP {resp.status_code} ở câu {i + 1}: {resp.text[:150]}")
