@@ -106,7 +106,8 @@ def test_doc_junit_nhan_dat_hong_bo_qua_lop_va_tham_so():
 # ----------------------------------------------------------------------------- bộ đề đủ thành phần
 def test_moi_viec_mau_co_du_de_bai_test_bo_sung_va_dap_an_da_kiem():
     viec = bvm.doc_viec()
-    assert 3 <= len(viec) <= 5, "chủ dự án yêu cầu 3–5 việc mẫu"
+    # 23/10/2026 chủ dự án chọn 3–5 việc; 29/10/2026 (CLAUDE.md mục 1.2 câu 13): "cứ thêm việc khó và đo liên tục"
+    assert 3 <= len(viec) <= 10, "bộ việc mẫu 3–10 việc (CLAUDE.md mục 1.2 câu 13)"
     loi_dan = (BO / "loi-dan-chung.md").read_text(encoding="utf-8")
     assert "{THU_MUC}" in loi_dan
     for ma, v in viec.items():
@@ -127,3 +128,26 @@ def test_moi_viec_mau_co_du_de_bai_test_bo_sung_va_dap_an_da_kiem():
         for ten in v.get("test_them", []):
             assert any(t.startswith(f"tests/{ten}::") for t in dap_an["f2p"] + dap_an["p2p"]), \
                 f"{ma}: test bổ sung {ten} không đạt ở đáp án (không vào danh sách chấm nào)"
+
+
+# ----------------------------------------------------------------------------- dựng bài
+def test_bai_lam_khong_co_de_dap_an_nhung_co_file_giu_cho_readme(tmp_path, monkeypatch):
+    """Gặp 29/10/2026 khi thêm T6, T7: CLAUDE.md nhắc docs/bo-viec-mau/README.md mà bài làm bỏ cả thư mục đó, nên test
+    FEATURE_MAP hỏng ngay trên đáp án (điểm D = 0). Bài làm phải có file giữ chỗ, không có đề hay đáp án."""
+    import io
+    import tarfile
+    from types import SimpleNamespace
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tf:
+        for name, text in {"CLAUDE.md": "xem docs/bo-viec-mau/README.md", "docs/bo-viec-mau/T1/de-bai.md": "đề",
+                           "docs/bo-viec-mau/viec.json": "{}", "docs/khac.md": "giữ"}.items():
+            data = text.encode("utf-8")
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tf.addfile(info, io.BytesIO(data))
+    monkeypatch.setattr(bvm, "_run", lambda *a, **k: SimpleNamespace(returncode=0, stdout=buf.getvalue(), stderr=b""))
+    bvm._giai_nen("abc1234", tmp_path)
+    assert (tmp_path / "docs/khac.md").exists() and (tmp_path / "CLAUDE.md").exists()
+    assert sorted(p.relative_to(tmp_path).as_posix() for p in (tmp_path / "docs/bo-viec-mau").rglob("*")) == [
+        "docs/bo-viec-mau/README.md"]
+    assert "đáp án" in (tmp_path / "docs/bo-viec-mau/README.md").read_text(encoding="utf-8")

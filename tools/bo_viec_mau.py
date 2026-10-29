@@ -110,6 +110,12 @@ def _giai_nen(commit: str, dich: Path) -> None:
         # bộ việc mẫu (đề, đáp án) không bao giờ nằm trong bài làm, kể cả khi sau này dựng bài từ commit mới
         members = [m for m in tf.getmembers() if not m.name.startswith("docs/bo-viec-mau")]
         tf.extractall(dich, members=members, filter="data")
+    # CLAUDE.md từ 23/10/2026 nhắc file docs/bo-viec-mau/README.md: thiếu file thì test FEATURE_MAP và cổng kiểm hỏng
+    # ngay trên đáp án (gặp khi thêm T6, T7 ngày 29/10/2026). Để một file giữ chỗ, không có đề hay đáp án.
+    giu_cho = dich / "docs" / "bo-viec-mau" / "README.md"
+    giu_cho.parent.mkdir(parents=True, exist_ok=True)
+    giu_cho.write_text("# Bộ việc mẫu\n\nKhông có trong bài làm (để người làm bài không đọc được đề và đáp án).\n",
+                       encoding="utf-8")
 
 
 def _ap_ban_va(cay: Path, muc: str | dict, dao_nguoc: bool = False) -> None:

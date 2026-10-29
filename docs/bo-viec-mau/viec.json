@@ -58,6 +58,26 @@
    "duoc_sua": ["backend/services/thumbnail_service.py",
                 "tests/", "CLAUDE.md", "FEATURE_MAP.md", "TASKS.md", "tools/ruff_baseline.json"],
    "phai_sua": ["FEATURE_MAP.md"]
+  },
+  "T6": {
+   "ten": "Việc khó: Muse làm xong video cao trào mà app báo lỗi tải, rồi tự giao lại nên Muse làm lần hai",
+   "loai": "Muse / Fleet Runner, đề chỉ tả triệu chứng, lỗi nằm ở 2 file (runner + bridge)",
+   "goc": {"commit": "487cc60"},
+   "dap_an": [{"commit": "5e72941"}],
+   "test_them": ["test_an_t6_tai_video_cuoi.py"],
+   "bo_cham": ["tests/test_muse_agent_turn.py::test_finish_agent_turn_rescans_page_when_blob_is_revoked"],
+   "ly_do_bo_cham": "Test của lần sửa thật đòi đúng thứ tự tải [\"blob:cu\", \"blob:moi\"] và đúng 7 tham số; bài làm đúng theo cách khác (quét lại trước khi tải, giữ tham số cũ có mặc định) bị chấm oan. Thay bằng test_an_t6_tai_video_cuoi.py chỉ kiểm kết quả.",
+   "duoc_sua": ["backend/", "tests/", "CLAUDE.md", "FEATURE_MAP.md", "TASKS.md", "tools/ruff_baseline.json"],
+   "phai_sua": []
+  },
+  "T7": {
+   "ten": "Việc khó: video thành phẩm nhỏ tiếng, có nhạc nền thì giọng càng nhỏ",
+   "loai": "Dựng video (ffmpeg), đề chỉ tả triệu chứng, phải đo độ to thật",
+   "goc": {"commit": "fae2d62"},
+   "dap_an": [{"commit": "70fa508"}],
+   "test_them": ["test_an_t7_dinh_am_va_giong.py"],
+   "duoc_sua": ["backend/services/", "tests/", "CLAUDE.md", "FEATURE_MAP.md", "TASKS.md", "tools/ruff_baseline.json"],
+   "phai_sua": []
   }
  }
 }

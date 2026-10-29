@@ -1,6 +1,6 @@
 # Bộ việc mẫu chuẩn
 
-Bộ này đo chất lượng agent và skill bằng 5 việc thật của dự án, cho ra điểm số so được trước/sau mỗi lần thay đổi.
+Bộ này đo chất lượng agent và skill bằng 7 việc thật của dự án (5 việc thường, 2 việc khó), cho ra điểm số so được trước/sau mỗi lần thay đổi.
 
 **[Nguyên văn chủ dự án]** (23/10/2026)
 
@@ -10,7 +10,7 @@ Cách hiểu "sửa skill hoặc agent" — **[Đề xuất của agent — chư
 - thêm, bớt hay sửa file skill hoặc file agent mà dự án dùng;
 - đổi agent nào làm loại việc nào (bảng định tuyến, CLAUDE.md mục 7).
 
-## 1. Năm việc mẫu
+## 1. Các việc mẫu
 
 Mỗi việc là một lần sửa lỗi có thật trong lịch sử git, có test kèm theo. Người làm bài nhận mã nguồn ngay trước lần sửa. Đáp án là lần sửa thật đó.
 
@@ -21,18 +21,22 @@ Mỗi việc là một lần sửa lỗi có thật trong lịch sử git, có t
 | T3 | Lọc chữ từ máy chủ trong thông báo và thư viện ảnh Muse | Sửa giao diện JS, chống chèn HTML | `d33d9df` (gốc `ccf87db`) | 3 | 685 |
 | T4 | Ngày tháng thật lọt vào tên tập và nhãn bằng chứng | Pipeline LLM true-crime, kiểm lọt thông tin thật | `8224dfb` (gốc: `c786fd9` bỏ riêng lần sửa này) | 2 | 755 |
 | T5 | Thumbnail lấy nhầm thẻ chữ làm nền, vệt sáng góc trái dưới | Ảnh (Pillow), duy trì `FEATURE_MAP.md` | `c786fd9`, phần thumbnail (gốc `5629971`) | 2 | 756 |
+| T6 (khó) | Muse làm xong video cao trào mà app báo lỗi tải, rồi tự giao lại nên Muse làm lần hai | Muse / Fleet Runner, lỗi ở 2 file | `5e72941` (gốc `487cc60`) | xem `T6/dap-an.json` | xem `T6/dap-an.json` |
+| T7 (khó) | Video thành phẩm nhỏ tiếng, có nhạc nền thì giọng càng nhỏ | Dựng video (ffmpeg), đo độ to thật | `70fa508` (gốc `fae2d62`) | xem `T7/dap-an.json` | xem `T7/dap-an.json` |
 
 Vì sao chọn 5 việc này:
 - **Đại diện loại việc hay gặp.** Trong 106 commit (23/10/2026), pipeline LLM true-crime chiếm nhiều nhất (khoảng 28 commit), nên có T4. Các việc còn lại đại diện giao diện (T3), Muse (T1), giọng đọc (T2), ảnh và tài liệu (T5).
 - **Đều là lỗi thật đã sửa và có test.** Cỡ mỗi lần sửa từ 15 đến 70 dòng, nên mỗi lần đo không mất cả ngày.
 
-Đề bài từng việc: `T1/de-bai.md` … `T5/de-bai.md`, ghép sau `loi-dan-chung.md`. Tham số máy đọc: `viec.json`.
+Việc khó (T6, T7, thêm 29/10/2026 theo CLAUDE.md mục 1.2 câu 13: "cứ thêm việc khó và đo liên tục để tối ưu"): đề chỉ tả triệu chứng chủ dự án thấy khi chạy thật, không chỉ file hay hàm sai; người làm bài phải tự tìm nguyên nhân, tái hiện bằng test rồi mới sửa. Phạm vi được sửa rộng (cả `backend/` hay `backend/services/`) để không lộ chỗ sai. Ứng viên bị loại: `6fadad9` (video cao trào) vì test của lần sửa thật bám vào tên tham số và đúng số ký tự, bài làm đúng cách khác sẽ bị chấm oan.
+
+Đề bài từng việc: `T1/de-bai.md` … `T7/de-bai.md`, ghép sau `loi-dan-chung.md`. Tham số máy đọc: `viec.json`.
 
 Về cột "Test ẩn":
 - Gồm test của lần sửa thật cộng test bổ sung (`T*/test_an_*.py`). Test bổ sung được viết cho những yêu cầu trong đề mà lần sửa thật không có test.
 - Mọi test ẩn đều đã chạy thử: hỏng ở bản gốc, đạt ở đáp án (mục 4).
 
-## 2. Thang điểm: 10 điểm mỗi việc, 50 điểm cả bộ
+## 2. Thang điểm: 10 điểm mỗi việc (7 việc: 70 điểm cả bộ)
 
 | Phần | Điểm | Cách chấm |
 |---|---|---|
@@ -83,7 +87,7 @@ Chạy lại lệnh này khi thêm hay sửa việc mẫu, đổi test bổ sung
 
 ## 5. Giới hạn cần biết
 
-- **Bộ việc đang chạm trần.** Lần đo điểm gốc 23/10/2026 (`lich-su-diem.md`), agent `general-purpose` (Opus 5.5) chưa cài skill được 50/50. Vì vậy bộ hiện chỉ bắt được khi một thay đổi làm tụt điểm; chưa đo được thay đổi có làm tốt hơn hay không. Nguyên nhân: đề ghi rất rõ kết quả mong đợi, đúng yêu cầu "có đáp án rõ ràng", nên đề cũng dễ. Muốn đo được tiến bộ thì cần thêm việc khó hơn.
+- **Bộ việc từng chạm trần (đến 29/10/2026).** Lần đo điểm gốc 23/10/2026 (`lich-su-diem.md`), agent `general-purpose` (Opus 5.5) chưa cài skill được 50/50. Vì vậy bộ hiện chỉ bắt được khi một thay đổi làm tụt điểm; chưa đo được thay đổi có làm tốt hơn hay không. Nguyên nhân: đề ghi rất rõ kết quả mong đợi, đúng yêu cầu "có đáp án rõ ràng", nên đề cũng dễ. Muốn đo được tiến bộ thì cần thêm việc khó hơn: đã thêm T6, T7 (mục 1); điểm của chúng ở `lich-su-diem.md`.
 - **Chi phí một lần đo** (số đo lần điểm gốc):
   - người làm bài: khoảng 1,2 triệu token, 11–18 phút mỗi việc, tổng khoảng 75 phút;
   - giám khảo: khoảng 0,6 triệu token, dưới 1 phút mỗi việc;
