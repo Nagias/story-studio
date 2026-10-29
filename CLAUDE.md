@@ -49,6 +49,10 @@ Cột câu hỏi do agent viết (tóm tắt câu đã hỏi trong chat). Cột 
 | 7 | Lựa chọn 8 phút của vụ án: bỏ đi hay giữ lại để thử cho rẻ quota? | Giữ lại để thử trước. |
 | 8 | "Remake cho dài ra" làm thế nào, khi quy tắc review hiện có chữ "tóm tắt" nên bài ra thường ngắn hơn truyện gốc? | Tôi nghĩ là remake cho dài ra thì cơ bản là thêm ý nhận xét ngoài lề thôi. nhưng ưu tiên gộp chương hơn là cố làm dài rồi thành nhạt nhẽo. |
 | 9 | (Góp ý khi duyệt bảng 1.1, dòng kênh YouTube) | Tôi đã có kênh, cứ làm luôn cả mô tả, tiêu đề, thumbnail để tôi tải về đi. Cái này phải xem có repo nào hỗ trợ không để chuẩn SEO Youtube, chứ không được thuần AI suy nghĩ. AI sẽ không chính xác. |
+| 10 | (29/10/2026) Giọng nhịp review đọc nhanh hơn nên video ngắn hơn số phút đã chọn: có cần bù số chữ không? | Trúc Ly ổn rồi đó. còn thời gian ngắn hơn cũng được, không vấn đề gì cả. Mục đích anh yêu cầu thời gian lúc đầu là muốn em viết được nội dung đầy đủ chứ không được rút gọn, vì nội dung anh gửi rất dài. Cái cần tuân thủ là các lệnh python để AI không tìm đường tắt, không rút gọn và thêm các quy luật để viết review hay hơn, cảm xúc hơn, có thể tìm kiếm các mã nguồn mở liên quan. |
+| 11 | (29/10/2026) Vụ án kể ở ngôi thứ ba kiểu phóng sự, hay ngôi "tôi" như hai video mẫu? | Tôi duyệt ngôi kể thứ 3 kiểu phóng sự. |
+| 12 | (29/10/2026) Nhân vật đầu tròn có được biểu cảm như video mẫu (lông mày, nước mắt, nửa mặt tô xám khi sợ) không, khi quy tắc hiện tại cấm lông mày? | Có nới quy tắc ra. |
+| 13 | (29/10/2026) Bộ việc mẫu chạm trần 50/50 nên chỉ bắt được tụt điểm: có thêm việc khó hơn không? | Mục 8 thì có đo được khi agent giỏi lên, cứ thêm việc khó và đo liên tục để tối ưu. |
 
 ### 1.3 Quy trình làm video — [Đề xuất của agent; chủ dự án xác nhận tạm 22/10/2026: "Tạm thời là đúng ý tôi rồi"]
 

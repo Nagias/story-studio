@@ -396,3 +396,9 @@ Thiết kế `docs/superpowers/specs/2026-10-28-video-cao-trao-giao-viec-muse-de
 - [x] Kiểm chứng: 113 test giọng/vụ án đạt (98 s); `tools/check.py` ĐẠT; server thử 8010: chọn giọng lưu vào dự án thử rồi trả về Hoài My, nghe thử sinh mẫu thật (Trúc Ly 246 Hz, Mai Anh 195, Thiện Minh 130; ~252 chữ/phút), không rơi sang Edge, console không lỗi, `projects/` như trước. Giám khảo: ĐẠT
 - [ ] Chủ dự án quyết: số chữ/phút dùng để tính độ dài lời vụ án (`VI_WORDS_PER_MINUTE` 200) chưa theo giọng review (220–260) → video ngắn hơn số phút chọn 10–25%
 - [ ] Đề xuất: đường dự phòng CLI VieNeu (khi server lỗi) không ngừng giữa câu; viết lời kiểu review trong pipeline LLM (việc ưu tiên 1 chủ dự án đã nêu)
+
+# Quyết định chủ dự án và dọn dự án thử (2026-10-29, nhánh `ghi-quyet-dinh-va-don-du-an`)
+- [x] Ghi nguyên văn 4 quyết định vào CLAUDE.md mục 1.2 (câu 10–13): thời lượng ngắn hơn được, cốt là viết đủ không rút gọn (khoá bằng Python); ngôi kể thứ 3 kiểu phóng sự; nới quy tắc biểu cảm nhân vật đầu tròn; thêm việc khó vào bộ việc mẫu và đo liên tục
+- [x] Chủ dự án quyết câu "số chữ/phút theo giọng review" (mục Giọng đọc nhịp review): không bù, xem câu 10 mục 1.2
+- [x] Worktree cũ: `.claude/worktrees/` đã trống, `git worktree list` chỉ còn bản chính; app còn 1 worktree 155 MB của một phiên đang giữ (chưa đủ 30 ngày không dùng nên công cụ dọn của app không xoá)
+- [x] Chuyển vào Thùng rác Windows (khôi phục được) 11 dự án thử cũ và 2 vụ đi kèm, ~2,3 GB: `proj_270da203`, `proj_58075554`, `proj_899c1fbb`, `proj_8f6aaead`, `proj_b4c7cf2d`, `proj_crime_4a93fd60`, `proj_crime_58e75e48`, `proj_crime_f2512eac`, `proj_f8cc1379`, `proj_fb8e8c1b`, `proj_fcc95d71`, `_cases/case_0db7af5b`, `_cases/case_71c574da`. Kiểm 13/13 có trong Thùng rác. Giữ: 2 dự án MẪU + `case_7dcf6158`, `proj_ea5b04db` (dự án thử giao diện), `proj_crime_thucaotrao` + `case_6110efa8` (Trạm Dung đang làm), `proj_huyen_thoai_rung_suong_mu` (mã dự án mặc định trong `app.js`)
