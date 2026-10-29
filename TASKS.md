@@ -376,3 +376,8 @@ Thiết kế `docs/superpowers/specs/2026-10-28-video-cao-trao-giao-viec-muse-de
 - [x] Nâng chờ Muse mặc định 45 → 75 phút (commit `b4d8142`)
 - [x] Video hoàn chỉnh: nút "Sản xuất video dài" trên server thử 8010 (không gọi Muse/ảnh trả phí: đủ ảnh và giọng), 14 phút dựng → `projects/proj_crime_thucaotrao/renders/story_final.mp4`, 22:53,6, 1920×1080 25 fps, −16,0 LUFS (đoạn cảnh 28: −16,3; cảnh 41: −16,1); khung tại cảnh 28 (464,7 s) và 41 (694,9 s) là video Muse có phụ đề. `projects/` như trước
 - [ ] Đề xuất: làm bảng nhân vật cho cô gái cảnh 41 (để tóc theo bảng) rồi làm lại cảnh 41; runner nhắc Muse gửi ảnh khi báo `ANH_CANH_MOI: có` mà không kèm ảnh; lấy kết quả Muse gửi muộn sau khi hết giờ
+- [x] Làm lại cảnh 41 theo lời kể (29/10, chủ dự án chọn "Vẽ lại theo lời kể"; cô gái và cậu bé không phải nhân vật vụ án, do mô hình vẽ ảnh tự thêm):
+  - Vẽ lại ảnh cảnh bằng Muse (tài khoản ảnh img_01, prompt cảnh + câu phong cách đầy đủ, dặn chỉ hai cảnh sát và Hàn Thụy Côn): lần đính kèm bảng nhân vật Muse từ chối 2 lần (không vẽ nhân vật trong ảnh tham chiếu bị áp giải); bỏ đính kèm thì vẽ được, 1 ảnh. Ảnh cũ chép dự phòng ở `.cache/backup/`
+  - **Lỗi thao tác của agent:** lệnh "vẽ lại grid" bị máy chủ từ chối (chữ tiếng Việt trong lệnh curl hỏng mã hoá) mà vẫn bấm chạy, nên app làm thẳng video với lưới cũ, bỏ qua bước chủ dự án duyệt lưới mới. Tốn 1 yêu cầu Muse (3 video + 1 ảnh, 10 phút)
+  - Kết quả: 0–10 s ba người đầu tròn, không còn người thừa (Muse theo ảnh cảnh, không theo lưới cũ); 10–21 s quay lưng, hai cảnh sát đội mũ phớt, dáng to giống người thật hơn đoạn trước
+- [x] Dựng lại video hoàn chỉnh (17 phút): 22:53,6, −16,0 LUFS, khung tại cảnh 41 đúng bản mới
