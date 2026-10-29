@@ -11,6 +11,7 @@ import math
 
 from models.schemas import Project, Scene
 from services.character_sheets import CharacterSheet, hair_rule_for
+from services.image_service import FEMALE_HAIR_RULE_EN, ROUND_HEAD_STYLES
 
 AGENT_MAX_VIDEOS = 6        # giới hạn của Muse cho một yêu cầu (Muse tự khai 28/10/2026)
 AGENT_MAX_IMAGES = 4
@@ -48,8 +49,18 @@ def _cast_lines(project: Project, people: list[CharacterSheet]) -> list[str]:
         design = p.design_en.replace(rule, " ") if rule else p.design_en
         lines.append(f"- {p.name_vi}: {' '.join(design.split())[:DESIGN_MAX_CHARS]}")
         if rule:
-            lines.append(f"  This hair rule overrides any other hair placement in the design: {rule}")
+            lines.append("  This hair rule overrides any other hair placement in the design: "
+                         "the female hair rule below.")
     return lines
+
+
+def _female_hair_lines(project: Project) -> list[str]:
+    """Phong cách đầu tròn: quy tắc tóc cho MỌI nhân vật nữ trong cảnh, kể cả người chưa có bảng nhân vật (cảnh 41,
+    29/10/2026: cô gái không có bảng nên ảnh cảnh vẫn đầu trọc mà bản giao việc không nhắc)."""
+    if project.style_preset not in ROUND_HEAD_STYLES:
+        return []
+    return ["", "Quy tắc tóc cho mọi nhân vật nữ trong cảnh, kể cả người không có trong bảng diễn viên: "
+            f"{FEMALE_HAIR_RULE_EN}"]
 
 
 def scene_brief(project: Project, scene: Scene, people: list[CharacterSheet], grid_count: int, seconds: float,
@@ -67,6 +78,7 @@ def scene_brief(project: Project, scene: Scene, people: list[CharacterSheet], gr
         "",
         "Nhân vật của cảnh (thiết kế đã duyệt):",
         *_cast_lines(project, people),
+        *_female_hair_lines(project),
         "",
         "Mục tiêu (không cần hoàn hảo): phong cách đồng bộ từ đầu tới cuối. Nhân vật đầu tròn luôn là quả bóng tròn "
         "trắng RẤT TO, mặt trắng phẳng, đúng hai chấm mắt và một nét miệng, KHÔNG BAO GIỜ thành mặt người hay mặt anime "
@@ -79,8 +91,9 @@ def scene_brief(project: Project, scene: Scene, people: list[CharacterSheet], gr
         "- Đoạn nhân vật quay lưng phải bắt đầu từ một ảnh góc sau vẽ riêng (cùng nhân vật, cùng phong cách, chỉ thấy "
         "tóc phủ kín đầu, không chút màu trắng nào của đầu), dùng ảnh đó làm khung đầu của clip.",
         "- Máy quay đứng yên hoặc lia rất chậm; không zoom sát mặt.",
-        "- Ảnh 1 khác Ảnh 2 ở dáng đầu hay mái tóc thì vẽ lại Ảnh 1 trước (giữ nguyên mọi thứ khác, chỉ sửa cho đúng "
-        "Ảnh 2), rồi dùng ảnh đã sửa làm khung đầu.",
+        "- Ảnh 1 khác Ảnh 2 ở dáng đầu hay mái tóc, hoặc có nhân vật nữ đầu trọc (tóc chỉ là một chỏm sau gáy), thì vẽ "
+        "lại Ảnh 1 trước (giữ nguyên mọi thứ khác, chỉ sửa dáng đầu, mái tóc cho đúng), rồi dùng ảnh đã sửa làm khung "
+        "đầu.",
         "",
         "Các bước:",
         "1. Tự lập danh sách clip từ lời kể và storyboard: ô nào góc trước/nghiêng, ô nào góc sau, mỗi clip làm gì, cắt "

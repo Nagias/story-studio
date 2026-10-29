@@ -68,9 +68,9 @@ def test_brief_has_every_rule_and_ends_with_token(isolated_projects_dir):
     assert b.count(FEMALE_HAIR_RULE_EN) == 1                       # một người nữ -> một lần, nam không có
 
 
-def test_brief_without_female_has_no_hair_rule(isolated_projects_dir):
+def test_brief_without_female_cast_has_no_override_line(isolated_projects_dir):
     project, scene, _, nam = _setup(isolated_projects_dir)
-    assert FEMALE_HAIR_RULE_EN not in scene_brief(project, scene, [nam], grid_count=1, seconds=8, done_token=TOKEN)
+    assert "This hair rule overrides" not in scene_brief(project, scene, [nam], grid_count=1, seconds=8, done_token=TOKEN)
 
 
 def test_brief_lists_attachments_in_order(isolated_projects_dir):
@@ -106,3 +106,14 @@ def test_hair_rule_survives_default_design_and_long_approved_design(isolated_pro
     nu2 = CharacterSheet(entity_id="person_1", name_vi="Thẩm Nhã Uyên", status="approved", design_en=long_design)
     b2 = scene_brief(project, scene, [nu2], grid_count=1, seconds=11, done_token=TOKEN)
     assert "CLOTHES: pale blue-grey blouse" in b2 and "FIXED in every view" in b2
+
+
+def test_hair_rule_covers_every_female_in_round_head_scene(isolated_projects_dir):
+    """Cảnh 41 (29/10/2026): cô gái trong cảnh không có bảng nhân vật nên bản giao việc không nhắc tóc của cô, ảnh cảnh
+    vẫn đầu trọc. Phong cách đầu tròn: quy tắc tóc áp cho MỌI nhân vật nữ trong cảnh, ảnh cảnh có nữ đầu trọc thì vẽ lại."""
+    project, scene, _, nam = _setup(isolated_projects_dir)
+    b = scene_brief(project, scene, [nam], grid_count=1, seconds=20, done_token=TOKEN)
+    assert FEMALE_HAIR_RULE_EN in b and "kể cả người không có trong bảng diễn viên" in b
+    assert "đầu trọc" in b
+    anime = project.model_copy(update={"style_preset": "anime"})
+    assert FEMALE_HAIR_RULE_EN not in scene_brief(anime, scene, [nam], grid_count=1, seconds=20, done_token=TOKEN)
