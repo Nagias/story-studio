@@ -709,8 +709,9 @@ async def create_project_from_script(req: CreateProjectFromScriptRequest):
 
     # Lời review viết từng phần, mỗi phần qua kiểm đủ ý (services/story_review.py; CLAUDE.md mục 1.2 câu 10, 14,
     # 15, 16). Không đạt thì báo lỗi rõ, không chép nguyên văn truyện làm lời kể, không tạo dự án rỗng.
+    detected = story_review.detect_text_language(req.text)
     out_lang = (req.output_language if req.output_language in story_review.LANGUAGES
-                else story_review.detect_text_language(req.text))
+                else detected if detected in story_review.LANGUAGES else "vi")   # truyện tiếng Trung: lời Việt
     if req.progress_id is not None:
         require_safe_id(req.progress_id, "progress_id")
     try:

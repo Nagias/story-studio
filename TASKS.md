@@ -415,13 +415,14 @@ Thiết kế `docs/superpowers/specs/2026-10-28-video-cao-trao-giao-viec-muse-de
 Yêu cầu chốt: làm hết, test kỹ từng nút theo FEATURE_MAP như người dùng thật, tách 1–2 tính năng A/B test (đội agent / không đội agent), báo kết quả cuối.
 - [x] Ghi nguyên văn câu 14–22 vào CLAUDE.md mục 1.2
 - [x] Test cấu hình tài khoản Muse không đòi đúng 10 tài khoản (câu 22)
-- [ ] 1. Chống rút gọn (câu 10, 14, 21): bảng sự thật cố định, danh sách ý từng đoạn, mỗi phần viết phải dùng đủ ý, code Python chặn khi thiếu ý / ngắn bất thường / trái bảng sự thật; test kiến trúc chặn gọi AI viết cả truyện một lần
-- [ ] 2. Viết kiểu review (câu 16): bỏ chữ "tóm tắt", quy tắc review; ngôi thứ ba có máy kiểm (câu 11)
-- [ ] 3. Âm thanh tiết chế: tiếng động chỉ ở khoảnh khắc then chốt, có quãng gần như im 8–11% thời lượng
-- [ ] 4. Truyện chọn tiếng Việt hoặc tiếng Anh (câu 15) — A/B test
+- [x] 1. Chống rút gọn (câu 10, 14, 21): bảng sự thật cố định, danh sách ý từng đoạn, mỗi phần viết phải dùng đủ ý, code Python chặn khi thiếu ý / ngắn bất thường / trái bảng sự thật; test kiến trúc chặn gọi AI viết cả truyện một lần
+- [x] 2. Viết kiểu review (câu 16): bỏ chữ "tóm tắt", quy tắc review; ngôi thứ ba có máy kiểm (câu 11)
+- [x] 3. Âm thanh tiết chế: tiếng động chỉ ở khoảnh khắc then chốt, có quãng gần như im 8–11% thời lượng
+- [x] 4. Truyện chọn tiếng Việt hoặc tiếng Anh (câu 15) (làm cùng việc 1; A/B test chuyển sang việc 5 và 6 vì không đụng phần viết lời)
 - [ ] 5. Khoá bối cảnh (bảng bối cảnh như bảng nhân vật) + nới biểu cảm, cấm mặt người (câu 12, 17)
 - [ ] 6. Video Muse theo lời thoại (câu 18, 19): tối thiểu 5 s không cắt; thoại dài chia nhiều video, mỗi video theo đoạn thoại của nó (đổi cảnh, không chỉ đổi góc máy) — A/B test
 - [ ] 7. Đo câu 10–13 có được tuân thủ không (câu 21); cái nào máy kiểm được thì làm khoá cứng
+- [x] 1–3: commit `2e4c9ef`, `1e3d91e` (test: story_review 10, vụ án kiểm 6, khoá cứng 4, âm thanh 9)
 - [ ] 8. Cập nhật bảng 1.1 và 1.3 theo câu 14–22 và code mới
 - [ ] 9. Test trọn luồng trên server thử 8010 bằng trình duyệt, từng nút theo FEATURE_MAP, dịch vụ thật
 - [ ] 10. Báo cáo cuối

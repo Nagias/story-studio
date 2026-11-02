@@ -28,13 +28,17 @@ logger = logging.getLogger("StoryReview")
 
 LANGUAGES = ("vi", "en")
 PART_MAX_CHARS = 2400          # cỡ đoạn của luồng vụ án: đủ ngắn để LLM không làm tắt
+PART_MAX_CHARS_ZH = 1000       # tiếng Trung đặc chữ: 1.000 chữ Hán ~ 2.400 ký tự tiếng Việt về lượng nội dung
+CHARS_PER_POINT_ZH = 140
 MAX_ROUNDS = 3                 # viết → kiểm → viết lại
 CHARS_PER_POINT = 350          # phần 2.400 ký tự phải có ít nhất 6 ý
 MIN_POINTS = 2
 SCENE_WORDS = {"vi": (10, 34), "en": (8, 28)}
 WORDS_PER_SECOND = {"vi": 4.2, "en": 2.6}   # nhịp review (đo 29/10/2026: Trúc Ly 261, Andrew ~150 chữ/phút)
-# Lời review phải dài ít nhất chừng này so với phần gốc (đếm từ; tiếng Việt đếm theo tiếng, tiếng Anh theo từ)
-MIN_WORD_RATIO = {("vi", "vi"): 0.55, ("en", "en"): 0.55, ("vi", "en"): 0.4, ("en", "vi"): 0.75}
+# Lời review phải dài ít nhất chừng này so với phần gốc (đếm từ; tiếng Việt đếm theo tiếng, tiếng Anh theo từ, tiếng
+# Trung theo chữ Hán: một chữ Hán ~ một tiếng Hán Việt)
+MIN_WORD_RATIO = {("vi", "vi"): 0.55, ("en", "en"): 0.55, ("vi", "en"): 0.4, ("en", "vi"): 0.75,
+                  ("zh", "vi"): 0.5, ("zh", "en"): 0.3}
 CAMERA_MOTIONS = ("zoom_in", "zoom_out", "pan_left", "pan_right", "action_camera_shake")
 BEATS = ("hook", "setting", "escalation", "climax", "resolution")
 _VI_MARKS = re.compile(r"[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]", re.IGNORECASE)
@@ -64,8 +68,19 @@ async def _story_llm(_system: str, user: str, **kwargs: Any) -> Any:
     return await case_adaptation_llm.call_llm_json(STORY_SYSTEM, user, **kwargs)
 
 
+_HAN = re.compile(r"[一-鿿]")
+
+
 def detect_text_language(text: str) -> str:
-    return "vi" if len(_VI_MARKS.findall(text or "")) >= 5 else "en"
+    """"vi" | "en" | "zh" (truyện tiếng Trung: lời review mặc định tiếng Việt)."""
+    text = text or ""
+    if len(_HAN.findall(text)) >= max(20, 0.2 * len("".join(text.split()))):
+        return "zh"
+    return "vi" if len(_VI_MARKS.findall(text)) >= 5 else "en"
+
+
+def source_words(text: str, lang: str) -> int:
+    return len(_HAN.findall(text or "")) if lang == "zh" else word_count(text)
 
 
 # ---------------------------------------------------------------- việc 1: liệt kê ý
@@ -86,7 +101,8 @@ class _Points(_Item):
 
 
 def min_points(part: str) -> int:
-    return max(MIN_POINTS, len(part) // CHARS_PER_POINT)
+    per = CHARS_PER_POINT_ZH if len(_HAN.findall(part)) > len(part) // 3 else CHARS_PER_POINT
+    return max(MIN_POINTS, len(part) // per)
 
 
 def points_prompt(part: str, lang: str, index: int, total: int) -> str:
@@ -206,7 +222,7 @@ def check_written(raw: Any, point_ids: list[str], part: str, lang: str, src_lang
     if missing:
         problems.append(f"chưa kể các ý {', '.join(missing)}; mọi ý phải có trong covers của một cảnh")
     ratio = MIN_WORD_RATIO[(src_lang, lang)]
-    total, src = sum(word_count(s["text"]) for s in scenes), word_count(part)
+    total, src = sum(word_count(s["text"]) for s in scenes), source_words(part, src_lang)
     if total < ratio * src:
         problems.append(f"lời kể chỉ {total} từ, cần ít nhất {int(ratio * src)} từ ({int(ratio * 100)}% đoạn gốc "
                         f"{src} từ): kể đủ chi tiết từng ý, không làm tắt")
@@ -246,7 +262,7 @@ async def review_part(part: str, *, lang: str, src_lang: str, index: int, total:
                                      _verify_validator(ids, narr), llm=llm, temperature=0.1,
                                      step_label=f"kiểm lời kể {label}")
         if not result["missing"] and not result["issues"]:
-            stats = {"part": index, "points": len(ids), "rounds": round_no, "source_words": word_count(part),
+            stats = {"part": index, "points": len(ids), "rounds": round_no, "source_words": source_words(part, src_lang),
                      "review_words": sum(word_count(t) for t in narr)}
             return scenes, result["facts"], stats
         feedback = coverage_guard.feedback_for_writer(result, dict(points))
@@ -259,8 +275,8 @@ async def review_story(text: str, *, language: Optional[str] = None, style_prese
                        job_id: Optional[str] = None, llm: Optional[Callable[..., Any]] = None) -> dict:
     """Cả truyện: {"scenes": [...], "language": ..., "coverage": [...]}. Mỗi cảnh đã qua kiểm đủ ý."""
     src_lang = detect_text_language(text)
-    lang = language if language in LANGUAGES else src_lang
-    parts = chunk_source(text, PART_MAX_CHARS)
+    lang = language if language in LANGUAGES else (src_lang if src_lang in LANGUAGES else "vi")
+    parts = chunk_source(text, PART_MAX_CHARS_ZH if src_lang == "zh" else PART_MAX_CHARS)
     if not parts:
         raise StoryReviewError("Truyện trống")
     llm = llm or _story_llm

@@ -138,3 +138,12 @@ def test_one_click_failure_is_reported_and_creates_no_project(client, monkeypatc
 
 def test_progress_id_must_be_safe(client):
     assert client.get("/api/projects/create-from-script/progress/..%2Fx").status_code in (400, 404)
+
+
+def test_chinese_source_is_counted_by_han_characters_and_reviewed_in_vietnamese():
+    zh = "李明夏跟在陈鸿文教授身后，从三楼一路下到地下一层。" * 30
+    assert story_review.detect_text_language(zh) == "zh"
+    assert story_review.source_words(zh, "zh") == len([c for c in zh if "\u4e00" <= c <= "\u9fff"])
+    assert story_review.min_points(zh) >= len(zh) // story_review.CHARS_PER_POINT_ZH
+    parts = story_review.chunk_source(zh, story_review.PART_MAX_CHARS_ZH)
+    assert all(len(p) <= story_review.PART_MAX_CHARS_ZH for p in parts)
