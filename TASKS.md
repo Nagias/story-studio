@@ -410,3 +410,18 @@ Thiết kế `docs/superpowers/specs/2026-10-28-video-cao-trao-giao-viec-muse-de
 - [x] T6 chấm oan do test bổ sung của agent (trang Muse giả chỉ hiểu các đoạn JS có sẵn; bài làm tải bằng đoạn JS mới, hợp lý). Giám khảo nhánh đồng ý; đã ghi ràng buộc giao diện vào `T6/de-bai.md` (test không đổi nên đáp án giữ nguyên). README sửa chữ cho khớp 7 việc
 - [ ] Đo lại T6 với đề mới rồi mới ghi `lich-su-diem.md` (~200 nghìn token, ~15 phút làm bài + chấm)
 - [ ] Có từ trước, ngoài phạm vi: `check.py --full` hỏng `test_muse_fleet_runner.py::test_accounts_config_structure` vì cấu hình máy có 14 tài khoản Muse (thêm 4 tài khoản videopic 28/10), test đòi 10
+
+# Làm trọn kế hoạch 7 ý (chủ dự án duyệt 02/11/2026, nhánh `lam-tron-ke-hoach-thang-11`; quyết định: CLAUDE.md mục 1.2 câu 14–22)
+Yêu cầu chốt: làm hết, test kỹ từng nút theo FEATURE_MAP như người dùng thật, tách 1–2 tính năng A/B test (đội agent / không đội agent), báo kết quả cuối.
+- [x] Ghi nguyên văn câu 14–22 vào CLAUDE.md mục 1.2
+- [x] Test cấu hình tài khoản Muse không đòi đúng 10 tài khoản (câu 22)
+- [ ] 1. Chống rút gọn (câu 10, 14, 21): bảng sự thật cố định, danh sách ý từng đoạn, mỗi phần viết phải dùng đủ ý, code Python chặn khi thiếu ý / ngắn bất thường / trái bảng sự thật; test kiến trúc chặn gọi AI viết cả truyện một lần
+- [ ] 2. Viết kiểu review (câu 16): bỏ chữ "tóm tắt", quy tắc review; ngôi thứ ba có máy kiểm (câu 11)
+- [ ] 3. Âm thanh tiết chế: tiếng động chỉ ở khoảnh khắc then chốt, có quãng gần như im 8–11% thời lượng
+- [ ] 4. Truyện chọn tiếng Việt hoặc tiếng Anh (câu 15) — A/B test
+- [ ] 5. Khoá bối cảnh (bảng bối cảnh như bảng nhân vật) + nới biểu cảm, cấm mặt người (câu 12, 17)
+- [ ] 6. Video Muse theo lời thoại (câu 18, 19): tối thiểu 5 s không cắt; thoại dài chia nhiều video, mỗi video theo đoạn thoại của nó (đổi cảnh, không chỉ đổi góc máy) — A/B test
+- [ ] 7. Đo câu 10–13 có được tuân thủ không (câu 21); cái nào máy kiểm được thì làm khoá cứng
+- [ ] 8. Cập nhật bảng 1.1 và 1.3 theo câu 14–22 và code mới
+- [ ] 9. Test trọn luồng trên server thử 8010 bằng trình duyệt, từng nút theo FEATURE_MAP, dịch vụ thật
+- [ ] 10. Báo cáo cuối

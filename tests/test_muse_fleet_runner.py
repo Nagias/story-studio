@@ -1,7 +1,7 @@
 """
 Unit and Integration Tests for Muse Fleet Runner (Cơ chế B)
 Tests:
-- 10-account configuration loading & structure (5 image, 5 video)
+- account configuration loading & structure (any number of image/video accounts)
 - SingletonLock & SingletonCookie cleanup on Windows
 - Image prompt vs Video prompt separation
 - Account LRU / Round-Robin selection and cooldowns
@@ -34,20 +34,20 @@ from runners.muse_fleet_runner import (
 
 
 def test_accounts_config_structure():
-    """Kiểm tra cấu hình 10 tài khoản trong muse_fleet_accounts.json."""
+    """Cấu hình tài khoản trong muse_fleet_accounts.json đọc được và đủ trường.
+
+    Số tài khoản tuỳ máy: chủ dự án 02/11/2026 (CLAUDE.md mục 1.2 câu 22) "có bao nhiêu dùng bấy nhiêu"; test cũ đòi
+    đúng 10 tài khoản (5 ảnh, 5 video) là con số agent tự đặt."""
     assert ACCOUNTS_CONFIG_PATH.exists(), f"Không tìm thấy file: {ACCOUNTS_CONFIG_PATH}"
     with open(ACCOUNTS_CONFIG_PATH, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     assert "accounts" in data
     accounts = data["accounts"]
-    assert len(accounts) == 10, f"Mong đợi 10 accounts, nhưng có {len(accounts)}"
-
-    image_accounts = [a for a in accounts if a["type"] == "image"]
-    video_accounts = [a for a in accounts if a["type"] == "video"]
-
-    assert len(image_accounts) == 5, f"Mong đợi 5 accounts Image, có {len(image_accounts)}"
-    assert len(video_accounts) == 5, f"Mong đợi 5 accounts Video, có {len(video_accounts)}"
+    assert accounts, "Chưa có tài khoản Muse nào trong cấu hình"
+    ids = [a["account_id"] for a in accounts]
+    assert len(ids) == len(set(ids)), "Trùng account_id"
+    assert {a["type"] for a in accounts} <= {"image", "video"}, "type chỉ được là image hoặc video"
 
     # Kiểm tra các trường bắt buộc của mỗi account
     for acc in accounts:
