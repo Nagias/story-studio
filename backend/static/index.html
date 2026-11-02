@@ -589,6 +589,10 @@
           <button id="btn-character-sheets" class="hidden text-xs px-3 py-1.5 bg-white hover:bg-indigo-50 text-purple-700 rounded-lg border border-purple-300 font-semibold shadow-xs transition flex items-center gap-1.5" title="Bảng nhân vật đủ góc của vụ án: duyệt trước khi làm video cao trào">
             <i class="fa-solid fa-user-ninja text-xs"></i> <span>Bảng nhân vật</span>
           </button>
+          <!-- Khoá bối cảnh (code: location_sheets.js). Tìm bối cảnh tốn 1 lượt LLM, vẽ ảnh chuẩn tốn 1 lượt Muse -->
+          <button id="btn-location-sheets" class="hidden text-xs px-3 py-1.5 bg-white hover:bg-indigo-50 text-purple-700 rounded-lg border border-purple-300 font-semibold shadow-xs transition flex items-center gap-1.5" title="Bối cảnh lặp lại: mô tả cố định và ảnh chuẩn để các cảnh cùng nơi vẽ giống nhau">
+            <i class="fa-solid fa-map-location-dot text-xs"></i> <span>Bối cảnh</span>
+          </button>
           <button id="btn-climax-video-pick" class="hidden text-xs px-3 py-1.5 bg-white hover:bg-indigo-50 text-purple-700 rounded-lg border border-purple-300 font-semibold shadow-xs transition flex items-center gap-1.5" title="Tự chọn tối đa một nửa số cảnh có dấu hiệu cao trào (nhịp climax, nhạc căng, tiếng tim đập...)">
             <i class="fa-solid fa-wand-magic-sparkles text-xs"></i> <span>Chọn cảnh cao trào</span>
           </button>
@@ -1538,6 +1542,23 @@
     </div>
   </div>
 
+  <!-- Khoá bối cảnh (code: location_sheets.js). Vẽ ảnh chuẩn tốn 1 lượt Muse ảnh -->
+  <div id="modal-location-sheets" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white border border-slate-200 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      <div class="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+          <i class="fa-solid fa-map-location-dot text-purple-600"></i>
+          Bối cảnh lặp lại (khoá để các cảnh cùng nơi vẽ giống nhau)
+        </h3>
+        <button id="btn-close-location-sheets" class="text-slate-400 hover:text-slate-700 p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+      <p class="px-5 pt-3 text-xs text-slate-500">Mỗi nơi xuất hiện từ 2 cảnh trở lên có một mô tả cố định và một ảnh chuẩn (cảnh trống, không người). Chỉ bối cảnh đã duyệt mới được dùng: khi tạo ảnh hay video Muse cho cảnh của nơi đó, Muse nhận đúng mô tả này (và ảnh chuẩn, trừ cảnh cận mặt / cận đồ vật).</p>
+      <div id="location-sheets-list" class="p-5 overflow-y-auto space-y-4 text-xs"></div>
+    </div>
+  </div>
+
   <div id="modal-character-editor" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
     <div class="bg-white border border-slate-200 rounded-2xl w-full max-w-xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
       <div class="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
@@ -2266,7 +2287,7 @@
   </div>
 
   <!-- Main JavaScript Logic (v2.9.1 Cache Buster: renderFullUI báo cho true_crime.js để hiện nút "Tạo bản tiếng Anh") -->
-  <script src="/static/app.js?v=2.9.8"></script>
+  <script src="/static/app.js?v=2.9.9"></script>
   <script src="/static/true_crime.js?v=1.4.0"></script>
   <!-- Gói SEO YouTube ở Bước 4 (app.js gọi ytSeoLoad khi mở Bước 4) -->
   <script src="/static/youtube_seo.js?v=1.0.0"></script>
@@ -2274,5 +2295,9 @@
   <script src="/static/climax_video.js?v=1.2.1"></script>
   <!-- Bảng nhân vật đủ góc (dự án vụ án) -->
   <script src="/static/character_sheets.js?v=1.0.0"></script>
+  <!-- Khoá bối cảnh (mọi dự án có từ 2 cảnh) -->
+  <script src="/static/location_sheets.js?v=1.0.0"></script>
+  <!-- Nút "Muse Video" trên thẻ cảnh: video dài theo lời thoại, báo số video Muse trước khi chạy -->
+  <script src="/static/scene_muse_video.js?v=1.0.0"></script>
 </body>
 </html>

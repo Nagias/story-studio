@@ -54,7 +54,8 @@ STYLE_LOCK_EN = (
     "Keep exactly the same art style as the attached image: the same drawing style, the same line work and outlines, "
     "the same color palette, and the same character faces exactly as drawn in the attached image (if a character has "
     "a round white face with dot eyes, keep that round white face with dot eyes, never turn it into a realistic or "
-    "anime face). Same clothing, same setting, same lighting. Do not add any new people, no scene cuts, no text, "
+    "anime face; simple line expressions such as frowning eyebrows, tears or a grey-shaded half face are fine). "
+    "Same clothing, same setting, same lighting. Do not add any new people, no scene cuts, no text, "
     "no blood."
 )
 # Muse: nghỉ giữa hai lượt gọi để khỏi dồn tài khoản (chủ dự án 28/10: "cứ gọi từ từ thôi kẻo chết tài khoản")

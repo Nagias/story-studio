@@ -81,8 +81,10 @@ def scene_brief(project: Project, scene: Scene, people: list[CharacterSheet], gr
         *_female_hair_lines(project),
         "",
         "Mục tiêu (không cần hoàn hảo): phong cách đồng bộ từ đầu tới cuối. Nhân vật đầu tròn luôn là quả bóng tròn "
-        "trắng RẤT TO, mặt trắng phẳng, đúng hai chấm mắt và một nét miệng, KHÔNG BAO GIỜ thành mặt người hay mặt anime "
-        "(không mũi, không mắt có tròng, không lông mày). Quần áo, màu sắc, bối cảnh giữ như ảnh đã duyệt. Nhân vật cử "
+        "trắng RẤT TO, mặt trắng phẳng, hai chấm mắt và một nét miệng, KHÔNG BAO GIỜ thành mặt người hay mặt anime "
+        "(không mũi, không mắt có tròng, không lông mi, không môi chi tiết). Được biểu cảm bằng nét đơn giản cùng kiểu "
+        "vẽ: lông mày một nét nhíu hoặc nhướn, nước mắt, giọt mồ hôi, miệng há, nửa mặt tô xám khi sợ. Quần áo, màu sắc, "
+        "bối cảnh giữ như ảnh đã duyệt. Nhân vật cử "
         "động ít hoặc chạy tại chỗ vẫn đạt; đổi sang mặt người thì không bao giờ đạt.",
         "",
         "Luật bắt buộc (đo thật: video hỏng ở đúng các chỗ này):",

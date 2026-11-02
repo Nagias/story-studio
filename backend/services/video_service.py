@@ -343,12 +343,14 @@ async def render_scene_video(
         if has_video_audio and has_voice:
             # Tôn trọng âm thanh video: Trộn âm thanh nền video (25% ambient) với giọng đọc Voice (100%).
             # normalize=0 để giọng không bị hạ một nửa so với cảnh ảnh.
+            # apad: cảnh có thể dài hơn giọng đọc (video Muse theo lời thoại không bị cắt): lặng cho tới hết cảnh
             filter_complex_parts.append(
-                "[0:a]volume=0.25[amb];[1:a]volume=1.0[voice];[voice][amb]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]"
+                "[0:a]volume=0.25[amb];[1:a]volume=1.0,apad[voice];[voice][amb]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]"
             )
             audio_map = "[aout]"
         elif has_voice:
-            audio_map = "1:a"
+            filter_complex_parts.append("[1:a]apad[aout]")
+            audio_map = "[aout]"
         elif has_video_audio:
             filter_complex_parts.append("[0:a]volume=0.8,apad[aout]")   # tiếng của clip hết thì lặng tới hết cảnh
             audio_map = "[aout]"

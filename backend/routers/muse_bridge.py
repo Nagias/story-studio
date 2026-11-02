@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from config import EXTRA_CHROME_PROFILES_DIRS, MUSE_AGENT_WAIT_MIN, PROJECTS_DIR, STATIC_DIR
 from services.climax_brief import AGENT_REPLY_MAX_CHARS, AGENT_VIDEO_MODE
+from services import location_sheets
 from security import (
     MEDIA_EXTS,
     MAX_UPLOAD_BYTES,
@@ -1069,6 +1070,13 @@ async def create_task(req: TaskCreateRequest):
             "status": "pending",
             "created_at": time.time(),
         }
+        # Nút "Muse 2K" của thẻ cảnh: cảnh thuộc bối cảnh đã duyệt thì thêm mô tả cố định và ảnh chuẩn
+        if req.project_id and req.scene_id:
+            try:
+                lock = await asyncio.to_thread(location_sheets.scene_lock, req.project_id, req.scene_id, req.prompt)
+            except ValueError as e:   # locations.json hỏng: báo rõ, không âm thầm vẽ thiếu khoá
+                raise HTTPException(status_code=409, detail=f"Không đọc được danh sách bối cảnh của dự án: {e}") from None
+            location_sheets.apply_lock_to_image_task(task, lock)
 
     ensure_local_fleet_runner()
     enqueue_task(task)

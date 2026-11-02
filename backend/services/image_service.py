@@ -48,6 +48,15 @@ FEMALE_HAIR_RULE_EN = (
     "only a little hair at the nape."
 )
 ROUND_HEAD_STYLES = ("horror_cartoon_2d",)
+# Chủ dự án 29/10/2026 (câu 12 mục 1.2): nới quy tắc biểu cảm cho nhân vật đầu tròn như video mẫu (lông mày, nước mắt,
+# nửa mặt tô xám khi sợ); vẫn cấm tuyệt đối mặt người thật / mặt anime.
+ROUND_HEAD_EXPRESSION_RULE_EN = (
+    "Facial expressions are allowed and encouraged, drawn with the same simple flat lines: short line eyebrows that "
+    "frown, furrow or rise, tears and tear streaks, sweat drops, a wide open or trembling line mouth, and when a "
+    "character is afraid, half of the round white face shaded grey. The head always stays a big flat round white ball "
+    "with dot eyes: never a realistic human face and never an anime face (no nose, no eyes with irises or pupils, no "
+    "eyelashes, no detailed lips, no realistic skin)."
+)
 
 STYLE_PRESETS: Dict[str, Dict[str, Any]] = {
     # 0a. HOẠT HÌNH 2D RÙNG RỢN: chủ dự án 26/10/2026 thích kiểu kênh "Thế Giới Kì Quái" hơn ảnh noir; thử thật trên Muse
@@ -59,9 +68,11 @@ STYLE_PRESETS: Dict[str, Dict[str, Any]] = {
             "2D Chinese horror web-cartoon style, flat simple character design: characters have big perfectly round "
             "white heads, tiny dot eyes, simple line mouth, thin simple bodies, thick clean outlines; backgrounds are "
             "detailed dark painted illustrations with muted desaturated colors, cold blue-green night lighting, eerie "
-            "quiet mood, cinematic 16:9 frame, no text, no watermark. " + FEMALE_HAIR_RULE_EN
+            "quiet mood, cinematic 16:9 frame, no text, no watermark. " + ROUND_HEAD_EXPRESSION_RULE_EN + " "
+            + FEMALE_HAIR_RULE_EN
         ),
-        "negative_prompt": "photorealistic, realistic skin, 3d render, anime big eyes, chibi, bright cheerful colors, blood, gore",
+        "negative_prompt": ("photorealistic, realistic skin, realistic human face, nose, eyes with irises, 3d render, "
+                            "anime face, anime big eyes, chibi, bright cheerful colors, blood, gore"),
         "colors": ["#0f172a", "#334155", "#b91c1c"],
         "description": "Hoạt hình 2D kiểu truyện ma web: nhân vật đầu tròn trắng nét đơn giản, nền vẽ tay chi tiết, tông lạnh u tối.",
     },
@@ -587,6 +598,7 @@ async def generate_image(
     scene_index: Optional[int] = None,
     reference_image: Optional[str] = None,
     reference_role: Optional[str] = None,
+    location: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Generate an image using the selected provider with consistent styling.
@@ -594,6 +606,9 @@ async def generate_image(
     Chuỗi dự phòng tự động chỉ có Muse → 9router. Khi tất cả đều lỗi hàm trả về
     success=False kèm error, không bao giờ thay bằng ảnh giả. Pollinations, DALL-E
     và mock_cinematic chỉ chạy khi được chọn đích danh làm provider.
+
+    `location`: khoá bối cảnh của cảnh (gói của `location_sheets.scene_lock()`): câu mô tả cố định thêm vào prompt
+    cho mọi nguồn ảnh; Muse còn được đính kèm ảnh chuẩn của bối cảnh (nếu gói có `plate_path`).
     """
     if not output_path:
         raise ValueError("output_path must be provided.")
@@ -608,6 +623,9 @@ async def generate_image(
         style_preset=style_preset,
         character=target_char,
     )
+    if location and location.get("prompt_line"):
+        full_prompt = f"{full_prompt}. {location['prompt_line']}"
+    location_plate = (location or {}).get("plate_path")
 
     requested_provider = provider or DEFAULT_IMAGE_PROVIDER or "meta_muse_cloud"
     used_provider = requested_provider
@@ -688,6 +706,13 @@ async def generate_image(
                     "lighting": "cinematic lighting, volumetric atmosphere, 8k resolution",
                 },
             }
+            if location_plate:
+                # Ảnh chuẩn của bối cảnh đính kèm SAU ảnh tham chiếu sẵn có (nếu có); runner dặn Muse vai trò từng ảnh
+                local_ref = ref_img if ref_img and not str(ref_img).startswith("http") else None
+                task_dict["attachments"] = ([str(local_ref)] if local_ref else []) + [str(location_plate)]
+                task_dict["parameters"]["location_reference"] = True
+            if location:
+                task_dict["parameters"]["location_id"] = location.get("location_id")
             res = await enqueue_and_wait_muse_task(task_dict)
             muse_file = Path(res.get("output_path") or out) if isinstance(res, dict) else out
             if muse_file.resolve() != out.resolve() and muse_file.exists():

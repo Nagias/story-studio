@@ -93,6 +93,8 @@ from services import (
     generate_youtube_thumbnail,
 )
 from services.case_project_builder import previous_scene_frame, redraw_board_images
+from services.dialogue_video import render_seconds
+from services.location_sheets import scene_lock
 from services.scene_sound import build_energy_bgm, energy_segments, mix_scene_sfx, scene_sfx_files
 from services.thumbnail_service import ThumbnailError
 
@@ -233,6 +235,9 @@ SERVER_OWNED_MEDIA_FIELDS = (
 )
 
 
+SERVER_OWNED_METADATA_KEYS = ("climax_video", "muse_dialogue_video")
+
+
 def _keep_server_media(existing: Optional[Project], incoming_scenes: List[Scene]) -> None:
     server_scenes = {s.id: s for s in existing.scenes} if existing else {}
     for sc in incoming_scenes:
@@ -240,17 +245,20 @@ def _keep_server_media(existing: Optional[Project], incoming_scenes: List[Scene]
         # Trạng thái video cao trào chỉ server ghi (services/climax_video.py, routers/climax_video.py): bản giao diện
         # gửi lên có thể cũ (duyệt grid rồi bị tự lưu đè — duyệt độc lập 28/10/2026), luôn lấy bản của server;
         # cảnh mới (vd nhân bản cảnh) không được mang theo trạng thái của cảnh khác.
+        # Cùng cách cho trạng thái video Muse theo lời thoại (services/dialogue_video.py).
         sc.metadata = dict(sc.metadata or {})
         if not old:
-            sc.metadata.pop("climax_video", None)
+            for key in SERVER_OWNED_METADATA_KEYS:
+                sc.metadata.pop(key, None)
             continue
         for field in SERVER_OWNED_MEDIA_FIELDS:
             if not getattr(sc, field, None) and getattr(old, field, None):
                 setattr(sc, field, getattr(old, field))
-        if "climax_video" in (old.metadata or {}):
-            sc.metadata["climax_video"] = old.metadata["climax_video"]
-        else:
-            sc.metadata.pop("climax_video", None)
+        for key in SERVER_OWNED_METADATA_KEYS:
+            if key in (old.metadata or {}):
+                sc.metadata[key] = old.metadata[key]
+            else:
+                sc.metadata.pop(key, None)
 
 
 def _resolve_studio_path(value: str) -> Path:
@@ -1136,6 +1144,8 @@ async def generate_scene_image(project_id: str, scene_id: str, req: ImageGenRequ
     media_paths = get_scene_media_paths(project_id, scene_id)
 
     try:
+        # Cảnh thuộc bối cảnh đã duyệt: prompt thêm mô tả cố định, Muse đính kèm ảnh chuẩn (services/location_sheets.py)
+        location = await asyncio.to_thread(scene_lock, project_id, scene_id, prompt)
         img_res = await generate_image(
             prompt=prompt,
             style_preset=style,
@@ -1146,6 +1156,7 @@ async def generate_scene_image(project_id: str, scene_id: str, req: ImageGenRequ
             seed=req.seed,
             output_path=str(media_paths["image"]),
             scene_index=target_scene.order,
+            location=location,
         )
     except Exception as e:
         img_res = {"success": False, "error": str(e)}
@@ -1608,7 +1619,10 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
                 try:
                     # Dự án vụ án: cảnh cùng nhịp vẽ nối tiếp, đính kèm khung hình cảnh trước (ảnh hoặc khung cuối clip)
                     continuity = await asyncio.to_thread(previous_scene_frame, project, scene)
+                    location = await asyncio.to_thread(scene_lock, project_id, scene.id,
+                                                       scene.image_prompt or scene.text)
                     img_res = await generate_image(
+                        location=location,
                         prompt=scene.image_prompt or scene.text,
                         style_preset=project.style_preset,
                         character_anchor=project.character_anchor,
@@ -1657,6 +1671,7 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
 
         scene_video_paths = []
         scene_srt_infos = []
+        render_durations: List[float] = []
 
         for i, scene in enumerate(project.scenes, start=1):
             media = get_scene_media_paths(project_id, scene.id)
@@ -1677,11 +1692,14 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
                     logger.warning(f"Cảnh {i}: không trộn được tiếng động ({e})")
                     await broadcast_render_update(render_id, {"logs": active_renders[render_id]["logs"] + [
                         f"[Giai đoạn 4/5] ⚠ Cảnh {i}: không trộn được tiếng động ({e}); dùng giọng không có tiếng động."]})
+            # Video Muse theo lời thoại dài hơn lời kể: cảnh kéo thêm cho hết video, không cắt (câu 19 mục 1.2)
+            seconds = render_seconds(scene) or scene.duration
+            render_durations.append(float(seconds or 0))
             v_res = await render_scene_video(
                 image_path=input_media,
                 audio_path=scene_audio,
                 output_path=str(media["video"]),
-                duration=scene.duration,
+                duration=seconds,
                 camera_motion=motion,
                 resolution=req.resolution or project.resolution,
                 fps=req.fps or project.fps,
@@ -1724,7 +1742,7 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
         if bgm_file_path and (project.metadata or {}).get("case_id") and any(s.bgm_energy for s in project.scenes):
             try:
                 segments = energy_segments([s.bgm_energy for s in project.scenes],
-                                           [float(s.duration or 0) for s in project.scenes])
+                                           render_durations)
                 bgm_file_path = await build_energy_bgm(
                     segments, str(render_paths["final_video"].with_name("nhac_nen_theo_do_cang.mp3")))
                 bgm_note = f"Nhạc nền theo độ căng: {len(segments)} đoạn."
