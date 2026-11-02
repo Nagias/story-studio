@@ -314,6 +314,7 @@ const DOM = {
   step1WordCount: document.getElementById('step1-word-count'),
   step1EngineSelect: document.getElementById('step1-engine-select'),
   step1PacingSelect: document.getElementById('step1-pacing-select'),
+  step1LanguageSelect: document.getElementById('step1-language-select'),
   step1StyleSelect: document.getElementById('step1-style-select'),
   step1CharPresetSelect: document.getElementById('step1-char-preset-select'),
   step1CharName: document.getElementById('step1-char-name'),
@@ -3688,8 +3689,15 @@ async function handleStep1ProcessScript() {
   const charRefImage = AppState.characterReferenceImage || DOM.step1CharRefUrl?.value.trim() || undefined;
 
   const isEnglish = !(/[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđĐ]/i.test(text));
+  // Ngôn ngữ lời review (CLAUDE.md mục 1.2 câu 15): rỗng = theo ngôn ngữ truyện
+  const outputLanguage = DOM.step1LanguageSelect?.value || '';
+  const reviewEnglish = outputLanguage ? outputLanguage === 'en' : isEnglish;
   const selectedVoice = DOM.selectVoice?.value;
-  const autoVoice = selectedVoice || (isEnglish ? "en-US-AndrewMultilingualNeural" : "vi-VN-NamMinhNeural");
+  const voiceFits = selectedVoice && (reviewEnglish ? selectedVoice.startsWith('en-') : !selectedVoice.startsWith('en-'));
+  const autoVoice = voiceFits ? selectedVoice : (reviewEnglish ? "en-US-AndrewMultilingualNeural" : "vi-VN-NamMinhNeural");
+  // Server viết và kiểm từng phần (có thể vài chục phút): hỏi tiến độ để hiện lên nút
+  const progressId = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  let progressTimer = null;
 
   DOM.btnStep1ProcessScript.disabled = true;
   DOM.btnStep1ProcessScript.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Đang tạo Video Review Truyện (Muse AI)...';
@@ -3697,6 +3705,15 @@ async function handleStep1ProcessScript() {
   try {
     let createdProject = null;
     if (AppState.serverOnline) {
+      progressTimer = setInterval(async () => {
+        try {
+          const r = await fetch(`${API.baseUrl}/projects/create-from-script/progress/${progressId}`);
+          const d = r.ok ? await r.json() : null;
+          if (d && d.progress && DOM.btnStep1ProcessScript) {
+            DOM.btnStep1ProcessScript.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> ' + escapeHtml(d.progress);
+          }
+        } catch (e) { /* hỏi tiến độ lỗi thì lần sau hỏi lại; việc chính vẫn chạy */ }
+      }, 3000);
       createdProject = await API.createProjectFromScript({
         name: text.split('\n')[0].substring(0, 45).trim() || "Câu Chuyện Mới",
         text: text,
@@ -3708,7 +3725,9 @@ async function handleStep1ProcessScript() {
         character_reference_image: charRefImage,
         voice: autoVoice,
         image_provider: imageProvider,
-        generate_initial_images: true
+        generate_initial_images: true,
+        output_language: outputLanguage || undefined,
+        progress_id: progressId
       });
     }
 
@@ -3723,13 +3742,6 @@ async function handleStep1ProcessScript() {
       switchStep(2);
       const total = createdProject.scenes.length;
       const failedImages = createdProject.scenes.filter(s => s.status_image === 'error').length;
-      const analysisNote = createdProject.metadata?.scene_analysis?.fallback_reason;
-      if (analysisNote && createdProject.metadata?.scene_analysis?.provider === 'partial') {
-        // AI chia được phần lớn bài; vài phần chia offline, lý do ghi rõ cảnh nào
-        showToast(`AI đã chia cảnh, nhưng một số đoạn phải chia offline. ${escapeHtml(String(analysisNote))}.`, "warning", 12000);
-      } else if (analysisNote) {
-        showToast(`AI chia cảnh không chạy được (${escapeHtml(String(analysisNote))}). Các cảnh được chia offline, prompt ảnh chỉ là mẫu chung.`, "warning", 10000);
-      }
       if (failedImages > 0) {
         showToast(`Đã tạo ${total} phân cảnh, nhưng ${failedImages} cảnh tạo ảnh thất bại (đánh dấu "Lỗi ảnh"). Hãy tạo lại ảnh cho các cảnh đó.`, "warning", 8000);
       } else {
@@ -3744,6 +3756,7 @@ async function handleStep1ProcessScript() {
     console.error("handleStep1ProcessScript error", err);
     showToast("Lỗi phân tích kịch bản: " + escapeHtml(err.message || err), "error");
   } finally {
+    if (progressTimer) clearInterval(progressTimer);
     if (DOM.btnStep1ProcessScript) {
       DOM.btnStep1ProcessScript.disabled = false;
       DOM.btnStep1ProcessScript.innerHTML = '<i class="fa-solid fa-bolt-lightning text-amber-300 mr-1.5 animate-bounce"></i> <span>⚡ 1-Click Tạo Video Review Truyện (Muse AI)</span> <i class="fa-solid fa-arrow-right ml-1"></i>';

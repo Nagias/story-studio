@@ -827,8 +827,10 @@ function tcUpdateOutlineStatus() {
   if (stats) {
     const total = parts.reduce((sum, p) => sum + (Number(p.scene_count) || 0), 0);
     const limits = (view.scene_limits || {})[String(s.outlineMinutes)] || view.total_scenes || { min: 0, max: 0 };
-    const range = limits.min ? `cần ${limits.min}–${limits.max}` : `tối đa ${limits.max}`;
-    const outside = total < limits.min || total > limits.max;
+    // max null: không có trần (bài nhiều tư liệu thì video dài hơn; CLAUDE.md mục 1.2 câu 14)
+    const hasMax = limits.max !== null && limits.max !== undefined;
+    const range = limits.min ? (hasMax ? `cần ${limits.min}–${limits.max}` : `cần từ ${limits.min}`) : `tối đa ${limits.max}`;
+    const outside = total < limits.min || (hasMax && total > limits.max);
     stats.textContent = `${parts.length} nhịp • ${total} cảnh (${range}) • +1 cảnh miễn trừ${s.outlineDirty ? ' • chưa lưu' : ''}`;
     stats.classList.toggle('text-rose-300', outside);
     stats.classList.toggle('text-amber-400', !outside);

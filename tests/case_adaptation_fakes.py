@@ -34,6 +34,16 @@ def load_fixture(marker: str) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def verify_all_covered(user: str) -> dict:
+    """Bước kiểm lời kể (coverage_guard.verify_prompt): mọi ý đều kể, trích nguyên văn đầu cảnh 1, không lỗi."""
+    import re
+    points = re.findall(r"^- (\S+): ", user.split("CÁC Ý PHẢI CÓ", 1)[1].split("BẢNG SỰ THẬT", 1)[0], re.M)
+    scenes = re.findall(r"^\[cảnh (\d+)\] (.*)$", user.split("LỜI KỂ CẦN KIỂM:", 1)[1], re.M)
+    quote = " ".join(scenes[0][1].split()[:8]) if scenes else ""
+    return {"quotes": [{"point_id": p, "scene": 1, "quote": quote} for p in points], "issues": [],
+            "facts": [f"đã kể {p}" for p in points[:3]]}
+
+
 def _is_exception(value: Any) -> bool:
     return isinstance(value, BaseException) or (isinstance(value, type) and issubclass(value, BaseException))
 
@@ -57,6 +67,8 @@ def make_fake_llm(overrides: Optional[dict] = None):
         calls.append(marker)
         prompts.append(user)
         value = _next_override(marker)
+        if value is _EXHAUSTED and marker == "kiem_loi_ke":
+            return verify_all_covered(user)
         if value is _EXHAUSTED:
             return load_fixture(marker)
         if _is_exception(value):

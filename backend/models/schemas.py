@@ -457,6 +457,10 @@ class CreateProjectFromScriptRequest(BaseModel):
     voice: Optional[str] = None  # None: giọng mặc định theo ngôn ngữ truyện
     image_provider: Optional[str] = "meta_muse_cloud"
     generate_initial_images: Optional[bool] = True
+    # Ngôn ngữ lời review: "vi" | "en"; None = theo ngôn ngữ truyện (CLAUDE.md mục 1.2 câu 15)
+    output_language: Optional[str] = None
+    # Mã do giao diện tạo để hỏi tiến độ trong lúc server viết từng phần (GET .../create-from-script/progress/{id})
+    progress_id: Optional[str] = None
 
 # ==============================================================================
 # MASTER STORYBOARD SPEC MODELS (OP_CTOOL SPEC COMPLIANT)

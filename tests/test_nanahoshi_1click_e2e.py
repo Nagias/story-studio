@@ -31,6 +31,14 @@ from services.project_service import delete_project
 from services.tts_service import generate_speech
 from services.video_service import render_scene_video
 
+
+@pytest.fixture(autouse=True)
+def _fake_story_llm(monkeypatch):
+    """Luồng 1-Click viết lời review bằng story_review (02/11/2026): LLM giả, không gọi 9router."""
+    from services import story_review
+    from tests.story_review_fakes import FakeStoryLLM
+    monkeypatch.setattr(story_review, "_story_llm", FakeStoryLLM())
+
 @pytest.fixture
 def anyio_backend():
     return "asyncio"

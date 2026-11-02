@@ -68,7 +68,7 @@ from models.case_adaptation_schemas import (
     StoryPart,
     TimelineEvent,
 )
-from services import case_adaptation_llm, case_store, video_service
+from services import case_adaptation_llm, case_store, coverage_guard, video_service
 from services.scene_sound import normalize_cue
 from services.case_adaptation_checks import (
     DURATION_SHORT_RATIO,
@@ -120,11 +120,11 @@ from services.case_adaptation_prompts import (
     prompts_prompt,
     rewrite_en_prompt,
     supported_scene_cap,
-    video_scene_cap,
     word_budget,
     word_count,
     write_en_prompt,
     write_vi_prompt,
+    _aliased,
 )
 
 T = TypeVar("T")
@@ -1367,12 +1367,12 @@ def _hook_borrowed(outline: CaseOutline) -> dict[str, str]:
 
 
 def _too_few_scenes_problem(total: int, n_events: int, supported: int, target_minutes: int,
-                            target: tuple[int, int], video_cap: int) -> str:
+                            target: tuple[int, int]) -> str:
     """Lý do khi bài nhận đủ tư liệu (supported ≥ target) mà dàn ý ít cảnh hơn mục tiêu. Nếu số sự việc không cho
     phép đạt mục tiêu (mỗi sự việc tối đa 2 cảnh) thì bảo hạ supported_minutes, không bảo thêm cảnh."""
     lo, hi = target
     have = f"Tổng số cảnh chỉ có {total} ({total + 1} kể cả cảnh miễn trừ)"
-    reachable = min(MAX_SCENES_PER_EVENT * n_events, video_cap - 1)
+    reachable = MAX_SCENES_PER_EVENT * n_events
     if reachable + 1 < lo:
         honest = max(1, min(reachable // SCENES_PER_MINUTE, target_minutes - 1))
         return (f"{have}, trong khi supported_minutes = {supported} (≥ {target_minutes} phút) thì video cần ít nhất "
@@ -1381,7 +1381,7 @@ def _too_few_scenes_problem(total: int, n_events: int, supported: int, target_mi
                 f"không đủ cho {target_minutes} phút. Hãy hạ supported_minutes xuống mức tư liệu thật sự đủ "
                 f"(khoảng {honest} phút) thay vì thêm cảnh, rồi giữ số cảnh vừa với số phút đó")
     return (f"{have}, trong khi supported_minutes = {supported} (≥ {target_minutes} phút) thì dàn ý cần từ {lo - 1} "
-            f"đến {hi - 1} cảnh ({lo}–{hi} cảnh kể cả cảnh miễn trừ). Hãy tăng scene_count của các nhịp (mỗi sự việc "
+            f"cảnh trở lên ({lo} cảnh kể cả cảnh miễn trừ; nhiều tư liệu thì nhiều hơn cũng được). Hãy tăng scene_count của các nhịp (mỗi sự việc "
             f"tối đa {MAX_SCENES_PER_EVENT} cảnh, dàn ý tối đa {reachable} cảnh), hoặc hạ supported_minutes nếu "
             "tư liệu không đủ")
 
@@ -1400,7 +1400,6 @@ def _check_outline(raw: Any, bible: CaseBible, target_minutes: int, *,
     bỏ tối đa 1/3; người dùng tự quyết nên không giới hạn)."""
     parsed = _OutlineOutput.model_validate(raw)
     lo, hi = target_scenes(target_minutes)
-    video_cap = video_scene_cap(hi)                     # cả video, kể cả cảnh miễn trừ
     min_part, max_part = SCENES_PER_PART
     known = [ev.id for ev in bible.timeline]
     known_set = set(known)
@@ -1474,16 +1473,15 @@ def _check_outline(raw: Any, bible: CaseBible, target_minutes: int, *,
                         'Mọi sự việc phải nằm trong đúng một nhịp, hoặc trong "dropped" nếu là chi tiết vụn')
     problems += _repeated_event_problems(drafts)
     total = sum(item.scene_count for item in parsed.parts)
-    if total + 1 > video_cap:
-        problems.append(f"Tổng số cảnh là {total} ({total + 1} kể cả cảnh miễn trừ), vượt mức tối đa {video_cap} cảnh "
-                        f"của video {target_minutes} phút; dàn ý tối đa {video_cap - 1} cảnh")
-    elif parsed.supported_minutes < target_minutes and total > supported_scene_cap(parsed.supported_minutes):
+    # Không còn trần số cảnh theo số phút đã chọn (chủ dự án 02/11/2026, CLAUDE.md mục 1.2 câu 14): trần đó ép
+    # gọt bớt sự việc. Mỗi nhịp vẫn bị giới hạn theo số sự việc (MAX_SCENES_PER_EVENT) ở trên.
+    if parsed.supported_minutes < target_minutes and total > supported_scene_cap(parsed.supported_minutes):
         problems.append(f"Bài chỉ đủ tư liệu cho {parsed.supported_minutes} phút nên tổng số cảnh tối đa "
                         f"{supported_scene_cap(parsed.supported_minutes)} cảnh, nhưng dàn ý có {total} cảnh. "
                         "Không kéo dài cho đủ số cảnh; bớt cảnh, hoặc ước lại supported_minutes cho đúng lượng tư liệu")
     elif total + 1 < lo and parsed.supported_minutes >= target_minutes:
         problems.append(_too_few_scenes_problem(total, len(kept), parsed.supported_minutes, target_minutes,
-                                                (lo, hi), video_cap))
+                                                (lo, hi)))
     if problems:
         return problems, None
 
@@ -1579,11 +1577,10 @@ def outline_steps(pipeline: CasePipeline) -> list[PipelineStep]:
 
 def _total_scene_limits(supported: int, target_minutes: int) -> dict[str, int]:
     """Tổng số cảnh dàn ý được phép theo _validate_outline (không kể cảnh miễn trừ), để màn duyệt nhắc trước."""
-    lo, hi = target_scenes(target_minutes)
-    most = video_scene_cap(hi) - 1
+    lo, _hi = target_scenes(target_minutes)
     if supported < target_minutes:
-        return {"min": 0, "max": min(most, supported_scene_cap(supported))}
-    return {"min": lo - 1, "max": most}
+        return {"min": 0, "max": supported_scene_cap(supported)}
+    return {"min": lo - 1, "max": None}       # không có trần: bài nhiều tư liệu thì video dài hơn
 
 
 def outline_review(pipeline: CasePipeline) -> dict:
@@ -1781,6 +1778,10 @@ def _validate_write_vi(raw: Any, ctx: _PartContext, guard: _TextGuard, budget: O
             problems.append(f"cảnh {k}: covers_event_ids có {len(covers)} sự việc, mỗi cảnh kể tối đa {per_scene} "
                             "sự việc; hãy chia các sự việc cho các cảnh theo thứ tự")
         covered.update(covers)
+        # Ngôi thứ ba kiểu phóng sự (CLAUDE.md mục 1.2 câu 11): người kể không xưng "tôi" (lời trích trong ngoặc thì được)
+        hits = coverage_guard.first_person_hits(scene.narration_vi, "vi")
+        if hits:
+            problems.append(f'cảnh {k}: người kể xưng "{hits[0]}"; kể ngôi thứ ba kiểu phóng sự, không xưng tôi')
         soft += [f"cảnh {k} {issue}" for issue in guard.narration(scene.narration_vi, "vi")]
         scenes.append({"narration_vi": scene.narration_vi, "visual_kind": visual,
                        "board_reveal": reveal, "covers_event_ids": covers})
@@ -1839,15 +1840,62 @@ async def _run_write_vi(pipeline: CasePipeline, step: PipelineStep, llm: LLMCall
     teased_ids = [e for e in ctx.part.event_ids if e in borrowed and borrowed[e] != ctx.part.id]
     guard = _TextGuard(ctx.bible, _source_text(pipeline))
     budget = _outline_budget(pipeline, ctx.outline)
-    output = await ask_validated(
-        write_vi_prompt(ctx.bible, ctx.part, _part_events(ctx), _part_chunks(pipeline, ctx), prev_scenes,
-                        part_position=ctx.position, revealed_ids=revealed, teaser_ids=teaser_ids,
-                        teased_ids=teased_ids, outline_parts=ctx.outline.parts,
-                        introduced_names=_introduced_people(ctx), budget=budget),
-        lambda raw: _validate_write_vi(raw, ctx, guard, budget),
-        llm=llm, temperature=_TEMPERATURE_VI, timeout=STEP_TIMEOUTS["write_vi"], step_label=ctx.label,
-    )
-    return StepResult(output=output)
+    chunks = _part_chunks(pipeline, ctx)
+    base_prompt = write_vi_prompt(ctx.bible, ctx.part, _part_events(ctx), chunks, prev_scenes,
+                                  part_position=ctx.position, revealed_ids=revealed, teaser_ids=teaser_ids,
+                                  teased_ids=teased_ids, outline_parts=ctx.outline.parts,
+                                  introduced_names=_introduced_people(ctx), budget=budget)
+    # Bảng sự thật các nhịp trước đã kể + kiểm đủ ý / không kể lặp, không trái (coverage_guard; CLAUDE.md mục 1.2
+    # câu 10, 14, 21). Gặp 29/10/2026: vụ Trạm Dung kể việc phát hiện thi thể hai lần như hai lần khác nhau.
+    facts = [f for p in ctx.outline.parts[:ctx.index] for f in _part_facts(pipeline, p.id)]
+    points = [(ev.id, _aliased(ev.summary, ctx.bible)) for ev in _part_events(ctx)]
+    note = ("Lời kể dùng tên hư cấu thay cho tên thật trong đoạn gốc: đổi tên KHÔNG phải lỗi."
+            + (f" Các sự việc {_id_list(teased_ids)} đã được phần mở đầu gợi trước; nhịp này kể đầy đủ là đúng, không "
+               "phải lỗi kể lặp." if teased_ids else ""))
+    feedback = ""
+    check: dict = {}
+    for round_no in range(1, VERIFY_ROUNDS + 1):
+        prompt = base_prompt + _facts_block(facts) + (
+            f"\n\nLẦN VIẾT TRƯỚC CHƯA ĐẠT KHI KIỂM, SỬA ĐÚNG CÁC CHỖ SAU:\n{feedback}" if feedback else "")
+        output = await ask_validated(
+            prompt, lambda raw: _validate_write_vi(raw, ctx, guard, budget),
+            llm=llm, temperature=_TEMPERATURE_VI, timeout=STEP_TIMEOUTS["write_vi"], step_label=ctx.label,
+        )
+        narrations = [sc["narration_vi"] for sc in output["scenes"]]
+        check = await ask_validated(
+            coverage_guard.verify_prompt(points, narrations, facts, "\n\n".join(chunks), note=note),
+            _coverage_validator([pid for pid, _ in points], narrations),
+            llm=llm, temperature=0.1, timeout=STEP_TIMEOUTS["write_vi"], step_label=f"kiểm {ctx.label}",
+        )
+        if not check["missing"] and not check["issues"]:
+            return StepResult(output={**output, "facts": check["facts"], "verified": True, "verify_rounds": round_no})
+        feedback = coverage_guard.feedback_for_writer(check, dict(points))
+        logger.warning("%s vòng kiểm %d chưa đạt: %s", ctx.label, round_no, feedback[:300])
+    raise StepFailed(f"Bước {ctx.label} thất bại: sau {VERIFY_ROUNDS} lần viết lại lời kể vẫn chưa đạt khi kiểm. "
+                     f"Còn: {coverage_guard.feedback_for_writer(check, dict(points))[:600]}")
+
+
+VERIFY_ROUNDS = 3
+
+
+def _part_facts(pipeline: CasePipeline, part_id: str) -> list[str]:
+    data = case_store.load_step_output(pipeline.case_id, _part_step_id("write_vi", part_id))
+    facts = data.get("facts") if isinstance(data, dict) else None
+    return [str(f) for f in facts] if isinstance(facts, list) else []
+
+
+def _facts_block(facts: list[str]) -> str:
+    return ("\n\nBẢNG SỰ THẬT CÁC NHỊP TRƯỚC ĐÃ KỂ (không kể lại như chuyện mới, không kể khác đi các chi tiết này):\n"
+            + coverage_guard.fact_lines(facts))
+
+
+def _coverage_validator(point_ids: list[str], narrations: list[str]) -> Callable[[Any], dict]:
+    def validate(raw: Any) -> dict:
+        try:
+            return coverage_guard.check_verify(raw, point_ids, narrations)
+        except coverage_guard.QuoteRejected as exc:
+            raise StepRejected(exc.reason) from exc
+    return validate
 
 
 class _ENScene(_Item):
@@ -1999,6 +2047,11 @@ async def _run_assemble(pipeline: CasePipeline, step: PipelineStep, llm: LLMCall
     motions = set(video_service.CAMERA_MOTIONS)
     scenes = [_disclaimer_scene()]
     for part in outline.parts:
+        # Khoá cứng: lời Việt chưa qua bước kiểm đủ ý thì không ráp kế hoạch (CLAUDE.md mục 1.2 câu 14, 21)
+        vi_data = case_store.load_step_output(pipeline.case_id, _part_step_id("write_vi", part.id))
+        if not (isinstance(vi_data, dict) and vi_data.get("verified") is True):
+            raise StepFailed(f"Bước {label} thất bại: lời Việt nhịp {part.id} chưa qua bước kiểm đủ ý; bấm Thử lại "
+                             "để viết lại nhịp đó.")
         vi = _part_output(pipeline, "write_vi", part.id, label)
         en = _part_output(pipeline, "write_en", part.id, label)
         pr = _part_output(pipeline, "write_prompts", part.id, label)

@@ -46,8 +46,8 @@ DOSSIER = (FIXTURES_DIR / "dossier.txt").read_text(encoding="utf-8")
 STYLE = "cinematic noir"
 FULL_ORDER = [
     "EXTRACT 0", "EXTRACT 1", "CLUSTER", "ALIASES", "DEDUPE", "OUTLINE",
-    "WRITE_VI p1", "WRITE_EN p1", "PROMPTS p1", "WRITE_VI p2", "WRITE_EN p2", "PROMPTS p2",
-]
+    "WRITE_VI p1", "kiem_loi_ke", "WRITE_EN p1", "PROMPTS p1", "WRITE_VI p2", "kiem_loi_ke", "WRITE_EN p2", "PROMPTS p2",
+]   # kiem_loi_ke: bước kiểm đủ ý sau mỗi lời Việt, cùng việc write_vi (coverage_guard, 02/11/2026)
 ALL_LABELS = [
     "Đang đọc đoạn 1/2", "Đang đọc đoạn 2/2", "Đang gộp tên nhân vật", "Đang đặt tên hư cấu", "Đang lọc sự việc trùng",
     "Đang lên dàn ý",
@@ -206,7 +206,9 @@ def test_progress_label_for_every_step_kind(isolated_projects_dir):
         approve_outline(case_id)
 
     assert labels[:-1] == ALL_LABELS[:6] + [REVIEW_LABEL] + ALL_LABELS[6:]
-    assert [label for _id, _n, label in seen_running] == ALL_LABELS[:-1]   # assemble không gọi LLM
+    # mỗi lần gọi LLM ghi nhãn việc đang chạy; việc lời Việt gọi 2 lần (viết + kiểm), assemble không gọi LLM
+    per_call = [lab for lab in ALL_LABELS[:-1] for _ in range(2 if "lời Việt" in lab else 1)]
+    assert [label for _id, _n, label in seen_running] == per_call
     assert all(n == 1 for _id, n, _label in seen_running)
     done = _progress(case_id)
     assert done["status"] == "done"
@@ -497,7 +499,7 @@ def test_one_llm_call_at_a_time(isolated_projects_dir, monkeypatch):
     assert state["peak"] == 1
     # Vụ cũ chạy tới dàn ý rồi chờ duyệt; trong lúc đó vụ mới chạy tiếp tới dàn ý. Duyệt cả hai thì vụ cũ viết xong
     # hẳn rồi mới tới vụ mới.
-    assert owners == [older] * 6 + [newer] * 6 + [older] * 6 + [newer] * 6
+    assert owners == [older] * 6 + [newer] * 6 + [older] * 8 + [newer] * 8
     assert calls == FULL_ORDER[:6] * 2 + FULL_ORDER[6:] * 2
     for case_id in (older, newer):
         assert _pipeline(case_id).status == "done"
@@ -605,7 +607,8 @@ def test_outline_view_has_parts_timeline_with_fictional_names_and_limits(isolate
     assert view["total_scenes"] == {"min": 0, "max": 9}           # tư liệu chỉ đủ 2 phút: tối đa 9 cảnh
     assert sorted(view["scene_limits"], key=int) == [str(m) for m in range(1, 9)]
     assert view["scene_limits"]["2"] == view["total_scenes"]
-    assert view["scene_limits"]["8"] == {"min": 34, "max": 47}     # đủ 8 phút: 35–40 cảnh kể cả miễn trừ, tối đa 48
+    # đủ 8 phút: ít nhất 35 cảnh kể cả miễn trừ, không có trần (CLAUDE.md mục 1.2 câu 14: nhiều tư liệu thì video dài hơn)
+    assert view["scene_limits"]["8"] == {"min": 34, "max": None}
     assert view["scenes_per_part"] == [2, 6]
     assert "resolution" not in view["part_kinds"] and "open_questions" in view["part_kinds"]   # vụ chưa phá
     assert view["solved"] is False

@@ -174,6 +174,7 @@ Dòng nào là khoá cứng, dòng nào là khoá mềm: bảng 5.1 ngay dưới
 | 12 | Xoá vĩnh viễn dữ liệu người dùng (`shutil.rmtree`, `unlink`) | chuyển vào Thùng rác, hoặc hỏi trước | không lấy lại được | `project_service.delete_project()`, `clear_all_gallery()` |
 | 13 | `services/` import từ `routers/` | đưa phần dùng chung xuống `services/` | vòng phụ thuộc; import kéo theo ghi file cấu hình | `image_service.py` (import `routers.muse_bridge`) |
 | 14 | Đường dẫn tuyệt đối của máy này, hay trỏ sang dự án khác | đường dẫn từ `config.py` | hỏng trên máy khách; `tools/build_release.py` chặn | — (font thumbnail lấy qua `config.WINDOWS_FONTS_DIR` từ 22/10/2026); vài chuỗi hợp lệ có ghi lý do trong `tests/test_architecture.py` |
+| 15 | Viết lời kể (truyện chữ, vụ án) bằng LLM mà không qua bước kiểm đủ ý, hoặc dặn LLM "tóm tắt" | `services/coverage_guard.py` (LLM trích nguyên văn bằng chứng từng ý, code đối chiếu, viết lại khi thiếu) như `story_review.review_part`, `case_adaptation_steps._run_write_vi` | LLM làm tắt, bỏ ý, kể lặp hay kể trái điều đã kể (CLAUDE.md mục 1.2 câu 10, 14, 21) | — |
 
 Code mới nên theo mẫu của mảng true-crime (mục 4), không theo mảng cũ.
 
@@ -199,6 +200,7 @@ Code mới nên theo mẫu của mảng true-crime (mục 4), không theo mảng
 | 12 | cứng | `tests/test_architecture.py::test_no_new_permanent_deletes` | 3 | `delete_project()`, `delete_gallery_item()`, `clear_all_gallery()` vẫn xoá vĩnh viễn (ghi ngoại lệ; sửa là việc riêng) |
 | 13 | cứng | `tests/test_architecture.py::test_services_do_not_import_routers` | 1 | `image_service.py` import `routers.muse_bridge` |
 | 14 | cứng | `tests/test_architecture.py::test_no_machine_specific_paths` | 1 | font thumbnail `C:\Windows\Fonts` (đã sửa 22/10/2026) |
+| 15 | cứng | `tests/test_architecture.py::test_narration_writers_check_coverage`, `tests/test_architecture.py::test_one_click_story_goes_through_story_review`, `tests/test_architecture.py::test_story_prompts_never_ask_to_summarize`, `tests/test_architecture.py::test_case_assemble_requires_verified_parts` | 2 | vụ Trạm Dung kể việc phát hiện thi thể hai lần như hai lần khác nhau (29/10/2026); truyện chữ dặn LLM "review và tóm tắt", AI lỗi thì chép nguyên văn truyện. Chủ dự án yêu cầu khoá bằng script (mục 1.2 câu 14). Còn mềm: chất lượng câu chữ (hay, cuốn) máy không chấm được |
 
 ## 6. Quy tắc làm việc của agent
 

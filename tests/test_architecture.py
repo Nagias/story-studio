@@ -491,3 +491,50 @@ def test_click_handlers_bound_once():
     both = sorted(_inline_click_ids(html) & _js_click_ids(app, others))
     assert not both, ("Đường cấm 10: các nút vừa có onclick trong index.html vừa gắn addEventListener('click') trong JS, "
                       "bấm một lần chạy hai lần: " + ", ".join(both))
+
+
+# ---------------------------------------------------------------- đường cấm 15: lời kể không qua kiểm đủ ý
+
+def _function_source(path: Path, name: str) -> str:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    node = next((n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name),
+                None)
+    assert node is not None, f"{_rel(path)} không còn hàm {name}"
+    return ast.get_source_segment(path.read_text(encoding="utf-8"), node) or ""
+
+
+def test_narration_writers_check_coverage():
+    """Khoá cứng (CLAUDE.md mục 1.2 câu 14, 21; mục 5 dòng 15): mọi bước viết lời kể phải qua bước kiểm đủ ý của
+    coverage_guard (LLM trích nguyên văn bằng chứng, code đối chiếu) và viết lại khi thiếu ý.
+    Gặp 29/10/2026: vụ Trạm Dung kể việc phát hiện thi thể hai lần như hai lần khác nhau; truyện chữ bị tóm tắt."""
+    writers = [
+        (BACKEND / "services" / "story_review.py", "review_part"),          # truyện chữ (1-Click)
+        (BACKEND / "services" / "case_adaptation_steps.py", "_run_write_vi"),  # vụ án, lời Việt
+    ]
+    for path, name in writers:
+        src = _function_source(path, name)
+        assert "coverage_guard.verify_prompt" in src, f"{_rel(path)}::{name} viết lời kể mà không gọi bước kiểm"
+        assert "coverage_guard.check_verify(" in path.read_text(encoding="utf-8"), \
+            f"{_rel(path)} không đối chiếu câu trích bằng coverage_guard.check_verify"
+        assert "feedback_for_writer" in src, f"{_rel(path)}::{name} không viết lại khi bước kiểm báo thiếu ý / lỗi"
+
+
+def test_one_click_story_goes_through_story_review():
+    """Khoá cứng (mục 5 dòng 15): luồng 1-Click không gọi bộ chia cảnh cũ (một lần LLM, hỏng thì chép nguyên văn)."""
+    src = _function_source(BACKEND / "routers" / "api.py", "create_project_from_script")
+    assert "story_review.review_story" in src
+    for old in ("analyze_vox_script_async", "split_text_into_scenes", "split_text_into_vox_scenes_offline"):
+        assert old not in src, f"create_project_from_script còn gọi {old}: lời kể không qua kiểm đủ ý"
+
+
+def test_story_prompts_never_ask_to_summarize():
+    """Khoá cứng (mục 1.2 câu 16): lời dặn viết review không được có chữ "tóm tắt" / "summar" (từng làm bài ngắn đi)."""
+    for path in (BACKEND / "services" / "story_review.py", BACKEND / "services" / "coverage_guard.py"):
+        text = path.read_text(encoding="utf-8").lower()
+        assert "tóm tắt" not in text and "summar" not in text, f"{_rel(path)} có chữ tóm tắt / summarize"
+
+
+def test_case_assemble_requires_verified_parts():
+    """Khoá cứng (mục 5 dòng 15): ráp kế hoạch vụ án chỉ khi lời Việt mọi nhịp đã qua kiểm (output["verified"])."""
+    src = _function_source(BACKEND / "services" / "case_adaptation_steps.py", "_run_assemble")
+    assert 'get("verified") is True' in src

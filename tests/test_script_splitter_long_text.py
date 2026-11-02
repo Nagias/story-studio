@@ -382,7 +382,13 @@ def client(isolated_projects_dir, monkeypatch):
         yield c
 
 
-def test_create_from_script_keeps_the_end_of_a_long_script(fake_9router, client):
+def test_create_from_script_keeps_the_end_of_a_long_script(client, monkeypatch):
+    """Luồng 1-Click viết lời review từng phần bằng story_review (02/11/2026); phần cuối truyện vẫn được kể.
+    Phần AI lỗi không còn chia offline (chép nguyên văn): xem tests/test_story_review.py."""
+    from services import story_review
+    from tests.story_review_fakes import FakeStoryLLM
+    llm = FakeStoryLLM()
+    monkeypatch.setattr(story_review, "_story_llm", llm)
     resp = client.post("/api/projects/create-from-script", json={
         "text": _long_story(),
         "generate_initial_images": False,
@@ -390,20 +396,6 @@ def test_create_from_script_keeps_the_end_of_a_long_script(fake_9router, client)
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert len(fake_9router) >= 2
-    assert END_MARKER in body["scenes"][-1]["text"]
-    assert body["metadata"]["scene_analysis"] == {"provider": "9router", "fallback_reason": None}
-
-
-def test_create_from_script_marks_partial_offline_parts(monkeypatch, client):
-    _install_9router(monkeypatch, lambda n, chunk, self: _fail(self) if n in (2, 3) else _fake_scenes(chunk))
-
-    resp = client.post("/api/projects/create-from-script", json={
-        "text": _long_story(),
-        "generate_initial_images": False,
-    })
-
-    assert resp.status_code == 200, resp.text
-    analysis = resp.json()["metadata"]["scene_analysis"]
-    assert analysis["provider"] == "partial"
-    assert "(phần 2/" in analysis["fallback_reason"]
+    assert llm.calls.count("viet_review") >= 8
+    assert any(END_MARKER in sc["text"] for sc in body["scenes"][-6:])
+    assert body["metadata"]["scene_analysis"]["provider"] == "story_review"

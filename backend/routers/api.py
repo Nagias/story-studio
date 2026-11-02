@@ -94,6 +94,7 @@ from services import (
 )
 from services.case_project_builder import previous_scene_frame, redraw_board_images
 from services.scene_sound import build_energy_bgm, energy_segments, mix_scene_sfx, scene_sfx_files
+from services import story_review
 from services.thumbnail_service import ThumbnailError
 
 from services.project_service import _get_project_dir, ensure_project_dirs, save_project
@@ -698,28 +699,34 @@ async def create_new_project(req: ProjectCreateRequest):
 
 @router.post("/projects/create-from-script")
 async def create_project_from_script(req: CreateProjectFromScriptRequest):
-    """
-    Clean-slate workflow & 1-Click Pipeline:
-    Create a new project from raw script text, automatically split it into scenes,
-    preserve Vietnamese emotional podcast storytelling verbatim,
-    and immediately generate distinct visuals for ALL scenes using Meta Muse Cloud
-    so Step 2 (Director Board) has full scene images ready right away.
-    """
+    """Luồng 1-Click (Bước 1): truyện chữ thành dự án mới. Lời review (tiếng Việt hoặc tiếng Anh theo
+    `output_language`) viết từng phần và kiểm đủ ý bằng story_review; tạo ảnh ngay nếu `generate_initial_images`."""
     first_line = req.text.strip().split("\n")[0][:45].strip()
     clean_title = (req.name or first_line).strip()
     if not clean_title:
         clean_title = "Câu Chuyện Mới"
 
-    lang = detect_language(req.text)
-    if lang == "vi":
-        # Chuẩn hóa giọng đọc tiếng Việt chất lượng cao cho review podcast
-        if not req.voice or req.voice.startswith("en-"):
-            # giọng mặc định (.env DEFAULT_VOICE) nếu là giọng Việt; giọng Anh không đọc được truyện Việt
+    # Lời review viết từng phần, mỗi phần qua kiểm đủ ý (services/story_review.py; CLAUDE.md mục 1.2 câu 10, 14,
+    # 15, 16). Không đạt thì báo lỗi rõ, không chép nguyên văn truyện làm lời kể, không tạo dự án rỗng.
+    out_lang = (req.output_language if req.output_language in story_review.LANGUAGES
+                else story_review.detect_text_language(req.text))
+    if req.progress_id is not None:
+        require_safe_id(req.progress_id, "progress_id")
+    try:
+        review = await story_review.review_story(req.text, language=out_lang,
+                                                 style_preset=req.style_preset or "manga_murata_battle",
+                                                 job_id=req.progress_id)
+    except story_review.StoryReviewError as exc:
+        raise HTTPException(status_code=502, detail=f"Chưa viết được lời review: {exc.user_message}") from exc
+
+    if out_lang == "vi":
+        if not req.voice or not req.voice.lower().startswith(("vi-", "vieneu")):
+            # giọng mặc định (.env DEFAULT_VOICE) nếu là giọng Việt; giọng Anh không đọc được lời Việt
             chosen_voice = DEFAULT_VOICE if DEFAULT_VOICE.lower().startswith(("vi-", "vieneu")) else "vi-VN-NamMinhNeural"
         else:
             chosen_voice = req.voice
     else:
-        chosen_voice = req.voice or "en-US-AndrewMultilingualNeural"
+        chosen_voice = req.voice if (req.voice or "").startswith("en-") else "en-US-AndrewMultilingualNeural"
 
     chosen_image_provider = req.image_provider or DEFAULT_IMAGE_PROVIDER or "meta_muse_cloud"
     if chosen_image_provider == "9router_gemini" and not req.image_provider:
@@ -735,37 +742,7 @@ async def create_project_from_script(req: CreateProjectFromScriptRequest):
         image_provider=chosen_image_provider,
     )
     project = create_project(p_req)
-
-    # Split text into scenes using 9router Gemini 3.8 Flash for maximum cinematic shot variety
-    analysis_fallback_reason = None
-    # "9router": AI chia hết; "partial": AI chia, vài phần bài chia offline; "offline": cả bài chia offline
-    analysis_provider = "9router"
-    try:
-        analysis = await analyze_vox_script_async(
-            full_text=req.text,
-            pacing=req.pacing or "fast",
-            style_preset=project.style_preset,
-            character_anchor=project.character_anchor,
-            provider="9router",
-        )
-        scenes_data = analysis.get("scenes", [])
-        analysis_fallback_reason = analysis.get("fallback_reason")
-        if analysis.get("provider_used") == "llm_partial":
-            analysis_provider = "partial"
-    except Exception as e:
-        logger.warning(f"9router scene analysis failed ({e}), falling back to offline splitter.")
-        analysis_fallback_reason = f"Lỗi phân tích cảnh bằng 9router: {e}"
-        scenes_data = []
-    if analysis_fallback_reason:
-        logger.warning(f"create-from-script dùng bộ chia offline: {analysis_fallback_reason}")
-
-    if not scenes_data:
-        scenes_data = split_text_into_scenes(
-            full_text=req.text,
-            pacing=req.pacing or "fast",
-            style_preset=project.style_preset,
-            character_anchor=project.character_anchor,
-        )
+    scenes_data = review["scenes"]
 
     created_scenes = []
     for sc in scenes_data:
@@ -810,13 +787,18 @@ async def create_project_from_script(req: CreateProjectFromScriptRequest):
     project = get_project(project.id) or project
     if not project.scenes and created_scenes:
         project.scenes = created_scenes
-    # Ghi lại cách chia cảnh để giao diện cảnh báo khi prompt ảnh chỉ là mẫu offline
-    project.metadata["scene_analysis"] = {
-        "provider": "offline" if analysis_fallback_reason and analysis_provider != "partial" else analysis_provider,
-        "fallback_reason": analysis_fallback_reason,
-    }
+    # Lời review đã qua kiểm đủ ý: số ý, số vòng viết lại, số từ từng phần (story_review)
+    project.metadata["scene_analysis"] = {"provider": "story_review", "fallback_reason": None,
+                                          "language": out_lang, "coverage": review["coverage"]}
+    project.metadata["story_language"] = out_lang
     save_project(project)
     return project
+
+@router.get("/projects/create-from-script/progress/{progress_id}")
+async def create_from_script_progress(progress_id: str):
+    """Tiến độ của lần tạo dự án từ truyện đang chạy (phần nào đang viết và kiểm); None khi chưa bắt đầu hoặc đã xong."""
+    require_safe_id(progress_id, "progress_id")
+    return {"progress": story_review.progress_of(progress_id)}
 
 @router.post("/projects/create-1click-pipeline")
 async def create_1click_pipeline(req: CreateProjectFromScriptRequest):

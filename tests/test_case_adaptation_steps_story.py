@@ -45,8 +45,8 @@ DOSSIER = (FIXTURES_DIR / "dossier.txt").read_text(encoding="utf-8")
 RETRY_MARK = "LẦN TRƯỚC BỊ LOẠI VÌ"
 FULL_ORDER = [
     "EXTRACT 0", "EXTRACT 1", "CLUSTER", "ALIASES", "DEDUPE", "OUTLINE",
-    "WRITE_VI p1", "WRITE_EN p1", "PROMPTS p1", "WRITE_VI p2", "WRITE_EN p2", "PROMPTS p2",
-]
+    "WRITE_VI p1", "kiem_loi_ke", "WRITE_EN p1", "PROMPTS p1", "WRITE_VI p2", "kiem_loi_ke", "WRITE_EN p2", "PROMPTS p2",
+]   # kiem_loi_ke: bước kiểm đủ ý sau mỗi lời Việt (coverage_guard, 02/11/2026)
 REAL_NAMES = [n for g in load_fixture("CLUSTER")["groups"] for n in g["real_names"]] + ["Lê Lợi"]
 
 
@@ -87,8 +87,9 @@ def _run_pipeline(pipeline: CasePipeline, llm, *, stop_after: str = ""):
 
 
 def _reason(llm, index: int = -1) -> str:
-    """Lý do bị loại nối vào prompt thứ `index`."""
-    prompt = llm.prompts[index]
+    """Lý do bị loại nối vào prompt thứ `index` (-1: prompt bị loại gần nhất; sau mỗi lời Việt còn có bước kiểm)."""
+    prompt = [p for p in llm.prompts if RETRY_MARK in p][-1] if index == -1 and any(
+        RETRY_MARK in p for p in llm.prompts) else llm.prompts[index]
     assert RETRY_MARK in prompt, prompt[-300:]
     return prompt.split(RETRY_MARK, 1)[1]
 
@@ -167,7 +168,8 @@ def test_each_step_kind_gets_its_own_timeout(isolated_projects_dir):
     asyncio.run(rewrite_english(_bible(pipeline), [(3, "Run rẩy, bà Đặng Thu Hà gọi đến trực ban hình sự.")], llm=llm))
 
     assert seen == {"EXTRACT": {240.0}, "CLUSTER": {240.0}, "ALIASES": {240.0}, "DEDUPE": {600.0}, "OUTLINE": {600.0},
-                    "WRITE_VI": {360.0}, "WRITE_EN": {360.0}, "PROMPTS": {360.0}, "REWRITE_EN": {360.0}}
+                    "WRITE_VI": {360.0}, "kiem_loi_ke": {360.0}, "WRITE_EN": {360.0}, "PROMPTS": {360.0},
+                    "REWRITE_EN": {360.0}}
     assert STEP_TIMEOUTS["build_outline"] == 600.0 and STEP_TIMEOUTS["write_prompts"] == 360.0
 
 
@@ -235,8 +237,8 @@ ALL_EVENTS = [f"ev_{c}_{n}" for c in (0, 1) for n in range(1, 7)]
                           {"id": "p2", "kind": "investigation", "summary_vi": "y", "event_ids": ALL_EVENTS[6:], "scene_count": 3}]),
      "từ 2 đến 6"),
     (_outline_with(parts=[{"id": f"p{i}", "kind": "investigation", "summary_vi": "x", "event_ids": ALL_EVENTS, "scene_count": 6}
-                          for i in range(1, 10)]),                       # 54 cảnh > 40 * 1,2
-     "48"),
+                          for i in range(1, 10)]),                       # cùng sự việc ở 9 nhịp
+     "nằm trong nhiều nhịp"),
     (_outline_with(supported_minutes=8), "35"),                          # đủ tư liệu 8 phút mà chỉ có 6 cảnh: lười
     (_outline_with(parts=[{"id": "p1", "kind": "hook", "summary_vi": "x", "event_ids": [*ALL_EVENTS, "ev_9_9"], "scene_count": 6}]),
      "ev_9_9"),
@@ -334,21 +336,19 @@ def _pipeline_with_events(n_events: int) -> CasePipeline:
     return pipeline
 
 
-def test_outline_cap_counts_the_disclaimer_scene(isolated_projects_dir):
+def test_outline_has_no_scene_cap_from_chosen_minutes(isolated_projects_dir):
+    """Trước 02/11/2026: video 8 phút tối đa 48 cảnh, dàn ý 48 cảnh bị trả lại. Chủ dự án (CLAUDE.md mục 1.2 câu 10,
+    14): số phút chỉ là mức tối thiểu, bài nhiều tư liệu thì kể đủ, video dài hơn."""
     ids = [f"ev_0_{i}" for i in range(1, 31)]
     groups = [ids[i:i + 4] for i in range(0, 24, 4)] + [ids[24:27], ids[27:30]]   # 6 nhịp × 4 + 2 nhịp × 3 sự việc
-    at_cap = _outline_with(supported_minutes=8, parts=_parts(*[("investigation", g, 6) for g in groups]))  # 48 cảnh
-    under = copy.deepcopy(at_cap)
-    under["parts"][-1]["scene_count"] = 5                                          # 47 cảnh + cảnh miễn trừ = 48
+    big = _outline_with(supported_minutes=12, parts=_parts(*[("investigation", g, 6) for g in groups]))  # 48 cảnh
     pipeline = _pipeline_with_events(30)
-    llm, calls = make_fake_llm({"OUTLINE": [at_cap, under]})
+    llm, calls = make_fake_llm({"OUTLINE": [big]})
 
     result = _run_pipeline(pipeline, llm, stop_after="outline")
 
-    assert calls == ["DEDUPE", "OUTLINE", "OUTLINE"]
-    reason = _reason(llm)
-    assert "48" in reason and "miễn trừ" in reason
-    assert sum(p["scene_count"] for p in result.output["parts"]) == 47
+    assert calls == ["DEDUPE", "OUTLINE"]
+    assert sum(p["scene_count"] for p in result.output["parts"]) == 48
 
 
 def test_outline_too_few_scenes_with_enough_events_asks_for_more_scenes(isolated_projects_dir):
@@ -362,7 +362,7 @@ def test_outline_too_few_scenes_with_enough_events_asks_for_more_scenes(isolated
     _run_pipeline(pipeline, llm, stop_after="outline")
     assert calls == ["DEDUPE", "OUTLINE", "OUTLINE"]
     reason = _reason(llm)
-    assert "chỉ có 20" in reason and "tăng scene_count" in reason and "tối đa 47 cảnh" in reason
+    assert "chỉ có 20" in reason and "tăng scene_count" in reason and "tối đa 60 cảnh" in reason
 
 
 def test_outline_prompt_does_not_anchor_supported_minutes_to_target(isolated_projects_dir):
@@ -452,7 +452,7 @@ def test_write_vi_too_few_scenes_retried(isolated_projects_dir):
 
     _run_pipeline(pipeline, llm, stop_after="write_vi_p1")
 
-    assert calls[-2:] == ["WRITE_VI p1", "WRITE_VI p1"]
+    assert [c for c in calls if c != "kiem_loi_ke"][-2:] == ["WRITE_VI p1", "WRITE_VI p1"]
     assert RETRY_MARK not in _prompt_for(llm, "WRITE_VI p1", 0)
     second = _prompt_for(llm, "WRITE_VI p1", 1)
     assert RETRY_MARK in second and "3 cảnh" in second.split(RETRY_MARK, 1)[1]
@@ -980,18 +980,19 @@ def test_outline_may_drop_minor_events_with_a_reason(isolated_projects_dir):
     assert "ev_1_2" not in result.output["parts"][1]["event_ids"]
 
 
-def test_outline_drops_at_most_a_third_of_the_events(isolated_projects_dir):
+def test_outline_drops_at_most_a_tenth_of_the_events(isolated_projects_dir):
+    """Trước 02/11/2026 được bỏ tới 1/3 số sự việc; nay 1/10 (CLAUDE.md mục 1.2 câu 14: không cắt gọt nhiều)."""
     pipeline = _new_pipeline()
-    five = ["ev_0_2", "ev_0_3", "ev_1_2", "ev_1_3", "ev_1_4"]          # 12 sự việc: bỏ tối đa 4
-    greedy = {**_outline_without(*five), "dropped": [{"event_id": e, "reason": "chi tiết phụ"} for e in five]}
-    fine = {**_outline_without(*five[:4]), "dropped": [{"event_id": e, "reason": "chi tiết phụ"} for e in five[:4]]}
+    two = ["ev_0_2", "ev_1_2"]                                          # 12 sự việc: bỏ tối đa 1
+    greedy = {**_outline_without(*two), "dropped": [{"event_id": e, "reason": "chi tiết phụ"} for e in two]}
+    fine = {**_outline_without(*two[:1]), "dropped": [{"event_id": e, "reason": "chi tiết phụ"} for e in two[:1]]}
     llm, calls = make_fake_llm({"OUTLINE": [greedy, fine]})
 
     result = _run_pipeline(pipeline, llm, stop_after="outline")
 
     assert calls.count("OUTLINE") == 2
-    assert '"dropped" có 5 sự việc, tối đa 4' in _reason(llm)
-    assert [d["event_id"] for d in result.output["dropped"]] == five[:4]
+    assert '"dropped" có 2 sự việc, tối đa 1' in _reason(llm)
+    assert [d["event_id"] for d in result.output["dropped"]] == two[:1]
 
 
 def test_outline_prompt_allows_non_linear_telling_and_dropping(isolated_projects_dir):
@@ -1000,7 +1001,7 @@ def test_outline_prompt_allows_non_linear_telling_and_dropping(isolated_projects
     _run_pipeline(pipeline, llm, stop_after="outline")
     prompt = _prompt_for(llm, "OUTLINE")
     assert "không bắt buộc theo thời gian" in prompt and "quay ngược về bối cảnh" in prompt
-    assert '"dropped"' in prompt and "Tối đa 4 sự việc" in prompt and "KHÔNG được bỏ sự việc then chốt" in prompt
+    assert '"dropped"' in prompt and "Tối đa 1 sự việc" in prompt and "KHÔNG được bỏ sự việc then chốt" in prompt
 
 
 def test_last_scene_of_a_part_ends_with_an_open_question(isolated_projects_dir):

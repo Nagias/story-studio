@@ -50,7 +50,9 @@ MAX_SCENE_OVERSHOOT = 1.2       # tổng số cảnh (kể cả cảnh miễn tr
 MAX_EVENTS_PER_SCENE = 3        # mỗi cảnh kể tối đa 3 sự việc (nhiều hơn là tóm gọn)
 MAX_SCENES_PER_EVENT = 2        # một sự việc đủ cho tối đa 2 cảnh (nhiều hơn là kéo dài cho đủ)
 SCENES_PER_MINUTE = 4           # trung bình khoảng 15 giây mỗi cảnh
-MAX_DROPPED_SHARE = 1 / 3       # dàn ý bỏ tối đa 1/3 số sự việc (chi tiết vụn) để kể gọn và cuốn
+# Dàn ý bỏ tối đa 1/10 số sự việc (chỉ chi tiết vụn). Trước 02/11/2026 là 1/3; chủ dự án: kể đủ ý, không cắt gọt
+# nhiều, số phút không phải mục tiêu (CLAUDE.md mục 1.2 câu 10, 14)
+MAX_DROPPED_SHARE = 1 / 10
 MAX_DEDUPE_SHARE = 0.5          # bước lọc trùng gộp tối đa một nửa số sự việc (nhiều hơn là gộp nhầm)
 # Số chữ mỗi cảnh tính từ số giây mỗi cảnh của thời lượng đã chọn (word_budget, theo VI_WORDS_PER_MINUTE /
 # EN_WORDS_PER_MINUTE đo thật, khai báo ở case_adaptation_checks), để video ra đúng số phút: trước đây giới hạn cố định
@@ -423,7 +425,6 @@ def _scene_list(scenes: list[dict], fields: tuple[tuple[str, str], ...]) -> str:
 
 def outline_prompt(bible: CaseBible, target_minutes: int, target_scenes: tuple[int, int]) -> str:
     lo, hi = target_scenes
-    cap = video_scene_cap(hi)
     min_part, max_part = SCENES_PER_PART
     example_minutes = 3
     kinds = " | ".join(PART_KINDS)
@@ -432,8 +433,9 @@ def outline_prompt(bible: CaseBible, target_minutes: int, target_scenes: tuple[i
     n_events = len(bible.timeline)
     most_dropped = max_dropped(n_events)
     if most_dropped:
-        drop_rule = (f'"dropped": chi tiết vụn bỏ khỏi video để câu chuyện gọn và cuốn (thủ tục hành chính, thông tin lặp '
-                     f'lại, chi tiết phụ không làm câu chuyện tiến lên), mỗi mục {{"event_id": "...", "reason": "lý do ngắn"}}. '
+        drop_rule = (f'"dropped": chỉ chi tiết vụn thật sự (thủ tục hành chính lặp lại, thông tin trùng với sự việc '
+                     f'khác), mỗi mục {{"event_id": "...", "reason": "lý do ngắn"}}. Mặc định giữ hết: video kể đủ ý, '
+                     f'không cắt gọt. '
                      f"Tối đa {most_dropped} sự việc; không bỏ gì thì để []. KHÔNG được bỏ sự việc then chốt: lúc phát hiện "
                      "vụ án, bằng chứng hay lời khai làm đổi hướng điều tra, bước ngoặt, việc xác định, bắt giữ, xét xử hung "
                      "thủ hoặc kết luận cuối cùng của vụ.")
@@ -459,7 +461,7 @@ THỜI LƯỢNG VÀ SỐ CẢNH
 2. Video luôn có thêm 1 cảnh miễn trừ ở đầu, đã tính vào các mức dưới đây. Tổng số cảnh của dàn ý (cộng "scene_count" của mọi nhịp):
    - nếu "supported_minutes" ≥ {target_minutes}: từ {lo - 1} đến {hi - 1} cảnh (video có {lo}–{hi} cảnh, kể cả cảnh miễn trừ); ít hơn {lo - 1} cảnh là thiếu và sẽ bị trả lại;
    - nếu "supported_minutes" < {target_minutes}: vừa với chất liệu, khoảng "supported_minutes" × {SCENES_PER_MINUTE} cảnh và không quá "supported_minutes" × {SCENES_PER_MINUTE * MAX_SCENE_OVERSHOOT:g} cảnh (làm tròn xuống; ví dụ {example_minutes} phút: khoảng {example_minutes * SCENES_PER_MINUTE} cảnh, tối đa {supported_scene_cap(example_minutes)} cảnh). Không kéo dài cho đủ số cảnh;
-   - trong mọi trường hợp không quá {cap - 1} cảnh (video tối đa {cap} cảnh, kể cả cảnh miễn trừ).
+   - bài nhiều tư liệu hơn {target_minutes} phút thì cứ lập đủ cảnh cho mọi sự việc (video dài hơn cũng được): số phút đã chọn là mức tối thiểu, không phải giới hạn, không gọt bớt sự việc cho vừa.
 
 QUY TẮC NHỊP
 1. Thứ tự kể để giữ người xem, không bắt buộc theo thời gian: mở bằng hook (khoảnh khắc gây tò mò nhất, không tiết lộ kết); sau đó được kể ngay lúc phát hiện vụ án (discovery) rồi mới quay ngược về bối cảnh, con người (setup), hoặc kể setup trước nếu như vậy cuốn hơn; tiếp theo là investigation (điều tra), twist (bước ngoặt), kết thúc và epilogue (kết và dư âm). Bước ngoặt và kết luôn ở cuối, không tiết lộ sớm. Kết thúc của vụ này là {ending}. Không bắt buộc đủ mọi loại; một loại có thể có nhiều nhịp liền nhau (ví dụ ba nhịp investigation).

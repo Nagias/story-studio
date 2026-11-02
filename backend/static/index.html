@@ -386,6 +386,14 @@
                   </select>
                 </div>
                 <div>
+                  <label class="text-slate-700 font-bold block mb-1">Ngôn ngữ lời review:</label>
+                  <select id="step1-language-select" class="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-800 font-medium focus:border-indigo-500">
+                    <option value="" selected>Theo ngôn ngữ của truyện</option>
+                    <option value="vi">🇻🇳 Tiếng Việt</option>
+                    <option value="en">🇺🇸 Tiếng Anh</option>
+                  </select>
+                </div>
+                <div>
                   <label class="text-slate-700 font-bold block mb-1">Phong cách hình ảnh AI:</label>
                   <select id="step1-style-select" class="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-800 font-medium focus:border-indigo-500">
                     <option value="cinematic_realistic" selected>🎬 Cinematic Realistic 35mm</option>
@@ -2266,8 +2274,8 @@
   </div>
 
   <!-- Main JavaScript Logic (v2.9.1 Cache Buster: renderFullUI báo cho true_crime.js để hiện nút "Tạo bản tiếng Anh") -->
-  <script src="/static/app.js?v=2.9.8"></script>
-  <script src="/static/true_crime.js?v=1.4.0"></script>
+  <script src="/static/app.js?v=2.9.9"></script>
+  <script src="/static/true_crime.js?v=1.4.1"></script>
   <!-- Gói SEO YouTube ở Bước 4 (app.js gọi ytSeoLoad khi mở Bước 4) -->
   <script src="/static/youtube_seo.js?v=1.0.0"></script>
   <!-- Video cảnh cao trào ở Bước 2 (dự án vụ án): gắn nhãn/nút lên thẻ cảnh sau mỗi lần renderSceneList vẽ lại -->

@@ -241,20 +241,24 @@ async def test_storyboard_llm_request_disables_streaming(monkeypatch):
     assert sent["payload"]["stream"] is False
 
 
-def test_create_from_script_records_offline_analysis(api_client, monkeypatch):
-    async def offline_analysis(**kwargs):
-        return {"scenes": [], "fallback_reason": "9router HTTP 401: Invalid API key"}
+def test_create_from_script_reports_llm_error_instead_of_copying_raw_text(api_client, monkeypatch):
+    """Trước 02/11/2026: 9router lỗi thì chia offline, chép nguyên văn truyện làm lời kể (chủ dự án: không bê nguyên
+    văn, câu 16). Nay báo lỗi rõ, không tạo dự án."""
+    from services import story_review
+    from services.case_adaptation_llm import LLMError
 
-    monkeypatch.setattr(api_module, "analyze_vox_script_async", offline_analysis)
+    async def bad_key(*args, **kwargs):
+        raise LLMError("auth", "9router HTTP 401: Invalid API key")
+
+    monkeypatch.setattr(story_review, "_story_llm", bad_key)
+    before = len(project_service.list_projects())
     resp = api_client.post("/api/projects/create-from-script", json={
         "text": "Đêm mưa tháng mười, một chiếc taxi dừng trước con hẻm nhỏ.",
         "generate_initial_images": False,
     })
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["scenes"], "vẫn phải có cảnh từ bộ chia offline"
-    assert "401" in body["metadata"]["scene_analysis"]["fallback_reason"]
-    assert project_service.get_project(body["id"]).metadata["scene_analysis"]["provider"] == "offline"
+    assert resp.status_code == 502, resp.text
+    assert "401" in resp.json()["detail"]
+    assert len(project_service.list_projects()) == before
 
 
 # ----------------------------------------------------------------------------- việc 1: giọng
