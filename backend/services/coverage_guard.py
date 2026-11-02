@@ -25,7 +25,8 @@ MAX_FACTS_IN_PROMPT = 40       # bảng sự thật gửi kèm: chỉ những d�
 ISSUE_KINDS = {
     "lap_lai": "kể lại như mới một sự việc đã kể ở phần trước",
     "trai_nguoc": "nói khác bảng sự thật đã kể hoặc khác đoạn gốc",
-    "bia": "thêm sự việc, chi tiết hay lời nói mà đoạn gốc không có",
+    "bia": ("thêm sự việc, chi tiết, lời nói hay thân phận nhân vật (nghề nghiệp, tuổi, quan hệ) mà đoạn gốc không có "
+            "hoặc nói khác (vd đoạn gốc là giảng viên mà lời kể gọi là sinh viên)"),
 }
 # Lời kể ngôi thứ ba: người kể không xưng "tôi" (lời thoại trong ngoặc kép thì được)
 _FIRST_PERSON = {
