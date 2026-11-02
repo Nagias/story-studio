@@ -9,6 +9,7 @@ Chủ dự án 26/10/2026: video không có sound effect hợp bối cảnh, kh�
 """
 import asyncio
 import logging
+import math
 import re
 import subprocess
 from pathlib import Path
@@ -54,11 +55,21 @@ CUE_ALIASES = {
 # hệ số âm lượng chung làm tiếng rè đè giọng còn tiếng bước chân không nghe thấy. Mỗi file được đo rồi đưa về cùng mức.
 SFX_TARGET_LUFS = -36.0    # giọng đọc Edge/VieNeu khoảng −20 LUFS: tiếng động nằm dưới giọng khoảng 16 LU
 SFX_MAX_BOOST_DB = 18.0    # file quá nhỏ không kéo lên quá mức này (kéo nhiều thì tiếng xì nền to theo)
-SFX_FADE_OUT_S = 1.2
-MAX_CUES_PER_SCENE = 2
+SFX_FADE_OUT_S = 1.0
+MAX_CUES_PER_SCENE = 1
+# Tiết chế âm thanh (chủ dự án 29/10/2026: "rùng rợn không có nghĩa là cả 1 video dài 22 phút đều phải có cái âm thanh
+# kiểu ý"; đo 2 video mẫu: 8–11% thời lượng gần như im, video Trạm Dung 0,2%). Tiếng động chỉ ở khoảnh khắc then chốt,
+# phát một lần, không lặp suốt cảnh; đoạn trầm không có nhạc nền để quãng ngừng của giọng là quãng im thật.
+SFX_MAX_SECONDS = 4.0          # tiếng động phát một lần, dài tối đa chừng này
+SFX_MAX_SHARE = 0.25           # tối đa 1/4 số cảnh có tiếng động
+SFX_MIN_GAP_SCENES = 3         # hai cảnh có tiếng động cách nhau ít nhất 3 cảnh
+SFX_KEY_PRIORITY = {"dramatic_climax": 0, "video": 1, "tension_buildup": 2}   # cảnh then chốt, ưu tiên từ trên xuống
+SILENCE = "silence"
 
-ENERGY_TRACKS = {"ambient_low": "bgm_dark_ambient", "tension_buildup": "bgm_suspense", "dramatic_climax": "bgm_suspense"}
+ENERGY_TRACKS = {"ambient_low": SILENCE, "tension_buildup": "bgm_dark_ambient", "dramatic_climax": "bgm_suspense"}
 DEFAULT_ENERGY = "ambient_low"
+# Truyện chữ: nhịp kể của cảnh (story_review) -> độ căng; nhạc chỉ vang ở đoạn leo thang và cao trào
+BEAT_ENERGY = {"hook": "tension_buildup", "escalation": "tension_buildup", "climax": "dramatic_climax"}
 BGM_FADE_S = 2.0
 
 
@@ -121,18 +132,39 @@ def sfx_gain_db(path: Path) -> float:
     return min(SFX_TARGET_LUFS - measure_loudness(path), SFX_MAX_BOOST_DB)
 
 
+def plan_scene_sfx(scenes: Sequence[Tuple[Optional[str], Optional[str], Sequence[str]]]) -> List[List[str]]:
+    """Chọn cảnh có tiếng động cho cả video. Vào: mỗi cảnh (bgm_energy, visual_kind, sfx_cue của kế hoạch). Ra: tiếng
+    động từng cảnh (tối đa MAX_CUES_PER_SCENE): chỉ cảnh then chốt (SFX_KEY_PRIORITY), tối đa SFX_MAX_SHARE số cảnh,
+    cách nhau ít nhất SFX_MIN_GAP_SCENES cảnh; cảnh không có tiếng nào trong thư viện thì bỏ qua."""
+    budget = math.floor(len(scenes) * SFX_MAX_SHARE)
+    candidates = []
+    for index, (energy, visual, cues) in enumerate(scenes):
+        rank = min((SFX_KEY_PRIORITY[k] for k in (energy, visual) if k in SFX_KEY_PRIORITY), default=None)
+        usable = [c for c in (normalize_cue(c) for c in cues or []) if c and library_sfx(c)]
+        if rank is not None and usable:
+            candidates.append((rank, index, usable[:MAX_CUES_PER_SCENE]))
+    chosen: Dict[int, List[str]] = {}
+    for _rank, index, cues in sorted(candidates):
+        if len(chosen) >= budget:
+            break
+        if all(abs(index - other) >= SFX_MIN_GAP_SCENES for other in chosen):
+            chosen[index] = cues
+    return [chosen.get(i, []) for i in range(len(scenes))]
+
+
 async def mix_scene_sfx(voice_path: str, sfx_files: Sequence[Path], output_path: str, duration: float) -> str:
-    """Trộn tiếng động vào giọng một cảnh: mỗi tiếng đưa về cùng độ to SFX_TARGET_LUFS, lặp cho đủ độ dài cảnh, nhỏ dần
-    ở cuối. Giữ mono như giọng đọc để giọng không bị hạ khi đổi kênh. Độ dài bằng giọng (duration=first).
-    Ghi ra `output_path` (không đè file giọng gốc)."""
+    """Trộn tiếng động vào giọng một cảnh: mỗi tiếng đưa về cùng độ to SFX_TARGET_LUFS, phát MỘT lần từ đầu cảnh, dài
+    tối đa SFX_MAX_SECONDS, nhỏ dần ở cuối (không lặp suốt cảnh). Giữ mono như giọng đọc để giọng không bị hạ khi đổi
+    kênh. Độ dài bằng giọng (duration=first). Ghi ra `output_path` (không đè file giọng gốc)."""
     gains = [await asyncio.to_thread(sfx_gain_db, Path(path)) for path in sfx_files]
     cmd = ["ffmpeg", "-y", "-v", "error", "-i", str(voice_path)]
     for path in sfx_files:
-        cmd += ["-stream_loop", "-1", "-i", str(path)]
-    fade_start = max(0.0, float(duration) - SFX_FADE_OUT_S)
+        cmd += ["-i", str(path)]
+    length = min(SFX_MAX_SECONDS, max(float(duration), 0.5))
+    fade_start = max(0.0, length - SFX_FADE_OUT_S)
     parts = ["[0:a]aformat=sample_rates=48000:channel_layouts=mono[v]"]
     for i, gain in enumerate(gains, start=1):
-        parts.append(f"[{i}:a]aformat=sample_rates=48000:channel_layouts=mono,volume={gain:.2f}dB,"
+        parts.append(f"[{i}:a]aformat=sample_rates=48000:channel_layouts=mono,atrim=0:{length:.2f},volume={gain:.2f}dB,"
                      f"afade=t=out:st={fade_start:.2f}:d={SFX_FADE_OUT_S}[s{i}]")
     inputs = "[v]" + "".join(f"[s{i}]" for i in range(1, len(sfx_files) + 1))
     parts.append(f"{inputs}amix=inputs={len(sfx_files) + 1}:duration=first:dropout_transition=0:normalize=0[out]")
@@ -141,11 +173,14 @@ async def mix_scene_sfx(voice_path: str, sfx_files: Sequence[Path], output_path:
     return str(output_path)
 
 
-def energy_segments(energies: Sequence[Optional[str]], durations: Sequence[float]) -> List[Tuple[str, float]]:
-    """Gộp các cảnh liền nhau cùng độ căng thành đoạn [(tên bản nhạc, số giây)]."""
+def energy_segments(energies: Sequence[Optional[str]], durations: Sequence[float],
+                    tracks: Optional[Dict[str, str]] = None) -> List[Tuple[str, float]]:
+    """Gộp các cảnh liền nhau cùng độ căng thành đoạn [(tên bản nhạc hoặc SILENCE, số giây)]. `tracks`: độ căng -> bản
+    nhạc (mặc định ENERGY_TRACKS: đoạn trầm im, đoạn căng và cao trào có nhạc)."""
+    tracks = tracks or ENERGY_TRACKS
     segments: List[Tuple[str, float]] = []
     for energy, seconds in zip(energies, durations):
-        track = ENERGY_TRACKS.get(energy or DEFAULT_ENERGY, ENERGY_TRACKS[DEFAULT_ENERGY])
+        track = tracks.get(energy or DEFAULT_ENERGY, tracks[DEFAULT_ENERGY])
         if segments and segments[-1][0] == track:
             segments[-1] = (track, segments[-1][1] + float(seconds))
         else:
@@ -159,10 +194,13 @@ async def build_energy_bgm(segments: Sequence[Tuple[str, float]], output_path: s
     cmd = ["ffmpeg", "-y", "-v", "error"]
     parts = []
     for i, (track, seconds) in enumerate(segments):
-        path = config.BGM_DIR / f"{track}.mp3"
-        if not path.is_file():
-            raise FileNotFoundError(f"thiếu nhạc nền {path.name}")
-        cmd += ["-stream_loop", "-1", "-t", f"{seconds:.3f}", "-i", str(path)]
+        if track == SILENCE:
+            cmd += ["-f", "lavfi", "-t", f"{seconds:.3f}", "-i", "anullsrc=r=48000:cl=stereo"]
+        else:
+            path = config.BGM_DIR / f"{track}.mp3"
+            if not path.is_file():
+                raise FileNotFoundError(f"thiếu nhạc nền {path.name}")
+            cmd += ["-stream_loop", "-1", "-t", f"{seconds:.3f}", "-i", str(path)]
         fade = min(BGM_FADE_S, seconds / 3)
         parts.append(f"[{i}:a]aformat=sample_rates=48000:channel_layouts=stereo,afade=t=in:d={fade:.2f},"
                      f"afade=t=out:st={max(0.0, seconds - fade):.2f}:d={fade:.2f}[b{i}]")

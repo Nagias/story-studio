@@ -93,7 +93,8 @@ from services import (
     generate_youtube_thumbnail,
 )
 from services.case_project_builder import previous_scene_frame, redraw_board_images
-from services.scene_sound import build_energy_bgm, energy_segments, mix_scene_sfx, scene_sfx_files
+from services.scene_sound import (BEAT_ENERGY, ENERGY_TRACKS, SILENCE, build_energy_bgm, energy_segments,
+                                  mix_scene_sfx, plan_scene_sfx, scene_sfx_files)
 from services import story_review
 from services.thumbnail_service import ThumbnailError
 
@@ -1640,6 +1641,11 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
         scene_video_paths = []
         scene_srt_infos = []
 
+        # Dự án vụ án: tiếng động chỉ ở cảnh then chốt, phát một lần (scene_sound.plan_scene_sfx; tiết chế âm thanh)
+        is_case = bool((project.metadata or {}).get("case_id"))
+        planned_sfx = (plan_scene_sfx([(s.bgm_energy, (s.metadata or {}).get("visual_kind"), s.sfx_cue)
+                                       for s in project.scenes]) if is_case else [[] for _ in project.scenes])
+
         for i, scene in enumerate(project.scenes, start=1):
             media = get_scene_media_paths(project_id, scene.id)
             motion = req.camera_motion or scene.camera_motion or project.default_motion
@@ -1650,7 +1656,7 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
                 raise RuntimeError(f"Cảnh {i} không có ảnh hoặc video để dựng.")
             # Dự án vụ án: trộn tiếng động thật (sfx_cue) vào giọng cảnh, ghi file riêng, không đè giọng gốc
             scene_audio = str(media["audio"])
-            sfx_files = scene_sfx_files(scene.sfx_cue) if (project.metadata or {}).get("case_id") else []
+            sfx_files = scene_sfx_files(planned_sfx[i - 1])
             if sfx_files and media["audio"].exists() and scene.duration:
                 try:
                     scene_audio = await mix_scene_sfx(scene_audio, sfx_files,
@@ -1702,11 +1708,15 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
             if candidate.exists():
                 bgm_file_path = str(candidate)
 
-        # Dự án vụ án: nhạc nền đổi theo độ căng từng đoạn (bgm_energy của cảnh); người dùng chọn "không nhạc" thì thôi
-        if bgm_file_path and (project.metadata or {}).get("case_id") and any(s.bgm_energy for s in project.scenes):
+        # Nhạc nền theo độ căng: đoạn trầm im (chỉ giọng), đoạn căng và cao trào có nhạc. Vụ án: bgm_energy của cảnh và
+        # 2 bản nhạc rùng rợn; truyện chữ: nhịp kể của cảnh (story_review) và bản nhạc người dùng chọn. Người dùng chọn
+        # "không nhạc" thì thôi; không có thông tin độ căng thì giữ nhạc nền chung như trước.
+        energies = [s.bgm_energy or BEAT_ENERGY.get((s.metadata or {}).get("narrative_beat")) for s in project.scenes]
+        if bgm_file_path and any(energies):
+            tracks = ENERGY_TRACKS if is_case else {"ambient_low": SILENCE, "tension_buildup": bgm_track_id,
+                                                    "dramatic_climax": bgm_track_id}
             try:
-                segments = energy_segments([s.bgm_energy for s in project.scenes],
-                                           [float(s.duration or 0) for s in project.scenes])
+                segments = energy_segments(energies, [float(s.duration or 0) for s in project.scenes], tracks)
                 bgm_file_path = await build_energy_bgm(
                     segments, str(render_paths["final_video"].with_name("nhac_nen_theo_do_cang.mp3")))
                 bgm_note = f"Nhạc nền theo độ căng: {len(segments)} đoạn."
