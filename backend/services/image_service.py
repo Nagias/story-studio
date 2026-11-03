@@ -318,6 +318,16 @@ def build_character_anchored_prompt(
 
     return ", ".join(parts)
 
+def with_style(prompt: str, style_preset: Optional[str]) -> str:
+    """Prompt có thêm câu mô tả phong cách của dự án (mỗi đường tạo ảnh cùng một câu). Muse không hiểu mã phong cách
+    như "horror_cartoon_2d": gặp 03/11/2026, nút "Muse 2K" chỉ gửi mã nên ảnh không ra nhân vật đầu tròn."""
+    suffix = (STYLE_PRESETS.get(style_preset or "") or {}).get("prompt_suffix", "")
+    text = (prompt or "").strip()
+    if not suffix or suffix.lower() in text.lower():
+        return text
+    return f"{text}, {suffix}" if text else suffix
+
+
 def build_consistent_prompt(
     scene_prompt: str,
     style_preset: str = "cinematic_realistic",
@@ -599,6 +609,7 @@ async def generate_image(
     reference_image: Optional[str] = None,
     reference_role: Optional[str] = None,
     location: Optional[Dict[str, Any]] = None,
+    characters: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Generate an image using the selected provider with consistent styling.
@@ -609,7 +620,11 @@ async def generate_image(
 
     `location`: khoá bối cảnh của cảnh (gói của `location_sheets.scene_lock()`): câu mô tả cố định thêm vào prompt
     cho mọi nguồn ảnh; Muse còn được đính kèm ảnh chuẩn của bối cảnh (nếu gói có `plate_path`).
+    `characters`: khoá nhân vật của cảnh (gói của `scene_locks.character_lock()`): mô tả cố định của người trong cảnh;
+    Muse còn được đính kèm bảng nhân vật đã duyệt. Có khoá nhân vật thì bỏ "nhân vật chính chung" cũ của dự án.
+    Thứ tự và vai trò ảnh đính kèm do `scene_locks.apply_to_image_task()` xếp (một nơi cho mọi đường tạo ảnh).
     """
+    from services import scene_locks   # nạp muộn: scene_locks -> character_sheets nạp lại image_service
     if not output_path:
         raise ValueError("output_path must be provided.")
 
@@ -617,15 +632,15 @@ async def generate_image(
     out.parent.mkdir(parents=True, exist_ok=True)
 
     target_char = character if character is not None else character_anchor
+    if characters and characters.get("entity_ids"):
+        target_char, character_anchor, character = None, "", None
 
     full_prompt = build_character_anchored_prompt(
         scene_prompt=prompt,
         style_preset=style_preset,
         character=target_char,
     )
-    if location and location.get("prompt_line"):
-        full_prompt = f"{full_prompt}. {location['prompt_line']}"
-    location_plate = (location or {}).get("plate_path")
+    full_prompt = scene_locks.lock_prompt(full_prompt, location, characters)
 
     requested_provider = provider or DEFAULT_IMAGE_PROVIDER or "meta_muse_cloud"
     used_provider = requested_provider
@@ -706,13 +721,8 @@ async def generate_image(
                     "lighting": "cinematic lighting, volumetric atmosphere, 8k resolution",
                 },
             }
-            if location_plate:
-                # Ảnh chuẩn của bối cảnh đính kèm SAU ảnh tham chiếu sẵn có (nếu có); runner dặn Muse vai trò từng ảnh
-                local_ref = ref_img if ref_img and not str(ref_img).startswith("http") else None
-                task_dict["attachments"] = ([str(local_ref)] if local_ref else []) + [str(location_plate)]
-                task_dict["parameters"]["location_reference"] = True
-            if location:
-                task_dict["parameters"]["location_id"] = location.get("location_id")
+            # Bảng nhân vật, ảnh tham chiếu/cảnh trước, ảnh chuẩn bối cảnh: thứ tự và vai trò do scene_locks xếp
+            scene_locks.apply_to_image_task(task_dict, location, characters)
             res = await enqueue_and_wait_muse_task(task_dict)
             muse_file = Path(res.get("output_path") or out) if isinstance(res, dict) else out
             if muse_file.resolve() != out.resolve() and muse_file.exists():

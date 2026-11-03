@@ -33,6 +33,9 @@ async def test_vietnamese_script_uses_default_voice_when_vietnamese(isolated_pro
     from services import story_review
     from tests.story_review_fakes import FakeStoryLLM
     monkeypatch.setattr(story_review, "_story_llm", FakeStoryLLM())   # không gọi 9router
+    from services import story_cast
+    from tests.story_review_fakes import FakePeopleLLM
+    monkeypatch.setattr(story_cast, "call_llm_json", FakePeopleLLM())   # bước tìm nhân vật: LLM giả
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://127.0.0.1") as client:
         resp = await client.post("/api/projects/create-from-script", json={
             "text": "Đêm mưa, Nam bước vào căn nhà cũ.\n\nCánh cửa kẽo kẹt mở ra.",

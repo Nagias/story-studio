@@ -94,10 +94,12 @@ from services import (
 )
 from services.case_project_builder import previous_scene_frame, redraw_board_images
 from services.dialogue_video import render_seconds
-from services.location_sheets import scene_lock
-from services.scene_sound import (BEAT_ENERGY, ENERGY_TRACKS, SILENCE, build_energy_bgm, energy_segments,
-                                  mix_scene_sfx, plan_scene_sfx, scene_sfx_files)
-from services import story_review
+from services.scene_locks import scene_locks
+from services.scene_sound import (ENERGY_TRACKS, SILENCE, build_energy_bgm, energy_segments, has_energy_info,
+                                  mix_scene_sfx, plan_scene_sfx, scene_energy, scene_sfx_files)
+from services import story_cast, story_review
+from services.case_adaptation_steps import StepFailed
+from services.character_sheets import CastError, peek_cast
 from services.thumbnail_service import ThumbnailError
 
 from services.project_service import _get_project_dir, ensure_project_dirs, save_project
@@ -709,7 +711,9 @@ async def create_new_project(req: ProjectCreateRequest):
 @router.post("/projects/create-from-script")
 async def create_project_from_script(req: CreateProjectFromScriptRequest):
     """Luồng 1-Click (Bước 1): truyện chữ thành dự án mới. Lời review (tiếng Việt hoặc tiếng Anh theo
-    `output_language`) viết từng phần và kiểm đủ ý bằng story_review; tạo ảnh ngay nếu `generate_initial_images`."""
+    `output_language`) viết từng phần và kiểm đủ ý bằng story_review; rồi tìm nhân vật cố định (story_cast, như bảng
+    tên của vụ án) để ảnh cảnh vẽ sau có khoá nhân vật. Chỉ tạo ảnh ngay nếu gửi `generate_initial_images` (giao diện
+    không gửi: làm từng bước, CLAUDE.md mục 1.2 câu 4)."""
     first_line = req.text.strip().split("\n")[0][:45].strip()
     clean_title = (req.name or first_line).strip()
     if not clean_title:
@@ -770,12 +774,36 @@ async def create_project_from_script(req: CreateProjectFromScriptRequest):
         if scene_obj:
             created_scenes.append(scene_obj)
 
-    # Generate real scene images immediately using Meta Muse Cloud so Step 2 is fully populated
+    # Luồng chung (03/11/2026): truyện chữ có danh sách nhân vật cố định như vụ án, tìm ngay khi tạo dự án để mọi ảnh
+    # cảnh vẽ sau đều có khoá nhân vật. Lỗi thì ghi lại (cửa sổ Nhân vật báo và cho tìm lại), không bỏ lời review đã viết.
+    cast_info: dict = {"people": 0, "error": None}
+    if created_scenes:
+        if req.progress_id:
+            story_review.set_progress(req.progress_id, "Đang tìm nhân vật cố định của truyện")
+        try:
+            await asyncio.to_thread(story_cast.save_source, project.id, req.text)
+            cast = await story_cast.analyze_people(project.id)
+            cast_info["people"] = len(cast.characters)
+        except (StepFailed, CastError) as exc:
+            cast_info["error"] = str(exc)
+            await asyncio.to_thread(story_cast.record_analysis_error, project.id, str(exc))
+        except Exception as exc:   # lỗi ngoài dự kiến: ghi log và báo, dự án vẫn giữ
+            logger.exception(f"create-from-script: tìm nhân vật dự án {project.id} lỗi")
+            cast_info["error"] = f"Lỗi ngoài dự kiến: {exc}"
+            await asyncio.to_thread(story_cast.record_analysis_error, project.id, cast_info["error"])
+        finally:
+            if req.progress_id:
+                story_review.clear_progress(req.progress_id)
+
+    # Tạo ảnh ngay (chỉ khi gửi generate_initial_images; mặc định không)
     if req.generate_initial_images and created_scenes:
         for idx, sc in enumerate(created_scenes, start=1):
             media_paths = get_scene_media_paths(project.id, sc.id)
             try:
+                locks = await asyncio.to_thread(scene_locks, project.id, sc.id, sc.image_prompt)
                 img_res = await generate_image(
+                    location=locks["location"],
+                    characters=locks["characters"],
                     prompt=sc.image_prompt,
                     style_preset=project.style_preset,
                     character=project.character,
@@ -801,6 +829,7 @@ async def create_project_from_script(req: CreateProjectFromScriptRequest):
     project.metadata["scene_analysis"] = {"provider": "story_review", "fallback_reason": None,
                                           "language": out_lang, "coverage": review["coverage"]}
     project.metadata["story_language"] = out_lang
+    project.metadata["story_cast"] = cast_info
     save_project(project)
     return project
 
@@ -1128,8 +1157,8 @@ async def generate_scene_image(project_id: str, scene_id: str, req: ImageGenRequ
     media_paths = get_scene_media_paths(project_id, scene_id)
 
     try:
-        # Cảnh thuộc bối cảnh đã duyệt: prompt thêm mô tả cố định, Muse đính kèm ảnh chuẩn (services/location_sheets.py)
-        location = await asyncio.to_thread(scene_lock, project_id, scene_id, prompt)
+        # Khoá nhân vật và khoá bối cảnh của cảnh (services/scene_locks.py): mô tả cố định, bảng nhân vật, ảnh chuẩn
+        locks = await asyncio.to_thread(scene_locks, project_id, scene_id, prompt)
         img_res = await generate_image(
             prompt=prompt,
             style_preset=style,
@@ -1140,7 +1169,8 @@ async def generate_scene_image(project_id: str, scene_id: str, req: ImageGenRequ
             seed=req.seed,
             output_path=str(media_paths["image"]),
             scene_index=target_scene.order,
-            location=location,
+            location=locks["location"],
+            characters=locks["characters"],
         )
     except Exception as e:
         img_res = {"success": False, "error": str(e)}
@@ -1239,7 +1269,10 @@ async def execute_full_render(project_id: str, render_id: str, options: RenderRe
 
             if _scene_render_input(scene, media) is None:
                 try:
+                    locks = await asyncio.to_thread(scene_locks, project_id, scene.id, scene.image_prompt or scene.text)
                     img = await generate_image(
+                        location=locks["location"],
+                        characters=locks["characters"],
                         prompt=scene.image_prompt or scene.text,
                         style_preset=project.style_preset,
                         character_anchor=project.character_anchor,
@@ -1538,12 +1571,17 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
             raise ValueError("Không tìm thấy phân cảnh nào để sản xuất video.")
 
         total_scenes = len(project.scenes)
+        cast = await asyncio.to_thread(peek_cast, project)
+        people = list(cast.characters.values()) if cast else []
+        approved = sum(1 for p in people if p.status == "approved")
+        cast_note = (f"{len(people)} nhân vật cố định ({approved} có bảng đã duyệt), khoá ở mọi ảnh cảnh" if people
+                     else "chưa có nhân vật cố định (mở nút Nhân vật để tìm trước khi tạo ảnh)")
         await broadcast_render_update(render_id, {
             "progress": 15,
             "step": 1,
-            "step_label": f"Bước 1 hoàn tất: Kịch bản gồm {total_scenes} phân cảnh & Nhân vật đã khóa.",
+            "step_label": f"Bước 1 hoàn tất: Kịch bản gồm {total_scenes} phân cảnh.",
             "logs": active_renders[render_id]["logs"] + [
-                f"[Giai đoạn 1/5] Đã thiết lập kịch bản gồm {total_scenes} cảnh. Nhân vật: {project.character_anchor or 'Mặc định'}."
+                f"[Giai đoạn 1/5] Đã thiết lập kịch bản gồm {total_scenes} cảnh. Nhân vật: {cast_note}."
             ] + ([f"⚠ Chia cảnh: {analysis_note}"] if analysis_note else []),
         })
 
@@ -1603,10 +1641,11 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
                 try:
                     # Dự án vụ án: cảnh cùng nhịp vẽ nối tiếp, đính kèm khung hình cảnh trước (ảnh hoặc khung cuối clip)
                     continuity = await asyncio.to_thread(previous_scene_frame, project, scene)
-                    location = await asyncio.to_thread(scene_lock, project_id, scene.id,
-                                                       scene.image_prompt or scene.text)
+                    locks = await asyncio.to_thread(scene_locks, project_id, scene.id,
+                                                    scene.image_prompt or scene.text)
                     img_res = await generate_image(
-                        location=location,
+                        location=locks["location"],
+                        characters=locks["characters"],
                         prompt=scene.image_prompt or scene.text,
                         style_preset=project.style_preset,
                         character_anchor=project.character_anchor,
@@ -1657,10 +1696,12 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
         scene_srt_infos = []
         render_durations: List[float] = []
 
-        # Dự án vụ án: tiếng động chỉ ở cảnh then chốt, phát một lần (scene_sound.plan_scene_sfx; tiết chế âm thanh)
+        # Tiếng động chỉ ở cảnh then chốt, phát một lần (scene_sound.plan_scene_sfx; tiết chế âm thanh), cùng một quy tắc
+        # cho truyện chữ và vụ án. Độ căng của cảnh: bgm_energy (vụ án) hoặc nhịp kể narrative_beat (truyện chữ).
         is_case = bool((project.metadata or {}).get("case_id"))
-        planned_sfx = (plan_scene_sfx([(s.bgm_energy, (s.metadata or {}).get("visual_kind"), s.sfx_cue)
-                                       for s in project.scenes]) if is_case else [[] for _ in project.scenes])
+        energies = [scene_energy(s.bgm_energy, (s.metadata or {}).get("narrative_beat"), is_case) for s in project.scenes]
+        planned_sfx = plan_scene_sfx([(energy, (s.metadata or {}).get("visual_kind") or "image", s.sfx_cue)
+                                      for energy, s in zip(energies, project.scenes)])
 
         for i, scene in enumerate(project.scenes, start=1):
             media = get_scene_media_paths(project_id, scene.id)
@@ -1730,8 +1771,7 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
         # Nhạc nền theo độ căng: đoạn trầm im (chỉ giọng), đoạn căng và cao trào có nhạc. Vụ án: bgm_energy của cảnh và
         # 2 bản nhạc rùng rợn; truyện chữ: nhịp kể của cảnh (story_review) và bản nhạc người dùng chọn. Người dùng chọn
         # "không nhạc" thì thôi; không có thông tin độ căng thì giữ nhạc nền chung như trước.
-        energies = [s.bgm_energy or BEAT_ENERGY.get((s.metadata or {}).get("narrative_beat")) for s in project.scenes]
-        if bgm_file_path and any(energies):
+        if bgm_file_path and has_energy_info(energies):
             tracks = ENERGY_TRACKS if is_case else {"ambient_low": SILENCE, "tension_buildup": bgm_track_id,
                                                     "dramatic_climax": bgm_track_id}
             try:

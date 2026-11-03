@@ -1,6 +1,7 @@
-"""Bảng nhân vật đủ góc cho dự án vụ án (chủ dự án chốt 28/10/2026).
+"""Bảng nhân vật đủ góc, dùng chung cho dự án vụ án và truyện chữ (chủ dự án chốt 28/10/2026; một luồng 03/11/2026).
 
-Mỗi người (CaseEntity kind "person") của vụ án có một bảng nhân vật: toàn thân trước, trái, sau, phải và đầu trước,
+Người của dự án: vụ án lấy từ bảng tên (CaseEntity kind "person"); truyện chữ do `services/story_cast.py` tìm bằng LLM
+(nguồn "story"). Mỗi người có một bảng nhân vật: toàn thân trước, trái, sau, phải và đầu trước,
 trái, sau, phải, trên. Muse vẽ trên tài khoản VIDEO (cùng loại tài khoản làm video cao trào); vẽ lại thì làm trong đúng
 side chat cũ để Muse thấy bản sai trước. Chủ dự án duyệt bảng rồi mới dùng làm tham chiếu cho ảnh grid và clip.
 
@@ -60,6 +61,8 @@ class CharacterSheet(BaseModel):
     name_vi: str
     role: str = "other"
     design_en: str
+    gender: str = ""             # người của truyện chữ (vụ án đọc giới tính từ bảng tên)
+    source: Literal["case", "story"] = "case"
     status: SheetStatus = "draft"
     sheet_path: Optional[str] = None
     versions: list[str] = Field(default_factory=list)
@@ -71,7 +74,10 @@ class CharacterSheet(BaseModel):
 
 class ProjectCast(BaseModel):
     characters: dict[str, CharacterSheet] = Field(default_factory=dict)
-    scene_cast: dict[str, list[str]] = Field(default_factory=dict)   # chủ dự án đã chỉnh tay: ghi đè đoán tự động
+    # nhân vật từng cảnh đã chốt (chủ dự án chỉnh tay, hoặc LLM tìm nhân vật của truyện chữ ghi): ghi đè đoán tự động
+    scene_cast: dict[str, list[str]] = Field(default_factory=dict)
+    analyzed_at: Optional[str] = None
+    analysis_error: Optional[str] = None
 
 
 class CastError(ValueError):
@@ -94,6 +100,11 @@ def _cast_path(project_id: str) -> Path:
     return characters_dir(project_id) / "characters.json"
 
 
+def _existing_cast_path(project_id: str) -> Path:
+    """Đường dẫn file mà không tạo thư mục (đọc khi tạo ảnh không được sinh thư mục rác)."""
+    return PROJECTS_DIR / project_id / "characters" / "characters.json"
+
+
 def _project(project_id: str) -> Project:
     project = project_service.get_project(project_id)
     if project is None:
@@ -108,16 +119,28 @@ def case_people(project: Project) -> list[CaseEntity]:
     return [e for e in plan.bible.entities if e.kind == "person"] if plan else []
 
 
-def default_design(entity: CaseEntity, style_id: str) -> str:
+def design_text(appearance_en: str, gender: str, age_range: str, role: str, style_id: str) -> str:
     """Thiết kế mặc định: ngoại hình riêng của người đó + nét vẽ của phong cách dự án + quy tắc giữ nguyên mọi góc."""
     from services.image_service import STYLE_PRESETS   # nạp muộn: image_service nặng và chỉ cần chuỗi phong cách
     style = (STYLE_PRESETS.get(style_id) or {}).get("prompt_suffix", "")
-    parts = [f"Appearance: {entity.appearance_en.strip()}" if entity.appearance_en else
-             f"A {entity.age_range} {entity.gender} person ({entity.role})."]
+    parts = [f"Appearance: {appearance_en.strip()}" if appearance_en.strip() else
+             f"A {age_range} {gender} person ({role})."]
     if style:
         parts.append(f"Drawing style: {style}")
     parts.append(ANGLE_RULE_EN)
     return "\n".join(parts)
+
+
+def default_design(entity: CaseEntity, style_id: str) -> str:
+    return design_text(entity.appearance_en or "", entity.gender, entity.age_range, entity.role, style_id)
+
+
+def look_text(design_en: str) -> str:
+    """Phần ngoại hình của thiết kế (bỏ dòng nét vẽ và quy tắc vẽ bảng) để chèn vào prompt ảnh cảnh."""
+    text = (design_en or "").replace(ANGLE_RULE_EN, " ")
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip() and not ln.strip().lower().startswith("drawing style:")]
+    look = " ".join(" ".join(lines).split())
+    return look[len("Appearance:"):].strip() if look.lower().startswith("appearance:") else look
 
 
 def load_cast(project_id: str) -> ProjectCast:
@@ -135,6 +158,16 @@ def load_cast(project_id: str) -> ProjectCast:
         if added or text is None:
             safe_files.write_text_atomic(_cast_path(project_id), cast.model_dump_json(indent=2))
         return cast
+
+
+def peek_cast(project: Project) -> Optional[ProjectCast]:
+    """Bảng nhân vật nếu dự án có người (vụ án có bảng tên, hoặc đã có characters.json); None nếu chưa có, không sinh
+    file hay thư mục. Dùng khi tạo ảnh cảnh."""
+    if case_people(project):
+        return load_cast(project.id)
+    with _lock(project.id):
+        text = safe_files.read_text(_existing_cast_path(project.id))
+    return ProjectCast.model_validate_json(text) if text else None
 
 
 def save_cast(project_id: str, cast: ProjectCast) -> None:
@@ -192,14 +225,20 @@ def guess_scene_cast(scene_prompt: str, appearances: dict[str, str]) -> list[str
     return [eid for _, _, eid in sorted(kept, key=lambda k: k[1])]
 
 
+def is_drawn_scene(scene: Scene) -> bool:
+    """Cảnh có hình vẽ của câu chuyện. Cảnh không ghi loại (truyện chữ cũ, truyện tranh) là cảnh ảnh."""
+    return ((scene.metadata or {}).get("visual_kind") or "image") in ("image", "video")
+
+
 def scene_cast(project: Project, cast: ProjectCast) -> dict[str, list[str]]:
-    """scene_id -> entity_id có mặt: chủ dự án đã chỉnh thì theo đó, không thì đoán từ prompt ảnh."""
+    """scene_id -> entity_id có mặt: đã chốt (chỉnh tay, hoặc tìm nhân vật của truyện chữ) thì theo đó, không thì đoán
+    từ prompt ảnh."""
     appearances = {e.id: e.appearance_en for e in case_people(project)}
     out = {}
     for s in project.scenes:
         if s.id in cast.scene_cast:
-            out[s.id] = list(cast.scene_cast[s.id])
-        elif (s.metadata or {}).get("visual_kind") in ("image", "video"):
+            out[s.id] = [e for e in cast.scene_cast[s.id] if e in cast.characters]
+        elif is_drawn_scene(s):
             out[s.id] = guess_scene_cast(s.image_prompt, appearances)
     return out
 
@@ -237,7 +276,13 @@ def hair_rule_for(project: Project, entity_id: str) -> str:
     if project.style_preset not in ROUND_HEAD_STYLES:
         return ""
     person = next((e for e in case_people(project) if e.id == entity_id), None)
-    return FEMALE_HAIR_RULE_EN if person is not None and person.gender == "female" else ""
+    if person is not None:
+        gender = person.gender
+    else:   # người của truyện chữ: giới tính ghi trong bảng nhân vật
+        cast = peek_cast(project)
+        sheet = cast.characters.get(entity_id) if cast else None
+        gender = sheet.gender if sheet else ""
+    return FEMALE_HAIR_RULE_EN if gender == "female" else ""
 
 
 def hair_rule_line(design_en: str, hair_rule: str) -> str:
@@ -247,10 +292,15 @@ def hair_rule_line(design_en: str, hair_rule: str) -> str:
     return f"This hair rule overrides any other hair placement in the design: {hair_rule}"
 
 
-def sheet_prompt(sheet: CharacterSheet, hair_rule: str = "") -> str:
+def sheet_prompt(sheet: CharacterSheet, hair_rule: str = "", has_reference: bool = True) -> str:
+    """`has_reference`: có ảnh cảnh đính kèm để Muse theo đúng nét vẽ; chưa có ảnh cảnh nào (vẽ bảng trước khi tạo ảnh
+    cảnh, đúng thứ tự của luồng chung) thì Muse vẽ theo dòng "Drawing style" của thiết kế."""
+    head = ("tạo cho tôi 1 hình ảnh 2K tỉ lệ 16:9: CHARACTER TURNAROUND SHEET of ONE character, drawn in exactly the "
+            "same art style as the attached scene image." if has_reference else
+            "tạo cho tôi 1 hình ảnh 2K tỉ lệ 16:9: CHARACTER TURNAROUND SHEET of ONE character, drawn exactly in the "
+            "drawing style written in the design below.")
     lines = [
-        "tạo cho tôi 1 hình ảnh 2K tỉ lệ 16:9: CHARACTER TURNAROUND SHEET of ONE character, drawn in exactly the same "
-        "art style as the attached scene image.",
+        head,
         f"CHARACTER DESIGN:\n{sheet.design_en.strip()}",
     ]
     rule = hair_rule_line(sheet.design_en, hair_rule)
@@ -267,8 +317,10 @@ def _clear_thread(sheet: CharacterSheet) -> None:
     sheet.account_id = None
 
 
-async def draw_sheet(project_id: str, entity_id: str, muse_call: MuseCall, reference: Path) -> CharacterSheet:
-    """Muse (tài khoản video) vẽ bảng nhân vật; vẽ lại thì dùng đúng side chat cũ. Xong: trạng thái "review"."""
+async def draw_sheet(project_id: str, entity_id: str, muse_call: MuseCall,
+                     reference: Optional[Path]) -> CharacterSheet:
+    """Muse (tài khoản video) vẽ bảng nhân vật; vẽ lại thì dùng đúng side chat cũ. Xong: trạng thái "review".
+    `reference`: ảnh cảnh có người này (theo nét vẽ của dự án), None nếu chưa có ảnh cảnh nào."""
     cast = await asyncio.to_thread(load_cast, project_id)
     sheet = cast.characters.get(entity_id)
     if sheet is None:
@@ -279,8 +331,9 @@ async def draw_sheet(project_id: str, entity_id: str, muse_call: MuseCall, refer
     project = await asyncio.to_thread(_project, project_id)
     hair_rule = await asyncio.to_thread(hair_rule_for, project, entity_id)
     task = {"mode": "text-to-image", "route_kind": "video", "raw_prompt": True,
-            "prompt": sheet_prompt(sheet, hair_rule),
-            "attachments": [str(reference)], "aspect_ratio": "16:9", "parameters": {"aspect_ratio": "16:9"},
+            "prompt": sheet_prompt(sheet, hair_rule, has_reference=reference is not None),
+            "attachments": [str(reference)] if reference is not None else [],
+            "aspect_ratio": "16:9", "parameters": {"aspect_ratio": "16:9"},
             "output_path": str(out)}
     if sheet.thread_url and sheet.account_id:
         task.update(thread_url=sheet.thread_url, assigned_account=sheet.account_id, pin_account=True)

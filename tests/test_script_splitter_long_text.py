@@ -389,6 +389,9 @@ def test_create_from_script_keeps_the_end_of_a_long_script(client, monkeypatch):
     from tests.story_review_fakes import FakeStoryLLM
     llm = FakeStoryLLM()
     monkeypatch.setattr(story_review, "_story_llm", llm)
+    from services import story_cast
+    from tests.story_review_fakes import FakePeopleLLM
+    monkeypatch.setattr(story_cast, "call_llm_json", FakePeopleLLM())   # bước tìm nhân vật: LLM giả
     resp = client.post("/api/projects/create-from-script", json={
         "text": _long_story(),
         "generate_initial_images": False,

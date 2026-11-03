@@ -87,16 +87,17 @@ class ClimaxVideoError(RuntimeError):
 
 # ---------------------------------------------------------------------------------------------------------- chọn cảnh
 def _visual_kind(scene: Scene) -> Optional[str]:
-    return (scene.metadata or {}).get("visual_kind")
+    """Loại cảnh; cảnh không ghi loại (truyện chữ cũ) là cảnh ảnh (luồng chung truyện chữ và vụ án, 03/11/2026)."""
+    return (scene.metadata or {}).get("visual_kind") or "image"
 
 
 def is_eligible(scene: Scene) -> bool:
-    """Cảnh làm được video cao trào: cảnh vụ án có hình vẽ (không phải bảng ghim, thẻ miễn trừ, cảnh truyện chữ)."""
+    """Cảnh làm được video cao trào: cảnh có hình vẽ của câu chuyện (không phải bảng ghim, thẻ miễn trừ)."""
     return _visual_kind(scene) in ELIGIBLE_KINDS
 
 
 def scene_score(scene: Scene) -> int:
-    """Điểm cao trào của cảnh (0 = không làm). Chỉ cảnh vụ án có visual_kind là image hoặc video."""
+    """Điểm cao trào của cảnh (0 = không làm). Chỉ cảnh có hình vẽ (visual_kind image hoặc video)."""
     if not is_eligible(scene):
         return 0
     meta = scene.metadata or {}
@@ -419,7 +420,7 @@ def _load_scene(project_id: str, scene_id: str) -> tuple[Project, Scene]:
     if scene is None:
         raise LookupError(f"Dự án {project_id} không có cảnh {scene_id}")
     if not is_eligible(scene):
-        raise ValueError(f"Cảnh {scene_id} không phải cảnh vụ án có hình vẽ (visual_kind image/video)")
+        raise ValueError(f"Cảnh {scene_id} không phải cảnh có hình vẽ (visual_kind image/video)")
     return project, scene
 
 

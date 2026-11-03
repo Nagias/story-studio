@@ -94,3 +94,30 @@ class FakeStoryLLM:
                 quote = "câu này không hề có trong lời kể đâu nhé"
             quotes.append({"point_id": pid, "scene": idx, "quote": quote})
         return {"quotes": quotes, "issues": [], "facts": [f"sự thật của {p}" for p in points[:2]]}
+
+
+_SCENE_ID = re.compile(r"^- id (\S+) \(cảnh #\d+\)", re.M)
+
+
+class FakePeopleLLM:
+    """LLM giả cho services/story_cast.py (TASK: PEOPLE): một nhân vật chính có mặt ở mọi cảnh, một người phụ ở cảnh
+    đầu. `broken="short_look"`: ngoại hình quá ngắn ở lần trả lời đầu (code phải bắt viết lại)."""
+
+    LOOK = ("A slender young East Asian man in his early twenties with short messy black hair, thin rectangular "
+            "glasses, a pale tired face, a faded grey hoodie over a white shirt and dark jeans")
+
+    def __init__(self, broken: Optional[str] = None):
+        self.broken = broken
+        self.calls: list[str] = []
+
+    async def __call__(self, _system: str, user: str, **_kw: Any) -> Any:
+        self.calls.append(user)
+        ids = _SCENE_ID.findall(user)
+        look = "young man" if self.broken == "short_look" and len(self.calls) == 1 else self.LOOK
+        return {"people": [
+            {"name": "Lý Minh Hạ", "gender": "male", "age_range": "early 20s", "role": "main",
+             "appearance_en": look, "scene_ids": ids},
+            {"name": "Giáo sư Trần", "gender": "female", "age_range": "about 60", "role": "supporting",
+             "appearance_en": "An elderly East Asian woman about sixty with silver hair tied in a low bun, round wire "
+                              "glasses, a long dark green wool coat and a grey scarf", "scene_ids": ids[:1]},
+        ]}

@@ -292,3 +292,21 @@ def test_output_in_similar_project_name_is_not_linked_to_other_project(fleet):
     done = next(x for x in mb.task_history if x["task_id"] == t["task_id"])
     assert not done["media_url"].startswith("/api/projects/proj_a/")
     assert done["media_url"] == f"/static/muse_outputs/{t['task_id']}.jpg"
+
+
+def test_image_result_clears_generating_status_of_scene(fleet, isolated_projects_dir):
+    """Giao diện tự lưu status_image "generating" khi bấm Muse 2K; ảnh về thì máy chủ báo xong (gặp 03/11/2026: thẻ cảnh
+    treo vòng quay "Đang sinh ảnh AI" dù đã có ảnh)."""
+    from models.schemas import Project, Scene
+    from services import project_service
+    pid = "proj_status_anh01"
+    project_service.ensure_project_dirs(pid)
+    project_service.save_project(Project(id=pid, name="x", scenes=[
+        Scene(id="scene_001", order=1, text="a", image_prompt="b", status_image="generating")]))
+    t = mb.enqueue_task({"mode": "text-to-image", "prompt": "p", "project_id": pid, "scene_id": "scene_001"})
+    _activate(t)
+    r = fleet["client"].post(f"/api/muse-bridge/tasks/{t['task_id']}/complete",
+                             files={"file": ("x.jpg", jpeg_bytes(), "image/jpeg")})
+    assert r.status_code == 200
+    scene = project_service.get_project(pid).scenes[0]
+    assert scene.status_image == "ready" and scene.image_path

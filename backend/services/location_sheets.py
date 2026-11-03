@@ -7,7 +7,7 @@ Trước đây mỗi cảnh tự tả bối cảnh trong prompt ảnh (LLM viế
 2. Chủ dự án xem, sửa mô tả và danh sách cảnh, cho Muse vẽ ảnh chuẩn (cảnh trống, không người), ghi chỗ sai rồi vẽ lại
    trong cùng side chat, duyệt — giống bảng nhân vật (services/character_sheets.py).
 3. Tạo ảnh cho cảnh thuộc bối cảnh ĐÃ DUYỆT: prompt thêm đúng mô tả cố định, đính kèm ảnh chuẩn khi khung hình thấy
-   được bối cảnh (không phải cận cảnh) — `scene_lock()` trả gói dùng chung cho mọi đường tạo ảnh và video Muse.
+   được bối cảnh (không phải cận cảnh) — `scene_lock()` trả gói dùng chung cho mọi đường tạo ảnh (qua `services/scene_locks.py`) và video Muse.
 
 Dữ liệu ở `projects/<id>/locations/locations.json` — chỉ module này ghi (giao diện tự lưu dự án không đè được).
 Không import routers/ (`muse_call` truyền vào). LLM gọi qua `ask_validated` của luồng vụ án (có thử lại, chờ khi bận).
@@ -517,22 +517,3 @@ def scene_lock(project_id: str, scene_id: str, scene_prompt: str = "") -> Option
     return {"location_id": loc.location_id, "name_vi": loc.name_vi, "design_en": loc.design_en,
             "prompt_line": lock_line(loc.design_en),
             "plate_path": str(plate.resolve()) if use_plate and plate is not None else None}
-
-
-def apply_lock_to_image_task(task: dict, lock: Optional[dict]) -> dict:
-    """Sửa việc tạo ảnh Muse (dạng /api/muse-bridge/tasks/create) theo khoá bối cảnh: thêm câu mô tả cố định vào prompt;
-    có ảnh chuẩn thì đính kèm sau ảnh tham chiếu sẵn có, đánh dấu `parameters.location_reference` để Fleet Runner viết
-    câu dặn đúng cho từng ảnh."""
-    if not lock:
-        return task
-    prompt = (task.get("prompt") or "").strip()
-    if lock["prompt_line"] not in prompt:
-        task["prompt"] = f"{prompt}\n{lock['prompt_line']}" if prompt else lock["prompt_line"]
-    params = task.setdefault("parameters", {})
-    params["location_id"] = lock["location_id"]
-    if lock.get("plate_path"):
-        refs = [str(r) for r in (task.get("reference_image_path") or task.get("reference_image")
-                                 or task.get("reference_image_url"),) if r]
-        task["attachments"] = refs[:1] + [lock["plate_path"]]
-        params["location_reference"] = True
-    return task

@@ -23,8 +23,8 @@
 
   function project() { return AppState.currentProject; }
 
-  function isEligible(scene) {
-    const kind = scene && scene.metadata && scene.metadata.visual_kind;
+  function isEligible(scene) {   // cảnh có hình vẽ; cảnh không ghi loại (truyện chữ cũ) là cảnh ảnh
+    const kind = (scene && scene.metadata && scene.metadata.visual_kind) || 'image';
     return kind === 'image' || kind === 'video';
   }
 

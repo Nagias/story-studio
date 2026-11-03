@@ -304,13 +304,13 @@
                 <span class="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">ĐỔI TÊN NGƯỜI &amp; ĐỊA DANH</span>
               </div>
               <p class="text-xs text-slate-300 mt-1.5 leading-relaxed">
-                Dán bài về một vụ án có thật • LLM đọc từng đoạn, giữ nguyên diễn biến, chỉ thay tên người và địa danh riêng • Lời kể tiếng Việt và tiếng Anh cho từng cảnh • Xem lại bảng tên và lời kể trước khi tạo dự án • Hình bằng Meta Muse Cloud.
+                Vụ án mới: chọn "Vụ án có thật" ở ô Loại nội dung bên dưới rồi dán bài • LLM đọc từng đoạn, giữ nguyên diễn biến, chỉ thay tên người và địa danh riêng • Duyệt dàn ý, bảng tên và lời kể trong cửa sổ này trước khi tạo dự án • Sau đó vụ án đi chung luồng với truyện chữ.
               </p>
             </div>
           </div>
           <button type="button" id="btn-step1-open-true-crime" class="relative z-10 px-5 py-3 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-rose-500 text-white rounded-xl text-xs sm:text-sm font-extrabold shadow-lg shadow-red-600/30 flex items-center gap-2.5 shrink-0 transition transform active:scale-95 cursor-pointer whitespace-nowrap">
             <i class="fa-solid fa-magnifying-glass-arrow-right text-sm"></i>
-            <span>Mở Bảng Ghim Kỳ Án</span>
+            <span>Theo dõi vụ án đang làm</span>
             <i class="fa-solid fa-bolt text-amber-300"></i>
           </button>
           <div class="absolute -right-8 -bottom-8 opacity-10 pointer-events-none text-red-500 text-9xl">
@@ -329,15 +329,35 @@
                     <i class="fa-solid fa-pen-nib"></i>
                   </div>
                   <div>
-                    <h3 class="font-bold text-slate-900 text-base">Nhập Kịch Bản Truyện Chữ</h3>
-                    <p class="text-xs text-slate-500">Phân tích nhịp Vox, tự động chia cảnh kèm Visual Prompt 8K</p>
+                    <h3 class="font-bold text-slate-900 text-base">Làm video từ truyện chữ hoặc vụ án</h3>
+                    <p class="text-xs text-slate-500">Một luồng chung: nội dung → nhân vật, bối cảnh cố định → ảnh, video → dựng</p>
                   </div>
                 </div>
-                <span class="text-[11px] bg-indigo-50 text-indigo-700 font-bold px-2.5 py-1 rounded-full border border-indigo-200">Novel / Vox</span>
+                <span class="text-[11px] bg-indigo-50 text-indigo-700 font-bold px-2.5 py-1 rounded-full border border-indigo-200">Truyện / Vụ án</span>
+              </div>
+
+              <!-- Loại nội dung: chỉ khác bước nội dung (truyện chữ kể kiểu review, vụ án viết lại và đổi tên); phần sau dùng chung -->
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div class="sm:col-span-2">
+                  <label for="step1-content-kind" class="text-slate-700 font-bold block mb-1">Loại nội dung:</label>
+                  <select id="step1-content-kind" class="w-full bg-white border border-indigo-300 rounded-xl p-2 text-slate-800 font-bold focus:border-indigo-500">
+                    <option value="story" selected>📖 Truyện chữ — AI kể lại kiểu review truyện</option>
+                    <option value="case">🕵️ Vụ án có thật — AI lập dàn ý, viết lại, đổi tên người và nơi chốn</option>
+                  </select>
+                </div>
+                <div data-step1-kind="case" class="hidden">
+                  <label for="step1-case-duration" class="text-slate-700 font-bold block mb-1">Thời lượng video:</label>
+                  <select id="step1-case-duration" class="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-800 font-medium focus:border-indigo-500">
+                    <option value="8">8 phút (thử)</option>
+                    <option value="15">15 phút</option>
+                    <option value="20" selected>20 phút</option>
+                    <option value="30">30 phút</option>
+                  </select>
+                </div>
               </div>
 
               <!-- Sample Quick Buttons -->
-              <div>
+              <div data-step1-kind="story">
                 <label class="text-xs font-bold text-slate-700 block mb-1.5">Chọn kịch bản mẫu nhanh (US Light Novel & Epic):</label>
                 <div class="flex flex-wrap gap-2">
                   <button type="button" class="btn-step1-sample px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold rounded-lg border border-amber-300 transition" data-sample="us_murata_battle">
@@ -377,7 +397,7 @@
                     <option value="pollinations">🌐 Pollinations.ai</option>
                   </select>
                 </div>
-                <div>
+                <div data-step1-kind="story">
                   <label class="text-slate-700 font-bold block mb-1">Nhịp độ cắt cảnh (Pacing):</label>
                   <select id="step1-pacing-select" class="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-800 font-medium focus:border-indigo-500">
                     <option value="fast" selected>⚡ Nhanh (Vox 3-4s/cảnh)</option>
@@ -385,7 +405,7 @@
                     <option value="narrative">📖 Tự sự (7s/cảnh)</option>
                   </select>
                 </div>
-                <div>
+                <div data-step1-kind="story">
                   <label class="text-slate-700 font-bold block mb-1">Ngôn ngữ lời review:</label>
                   <select id="step1-language-select" class="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-800 font-medium focus:border-indigo-500">
                     <option value="" selected>Theo ngôn ngữ của truyện</option>
@@ -396,23 +416,27 @@
                 <div>
                   <label class="text-slate-700 font-bold block mb-1">Phong cách hình ảnh AI:</label>
                   <select id="step1-style-select" class="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-800 font-medium focus:border-indigo-500">
-                    <option value="cinematic_realistic" selected>🎬 Cinematic Realistic 35mm</option>
-                    <option value="anime">🌸 Anime & Webtoon Style</option>
-                    <option value="dark_fantasy">🗡️ Dark Fantasy (Tiên Hiệp / Huyền Huyễn)</option>
+                    <option value="neo_noir_silhouette">🕵️ Neo-Noir Silhouette (Án Mạng Đêm Mưa / Phim Noir)</option>
+                    <option value="horror_cartoon_2d" selected>👻 Hoạt hình 2D rùng rợn (nhân vật đầu tròn, nền vẽ tay tối)</option>
                     <option value="manga_murata_battle">⚔️ Manga Murata Battle Action (One Punch Man / SFX)</option>
-                    <option value="spartan_epic_mythology">🏺 Spartan Epic Mythology (Sử thi Hy Lạp giáp đồng)</option>
+                    <option value="spartan_epic_mythology">🏺 Spartan Epic Mythology (Sử thi Hy Lạp giáp đồng sơn dầu)</option>
                     <option value="intricate_ink_crosshatch">🖋️ Intricate Ink Crosshatch (Tranh mực đan nét Graphic Novel)</option>
-                    <option value="fantasy_paladin_armor">🛡️ Fantasy Paladin (Thánh Giáp)</option>
+                    <option value="dark_fantasy">🗡️ Dark Fantasy (Thần thoại u tối Dark Souls / Elden Ring)</option>
                     <option value="manga_historical_war">🚩 Kingdom War (Chiến Quốc Vạn Quân)</option>
                     <option value="roman_legionary_epic">🏛️ Roman Legionary Epic (Quân Đoàn La Mã)</option>
                     <option value="spartan_mythic_warrior">🛡️ Spartan Mythic Warrior (Chiến Binh Sparta)</option>
-                    <option value="comic_book">💥 Western Comic Book</option>
+                    <option value="fantasy_paladin_armor">🛡️ Fantasy Paladin (Dũng Sĩ Thánh Giáp)</option>
+                    <option value="cinematic_realistic">🎬 Cinematic Realistic (Điện ảnh chân thực 35mm)</option>
+                    <option value="anime">🌸 Anime & Ghibli (Hoạt hình Nhật Bản)</option>
+                    <option value="cyberpunk">🌃 Cyberpunk Metropolis (Tương lai viễn tưởng)</option>
+                    <option value="comic_book">💥 Western Comic Book (Truyện tranh Marvel/DC)</option>
+                    <option value="3d_animation">🧸 3D Animation Pixar / Disney</option>
                   </select>
                 </div>
               </div>
 
-              <!-- Character Consistency & Reference Image -->
-              <div class="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 space-y-2.5">
+              <!-- Character Consistency & Reference Image (truyện chữ; nhân vật cố định từng người làm ở nút "Nhân vật" của Bước 2) -->
+              <div data-step1-kind="story" class="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 space-y-2.5">
                 <div class="flex items-center justify-between">
                   <span class="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
                     <i class="fa-solid fa-user-ninja text-indigo-600"></i> Cố định nhân vật (Character Consistency):
@@ -486,7 +510,7 @@
 
             <button id="btn-step1-process-script" class="w-full py-3.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl text-xs sm:text-sm font-extrabold shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 transition transform active:scale-98 cursor-pointer">
               <i class="fa-solid fa-bolt-lightning text-amber-300 animate-bounce"></i>
-              <span>⚡ 1-Click Tạo Video Review Truyện (Muse AI)</span>
+              <span id="step1-process-label">⚡ Tạo dự án review truyện</span>
               <i class="fa-solid fa-arrow-right ml-1"></i>
             </button>
           </div>
@@ -568,9 +592,9 @@
     <section class="w-full md:w-7/12 border-r border-slate-200 flex flex-col bg-slate-50 overflow-hidden min-h-0">
       
       <!-- Subheader Control Bar -->
-      <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-white shrink-0 shadow-2xs">
+      <div class="px-4 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 bg-white shrink-0 shadow-2xs">
         <div class="flex items-center gap-2.5">
-          <span class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5 whitespace-nowrap">
             <i class="fa-solid fa-layer-group text-indigo-600"></i>
             Phân cảnh (<span id="scene-count-badge">0</span> scenes)
           </span>
@@ -582,7 +606,7 @@
           </span>
         </div>
         
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center justify-end gap-2">
           <!-- Add Scene Button -->
           <button id="btn-add-scene" class="text-xs px-3 py-1.5 bg-white hover:bg-indigo-50 text-indigo-700 rounded-lg border border-indigo-200 font-semibold shadow-xs transition flex items-center gap-1.5">
             <i class="fa-solid fa-plus text-xs"></i> <span>Thêm cảnh</span>
@@ -593,9 +617,9 @@
             <i class="fa-solid fa-bolt text-amber-600 text-xs"></i> <span>Auto-Gen Toàn Bộ</span>
           </button>
 
-          <!-- Video cảnh cao trào (chỉ dự án vụ án; code: climax_video.js). Tạo video tốn lượt Muse -->
-          <button id="btn-character-sheets" class="hidden text-xs px-3 py-1.5 bg-white hover:bg-indigo-50 text-purple-700 rounded-lg border border-purple-300 font-semibold shadow-xs transition flex items-center gap-1.5" title="Bảng nhân vật đủ góc của vụ án: duyệt trước khi làm video cao trào">
-            <i class="fa-solid fa-user-ninja text-xs"></i> <span>Bảng nhân vật</span>
+          <!-- Khoá nhân vật và video cảnh cao trào (truyện chữ và vụ án; code: character_sheets.js, climax_video.js). Vẽ bảng, tạo video tốn lượt Muse -->
+          <button id="btn-character-sheets" class="hidden text-xs px-3 py-1.5 bg-white hover:bg-indigo-50 text-purple-700 rounded-lg border border-purple-300 font-semibold shadow-xs transition flex items-center gap-1.5" title="Nhân vật cố định: làm trước khi tạo ảnh cảnh để mọi ảnh vẽ đúng người">
+            <i class="fa-solid fa-user-ninja text-xs"></i> <span>Nhân vật</span>
           </button>
           <!-- Khoá bối cảnh (code: location_sheets.js). Tìm bối cảnh tốn 1 lượt LLM, vẽ ảnh chuẩn tốn 1 lượt Muse -->
           <button id="btn-location-sheets" class="hidden text-xs px-3 py-1.5 bg-white hover:bg-indigo-50 text-purple-700 rounded-lg border border-purple-300 font-semibold shadow-xs transition flex items-center gap-1.5" title="Bối cảnh lặp lại: mô tả cố định và ảnh chuẩn để các cảnh cùng nơi vẽ giống nhau">
@@ -1539,13 +1563,13 @@
       <div class="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
         <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
           <i class="fa-solid fa-user-ninja text-purple-600"></i>
-          Bảng nhân vật đủ góc (duyệt trước khi làm video cao trào)
+          Nhân vật cố định (khoá nhân vật cho mọi ảnh cảnh)
         </h3>
         <button id="btn-close-character-sheets" class="text-slate-400 hover:text-slate-700 p-1">
           <i class="fa-solid fa-xmark text-lg"></i>
         </button>
       </div>
-      <p class="px-5 pt-3 text-xs text-slate-500">Muse vẽ bảng trên tài khoản video; vẽ lại thì ghi rõ chỗ sai, Muse sửa trong cùng chat. Chỉ bảng đã duyệt mới được dùng cho ảnh grid và clip.</p>
+      <p class="px-5 pt-3 text-xs text-slate-500">Làm bước này trước khi tạo ảnh cảnh. Muse vẽ bảng trên tài khoản video; vẽ lại thì ghi rõ chỗ sai, Muse sửa trong cùng chat. Bảng đã duyệt được đính kèm cho mọi ảnh cảnh có người đó, ảnh grid và clip cao trào.</p>
       <div id="character-sheets-list" class="p-5 overflow-y-auto space-y-4 text-xs"></div>
     </div>
   </div>
@@ -2042,10 +2066,21 @@
                 🎨 Phong cách hình:
               </label>
               <select id="tc-visual-style" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:border-red-500">
-                <option value="neo_noir_silhouette" selected>Neo-Noir Silhouette (bóng đen trinh thám)</option>
-                <option value="horror_cartoon_2d">Hoạt hình 2D rùng rợn (nhân vật đầu tròn)</option>
-                <option value="cinematic_realistic">Điện ảnh chân thực</option>
-                <option value="intricate_ink_crosshatch">Tranh mực đan nét (graphic novel)</option>
+                <option value="neo_noir_silhouette" selected>🕵️ Neo-Noir Silhouette (Án Mạng Đêm Mưa / Phim Noir)</option>
+                <option value="horror_cartoon_2d">👻 Hoạt hình 2D rùng rợn (nhân vật đầu tròn, nền vẽ tay tối)</option>
+                <option value="manga_murata_battle">⚔️ Manga Murata Battle Action (One Punch Man / SFX)</option>
+                <option value="spartan_epic_mythology">🏺 Spartan Epic Mythology (Sử thi Hy Lạp giáp đồng sơn dầu)</option>
+                <option value="intricate_ink_crosshatch">🖋️ Intricate Ink Crosshatch (Tranh mực đan nét Graphic Novel)</option>
+                <option value="dark_fantasy">🗡️ Dark Fantasy (Thần thoại u tối Dark Souls / Elden Ring)</option>
+                <option value="manga_historical_war">🚩 Kingdom War (Chiến Quốc Vạn Quân)</option>
+                <option value="roman_legionary_epic">🏛️ Roman Legionary Epic (Quân Đoàn La Mã)</option>
+                <option value="spartan_mythic_warrior">🛡️ Spartan Mythic Warrior (Chiến Binh Sparta)</option>
+                <option value="fantasy_paladin_armor">🛡️ Fantasy Paladin (Dũng Sĩ Thánh Giáp)</option>
+                <option value="cinematic_realistic">🎬 Cinematic Realistic (Điện ảnh chân thực 35mm)</option>
+                <option value="anime">🌸 Anime & Ghibli (Hoạt hình Nhật Bản)</option>
+                <option value="cyberpunk">🌃 Cyberpunk Metropolis (Tương lai viễn tưởng)</option>
+                <option value="comic_book">💥 Western Comic Book (Truyện tranh Marvel/DC)</option>
+                <option value="3d_animation">🧸 3D Animation Pixar / Disney</option>
               </select>
             </div>
           </div>
@@ -2295,14 +2330,14 @@
   </div>
 
   <!-- Main JavaScript Logic (v2.9.1 Cache Buster: renderFullUI báo cho true_crime.js để hiện nút "Tạo bản tiếng Anh") -->
-  <script src="/static/app.js?v=2.9.9"></script>
-  <script src="/static/true_crime.js?v=1.4.1"></script>
+  <script src="/static/app.js?v=3.0.1"></script>
+  <script src="/static/true_crime.js?v=1.5.0"></script>
   <!-- Gói SEO YouTube ở Bước 4 (app.js gọi ytSeoLoad khi mở Bước 4) -->
   <script src="/static/youtube_seo.js?v=1.0.0"></script>
   <!-- Video cảnh cao trào ở Bước 2 (dự án vụ án): gắn nhãn/nút lên thẻ cảnh sau mỗi lần renderSceneList vẽ lại -->
-  <script src="/static/climax_video.js?v=1.2.1"></script>
+  <script src="/static/climax_video.js?v=1.3.0"></script>
   <!-- Bảng nhân vật đủ góc (dự án vụ án) -->
-  <script src="/static/character_sheets.js?v=1.0.0"></script>
+  <script src="/static/character_sheets.js?v=1.1.0"></script>
   <!-- Khoá bối cảnh (mọi dự án có từ 2 cảnh) -->
   <script src="/static/location_sheets.js?v=1.0.0"></script>
   <!-- Nút "Muse Video" trên thẻ cảnh: video dài theo lời thoại, báo số video Muse trước khi chạy -->

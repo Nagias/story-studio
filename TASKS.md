@@ -434,3 +434,46 @@ Yêu cầu chốt: làm hết, test kỹ từng nút theo FEATURE_MAP như ngư�
 - [x] Test mới: `tests/test_location_sheets.py` 18 đạt, `tests/test_dialogue_video.py` 14 đạt (Muse giả, LLM giả, ffmpeg thật). `tools/check.py` nhanh ĐẠT (Ruff không lỗi mới, 7 file JS, 35 test kiến trúc + bản đồ)
 - [x] Giao diện (server thử, cổng 8011 vì 8010 bận): cửa sổ Bối cảnh mở được; "Tìm bối cảnh" báo rõ lỗi thiếu `NINEROUTER_API_KEY`; tự thêm bối cảnh 3 cảnh qua khung "+ Tự thêm"; duyệt ảnh chuẩn (ảnh giả đặt tay, vì không có Muse) → "Đã duyệt — đang khoá"; "Muse Video" cảnh 20 s báo "Cần 4 video Muse" kèm lời từng đoạn, cảnh 3 s báo 1 video; console không lỗi. Không bấm "Vẽ ảnh chuẩn (Muse)" (bị chặn quyền, bản sao không có Muse). Dự án thử chuyển ra `.cache/ab/`, `projects/` như trước (không có)
 - [ ] Chưa kiểm chứng: chạy thật với Muse (ảnh chuẩn, ảnh cảnh có khoá, video nhiều đoạn có đổi cảnh đúng lời hay không) và LLM thật tìm bối cảnh trên dự án vụ án thật
+
+# TASKS — một luồng làm truyện cho truyện chữ và vụ án (2026-11-03, nhánh `dong-bo-luong-truyen-va-vu-an`)
+
+Chủ dự án: "đồng bộ thành 1 luồng cho dễ quản lý"; chỉ khác bước nội dung (truyện chữ kể kiểu review, vụ án viết lại).
+Gốc lỗi video truyện 03/11: Bước 1 không có phong cách đầu tròn, truyện không có danh sách nhân vật, ảnh cảnh thường
+không dùng bảng nhân vật (kể cả vụ án), 1-Click tự tạo ảnh trước khi khoá nhân vật.
+
+## A. Lối vào chung (Bước 1)
+- [x] A1. Ô "Loại nội dung": truyện chữ / vụ án có thật; vụ án dùng cùng API phân tích của cửa sổ Hồ Sơ Kỳ Án rồi mở cửa sổ đó để theo dõi, duyệt dàn ý, duyệt bảng tên
+- [x] A2. Một danh sách phong cách cho Bước 1, cửa sổ vụ án, cài đặt dự án (có đầu tròn); test chặn lệch danh sách
+- [x] A3. 1-Click không tự tạo ảnh (câu 4 mục 1.2): ảnh tạo sau khi khoá nhân vật, bối cảnh
+
+## B. Nhân vật cố định dùng chung
+- [x] B1. Truyện chữ có danh sách nhân vật: LLM tìm người + ngoại hình cố định + cảnh có mặt, code kiểm; tự chạy khi tạo dự án truyện, có nút chạy lại; vụ án lấy từ bảng tên như cũ
+- [x] B2. Vẽ bảng nhân vật được khi chưa có ảnh cảnh
+- [x] B3. Khoá nhân vật ở mọi lần tạo ảnh cảnh (nút ảnh từng cảnh, tạo lại hàng loạt, sản xuất video dài): mô tả cố định + ảnh bảng đã duyệt đính kèm Muse, Muse được dặn vai trò từng ảnh
+- [x] B4. Nút Nhân vật, Video cao trào hiện cho mọi dự án có cảnh vẽ
+
+## C. Phần dựng chung
+- [x] C1. Cảnh truyện mang phần (vẽ nối tiếp), loại cảnh, tiếng động gợi ý, độ căng nhạc nền như cảnh vụ án
+- [x] C2. Sản xuất video dài: tiếng động thưa áp dụng cả truyện
+
+## D. Kiểm chứng
+- [x] D1. Test mới + `tools/check.py --full`
+- [x] D2. Bấm thật trên server thử 8010: Bước 1 hai loại, tạo truyện ngắn bằng LLM thật, tìm nhân vật, vẽ bảng, tạo ảnh có khoá, xem ảnh
+- [x] D3. Cập nhật FEATURE_MAP.md, CLAUDE.md (bảng 1.1, 1.3, 5.1)
+
+### Phát sinh khi bấm thật (03/11/2026)
+- [x] Nút "Muse 2K" chỉ gửi mã phong cách ("horror_cartoon_2d") nên Muse vẽ mặt người: thêm `image_service.with_style()` (câu mô tả phong cách như mọi đường khác)
+- [x] Thẻ cảnh treo "Đang sinh ảnh AI" sau khi Muse xong: `complete_task()` đặt `status_image` "ready"
+- [x] Tìm nhân vật chỉ đọc lời review nên mất chi tiết (bộ ria bạc của bác bảo vệ): lưu truyện gốc `story_source.txt`, gửi kèm
+- [x] Thanh nút Bước 2 chật khi truyện chữ hiện đủ nút: cho xuống dòng
+- [x] Video truyện chữ im nhạc nền và không có tiếng động: độ căng đọc giá trị mặc định "ambient_low" trước nhịp kể; thêm `scene_sound.scene_energy()`, `has_energy_info()` (dự án không có nhịp kể giữ nhạc nền chung)
+- [x] Cả video một kiểu chuyển động "zoom_in": nút Sản xuất video dài gửi chuyển động chung đè từng cảnh; bỏ (có từ ngày đầu repo)
+- [x] Nhật ký sản xuất ghi "Nhân vật: Mặc định": nay ghi số nhân vật cố định và số bảng đã duyệt
+- [ ] Bảng nhân vật vẽ trên tài khoản Muse video: vid_01, vid_02 hết phiên đăng nhập, không tài khoản video nào nhận việc (chủ dự án đăng nhập lại)
+
+### Bằng chứng
+- Test: `tests/test_one_flow.py` (21 bài) + sửa test cũ; `tools/check.py --full`: 989 đạt (trước 2 bản sửa cuối)
+- Bấm thật server 8010: Bước 1 hai loại (vụ án: chặn lời gọi cuối để không sinh hồ sơ rác, kiểm dữ liệu gửi đi); truyện thử `proj_787e69c7` (LLM thật: 13 cảnh, 13 ý, 1 vòng; 3 nhân vật); Muse ảnh cảnh 1, 2, 10 đầu tròn, Khang giữ áo hoodie xám, bác Tư có ria bạc (`.cache/thu_dong_bo/`)
+- Sản xuất video dài truyện thử 3 lần (lần 2, 3 không tốn Muse): `projects/proj_787e69c7/renders/story_final.mp4` 1080p 73,8 giây, nhạc nền 4 đoạn (có nhạc 0–7 s và 13–52 s, im ở đoạn giới thiệu và đoạn kết), tiếng động 3/13 cảnh, 5 kiểu chuyển động; cảnh 11 Muse từ chối nên rơi sang 9router (1 ảnh trả phí, có ghi cảnh báo)
+- Khoá bối cảnh trên truyện: AI tìm 2 bối cảnh, ảnh chuẩn phòng ký túc xá duyệt, "Gen lại ảnh AI" cảnh 5 vẽ đúng phòng đó
+- Tốn: LLM khoảng 6 lượt (viết, kiểm, tìm nhân vật 2 lần, tìm bối cảnh); Muse ảnh 17 lượt (15 ảnh cảnh, 1 ảnh chuẩn, 1 lượt Muse từ chối cảnh 11), Muse video 1 lượt hỏng (hết phiên đăng nhập); 9router ảnh trả phí 1

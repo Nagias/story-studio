@@ -18,7 +18,8 @@ from pydantic import BaseModel, Field
 
 from config import EXTRA_CHROME_PROFILES_DIRS, MUSE_AGENT_WAIT_MIN, PROJECTS_DIR, STATIC_DIR
 from services.climax_brief import AGENT_REPLY_MAX_CHARS, AGENT_VIDEO_MODE
-from services import location_sheets
+from services import scene_locks
+from services.image_service import with_style
 from security import (
     MEDIA_EXTS,
     MAX_UPLOAD_BYTES,
@@ -1053,7 +1054,8 @@ async def create_task(req: TaskCreateRequest):
         task = {
             "task_id": task_id,
             "mode": mode,
-            "prompt": req.prompt,
+            # câu mô tả phong cách như mọi đường tạo ảnh khác (Muse không hiểu mã phong cách trần)
+            "prompt": with_style(req.prompt, params.get("style_preset")),
             "negative_prompt": req.negative_prompt,
             "project_id": req.project_id,
             "scene_id": req.scene_id,
@@ -1070,13 +1072,13 @@ async def create_task(req: TaskCreateRequest):
             "status": "pending",
             "created_at": time.time(),
         }
-        # Nút "Muse 2K" của thẻ cảnh: cảnh thuộc bối cảnh đã duyệt thì thêm mô tả cố định và ảnh chuẩn
+        # Nút "Muse 2K" của thẻ cảnh: khoá nhân vật và khoá bối cảnh như mọi đường tạo ảnh (services/scene_locks.py)
         if req.project_id and req.scene_id:
             try:
-                lock = await asyncio.to_thread(location_sheets.scene_lock, req.project_id, req.scene_id, req.prompt)
-            except ValueError as e:   # locations.json hỏng: báo rõ, không âm thầm vẽ thiếu khoá
-                raise HTTPException(status_code=409, detail=f"Không đọc được danh sách bối cảnh của dự án: {e}") from None
-            location_sheets.apply_lock_to_image_task(task, lock)
+                locks = await asyncio.to_thread(scene_locks.scene_locks, req.project_id, req.scene_id, req.prompt)
+            except ValueError as e:   # file danh sách hỏng: báo rõ, không âm thầm vẽ thiếu khoá
+                raise HTTPException(status_code=409, detail=f"Không đọc được khoá hình của cảnh: {e}") from None
+            scene_locks.apply_to_image_task(task, locks["location"], locks["characters"])
 
     ensure_local_fleet_runner()
     enqueue_task(task)
@@ -1272,6 +1274,8 @@ async def complete_task(
                         else:
                             sc.image_path = str(final_file_path)
                             sc.image_url = task["media_url"]
+                            # giao diện tự lưu "generating" lúc gửi việc: ảnh về thì báo xong, không treo vòng quay
+                            sc.status_image = "ready"
                             sc.status = "ready" if sc.voice_audio_path else "imaged"
                         break
                 update_project(project_id, ProjectUpdateRequest(scenes=proj.scenes))

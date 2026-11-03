@@ -21,6 +21,7 @@ from typing import Any, Callable, Optional
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from services import case_adaptation_llm, coverage_guard
+from services.scene_sound import SFX_CUES, normalize_cue
 from services.case_adaptation_prompts import word_count
 from services.case_adaptation_steps import StepFailed, StepRejected, ask_validated, chunk_source
 
@@ -61,6 +62,15 @@ class StoryReviewError(Exception):
 
 def progress_of(job_id: str) -> Optional[str]:
     return _progress.get(job_id)
+
+
+def set_progress(job_id: str, text: str) -> None:
+    """Việc nối tiếp sau khi viết xong (vd tìm nhân vật) báo tiến độ trên cùng mã."""
+    _progress[job_id] = text
+
+
+def clear_progress(job_id: str) -> None:
+    _progress.pop(job_id, None)
 
 
 async def _story_llm(_system: str, user: str, **kwargs: Any) -> Any:
@@ -138,6 +148,14 @@ class _Scene(_Item):
     image_prompt: str = ""
     narrative_beat: str = "setting"
     camera_motion: str = "zoom_in"
+    sfx_cue: list[str] = []
+
+    @field_validator("sfx_cue", mode="before")
+    @classmethod
+    def _cues(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return [v.strip() for v in value.split(",") if v.strip()]
+        return value if isinstance(value, list) else []
 
     @field_validator("covers", mode="before")
     @classmethod
@@ -169,8 +187,9 @@ LUẬT VIẾT:
 1. Kể ĐỦ mọi ý trong danh sách, đúng thứ tự; mỗi cảnh ghi "covers" là id các ý cảnh đó kể (1 đến 3 ý). Không bỏ ý nào, không dồn nhiều ý vào một câu cho ngắn.
 2. Giọng review phim: kể lại bằng lời của bạn (không chép nguyên văn truyện), ngôi thứ ba về nhân vật, người kể không xưng "tôi". Câu ngắn, động từ mạnh, từ nối tạo đà ("Đúng lúc đó", "Thế nhưng", "Vừa... thì..."). Được thêm một câu nhận xét ngắn của người kể khi hợp, nhưng không bịa sự việc mới.
 3. Không lặp lại điều đã kể trong BẢNG SỰ THẬT, không kể lại một sự việc đã kể như thể mới xảy ra, không nói khác đi các chi tiết đã kể.
-4. Mỗi cảnh {lo}–{hi} từ. "image_prompt" viết bằng tiếng Anh: góc máy, nhân vật, hành động, bối cảnh, ánh sáng của đúng cảnh đó (phong cách {style_preset}).
+4. Mỗi cảnh {lo}–{hi} từ. "image_prompt" viết bằng tiếng Anh: góc máy, nhân vật có mặt (gọi đúng tên như lời kể), hành động, biểu cảm, bối cảnh, ánh sáng của đúng cảnh đó (phong cách {style_preset}). Ngoại hình cố định của nhân vật đã có riêng, không cần tả lại.
 5. {opening}
+6. "sfx_cue": tiếng động có thật trong cảnh, chỉ ở cảnh then chốt (cao trào, giật mình, bước ngoặt), tối đa 1 tiếng, chọn đúng tên trong danh sách: {", ".join(SFX_CUES)}. Cảnh bình thường để [].
 
 BẢNG SỰ THẬT ĐÃ KỂ:
 {coverage_guard.fact_lines(facts)}
@@ -184,7 +203,7 @@ CÁC Ý PHẢI KỂ (id: nội dung):
 ĐOẠN TRUYỆN GỐC:
 {part}{redo}
 
-Trả: {{"scenes": [{{"text": "...", "covers": ["p1"], "image_prompt": "...", "narrative_beat": "{'|'.join(BEATS)}", "camera_motion": "{'|'.join(CAMERA_MOTIONS)}"}}]}}"""
+Trả: {{"scenes": [{{"text": "...", "covers": ["p1"], "image_prompt": "...", "narrative_beat": "{'|'.join(BEATS)}", "camera_motion": "{'|'.join(CAMERA_MOTIONS)}", "sfx_cue": []}}]}}"""
 
 
 def check_written(raw: Any, point_ids: list[str], part: str, lang: str, src_lang: str) -> list[dict]:
@@ -217,7 +236,9 @@ def check_written(raw: Any, point_ids: list[str], part: str, lang: str, src_lang
             problems.append(f"cảnh {k} thiếu image_prompt")
         scenes.append({"text": text, "covers": ids, "image_prompt": s.image_prompt.strip(),
                        "narrative_beat": s.narrative_beat if s.narrative_beat in BEATS else "setting",
-                       "camera_motion": s.camera_motion if s.camera_motion in CAMERA_MOTIONS else "zoom_in"})
+                       "camera_motion": s.camera_motion if s.camera_motion in CAMERA_MOTIONS else "zoom_in",
+                       # chỉ giữ tiếng có trong thư viện: không có file thì dựng video không có tiếng đó
+                       "sfx_cue": list(dict.fromkeys(c for c in (normalize_cue(x) for x in s.sfx_cue) if c))[:1]})
     missing = [p for p in point_ids if p not in covered]
     if missing:
         problems.append(f"chưa kể các ý {', '.join(missing)}; mọi ý phải có trong covers của một cảnh")
@@ -294,8 +315,9 @@ async def review_story(text: str, *, language: Optional[str] = None, style_prese
             stats.append(st)
             for s in part_scenes:
                 words = word_count(s["text"])
+                # Cùng dạng cảnh vụ án (luồng chung): loại cảnh, phần (vẽ nối tiếp trong một phần), nhịp kể
                 s["metadata"] = {"narrative_beat": s.pop("narrative_beat"), "covers": s.pop("covers"),
-                                 "story_part": index,
+                                 "story_part": index, "part_id": f"phan_{index}", "visual_kind": "image",
                                  "estimated_duration": round(max(2.0, words / WORDS_PER_SECOND[lang]), 1)}
                 scenes.append(s)
     except StepFailed as exc:

@@ -316,6 +316,8 @@ const DOM = {
   step1PacingSelect: document.getElementById('step1-pacing-select'),
   step1LanguageSelect: document.getElementById('step1-language-select'),
   step1StyleSelect: document.getElementById('step1-style-select'),
+  step1ContentKind: document.getElementById('step1-content-kind'),
+  step1CaseDuration: document.getElementById('step1-case-duration'),
   step1CharPresetSelect: document.getElementById('step1-char-preset-select'),
   step1CharName: document.getElementById('step1-char-name'),
   step1CharAnchor: document.getElementById('step1-char-anchor'),
@@ -1777,6 +1779,8 @@ function bindEventListeners() {
   // Step 1 Event Listeners
   DOM.step1ScriptTextarea?.addEventListener('input', handleStep1ScriptInput);
   DOM.btnStep1ProcessScript?.addEventListener('click', handleStep1ProcessScript);
+  DOM.step1ContentKind?.addEventListener('change', applyStep1ContentKind);
+  applyStep1ContentKind();
 
   // Step 1 Character Reference Image Event Listeners
   DOM.step1CharRefDropzone?.addEventListener('click', () => DOM.step1CharRefFileInput?.click());
@@ -3673,7 +3677,55 @@ function handleStep1ScriptInput() {
   }
 }
 
+// Bước 1 là lối vào chung (luồng chung truyện chữ và vụ án, 03/11/2026): chỉ khác bước nội dung. Truyện chữ: AI kể
+// kiểu review (story_review). Vụ án: gửi bài sang luồng phân tích vụ án (true_crime.js) để duyệt dàn ý và bảng tên.
+const STEP1_PROCESS_LABELS = {
+  story: '⚡ Tạo dự án review truyện',
+  case: '🕵️ Gửi vụ án cho AI phân tích',
+};
+
+function step1ContentKind() {
+  return DOM.step1ContentKind?.value === 'case' ? 'case' : 'story';
+}
+
+function step1IdleButtonHtml() {
+  return '<i class="fa-solid fa-bolt-lightning text-amber-300 mr-1.5 animate-bounce"></i> <span id="step1-process-label">'
+    + escapeHtml(STEP1_PROCESS_LABELS[step1ContentKind()]) + '</span> <i class="fa-solid fa-arrow-right ml-1"></i>';
+}
+
+function applyStep1ContentKind() {
+  const kind = step1ContentKind();
+  document.querySelectorAll('[data-step1-kind]').forEach(node => {
+    node.classList.toggle('hidden', node.dataset.step1Kind !== kind);
+  });
+  const label = document.getElementById('step1-process-label');
+  if (label) label.textContent = STEP1_PROCESS_LABELS[kind];
+  if (DOM.step1ScriptTextarea) {
+    DOM.step1ScriptTextarea.placeholder = kind === 'case'
+      ? 'Dán toàn bộ bài viết về vụ án có thật (tối đa 200.000 ký tự). AI đọc từng đoạn, lập dàn ý để bạn duyệt, rồi viết lại và đổi tên người, nơi chốn.'
+      : 'Dán nội dung truyện chữ (light novel, tiếng Việt, tiếng Anh hoặc tiếng Trung). AI kể lại kiểu review từng phần và kiểm đủ ý.';
+  }
+}
+
 async function handleStep1ProcessScript() {
+  if (step1ContentKind() === 'case') {
+    const caseText = DOM.step1ScriptTextarea?.value.trim();
+    if (!caseText) {
+      showToast("Hãy dán bài viết về vụ án trước.", "warning");
+      return;
+    }
+    if (typeof window.tcStartFromStep1 !== 'function') {
+      showToast("Chưa nạp được phần vụ án (true_crime.js). Hãy tải lại trang.", "error", 7000);
+      return;
+    }
+    await window.tcStartFromStep1({
+      text: caseText,
+      minutes: parseInt(DOM.step1CaseDuration?.value || '20', 10),
+      style: DOM.step1StyleSelect?.value || 'horror_cartoon_2d',
+    });
+    return;
+  }
+
   const text = DOM.step1ScriptTextarea?.value.trim();
   if (!text) {
     showToast("Vui lòng nhập hoặc chọn kịch bản mẫu trước!", "warning");
@@ -3681,7 +3733,7 @@ async function handleStep1ProcessScript() {
   }
 
   const pacing = DOM.step1PacingSelect?.value || 'fast';
-  const style = DOM.step1StyleSelect?.value || 'cinematic_realistic';
+  const style = DOM.step1StyleSelect?.value || 'horror_cartoon_2d';
   const imageProvider = DOM.step1EngineSelect?.value || DOM.selectImageProvider?.value || 'meta_muse_cloud';
   const charName = DOM.step1CharName?.value.trim() || '';
   const charAnchor = DOM.step1CharAnchor?.value.trim() || '';
@@ -3700,7 +3752,7 @@ async function handleStep1ProcessScript() {
   let progressTimer = null;
 
   DOM.btnStep1ProcessScript.disabled = true;
-  DOM.btnStep1ProcessScript.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Đang tạo Video Review Truyện (Muse AI)...';
+  DOM.btnStep1ProcessScript.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Đang viết lời review và kiểm đủ ý...';
 
   try {
     let createdProject = null;
@@ -3725,7 +3777,8 @@ async function handleStep1ProcessScript() {
         character_reference_image: charRefImage,
         voice: autoVoice,
         image_provider: imageProvider,
-        generate_initial_images: true,
+        // Làm từng bước (CLAUDE.md mục 1.2 câu 4): ảnh cảnh tạo sau khi khoá nhân vật và bối cảnh
+        generate_initial_images: false,
         output_language: outputLanguage || undefined,
         progress_id: progressId
       });
@@ -3741,11 +3794,11 @@ async function handleStep1ProcessScript() {
       selectScene(0);
       switchStep(2);
       const total = createdProject.scenes.length;
-      const failedImages = createdProject.scenes.filter(s => s.status_image === 'error').length;
-      if (failedImages > 0) {
-        showToast(`Đã tạo ${total} phân cảnh, nhưng ${failedImages} cảnh tạo ảnh thất bại (đánh dấu "Lỗi ảnh"). Hãy tạo lại ảnh cho các cảnh đó.`, "warning", 8000);
+      const castInfo = createdProject.metadata?.story_cast || {};
+      if (castInfo.error) {
+        showToast(`Đã tạo ${total} cảnh, nhưng chưa tìm được nhân vật: ${escapeHtml(castInfo.error)}. Mở nút "Nhân vật" để tìm lại trước khi tạo ảnh.`, "warning", 10000);
       } else {
-        showToast(`Đã tạo câu chuyện mới với ${total} phân cảnh chuẩn Muse AI!`, "success", 4000);
+        showToast(`Đã tạo ${total} cảnh và tìm được ${castInfo.people || 0} nhân vật. Bước tiếp: duyệt "Nhân vật" và "Bối cảnh", rồi mới tạo ảnh cảnh.`, "success", 9000);
       }
     } else if (!AppState.serverOnline) {
       showToast("Máy chủ đang offline nên chưa tạo được dự án. Hãy chạy run.bat rồi thử lại.", "error", 7000);
@@ -3759,7 +3812,7 @@ async function handleStep1ProcessScript() {
     if (progressTimer) clearInterval(progressTimer);
     if (DOM.btnStep1ProcessScript) {
       DOM.btnStep1ProcessScript.disabled = false;
-      DOM.btnStep1ProcessScript.innerHTML = '<i class="fa-solid fa-bolt-lightning text-amber-300 mr-1.5 animate-bounce"></i> <span>⚡ 1-Click Tạo Video Review Truyện (Muse AI)</span> <i class="fa-solid fa-arrow-right ml-1"></i>';
+      DOM.btnStep1ProcessScript.innerHTML = step1IdleButtonHtml();
     }
   }
 }
@@ -3941,8 +3994,9 @@ async function startProduceLongVideo() {
       transition: DOM.selectTransition?.value || project.transition || "dip_to_black",
       subtitle_style: DOM.selectSubtitleStyle?.value || project.subtitle_style || "kinetic_pop",
       resolution: "1080p",
-      fps: 25,
-      camera_motion: project.default_motion || "zoom_in"
+      fps: 25
+      // Không gửi camera_motion chung: mỗi cảnh dùng chuyển động riêng (máy chủ lấy scene.camera_motion, không có thì
+      // project.default_motion). Gặp 03/11/2026: gửi "zoom_in" chung đè hết, cả video chỉ một kiểu chuyển động.
     };
 
     const res = await API.produceLongVideo(project.id, produceReq);

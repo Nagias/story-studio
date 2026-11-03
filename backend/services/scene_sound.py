@@ -70,6 +70,20 @@ ENERGY_TRACKS = {"ambient_low": SILENCE, "tension_buildup": "bgm_dark_ambient", 
 DEFAULT_ENERGY = "ambient_low"
 # Truyện chữ: nhịp kể của cảnh (story_review) -> độ căng; nhạc chỉ vang ở đoạn leo thang và cao trào
 BEAT_ENERGY = {"hook": "tension_buildup", "escalation": "tension_buildup", "climax": "dramatic_climax"}
+
+
+def scene_energy(bgm_energy: Optional[str], narrative_beat: Optional[str], from_case_plan: bool) -> str:
+    """Độ căng của một cảnh khi dựng. Vụ án: `bgm_energy` do kế hoạch vụ án chọn. Truyện chữ và dự án khác: theo nhịp kể
+    (`BEAT_ENERGY`), vì `bgm_energy` của cảnh chỉ là giá trị mặc định "ambient_low" (gặp 03/11/2026: đọc giá trị mặc định
+    trước nên cả video truyện bị coi là đoạn trầm, im nhạc nền và không có tiếng động)."""
+    if from_case_plan:
+        return bgm_energy or DEFAULT_ENERGY
+    return BEAT_ENERGY.get(narrative_beat or "", DEFAULT_ENERGY)
+
+
+def has_energy_info(energies: Iterable[Optional[str]]) -> bool:
+    """Có cảnh nào khác đoạn trầm không. Không có (dự án không có nhịp kể) thì giữ nhạc nền chung như trước, không tắt."""
+    return any(e and e != DEFAULT_ENERGY for e in energies)
 BGM_FADE_S = 2.0
 
 

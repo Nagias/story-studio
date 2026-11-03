@@ -1,12 +1,15 @@
-/* Bảng nhân vật đủ góc (dự án vụ án), Bước 2: sửa thiết kế, Muse vẽ bảng, duyệt, vẽ lại có ghi chú chỗ sai.
- * API: /api/projects/{id}/characters... (routers/character_sheets.py). "Vẽ bảng" tốn 1 lượt Muse (tài khoản video).
+/* Bảng nhân vật đủ góc (truyện chữ và vụ án, luồng chung 03/11/2026), Bước 2: danh sách nhân vật cố định (vụ án: từ
+ * bảng tên; truyện chữ: AI tìm), sửa thiết kế, Muse vẽ bảng, duyệt, vẽ lại có ghi chú chỗ sai. Mỗi ảnh cảnh vẽ sau dùng
+ * mô tả cố định của người trong cảnh, bảng đã duyệt được đính kèm cho Muse (services/scene_locks.py).
+ * API: /api/projects/{id}/characters... (routers/character_sheets.py). "Vẽ bảng" tốn 1 lượt Muse (tài khoản video),
+ * "AI tìm nhân vật" tốn 1 lượt LLM.
  * Dùng AppState, showToast, escapeHtml của app.js (nạp sau app.js). Mọi phần tử dựng bằng DOM + textContent, không chèn
  * chuỗi HTML; nút chỉ gắn sự kiện ở đây (CLAUDE.md đường cấm 9, 10).
  */
 (function () {
   const el = (id) => document.getElementById(id);
   const POLL_MS = 5000;
-  const st = { data: null, timer: null, showAll: false };
+  const st = { data: null, timer: null, showAll: true };
 
   const STATUS = {
     draft: ['Chưa có bảng', 'bg-slate-100 text-slate-600 border-slate-200'],
@@ -17,9 +20,11 @@
   };
 
   const project = () => AppState.currentProject;
-  const isCaseProject = () => {
+  // Cảnh có hình vẽ của câu chuyện; cảnh không ghi loại (truyện chữ cũ) là cảnh ảnh
+  const isDrawn = (s) => ['image', 'video'].includes(s.metadata?.visual_kind || 'image');
+  const usable = () => {
     const p = project();
-    return Boolean(p && !p.is_demo && (p.scenes || []).some(s => ['image', 'video'].includes(s.metadata?.visual_kind)));
+    return Boolean(p && !p.is_demo && (p.scenes || []).some(isDrawn));
   };
 
   async function call(method, path, body) {
@@ -119,6 +124,27 @@
     return box;
   }
 
+  // Nguồn nhân vật: vụ án lấy từ bảng tên đã duyệt; truyện chữ do AI tìm từ lời kể (chạy khi tạo dự án, tìm lại được)
+  function sourceBar() {
+    const d = st.data;
+    const bar = node('div', 'flex items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-xl p-2.5');
+    if (d.source === 'case') {
+      bar.appendChild(node('p', 'text-slate-600', 'Nhân vật lấy từ bảng tên đã duyệt của vụ án.'));
+      return bar;
+    }
+    const info = node('div', 'space-y-1');
+    info.appendChild(node('p', 'text-slate-600', d.analyzing
+      ? 'AI đang đọc lời kể để tìm nhân vật…'
+      : d.analyzed_at ? `AI đã tìm nhân vật từ lời kể (${d.characters.length} người).`
+        : 'Chưa tìm nhân vật cho truyện này.'));
+    if (d.analysis_error) info.appendChild(node('p', 'text-[11px] text-red-700', `Lần tìm trước lỗi: ${d.analysis_error}`));
+    bar.appendChild(info);
+    bar.appendChild(button(d.analyzed_at ? 'AI tìm lại nhân vật' : 'AI tìm nhân vật', 'bg-indigo-600 text-white border-indigo-300',
+      () => act(() => call('POST', '/analyze'), 'Đã gửi AI tìm nhân vật'), Boolean(d.analyzing)));
+    bar.lastChild.id = 'btn-character-analyze';
+    return bar;
+  }
+
   function render() {
     const list = el('character-sheets-list');
     if (!list || !st.data) return;
@@ -131,11 +157,12 @@
     }
     const needed = new Set(st.data.needed || []);
     const chars = (st.data.characters || []).filter(c => st.showAll || needed.has(c.entity_id) || c.status !== 'draft');
-    const bar = node('div', 'flex items-center justify-between');
+    list.appendChild(sourceBar());
+    const bar = node('div', 'flex items-center justify-between gap-2');
     bar.appendChild(node('p', 'text-slate-600', needed.size
-      ? `Cần cho các cảnh đang chọn làm video: ${needed.size} nhân vật.`
-      : 'Chưa chọn cảnh cao trào nào (nút "Chọn cảnh cao trào"), hoặc các cảnh đó chưa có nhân vật.'));
-    bar.appendChild(button(st.showAll ? 'Chỉ hiện người cần' : `Hiện cả ${st.data.characters.length} người`,
+      ? `Cần cho các cảnh đang chọn làm video cao trào: ${needed.size} nhân vật.`
+      : 'Mọi ảnh cảnh vẽ sau dùng mô tả cố định của người có mặt trong cảnh; ai có bảng đã duyệt thì Muse nhận thêm ảnh bảng.'));
+    bar.appendChild(button(st.showAll ? 'Chỉ hiện người cần cho video cao trào' : `Hiện cả ${st.data.characters.length} người`,
       'bg-white text-slate-700 border-slate-300', () => { st.showAll = !st.showAll; render(); }));
     list.appendChild(bar);
     if (!chars.length) list.appendChild(node('p', 'text-slate-500', 'Không có nhân vật nào để hiện.'));
@@ -143,7 +170,7 @@
   }
 
   async function refresh() {
-    if (!project() || !isCaseProject()) return;
+    if (!project() || !usable()) return;
     try {
       st.data = await call('GET', '');
       render();
@@ -157,7 +184,7 @@
     refresh();
     clearInterval(st.timer);
     st.timer = setInterval(() => {
-      if ((st.data?.characters || []).some(c => c.drawing)) refresh();
+      if (st.data?.analyzing || (st.data?.characters || []).some(c => c.drawing)) refresh();
     }, POLL_MS);
   }
 
@@ -172,9 +199,9 @@
     el('btn-close-character-sheets')?.addEventListener('click', close);
     document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') close(); });
     let lastId = null;
-    setInterval(() => {   // nút chỉ hiện với dự án vụ án; đổi dự án thì đóng cửa sổ
+    setInterval(() => {   // nút hiện với dự án có cảnh vẽ (truyện chữ và vụ án); đổi dự án thì đóng cửa sổ
       const id = project()?.id || null;
-      el('btn-character-sheets')?.classList.toggle('hidden', !isCaseProject());
+      el('btn-character-sheets')?.classList.toggle('hidden', !usable());
       if (id !== lastId) { lastId = id; st.data = null; close(); }
     }, 1000);
   }

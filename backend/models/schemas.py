@@ -456,7 +456,7 @@ class CreateProjectFromScriptRequest(BaseModel):
     character_reference_image: Optional[str] = None
     voice: Optional[str] = None  # None: giọng mặc định theo ngôn ngữ truyện
     image_provider: Optional[str] = "meta_muse_cloud"
-    generate_initial_images: Optional[bool] = True
+    generate_initial_images: Optional[bool] = False   # làm từng bước (CLAUDE.md mục 1.2 câu 4): ảnh vẽ sau khi khoá nhân vật
     # Ngôn ngữ lời review: "vi" | "en"; None = theo ngôn ngữ truyện (CLAUDE.md mục 1.2 câu 15)
     output_language: Optional[str] = None
     # Mã do giao diện tạo để hỏi tiến độ trong lúc server viết từng phần (GET .../create-from-script/progress/{id})

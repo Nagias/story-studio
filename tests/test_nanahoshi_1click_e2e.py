@@ -35,9 +35,10 @@ from services.video_service import render_scene_video
 @pytest.fixture(autouse=True)
 def _fake_story_llm(monkeypatch):
     """Luồng 1-Click viết lời review bằng story_review (02/11/2026): LLM giả, không gọi 9router."""
-    from services import story_review
-    from tests.story_review_fakes import FakeStoryLLM
+    from services import story_cast, story_review
+    from tests.story_review_fakes import FakePeopleLLM, FakeStoryLLM
     monkeypatch.setattr(story_review, "_story_llm", FakeStoryLLM())
+    monkeypatch.setattr(story_cast, "call_llm_json", FakePeopleLLM())
 
 @pytest.fixture
 def anyio_backend():

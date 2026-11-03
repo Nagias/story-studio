@@ -148,3 +148,21 @@ def test_quiet_sections_have_no_music(tmp_path):
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-t", "5.5", "-i", str(bgm), str(first)], check=True)
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", "8", "-t", "3", "-i", str(bgm), str(second)], check=True)
     assert _quiet_share(first) > 0.95 and _quiet_share(second) < 0.5
+
+
+def test_story_energy_comes_from_narrative_beat_not_default_field():
+    """Cảnh truyện chữ mang bgm_energy mặc định "ambient_low": độ căng phải lấy theo nhịp kể (gặp 03/11/2026: cả video
+    truyện bị coi là đoạn trầm nên im nhạc nền, không có tiếng động)."""
+    beats = ["hook", "setting", "escalation", "climax", "resolution"]
+    story = [scene_sound.scene_energy("ambient_low", b, from_case_plan=False) for b in beats]
+    assert story == ["tension_buildup", "ambient_low", "tension_buildup", "dramatic_climax", "ambient_low"]
+    assert scene_sound.has_energy_info(story)
+    # vụ án: theo kế hoạch, không đổi theo nhịp
+    assert scene_sound.scene_energy("ambient_low", "climax", from_case_plan=True) == "ambient_low"
+    # dự án không có nhịp kể: không có thông tin độ căng, giữ nhạc nền chung (không tắt cả video)
+    assert not scene_sound.has_energy_info([scene_sound.scene_energy("ambient_low", None, False)] * 4)
+    segments = scene_sound.energy_segments(story, [5] * 5, {"ambient_low": scene_sound.SILENCE,
+                                                            "tension_buildup": "nhac", "dramatic_climax": "nhac"})
+    assert [t for t, _ in segments] == ["nhac", scene_sound.SILENCE, "nhac", scene_sound.SILENCE]
+    planned = scene_sound.plan_scene_sfx([(e, "image", ["heartbeat"]) for e in story])
+    assert any(planned)

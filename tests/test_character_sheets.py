@@ -271,9 +271,13 @@ def test_api_flow_draw_review_reject_redraw_approve(client, monkeypatch):
     assert client.post(f"{base}/person_1/approve").json()["status"] == "approved"
     r = client.put(f"{base}/person_1", json={"design_en": "Thiết kế mới"})
     assert r.status_code == 200 and r.json()["status"] == "draft"
-    # người chưa có cảnh nào có ảnh: không vẽ được, báo rõ
+    # người chưa có cảnh nào có ảnh (luồng chung: khoá nhân vật trước khi tạo ảnh cảnh): Muse vẽ theo phong cách ghi
+    # trong thiết kế, không đính kèm ảnh cảnh
     r = client.post(f"{base}/person_15/draw")
-    assert r.status_code == 400 and "Gia tộc họ Tiền" in r.json()["detail"]
+    assert r.status_code == 200
+    _wait_not_drawing(client, "person_15")
+    task = muse.tasks[-1]
+    assert task["attachments"] == [] and "drawing style written in the design" in task["prompt"]
     assert project is not None
 
 

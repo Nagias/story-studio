@@ -1,6 +1,7 @@
-"""API bảng nhân vật đủ góc (dự án vụ án). Xử lý ở services/character_sheets.py.
+"""API bảng nhân vật đủ góc (truyện chữ và vụ án). Xử lý ở services/character_sheets.py, services/story_cast.py.
 
 - GET  /api/projects/{project_id}/characters                          danh sách, nhân vật từng cảnh, người cần cho video
+- POST /api/projects/{project_id}/characters/analyze                  truyện chữ: LLM tìm nhân vật (chạy nền; 1 lượt LLM)
 - PUT  /api/projects/{project_id}/characters/{entity_id}              sửa thiết kế (design_en)
 - POST /api/projects/{project_id}/characters/{entity_id}/draw         Muse vẽ bảng (chạy nền; tốn 1 lượt Muse)
 - POST /api/projects/{project_id}/characters/{entity_id}/approve      duyệt
@@ -11,6 +12,7 @@
 import asyncio
 import logging
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -19,7 +21,8 @@ from pydantic import BaseModel, Field
 from routers.climax_video import muse_call_starting_runner
 from security import is_within, require_safe_id, validate_path_ids
 from services import character_sheets as cs
-from services import project_service
+from services import project_service, story_cast
+from services.case_adaptation_steps import StepFailed
 
 logger = logging.getLogger("story_studio.character_sheets_router")
 
@@ -27,6 +30,7 @@ router = APIRouter(prefix="/api", tags=["Character sheets"], dependencies=[Depen
 
 NEEDED_STATUSES = ("selected", "failed", "grid", "grid_review", "grid_approved", "clips", "checking")
 _drawing: dict[tuple[str, str], asyncio.Task] = {}
+_analyzing: dict[str, asyncio.Task] = {}
 
 
 class DesignBody(BaseModel):
@@ -75,11 +79,46 @@ def _overview(project_id: str) -> dict:
     by_scene = cs.scene_cast(project, cast)
     climax = {s.id for s in project.scenes if ((s.metadata or {}).get("climax_video") or {}).get("status") in NEEDED_STATUSES}
     needed = list(dict.fromkeys(e for sid in by_scene if sid in climax for e in by_scene[sid]))
+    analyzing = _analyzing.get(project_id)
     return {
         "characters": [_sheet_json(project_id, s) for s in cast.characters.values()],
         "scene_cast": by_scene,
         "needed": needed,
+        # vụ án: người lấy từ bảng tên; truyện chữ: tìm bằng LLM (story_cast)
+        "source": "case" if cs.case_people(project) else "story",
+        "analyzed_at": cast.analyzed_at,
+        "analysis_error": cast.analysis_error,
+        "analyzing": analyzing is not None and not analyzing.done(),
     }
+
+
+async def _analyze(project_id: str) -> None:
+    try:
+        await story_cast.analyze_people(project_id)
+    except (StepFailed, cs.CastError) as e:
+        await asyncio.to_thread(story_cast.record_analysis_error, project_id, str(e))
+    except Exception as e:   # lỗi ngoài dự kiến: ghi log và báo lên giao diện, không im lặng
+        logger.exception(f"Tìm nhân vật {project_id}: lỗi ngoài dự kiến")
+        await asyncio.to_thread(story_cast.record_analysis_error, project_id, f"Lỗi ngoài dự kiến: {e}")
+
+
+@router.post("/projects/{project_id}/characters/analyze")
+async def analyze(project_id: str):
+    task = _analyzing.get(project_id)
+    if task is not None and not task.done():
+        raise HTTPException(status_code=409, detail="Đang tìm nhân vật cho dự án này")
+
+    def prepare():
+        project = project_service.get_project(project_id)
+        if project is None:
+            raise LookupError(f"Không có dự án {project_id}")
+        if cs.case_people(project):
+            raise cs.CastError("Dự án vụ án lấy nhân vật từ bảng tên đã duyệt của vụ án, không cần tìm lại")
+        if not story_cast.eligible_scenes(project):
+            raise cs.CastError("Dự án chưa có cảnh nào có lời kể hoặc prompt ảnh để tìm nhân vật")
+    await _call(prepare)
+    _analyzing[project_id] = asyncio.create_task(_analyze(project_id))
+    return {"analyzing": True}
 
 
 @router.get("/projects/{project_id}/characters")
@@ -95,7 +134,7 @@ async def update_design(project_id: str, entity_id: str, body: DesignBody):
     return _sheet_json(project_id, await _call(cs.set_design, project_id, entity_id, body.design_en))
 
 
-async def _draw(project_id: str, entity_id: str, reference: Path) -> None:
+async def _draw(project_id: str, entity_id: str, reference: Optional[Path]) -> None:
     try:
         await cs.draw_sheet(project_id, entity_id, muse_call_starting_runner, reference)
     except Exception:   # draw_sheet đã ghi "failed" cho lỗi Muse; lỗi khác ghi log để còn biết
@@ -115,11 +154,9 @@ async def draw(project_id: str, entity_id: str):
         cast = cs.load_cast(project_id)
         if entity_id not in cast.characters:
             raise LookupError(f"Dự án không có nhân vật {entity_id}")
-        ref = cs.reference_image(project, cast, entity_id)
-        if ref is None:
-            raise cs.CastError(f"Chưa có cảnh nào có ảnh và có {cast.characters[entity_id].name_vi}: chọn nhân vật "
-                               "cho một cảnh đã có ảnh trước")
-        return ref
+        # Có ảnh cảnh có người này thì Muse theo đúng nét vẽ của ảnh đó; chưa có (luồng chung: khoá nhân vật trước
+        # khi tạo ảnh cảnh) thì vẽ theo phong cách ghi trong thiết kế
+        return cs.reference_image(project, cast, entity_id)
 
     reference = await _call(prepare)
     _drawing[(project_id, entity_id)] = asyncio.create_task(_draw(project_id, entity_id, reference))

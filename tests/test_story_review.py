@@ -109,6 +109,9 @@ def test_quote_and_first_person_rules():
 @pytest.fixture
 def client(isolated_projects_dir, monkeypatch):
     monkeypatch.setattr(api_module, "PROJECTS_DIR", isolated_projects_dir)
+    from services import story_cast
+    from tests.story_review_fakes import FakePeopleLLM
+    monkeypatch.setattr(story_cast, "call_llm_json", FakePeopleLLM())   # tìm nhân vật sau khi viết xong: LLM giả
     app = FastAPI()
     app.include_router(api_module.router)
     with TestClient(app) as c:

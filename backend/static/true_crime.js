@@ -413,6 +413,26 @@ async function tcAnalyze() {
   });
 }
 
+// Lối vào chung ở Bước 1 (luồng chung truyện chữ và vụ án, 03/11/2026): chép bài, số phút, phong cách vào ô của cửa
+// sổ này rồi gửi phân tích như nút "Phân tích"; cửa sổ mở để theo dõi tiến độ, duyệt dàn ý và bảng tên.
+async function tcStartFromStep1({ text, minutes, style }) {
+  openTrueCrimeModal();
+  if (TrueCrimeState.caseId) {
+    tcNewCase();                          // hỏi trước khi thôi theo dõi vụ đang làm
+    if (TrueCrimeState.caseId) return false;
+  }
+  const area = tcEl('tc-case-text');
+  if (area) area.value = text;
+  tcUpdateWordCount();
+  const duration = tcEl('tc-duration-select');
+  if (duration && [...duration.options].some(o => o.value === String(minutes))) duration.value = String(minutes);
+  const styleSelect = tcEl('tc-visual-style');
+  if (styleSelect && [...styleSelect.options].some(o => o.value === style)) styleSelect.value = style;
+  await tcAnalyze();
+  return Boolean(TrueCrimeState.caseId);
+}
+window.tcStartFromStep1 = tcStartFromStep1;
+
 function tcFollowCase(caseId) {
   TrueCrimeState.caseId = caseId;
   TrueCrimeState.plan = null;
