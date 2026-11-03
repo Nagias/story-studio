@@ -299,13 +299,22 @@ class MusePromptFormatter:
         negative = task.get("negative_prompt", "")
 
         tags = []
-        if has_reference and params.get("reference_role") == "previous_scene":
+        # Khoá bối cảnh: ảnh chuẩn của bối cảnh là ảnh đính kèm CUỐI; ảnh trước nó (nếu có) là ảnh tham chiếu như cũ
+        location_ref = bool(has_reference and params.get("location_reference"))
+        n_attach = len(task_attachments(task))
+        person_ref = has_reference and (not location_ref or n_attach > 1)
+        first = "Ảnh đính kèm đầu tiên" if location_ref else "Ảnh đính kèm"
+        if person_ref and params.get("reference_role") == "previous_scene":
             # vẽ nối tiếp (chủ dự án 26/10/2026: mỗi ảnh như một câu chuyện riêng, không liên quan nhau)
-            tags.append("Ảnh đính kèm là khung hình của cảnh ngay trước trong cùng câu chuyện: giữ đúng nhân vật (gương mặt, "
+            tags.append(f"{first} là khung hình của cảnh ngay trước trong cùng câu chuyện: giữ đúng nhân vật (gương mặt, "
                         "kiểu tóc, trang phục), cùng bối cảnh và cùng phong cách vẽ; vẽ khung hình TIẾP THEO theo mô tả "
                         "dưới đây (đổi góc máy, hành động tiếp diễn), không chép lại ảnh đính kèm")
-        elif has_reference:
-            tags.append("Giữ đúng gương mặt, trang phục và đặc điểm nhân vật trong ảnh tham chiếu đính kèm")
+        elif person_ref:
+            tags.append(f"Giữ đúng gương mặt, trang phục và đặc điểm nhân vật trong {first.lower()} (ảnh tham chiếu)")
+        if location_ref:
+            tags.append("Ảnh đính kèm cuối cùng là ẢNH CHUẨN CỦA BỐI CẢNH (FIXED LOCATION bên dưới): vẽ đúng nơi này "
+                        "(kiến trúc, bố cục, đồ vật cố định, màu sắc, nguồn sáng), chỉ đổi góc máy theo mô tả; không "
+                        "chép bố cục khung hình của ảnh đó")
         if anchor:
             tags.append(f"Character Anchor: {anchor}")
         if style:

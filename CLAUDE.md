@@ -28,9 +28,9 @@ Agent ghi ngày 22/10/2026 để biết còn cách mục đích bao xa; đây l�
 | Truyện chữ làm cả bản Anh và Việt (câu 3 mục 1.2) | Nút tạo bản tiếng Anh (`#btn-create-en-version`) chỉ hiện với dự án vụ án bản Việt | Truyện chữ chưa tạo được bản ngôn ngữ thứ hai từ giao diện |
 | Vụ án thật: AI lập dàn ý, viết lại, bỏ tên người và địa điểm | Luồng C trong `FEATURE_MAP.md`: phân tích từng đoạn, đặt tên hư cấu, duyệt dàn ý, kiểm lọt tên thật (`case_adaptation_checks.py`), bản Việt và bản Anh | Đã có; đo thật 22/10/2026 qua test `live` |
 | Mỗi video tối thiểu 15 phút, dài 40–50 phút hoặc tuỳ nội dung | True-crime chọn 8/15/20/30 phút, mặc định 20 (`#tc-duration-select`). Truyện chữ không có mục tiêu số phút: dài ngắn theo bài và nhịp (`#step1-pacing-select`) | Lựa chọn 8 phút thấp hơn mức tối thiểu, giữ lại để thử (câu 7 mục 1.2); chưa có lựa chọn 40–50 phút; truyện chữ chưa nhắm được độ dài, chưa cảnh báo khi dưới 15 phút và chưa có nút "ghép chương / remake cho dài ra" (câu 2 mục 1.2; ưu tiên ghép chương: câu 8) |
-| Ảnh/video bằng Muse và Gemini 3.1, đồng nhất nhân vật và phong cảnh | Nguồn ảnh: Muse (mặc định) và 9router Gemini 3.1 Flash Image (`NINEROUTER_IMAGE_MODEL`). Nhân vật: mô tả nhân vật (`character_anchor`, nhân vật mẫu), ảnh tham chiếu, phong cách chung của dự án. Phong cảnh: mỗi cảnh có mô tả bối cảnh riêng do LLM viết | Chưa có bước khoá bối cảnh dùng chung như khoá nhân vật. Cách "lưới 9 ô" của luồng dòng lệnh cũ đã gỡ ngày 22/10/2026 (commit `768a44f`, còn trong lịch sử git) vì giao diện không dùng tới |
+| Ảnh/video bằng Muse và Gemini 3.1, đồng nhất nhân vật và phong cảnh | Nguồn ảnh: Muse (mặc định) và 9router Gemini 3.1 Flash Image (`NINEROUTER_IMAGE_MODEL`). Nhân vật: mô tả nhân vật (`character_anchor`, nhân vật mẫu), ảnh tham chiếu, phong cách chung của dự án. Phong cảnh: từ 02/11/2026 có khoá bối cảnh (`#btn-location-sheets`, `services/location_sheets.py`): LLM tìm nơi lặp lại ở từ 2 cảnh, mỗi nơi một mô tả cố định và ảnh chuẩn Muse, chủ dự án sửa và duyệt; ảnh và video Muse của cảnh thuộc nơi đã duyệt dùng đúng mô tả đó (và ảnh chuẩn trừ cận cảnh). Nhân vật đầu tròn được biểu cảm (lông mày, nước mắt, nửa mặt xám), vẫn cấm mặt người và mặt anime (`ROUND_HEAD_EXPRESSION_RULE_EN`) | Khoá bối cảnh chưa dùng trong ảnh grid của video cao trào; chưa chạy thật với Muse. Cách "lưới 9 ô" của luồng dòng lệnh cũ đã gỡ ngày 22/10/2026 (commit `768a44f`, còn trong lịch sử git) vì giao diện không dùng tới |
 | Đưa prompt để chủ dự án bấm generate | Mỗi cảnh có prompt ảnh, prompt video và nút Muse riêng (mục 2.3 `FEATURE_MAP.md`) | Luồng 1-Click hiện tự tạo ảnh ngay sau khi chia cảnh (`generate_initial_images` bật sẵn), tốn lượt Muse/9router mà không chờ bấm. Chủ dự án: tạm làm từng bước, chốt workflow rồi mới chuyển thành 1-Click (câu 4 mục 1.2) |
-| Ảnh tĩnh có chuyển động nhẹ; cần thì xuất video riêng 5 hoặc 10 giây (câu 5 mục 1.2) | Ảnh: chuyển động nhẹ khi dựng (`build_zoompan_filter()`). Video: Fleet Runner nhận 5 hoặc 10 giây (`clamp_video_duration()`), nhưng nút "Muse Video" luôn gửi 5 giây (`generateSceneWithMuse()`); clip ngắn hơn lời thoại thì giữ khung cuối khi dựng (`render_scene_video()`, từ 27/10/2026). Dự án vụ án: nút riêng làm video cho cảnh cao trào (`#btn-climax-video-run`): bảng nhân vật đủ góc được duyệt (`#btn-character-sheets`), mỗi cảnh một side chat Muse trên tài khoản video vẽ ảnh 9-grid, duyệt grid, rồi giao Muse một việc nhiều bước (Muse tự chia đoạn, tự kiểm, làm lại; tối đa 6 video + 4 ảnh), ảnh cảnh được thay bằng ảnh Muse sửa (giữ bản cũ). Nhân vật nữ phong cách đầu tròn có tóc dày trên đỉnh đầu (`FEMALE_HAIR_RULE_EN`) | Nút "Muse Video" chưa chọn được 10 giây; chưa báo khi lời thoại dài hơn clip |
+| Ảnh tĩnh có chuyển động nhẹ; cần thì xuất video riêng 5 hoặc 10 giây (câu 5 mục 1.2) | Ảnh: chuyển động nhẹ khi dựng (`build_zoompan_filter()`). Video: nút "Muse Video" từ 02/11/2026 làm video theo lời thoại (`services/dialogue_video.py`): lời ≤ 8 giây đọc thì 1 video, dài hơn thì chia đoạn liền nhau theo câu, mỗi đoạn một video Muse thể hiện đúng lời của đoạn đó (đổi cảnh khi lời chuyển nơi, chuyển việc), ghép lại khớp thời gian từng đoạn; báo số video Muse trước khi chạy; video dài hơn lời một chút thì cảnh kéo thêm, không cắt (tối đa 5 giây). Dự án vụ án: nút riêng làm video cho cảnh cao trào (`#btn-climax-video-run`): bảng nhân vật đủ góc được duyệt (`#btn-character-sheets`), mỗi cảnh một side chat Muse trên tài khoản video vẽ ảnh 9-grid, duyệt grid, rồi giao Muse một việc nhiều bước (Muse tự chia đoạn, tự kiểm, làm lại; tối đa 6 video + 4 ảnh), ảnh cảnh được thay bằng ảnh Muse sửa (giữ bản cũ). Nhân vật nữ phong cách đầu tròn có tóc dày trên đỉnh đầu (`FEMALE_HAIR_RULE_EN`) | Video theo lời thoại chưa chạy thật với Muse (Muse có theo đúng lời từng đoạn hay không chưa đo) |
 | Đầu vào là nội dung, quy trình ngầm, bấm là ra video | Luồng A và C trong `FEATURE_MAP.md`; nút Sản xuất video dài (`#btn-produce-long-video`) tự thu giọng, tạo ảnh còn thiếu, dựng và ghép | Đã có khung; độ dài và cách giữ nguyên văn như hai dòng trên |
 | Nhiều kênh YouTube; kênh theo loại nội dung, tính sau; tự đăng lên YouTube (câu 6 mục 1.2). Đã có kênh; cần tiêu đề, mô tả, thumbnail tải về được, chuẩn SEO YouTube dựa trên repo/nguồn có sẵn, không thuần AI (câu 9 mục 1.2) | Mỗi dự án độc lập. Gói SEO ở Bước 4 (`backend/static/youtube_seo.js`, `routers/youtube_seo.py`): từ khoá từ gợi ý tìm kiếm YouTube, YouTube Data API (`YOUTUBE_API_KEY`) hoặc dán tay; AI chỉ viết câu trong khuôn từ khoá đã chọn; luật chính thức YouTube là khoá cứng (`youtube_seo_rules.py`); tải .txt; thumbnail font đủ dấu. Không có phần đăng YouTube | Chưa có khái niệm "kênh" trong code (để sau); không cần làm phần đăng YouTube; nguồn YouTube Analytics (từ khoá người xem thật sự gõ để tìm ra kênh) chưa làm |
 
@@ -62,6 +62,7 @@ Cột câu hỏi do agent viết (tóm tắt câu đã hỏi trong chat). Cột 
 | 20 | (30/10/2026, ý 6) SEO YouTube? | SEO Youtube chưa cần. |
 | 21 | (30/10/2026, ý 7) Câu 10–13 chỉ ghi trong CLAUDE.md có đủ mạnh không? | Việc ghi vào claude.md ở các câu 10-13 em phải đo lường thêm cho anh khi thực hiện là liệu nó có đủ mạnh để áp dụng không, không thì phải tạo hard guardrail mới được |
 | 22 | (02/11/2026) Test đòi đúng 10 tài khoản Muse trong khi máy có 14: sửa cấu hình hay sửa test? | Cái kiểm chứng thứ 2 mà muse phải có 10 tải khoản là sai, anh không login 10 tải khoản đâu nhé. Đừng có fix cái đó, có bao nhiêu dùng bấy nhiêu. Số 10 có lẽ là số lượng mà em tự thêm chứ không phải anh bảo. |
+| 23 | (03/11/2026) Sau A/B test giữa có đội agent và không có đội agent (hai bên gần ngang điểm, chi phí tương đương): giữ bản nào? | anh duyệt bản không đội. đội agent thì bỏ đi đỡ nặng máy và dự án. Không cần chạy bộ việc mẫu. Chỉ cần gỡ bỏ đội agent và sửa lại claude.md cho khớp với nội dung là được. |
 
 ### 1.3 Quy trình làm video — [Đề xuất của agent; chủ dự án xác nhận tạm 22/10/2026: "Tạm thời là đúng ý tôi rồi"]
 
@@ -79,10 +80,10 @@ Agent suy ra từ mục 1 và 1.2. Cuối mỗi bước ghi tình trạng code h
   3. AI viết lại, bỏ tên người và địa điểm, kiểm lọt tên thật — có.
 - Phần chung sau khi hai nhánh gộp lại:
   4. Chia cảnh (chạy ngầm) — có.
-  5. Đồng nhất nhân vật và phong cảnh — nhân vật có; khoá phong cảnh dùng chung thiếu.
+  5. Đồng nhất nhân vật và phong cảnh — có (khoá bối cảnh từ 02/11/2026, chưa chạy thật với Muse).
   6. Prompt ảnh/video cho từng cảnh (Muse, Gemini 3.1) — có.
   7. Chủ dự án bấm generate từng bước — lệch: nút 1-Click đang tự tạo ảnh ngay.
-  8. Ảnh tĩnh có chuyển động nhẹ; video riêng 5 hoặc 10 giây khi cần — thiếu: nút Muse Video cố định 5 giây.
+  8. Ảnh tĩnh có chuyển động nhẹ; video riêng dài theo lời thoại khi cần (nhiều video nếu lời dài) — có từ 02/11/2026, chưa chạy thật với Muse.
   9. Bản tiếng Anh dùng lại ảnh của bản Việt — vụ án có; truyện chữ thiếu.
   10. Giọng đọc, dựng, ghép từng bản — có.
   11. Chủ dự án tự đăng YouTube; tiêu đề, mô tả, tags theo từ khoá tìm kiếm thật và luật YouTube, thumbnail, tải .txt — có (22/10/2026).
@@ -234,11 +235,7 @@ Code mới nên theo mẫu của mảng true-crime (mục 4), không theo mảng
 
 > Từ nay, mỗi lần sửa skill hoặc agent, phải chạy lại bộ việc mẫu này và báo cáo điểm trước/sau.
 
-**Skill và agent của dự án** (phương án 3 agent, chủ dự án duyệt 23/10/2026; dựng từ bộ skill mẫu ghép với expert agency-agents). Agent tự nạp skill hay tự gọi agent khi việc khớp dòng `description` — đó là khoá mềm.
-- Người làm (phiên chính) dùng 9 skill trong `.claude/skills/`: giao-viec, kiem-chung, cham-cheo, ban-giao, duy-tri-feature-map, tao-feature-map, lam-vuon, loop-toi-chuan, sua-thanh-luat.
-- Giám khảo `.claude/agents/giam-khao.md` (model Sonnet, chỉ đọc và chạy lệnh kiểm): gọi trước khi báo "xong" một thay đổi có đụng code, tối đa 3 vòng.
-- Rà soát `.claude/agents/ra-soat.md` (chỉ đọc): gọi khi chủ dự án yêu cầu rà soát, hoặc một loại lỗi lặp từ 3 lần.
-- Sửa các file này là "sửa skill hoặc agent": chạy lại bộ việc mẫu (`docs/bo-viec-mau/README.md`).
+Dự án hiện không có skill hay agent riêng: đội agent (9 skill trong `.claude/skills/`, agent `giam-khao` và `ra-soat` trong `.claude/agents/`) đã gỡ ngày 03/11/2026 theo câu 23 mục 1.2; lần gỡ này không chạy bộ việc mẫu theo đúng câu đó. Bộ việc mẫu (`tools/bo_viec_mau.py`, `docs/bo-viec-mau/`) vẫn giữ để đo khi sau này thêm lại skill hay agent; "giám khảo" trong bộ việc mẫu là bước chấm điểm của công cụ đó, không phải agent của dự án.
 
 ### 6.1 Khoá cứng hay khoá mềm (theo mục 2.4)
 
@@ -258,7 +255,7 @@ Cùng cách đọc và cùng máy kiểm với bảng 5.1. Hook git chỉ có t�
 | 10 | cứng | `tools/check.py::commit_message_problem` (hook commit-msg) | 4 | Dòng đầu commit dạng `<vùng>: <mô tả>`: 4 commit sai (`ffa1c3b`, `afaadab`, `a3de4c7`, `c116f07`). Còn mềm: viết tiếng Việt, mỗi thay đổi một commit |
 | 11 | cứng một phần | `tests/test_working_rules.py::test_no_new_scripts_in_project_root` | 3 | Không thêm script ở gốc dự án: đã phải xoá 3 script (run_studio.py, run_studio.bat, run_all_tests.py; xem `git log --diff-filter=D`). Còn mềm: không sửa file ngoài thư mục dự án khi chưa hỏi |
 | 12 | mềm | — | 0 | Thư viện tuỳ chọn: chỉ là ghi chú, không phải điều cấm |
-| 13 | mềm | — | 0 | Sửa skill hoặc agent thì chạy lại bộ việc mẫu và báo điểm trước/sau (`docs/bo-viec-mau/README.md`): máy chưa biết lúc nào skill hay agent của dự án bị sửa |
+| 13 | mềm | — | 0 | Sửa skill hoặc agent thì chạy lại bộ việc mẫu và báo điểm trước/sau (`docs/bo-viec-mau/README.md`): máy chưa biết lúc nào skill hay agent của dự án bị sửa. Từ 03/11/2026 dự án không còn skill hay agent riêng (câu 23 mục 1.2), quy tắc này áp dụng khi thêm lại |
 
 ## 7. Bảng định tuyến: loại việc → quy trình
 

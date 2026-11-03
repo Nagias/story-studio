@@ -1399,7 +1399,7 @@ function renderSceneList() {
               <button onclick="generateSceneWithMuse(${idx}, 'image')" title="Tạo ảnh 2K bằng Muse Fleet (tài khoản ảnh)" class="p-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
                 <i class="fa-brands fa-meta"></i>
               </button>
-              <button onclick="generateSceneWithMuse(${idx}, 'video')" title="Tạo video chuyển động bằng Muse Fleet (tài khoản video)" class="p-1.5 bg-purple-600 hover:bg-purple-500 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
+              <button onclick="generateSceneWithMuse(${idx}, 'video')" title="Tạo video Muse dài theo lời thoại: lời dài thì nhiều video nối nhau (báo số video trước khi chạy)" class="p-1.5 bg-purple-600 hover:bg-purple-500 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
                 <i class="fa-solid fa-film"></i>
               </button>
               <button onclick="openMuseModalForScene(${idx})" title="Chọn video/ảnh từ Gallery Muse" class="p-1.5 bg-amber-600 hover:bg-amber-500 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
@@ -1523,7 +1523,7 @@ function renderSceneList() {
                 <button 
                   onclick="generateSceneWithMuse(${idx}, 'video')" 
                   class="text-[10px] text-purple-700 hover:text-purple-900 font-bold flex items-center gap-1 transition px-2 py-1 rounded-lg bg-purple-50 border border-purple-200 hover:bg-purple-100 cursor-pointer shadow-2xs"
-                  title="Tạo Video 5s riêng cảnh này bằng Muse Fleet (tài khoản video)"
+                  title="Tạo video Muse dài theo lời thoại: lời dài thì nhiều video nối nhau (báo số video trước khi chạy)"
                 >
                   <i class="fa-solid fa-film text-xs text-purple-600"></i>
                   <span>Muse Video</span>
@@ -5043,6 +5043,12 @@ async function generateSceneWithMuse(index, mode = 'image') {
   const project = AppState.currentProject;
   if (!project || !project.scenes || !project.scenes[index]) return;
   const scene = project.scenes[index];
+
+  // Video: dài theo lời thoại, có thể nhiều video Muse (scene_muse_video.js báo số video trước khi chạy)
+  if (mode === 'video' && typeof window.runSceneMuseVideo === 'function') {
+    switchScenePromptTab(index, mode);
+    return window.runSceneMuseVideo(index);
+  }
 
   if (AppState.museCloud.status === 'offline') {
     showToast("Muse Fleet chưa có tài khoản nào online! Mở bảng Muse Fleet để kiểm tra.", "error", 4000);
