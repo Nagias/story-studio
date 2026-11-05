@@ -1,0 +1,4 @@
+# File .bat của Windows phải xuống dòng kiểu CRLF, nếu không lệnh goto/nhãn có thể chạy sai
+# trên máy tải repo về mà không bật tự đổi xuống dòng của git.
+*.bat text eol=crlf
+*.cmd text eol=crlf
