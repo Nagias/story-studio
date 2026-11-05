@@ -117,7 +117,7 @@ Agent suy ra từ mục 1 và 1.2. Cuối mỗi bước ghi tình trạng code h
 
 | Việc | Lệnh |
 |---|---|
-| Cài app trên máy mới (sau `git clone`) | `tools\cai_dat.bat`: tạo `.venv`, cài `backend\requirements.txt`, Chromium cho Playwright, chép `.env.example` thành `.env` nếu chưa có, báo thiếu ffmpeg/Node.js/9router/uv. Hướng dẫn đủ bước cho người mới: `README.md` |
+| Cài app trên máy mới (sau `git clone`) | `tools\cai_dat.bat`: tạo `.venv`, cài `backend\requirements.txt`, chép `.env.example` thành `.env` nếu chưa có, báo thiếu ffmpeg/Node.js/9router/uv. Hướng dẫn đủ bước cho người mới: `README.md` |
 | Chạy app | `run.bat` (hoặc `.venv\Scripts\python.exe run.py`), mở `http://localhost:8000`. Tự bật Fleet Runner |
 | Python | luôn `.venv\Scripts\python.exe` (Python 3.14), không dùng `python` hệ thống; in tiếng Việt thì thêm `-X utf8` |
 | Cài thư viện | `.venv\Scripts\python.exe -m pip install -r backend\requirements-dev.txt` (phiên bản đã ghim); Playwright thêm `.venv\Scripts\python.exe -m playwright install chromium` |

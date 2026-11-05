@@ -50,10 +50,12 @@ Lần đầu tải, Git sẽ mở cửa sổ đăng nhập GitHub.
 Bấm đúp file `tools\cai_dat.bat` (hoặc chạy `tools\cai_dat.bat` trong PowerShell ở thư mục `story-studio`). File này:
 
 1. tạo môi trường Python riêng `.venv` trong thư mục app (không đụng Python chung của máy);
-2. cài thư viện theo `backend\requirements.txt` (lần đầu mất vài phút, tải khoảng vài trăm MB);
-3. cài trình duyệt Chromium cho Playwright;
-4. tạo file cấu hình `.env` từ `.env.example` nếu chưa có;
-5. báo còn thiếu ffmpeg, Node.js, 9router hay uv không.
+2. cài thư viện theo `backend\requirements.txt` (lần đầu tải khoảng 110 MB, mất vài phút tuỳ mạng);
+3. tạo file cấu hình `.env` từ `.env.example` nếu chưa có;
+4. báo còn thiếu ffmpeg, Node.js, 9router hay uv không.
+
+Không cần tải thêm trình duyệt: phần điều khiển Muse mở Chrome hoặc Edge có sẵn trên máy.
+Chỉ khi máy không có cả Chrome lẫn Edge thì mới cần chạy thêm `.venv\Scripts\python.exe -m playwright install chromium`.
 
 Chạy lại file này nhiều lần cũng không sao: nó dùng lại `.venv` và giữ nguyên `.env` đã có.
 
@@ -62,7 +64,6 @@ Cài bằng tay (nếu không muốn dùng file .bat):
 ```powershell
 py -3.14 -m venv .venv
 .venv\Scripts\python.exe -m pip install -r backend\requirements.txt
-.venv\Scripts\python.exe -m playwright install chromium
 copy .env.example .env
 ```
 

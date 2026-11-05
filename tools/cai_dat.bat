@@ -21,30 +21,28 @@ where py >nul 2>nul && py -3.14 --version >nul 2>nul && set "PY=py -3.14"
 if not defined PY where python >nul 2>nul && set "PY=python"
 if not defined PY goto NO_PYTHON
 
-echo [1/4] Tạo môi trường Python riêng .venv bằng: %PY%
+echo [1/3] Tạo môi trường Python riêng .venv bằng: %PY%
 %PY% -m venv .venv
 if errorlevel 1 goto FAIL
 goto CHECK_VERSION
 
 :HAVE_VENV
-echo [1/4] Đã có .venv, dùng lại.
+echo [1/3] Đã có .venv, dùng lại.
 
 :CHECK_VERSION
 ".venv\Scripts\python.exe" -c "import sys; print('      Python', sys.version.split()[0]); sys.exit(0 if sys.version_info[:2] == (3, 14) else 3)"
 if errorlevel 3 echo [CẢNH BÁO] App đã kiểm trên Python 3.14. Bản khác có thể cài thư viện không được.
 echo.
 
-echo [2/4] Cài thư viện Python (lần đầu mất vài phút)...
+echo [2/3] Cài thư viện Python (lần đầu mất vài phút)...
 ".venv\Scripts\python.exe" -m pip install -r backend\requirements.txt
 if errorlevel 1 goto FAIL
 echo.
 
-echo [3/4] Cài trình duyệt Chromium cho Playwright (dùng cho Muse)...
-".venv\Scripts\python.exe" -m playwright install chromium
-if errorlevel 1 goto FAIL
-echo.
+:: Không tải Chromium của Playwright: Fleet Runner mở Chrome hoặc Edge có sẵn trên máy
+:: (get_installed_browser_channel trong backend\runners\muse_fleet_runner.py).
 
-echo [4/4] File cấu hình .env
+echo [3/3] File cấu hình .env
 if exist ".env" goto ENV_KEEP
 copy ".env.example" ".env" >nul
 if errorlevel 1 goto FAIL
