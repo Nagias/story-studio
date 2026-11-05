@@ -477,3 +477,22 @@ không dùng bảng nhân vật (kể cả vụ án), 1-Click tự tạo ảnh t
 - Sản xuất video dài truyện thử 3 lần (lần 2, 3 không tốn Muse): `projects/proj_787e69c7/renders/story_final.mp4` 1080p 73,8 giây, nhạc nền 4 đoạn (có nhạc 0–7 s và 13–52 s, im ở đoạn giới thiệu và đoạn kết), tiếng động 3/13 cảnh, 5 kiểu chuyển động; cảnh 11 Muse từ chối nên rơi sang 9router (1 ảnh trả phí, có ghi cảnh báo)
 - Khoá bối cảnh trên truyện: AI tìm 2 bối cảnh, ảnh chuẩn phòng ký túc xá duyệt, "Gen lại ảnh AI" cảnh 5 vẽ đúng phòng đó
 - Tốn: LLM khoảng 6 lượt (viết, kiểm, tìm nhân vật 2 lần, tìm bối cảnh); Muse ảnh 17 lượt (15 ảnh cảnh, 1 ảnh chuẩn, 1 lượt Muse từ chối cảnh 11), Muse video 1 lượt hỏng (hết phiên đăng nhập); 9router ảnh trả phí 1
+
+## Đưa repo lên GitHub (05/11/2026)
+
+Chủ dự án giao: chuẩn bị file cần thiết và push lên GitHub để người khác pull về chạy được, có file hướng dẫn. Chủ dự án chọn repo riêng tư, chỉ đẩy nhánh `master`.
+
+- [x] Rà bí mật trước khi đẩy: 216 commit không từng chứa `.env`, `backend/chrome_profiles/`, `backend/config/muse_fleet_accounts.json`; giá trị khoá trong `.env` không xuất hiện ở commit nào; chuỗi giống khoá duy nhất là khoá giả trong `tests/test_case_adaptation_llm.py`
+- [x] `README.md` viết lại cho người mới (phần mềm cần có kèm lệnh winget, clone, cài, 9router, Muse, chạy, cập nhật, lỗi thường gặp)
+- [x] `tools/cai_dat.bat`: tạo `.venv` bằng Python 3.14, cài thư viện, chép `.env`, báo thiếu ffmpeg/Node.js/9router/uv. Không tải Chromium của Playwright vì Fleet Runner dùng Chrome/Edge có sẵn
+- [x] `.gitattributes`: `.bat` luôn xuống dòng CRLF trên máy clone
+- [x] `tests/test_feature_map.py` bỏ qua đường dẫn `.cache/` (máy clone không có, test báo lỗi giả)
+- [x] Repo riêng tư https://github.com/Nagias/story-studio, nhánh `master`
+- [ ] `tests/test_muse_fleet_runner_integration.py::test_fleet_runner_10_accounts_loaded` lỗi trên máy chủ dự án (đọc file tài khoản Muse thật, có tài khoản video mang khả năng tạo ảnh); có từ trước, đạt trên máy clone
+
+### Bằng chứng
+- Bản sao sạch trong `.cache/thu-clone/`: `tools/cai_dat.bat` lần đầu mã thoát 0 (49 giây, thư viện đã có trong cache pip), chạy lại 2 giây giữ `.env`; giấu ffmpeg/node/9router/uv khỏi PATH thì báo đủ 4 dòng thiếu, vẫn mã thoát 0
+- Bản sao sạch: bộ test mặc định 989 đạt, 3 lỗi (2 test hook git chưa cài, 1 test FEATURE_MAP đòi file `.cache/`); sau khi sửa test và cài hook theo README: 3 test FEATURE_MAP đạt, 14 test hook đạt
+- Bản sao sạch chạy `run.py` cổng 8020 (tắt Fleet Runner, hàng việc vụ án, VieNeu): trang chính, mọi file JS/CSS, `/api/health`, `/api/projects` trả 200, console không lỗi
+- Repo gốc `tools/check.py --full`: 991 đạt, 1 lỗi (test 10 tài khoản ở trên); `projects/` không đổi
+- Clone lại từ GitHub: commit khớp `63f8296`, 288 file, 0 file bí mật, `run.bat` xuống dòng CRLF
