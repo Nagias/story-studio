@@ -92,6 +92,9 @@ def test_names_in_doc_exist_in_code(doc, code):
             problems.append(f"không có websocket {token}")
         if re.fullmatch(r"[\w./\\-]+\.(py|js|bat|json|md|txt|html|css|ini|toml)", token) and "<" not in token and "*" not in token:
             rel = token.replace("\\", "/")
+            # .cache/ không vào git (.gitignore): file mẫu ở đó chỉ có trên máy làm, máy clone từ GitHub không có
+            if rel.startswith(".cache/"):
+                continue
             if not any((ROOT / d / rel).exists() for d in FILE_SEARCH_DIRS):
                 problems.append(f"không thấy file {token}")
     assert not problems, f"{doc} nhắc tới tên không có trong code (sửa tài liệu cho khớp code):\n  " + "\n  ".join(sorted(set(problems)))
