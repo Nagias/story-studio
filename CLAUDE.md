@@ -63,6 +63,7 @@ Cột câu hỏi do agent viết (tóm tắt câu đã hỏi trong chat). Cột 
 | 21 | (30/10/2026, ý 7) Câu 10–13 chỉ ghi trong CLAUDE.md có đủ mạnh không? | Việc ghi vào claude.md ở các câu 10-13 em phải đo lường thêm cho anh khi thực hiện là liệu nó có đủ mạnh để áp dụng không, không thì phải tạo hard guardrail mới được |
 | 22 | (02/11/2026) Test đòi đúng 10 tài khoản Muse trong khi máy có 14: sửa cấu hình hay sửa test? | Cái kiểm chứng thứ 2 mà muse phải có 10 tải khoản là sai, anh không login 10 tải khoản đâu nhé. Đừng có fix cái đó, có bao nhiêu dùng bấy nhiêu. Số 10 có lẽ là số lượng mà em tự thêm chứ không phải anh bảo. |
 | 23 | (03/11/2026) Sau A/B test giữa có đội agent và không có đội agent (hai bên gần ngang điểm, chi phí tương đương): giữ bản nào? | anh duyệt bản không đội. đội agent thì bỏ đi đỡ nặng máy và dự án. Không cần chạy bộ việc mẫu. Chỉ cần gỡ bỏ đội agent và sửa lại claude.md cho khớp với nội dung là được. |
+| 24 | (29/10/2026, khi nhận xét video vụ án; nhắc lại 06/11/2026 khi video vụ Khang Cúc Hoa không có clip Muse nào) Bao nhiêu phần video là video Muse? | 29/10/2026: "Ít ảnh quá và số lượng chuyển động cũng đang quá ít. Tôi cần 50% video yotuube là video cơ, video luôn giữ chân tốt hơn là ảnh". 06/11/2026: "vẫn chưa tuân thủ nguyên tắc generate video bằng muse tôi đã nói, 50% là video gen từ muse, tạo chuyển động tốt hơn ảnh" |
 
 ### 1.3 Quy trình làm video — [Đề xuất của agent; chủ dự án xác nhận tạm 22/10/2026: "Tạm thời là đúng ý tôi rồi"]
 

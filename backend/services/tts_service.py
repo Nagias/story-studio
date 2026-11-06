@@ -22,6 +22,9 @@ VIENEU_URL = f"http://{config.VIENEU_HOST}:{config.VIENEU_PORT}"
 # dấu chấm (0 lần ngừng ≥ 0,4 s ở 3/5 giọng), nên đọc từng câu rồi ghép, chèn khoảng lặng sau mỗi câu; "…" ngừng lâu hơn.
 SENTENCE_PAUSE_S = 0.45
 ELLIPSIS_PAUSE_S = 0.8
+# Chữ cuối được phép kết thúc trễ hơn độ dài file tiếng tối đa chừng này (mã hoá mp3 làm lệch vài phần trăm giây);
+# trễ hơn nữa là tiếng bị cụt.
+CUT_AUDIO_TOLERANCE_S = 0.5
 _SENTENCE = re.compile(r"[^.!?…]+(?:[.!?…]+[\"'”’»)\]]*)?")
 
 
@@ -768,6 +771,7 @@ async def generate_speech(
     # 2. Microsoft Edge-TTS Engine
     audio_bytes = bytearray()
     word_timings: List[Dict[str, Any]] = []
+    duration = 0.0
     last_err = None
 
     # Edge-TTS trả "No audio was received" theo hai kiểu (đo 21/10/2026):
@@ -805,8 +809,18 @@ async def generate_speech(
                     })
 
             if len(audio_bytes) > 0:
-                break
-            last_err = RuntimeError("0 bytes audio")
+                with open(audio_path, "wb") as f:
+                    f.write(audio_bytes)
+                duration = get_audio_duration(str(audio_path))
+                # Edge-TTS có lúc ngắt luồng giữa chừng: tiếng cụt nhưng vẫn đủ mốc chữ (cảnh 52 video vụ án
+                # 06/11/2026: tiếng 6,96 giây, mốc chữ tới 13,3 giây) -> thu lại như lỗi "No audio".
+                last_word_end = max((w["end"] for w in word_timings), default=0.0)
+                if last_word_end <= duration + CUT_AUDIO_TOLERANCE_S:
+                    break
+                last_err = RuntimeError(
+                    f"tiếng bị cụt: file {duration:.2f} giây nhưng chữ cuối kết thúc ở {last_word_end:.2f} giây")
+            else:
+                last_err = RuntimeError("0 bytes audio")
         except Exception as e:
             last_err = e
         if attempt < max_attempts - 1:
@@ -820,11 +834,6 @@ async def generate_speech(
         if last_err:
             err_msg += f": {last_err}"
         raise RuntimeError(err_msg)
-
-    with open(audio_path, "wb") as f:
-        f.write(audio_bytes)
-
-    duration = get_audio_duration(str(audio_path))
 
     # Generate professional grouped phrase-level subtitles
     srt_content = generate_readable_srt(word_timings, clean_text, duration)

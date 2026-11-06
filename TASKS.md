@@ -496,3 +496,16 @@ Chủ dự án giao: chuẩn bị file cần thiết và push lên GitHub để 
 - Bản sao sạch chạy `run.py` cổng 8020 (tắt Fleet Runner, hàng việc vụ án, VieNeu): trang chính, mọi file JS/CSS, `/api/health`, `/api/projects` trả 200, console không lỗi
 - Repo gốc `tools/check.py --full`: 991 đạt, 1 lỗi (test 10 tài khoản ở trên); `projects/` không đổi
 - Clone lại từ GitHub: commit khớp `63f8296`, 288 file, 0 file bí mật, `run.bat` xuống dòng CRLF
+
+## Video vụ án Khang Cúc Hoa (đêm 05–06/11/2026, chủ dự án giao làm một mạch)
+Dự án `proj_crime_03b5d8c5`, vụ `_cases/case_4242cd2b`, phong cách đầu tròn `horror_cartoon_2d`, giọng `vi-VN-NamMinhNeural`.
+- [x] Phân tích vụ, viết lời kể 72 cảnh (4.330 chữ); kiểm 60 tên thật: 0 lần lọt. Sửa tay cảnh 38 và 68 (app gộp nhầm hai nạn nhân cùng họ)
+- [x] Khoá nhân vật: 7 bảng nhân vật duyệt (Chu Khải Phong vẽ 3 lần; Chu Tố Linh còn một ô sau gáy trọc, nhận vì chỉ có 1 cảnh). 4 nhân vật không có mặt trong cảnh nào để nháp
+- [x] Khoá bối cảnh: 7 nơi, 7 ảnh chuẩn Muse, xem từng ảnh rồi duyệt
+- [x] Sản xuất video dài 02:25:42 → 04:27 (khoảng 2 giờ): `renders/story_final.mp4`
+- [x] Kiểm chứng: ffprobe 1172 giây (19 phút 32 giây), 1920x1080, 25 khung/giây, AAC 48 kHz stereo, 320 MB; âm lượng trung bình −18,7 dB, đỉnh −1,6 dB, không có đoạn im lặng trên 1,5 giây; 72/72 file giọng, tổng 19,54 phút; phụ đề 650 câu, 4.340 chữ; xem 24 khung hình cắt đều: đầu tròn, bối cảnh khớp
+- [ ] Còn lại: cảnh 2 và 13 do Muse không trả ảnh (NO_MEDIA sau 150 giây) nên app tự chuyển sang 9router (trả phí, 2 ảnh); ảnh cảnh 2 vẽ cô gái không phải đầu tròn. 49 cảnh báo "bằng chứng chưa hiện lên bảng" (không chặn)
+- Số lần gọi: Muse 68 ảnh (10 bảng nhân vật, 7 bối cảnh, 51 ảnh cảnh kể cả 2 lần lỗi); 9router ảnh 2; LLM: phân tích vụ 89 bước + 1 lần tìm bối cảnh. `projects/` chỉ thêm `proj_crime_03b5d8c5`
+- [x] 06/11 tối, chủ dự án báo một chỗ có 2 phụ đề cùng lúc: nguyên nhân là Edge-TTS trả giọng cảnh 52 bị cụt (6,96 giây, mốc chữ tới 13,3 giây), app vẫn nhận. Sửa `tts_service.generate_speech()`: chữ cuối trễ hơn độ dài tiếng quá 0,5 giây thì thu lại, hết lượt thì báo lỗi; test `tests/test_tts_cut_audio.py` (2 test, đỏ trước khi sửa). Quét mọi dự án: chỉ cảnh 52 bị cụt. Thu lại cảnh 52 (14,6 giây) và dựng lại trên server thử 8010 (server 8000 đã tắt): 1179,9 giây, 0 chỗ phụ đề chồng, 0 file giọng cụt. Bản cũ giữ ở `.cache/vu_an/story_final_ban1.mp4`
+- [x] Kiểm chứng: 6 test Edge-TTS thật đạt; `tools/check.py --full`: 993 đạt, 1 lỗi có sẵn từ trước (`test_fleet_runner_10_accounts_loaded` đòi đúng 5+5 tài khoản Muse, câu 22 mục 1.2), lỗi cả khi bỏ phần sửa
+- [ ] Video này chưa có clip Muse nào, trái lời chủ dự án 29/10 (50% là video Muse; ghi vào CLAUDE.md câu 24): chờ chủ dự án quyết có chạy "Video cho cảnh cao trào" cho video này không
