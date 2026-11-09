@@ -534,6 +534,20 @@ Dự án `proj_crime_03b5d8c5`, vụ `_cases/case_4242cd2b`, phong cách đầu 
 - [x] Đo thật qua code app: `call_llm_json` 4,6 s; chia cảnh đoạn `dossier.txt` (1.481 ký tự): `gemini-3-flash` 3,3 s / 6 cảnh, `gemini-3.5-flash-lite` 3,5 s / 6 cảnh, `gemini-3.8-flash-high` 24 s / 6 cảnh, không cảnh nào rơi về chia offline; ảnh Gemini 10,6 s, 1376×768, mở xem đúng nội dung. `projects/` không có thư mục mới
 - [ ] Chưa làm (đề xuất): đổi mặc định `config.py`, `.env.example`, README, `tools/cai_dat.bat`, CLAUDE.md mục 3, chữ "9router" trong thông báo lỗi và giao diện
 
+## Video vụ án xưởng sắt Cao Hùng, bản tiếng Anh (08–10/11/2026, chủ dự án giao: 50% video Muse, chèn 8 ảnh thật, dịch hết sang tiếng Anh)
+Dự án `proj_crime_59ee682e`, vụ `_cases/case_9ad5c9bf`, ngôn ngữ `en`, phong cách đầu tròn `horror_cartoon_2d`, giọng `en-US-AndrewMultilingualNeural`, nhạc nền `mysterious_dark`.
+- [x] Phân tích vụ, viết lời kể tiếng Anh 75 cảnh (2.853 chữ), tên hư cấu
+- [x] Khoá nhân vật: bảng nhân vật duyệt sau khi vẽ lại (thám tử, A Li, con gái: tóc lệch; A Qiang đổi thiết kế thành đầu hói). Sửa mô tả con gái thành phụ nữ khoảng 35 tuổi (cảnh 49, 64, 65, 70)
+- [x] Khoá bối cảnh: 8 ảnh chuẩn Muse
+- [x] Giọng đọc 75/75 cảnh, tổng 1.246,3 giây, 0 file cụt
+- [x] Ảnh cảnh: 48 ảnh, tất cả bằng Muse. Cảnh 36 Muse từ chối hai lần (thuốc, dây trói) nên viết lại mô tả nhẹ hơn (người mẹ kéo khoá túi vải)
+- [x] Video Muse theo lời thoại: 48/48 cảnh hoạt hình, 840,9 giây
+- [x] Chèn 8 ảnh thật vào cảnh 8, 10, 13, 16, 28, 33, 43, 51; chú thích tiếng Anh, tên đổi theo tên hư cấu. Ảnh số 3 (cảnh 16): chú thích dưới đè phụ đề nên dời lên trên và thu ảnh vào trong khung để hiệu ứng phóng to không cắt chữ (dựng lại 2 lần; bản đầu giữ ở `.cache/vu_xuong_sat/story_final_ban1.mp4`)
+- [x] Dựng `renders/story_final.mp4`: 03:43 → 04:00 (16 phút)
+- [x] Kiểm chứng: ffprobe 1.283,9 giây (21 phút 24 giây), 1920x1080, 25 khung/giây, AAC 48 kHz stereo, 424 MB; 48 clip Muse khác nhau, khung trong video cuối khớp clip gốc; clip Muse chiếm 840,9 / 1.283,8 giây = 65,5%; phụ đề 450 câu, chồng 0; âm lượng trung bình −18,7 dB, đỉnh −1,3 dB; 4 chỗ lặng 1,6–2,9 giây đều ở cuối cảnh có clip dài hơn lời (đúng câu 19 mục 1.2); xem 24 khung cắt đều và khung 8 cảnh ảnh thật; `projects/` chỉ thêm `proj_crime_59ee682e` và `_cases/case_9ad5c9bf`
+- [x] Sự cố: tài khoản `muse_acc_img_01` treo trình duyệt 13:50–19:17 ngày 09/11, chặn một trong hai luồng của Fleet Runner nên 25 ảnh hết giờ; app Claude tắt hai lần làm server 8000 tắt theo (19:17 và 00:19), bật lại bằng `run.py --no-browser` và chạy tiếp từ chỗ dở
+- Số lần gọi: LLM 94 bước phân tích + 1 lần tìm bối cảnh; Muse ảnh: 13 bảng nhân vật (kể cả vẽ lại), 8 bối cảnh, 48 ảnh cảnh thành công + 29 lượt lỗi (25 hết giờ do tài khoản treo, 4 Muse từ chối/không trả ảnh); Muse video theo lời thoại 155 lượt; 9router ảnh: các lần rơi sang đều báo lỗi 403/502, 0 ảnh trả phí
+
 ## Video vụ xưởng sắt bản tiếng Anh: làm lại phần video Muse (10–11/11/2026)
 Chủ dự án xem bản trước: clip Muse "không hề là video", chỉ lia/zoom ảnh. Đo lại đúng vậy: 48 clip "Muse Video theo lời thoại" (`services/dialogue_video.py`) sau khi trừ chuyển động máy quay chỉ còn 3,8–6,6 (ảnh tĩnh zoom = 3,8). Làm lại bằng "Video cho cảnh cao trào" như vụ Khang Cúc Hoa.
 - [x] Sửa gốc lỗi "lần nào cũng phải nhắc": `pick_climax_scenes()` coi 50% là mức trần số cảnh (Khang Cúc Hoa chỉ 32,9%); nay chọn cảnh có nhân vật tới khi lời kể đạt ít nhất 50% thời lượng, bỏ mức trần khi bật thêm cảnh (commit `6a2b4c4`, câu 24 mục 1.2)
