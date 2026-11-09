@@ -144,15 +144,8 @@ def _http_error(status: int, text: str, api_key: str, retry_after: Optional[str]
     return LLMError("http", f"9router trả lỗi HTTP {status}: {preview}" if preview else f"9router trả lỗi HTTP {status}.")
 
 
-async def call_llm_json(
-    system: str,
-    user: str,
-    *,
-    temperature: float = 0.4,
-    timeout: float = 240.0,
-    client: Optional[httpx.AsyncClient] = None,
-) -> Any:
-    """Gọi 9router một lần, trả về JSON (dict/list) model sinh ra. Mọi lỗi đều là LLMError."""
+async def _post_chat(payload: dict, *, timeout: float, client: Optional[httpx.AsyncClient]) -> httpx.Response:
+    """Gửi một yêu cầu /chat/completions tới cổng AI trong .env; trả response HTTP 200, lỗi khác thành LLMError."""
     api_key = (config.NINEROUTER_API_KEY or "").strip()
     base_url = (config.NINEROUTER_BASE_URL or "").strip()
     if not api_key:
@@ -162,15 +155,6 @@ async def call_llm_json(
 
     endpoint = f"{base_url.rstrip('/')}/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    payload = {
-        "model": config.NINEROUTER_LLM_MODEL,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        "stream": False,
-        "temperature": temperature,
-    }
 
     own_client = client is None
     http = httpx.AsyncClient(timeout=timeout) if own_client else client
@@ -195,6 +179,28 @@ async def call_llm_json(
         error = _http_error(response.status_code, response.text, api_key, response.headers.get("retry-after"))
         logger.warning("9router HTTP %s (%s)", response.status_code, error.kind)
         raise error
+    return response
+
+
+async def call_llm_json(
+    system: str,
+    user: str,
+    *,
+    temperature: float = 0.4,
+    timeout: float = 240.0,
+    client: Optional[httpx.AsyncClient] = None,
+) -> Any:
+    """Gọi 9router một lần, trả về JSON (dict/list) model sinh ra. Mọi lỗi đều là LLMError."""
+    payload = {
+        "model": config.NINEROUTER_LLM_MODEL,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "stream": False,
+        "temperature": temperature,
+    }
+    response = await _post_chat(payload, timeout=timeout, client=client)
 
     try:
         content = response.json()["choices"][0]["message"]["content"]
@@ -212,3 +218,32 @@ async def call_llm_json(
             "invalid_json",
             "Model trả về nội dung không phải JSON hợp lệ. Thử lại; nếu lặp lại, rút ngắn bài gốc hoặc đổi model.",
         ) from None
+
+
+async def call_chat_image(
+    prompt: str,
+    model: str,
+    *,
+    timeout: float = 150.0,
+    client: Optional[httpx.AsyncClient] = None,
+) -> str:
+    """Model ảnh Gemini qua /chat/completions (cách CLI Proxy trả ảnh, đo thật 09/11/2026).
+
+    Trả data URL hoặc link ảnh lấy ở choices[0].message.images[0].image_url.url. Không có ảnh thì LLMError.
+    """
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": f"Generate an image: {prompt}"}],
+        "stream": False,
+    }
+    response = await _post_chat(payload, timeout=timeout, client=client)
+    try:
+        message = response.json()["choices"][0]["message"] or {}
+    except (ValueError, KeyError, IndexError, TypeError):
+        raise LLMError("invalid_json", "Cổng AI trả về phản hồi không đúng định dạng chat completion khi tạo ảnh.") from None
+    for item in message.get("images") or []:
+        url = (item.get("image_url") or {}).get("url") if isinstance(item, dict) else None
+        if url:
+            return url
+    said = str(message.get("content") or "")[:_ERROR_BODY_PREVIEW]
+    raise LLMError("http", f"Model ảnh trả lời mà không có ảnh. Lời model: {said or '(trống)'}")

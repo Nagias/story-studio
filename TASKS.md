@@ -516,3 +516,12 @@ Dự án `proj_crime_03b5d8c5`, vụ `_cases/case_4242cd2b`, phong cách đầu 
 - [x] Kiểm chứng: 23 clip, mỗi clip dài hơn lời đọc 0–1 giây, không clip nào trùng file; trích 3 khung mỗi clip: đầu tròn, nhân vật khớp bảng; 23 đoạn dựng khớp clip gốc (lệch dưới 1/255); xem khung hình video cuối ở cảnh 005, 021, 055, 068: đúng hình clip; clip chiếm 388,2 / 1180,1 giây = 32,9%; phụ đề chồng 0; giọng cụt 0 (mọi dự án); `projects/` không thêm dự án
 - [ ] Còn dưới mức 50% video Muse: app chỉ chọn tối đa một nửa số cảnh có người, 20 cảnh bảng chữ và lời cảnh báo không làm clip được; cảnh 004, 045 vẫn là ảnh tĩnh
 - Số lần gọi Muse cho clip: 25 lưới + 2 lưới vẽ lại; việc làm clip 29 lượt (lượt 1: 18 xong + 5 hỏng; lượt làm lại: 5 xong + 1 hỏng); mỗi lượt Muse tự khai tối đa 6 video + 4 ảnh
+
+
+# TASKS — đổi cổng AI từ 9router sang CLI Proxy (2026-11-09, nhánh `doi-sang-cli-proxy`)
+
+- [x] `.env`: `NINEROUTER_BASE_URL=http://127.0.0.1:8317/v1`, key CLI Proxy do chủ dự án dán; model bỏ tiền tố `ag/`: chữ `gemini-3.8-flash-high`, ảnh `gemini-3.1-flash-image`, chia cảnh `gemini-3-flash` (CLI Proxy không có `-low`). Dòng 9router cũ giữ dạng ghi chú; bản sao `.cache/env.backup-truoc-cli-proxy`
+- [x] `tests/conftest.py`: chặn cổng 8317 cho test không gắn cờ `live` (kiểm bằng test tạm: bị chặn, đã xoá test tạm)
+- [x] `image_service.generate_9router_gemini`: CLI Proxy trả HTTP 400 "not supported on /v1/images/generations" cho model ảnh Gemini → gọi `/chat/completions` qua hàm mới `case_adaptation_llm.call_chat_image` (đường cấm 5: không viết client LLM riêng; tách phần gửi chung `_post_chat`, `call_llm_json` giữ nguyên hành vi), lấy ảnh ở `choices[0].message.images`; 9router vẫn đi `/images/generations` như cũ. Test `tests/test_image_gemini_chat_endpoint.py` (4 test)
+- [x] Đo thật qua code app: `call_llm_json` 4,6 s; chia cảnh đoạn `dossier.txt` (1.481 ký tự): `gemini-3-flash` 3,3 s / 6 cảnh, `gemini-3.5-flash-lite` 3,5 s / 6 cảnh, `gemini-3.8-flash-high` 24 s / 6 cảnh, không cảnh nào rơi về chia offline; ảnh Gemini 10,6 s, 1376×768, mở xem đúng nội dung. `projects/` không có thư mục mới
+- [ ] Chưa làm (đề xuất): đổi mặc định `config.py`, `.env.example`, README, `tools/cai_dat.bat`, CLAUDE.md mục 3, chữ "9router" trong thông báo lỗi và giao diện

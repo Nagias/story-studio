@@ -20,8 +20,9 @@ from config import (
     DEFAULT_IMAGE_PROVIDER,
     DEFAULT_STYLE,
 )
+from services.case_adaptation_llm import LLMError, call_chat_image
 
-logger = logging.getLogger("story_studio.image_service")
+logger =logging.getLogger("story_studio.image_service")
 
 # Muse chưa online thì bật Fleet Runner và chờ chừng này giây cho nó đăng ký (đo thật: ~15 s) trước khi dùng ảnh trả phí
 MUSE_RUNNER_START_WAIT_S = 60.0
@@ -503,6 +504,19 @@ async def generate_pollinations(
     clean_watermark(output_path)
     return output_path
 
+def _image_url_from_images_api(data: dict) -> str:
+    """Ảnh trong câu trả lời /images/generations (9router): trả data URL hoặc link ảnh."""
+    image_data = data.get("data") or []
+    if not image_data:
+        raise RuntimeError("9router Image API returned empty data list.")
+    first_item = image_data[0]
+    if first_item.get("b64_json"):
+        return "data:image/png;base64," + first_item["b64_json"]
+    if first_item.get("url"):
+        return first_item["url"]
+    raise RuntimeError("9router Image API returned unrecognized data item format.")
+
+
 async def generate_9router_gemini(
     prompt: str,
     output_path: str,
@@ -523,31 +537,32 @@ async def generate_9router_gemini(
         "model": target_model,
     }
 
-    url = f"{NINEROUTER_BASE_URL.rstrip('/')}/images/generations"
+    base_url = NINEROUTER_BASE_URL.rstrip("/")
     async with httpx.AsyncClient(timeout=75.0) as client:
-        resp = await client.post(url, headers=headers, json=payload)
-        if resp.status_code != 200:
+        resp = await client.post(f"{base_url}/images/generations", headers=headers, json=payload)
+        if resp.status_code == 200:
+            image_url = _image_url_from_images_api(resp.json())
+        elif resp.status_code == 400 and "not supported" in resp.text.lower():
+            # CLI Proxy không nhận model ảnh Gemini ở /images/generations (đo thật 09/11/2026),
+            # chỉ trả ảnh qua /chat/completions: gọi qua client LLM chung (đường cấm 5)
+            try:
+                image_url = await call_chat_image(payload["prompt"], target_model, client=client)
+            except LLMError as e:
+                raise RuntimeError(f"API ảnh Gemini (cổng chat): {e.user_message}") from e
+        else:
             raise RuntimeError(f"9router Image API failed with HTTP {resp.status_code}: {resp.text[:300]}")
-        data = resp.json()
 
-    image_data = data.get("data", [])
-    if not image_data:
-        raise RuntimeError("9router Image API returned empty data list.")
-
-    first_item = image_data[0]
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    if "b64_json" in first_item:
-        img_bytes = base64.b64decode(first_item["b64_json"])
-    elif first_item.get("url"):
-        async with httpx.AsyncClient(timeout=40.0) as client:
-            r = await client.get(first_item["url"])
-        if r.status_code != 200:
-            raise RuntimeError(f"Không tải được ảnh 9router (HTTP {r.status_code})")
-        img_bytes = r.content
+    if image_url.startswith("data:"):
+        img_bytes = base64.b64decode(image_url.split(",", 1)[1])
     else:
-        raise RuntimeError("9router Image API returned unrecognized data item format.")
+        async with httpx.AsyncClient(timeout=40.0) as client:
+            r = await client.get(image_url)
+        if r.status_code != 200:
+            raise RuntimeError(f"Không tải được ảnh Gemini (HTTP {r.status_code})")
+        img_bytes = r.content
 
     try:
         with Image.open(io.BytesIO(img_bytes)) as pil_img:
