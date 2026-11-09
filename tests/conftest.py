@@ -37,8 +37,8 @@ os.environ.setdefault("PYTEST_DEBUG_TEMPROOT", str(_TEST_TMP_ROOT))
 
 # --------------------------------------------------------------------------- chặn mạng cho test không gắn cờ live
 _LOOPBACK_NAMES = {"localhost", "::1", "0.0.0.0", "::"}
-# Dịch vụ thật chạy trên chính máy này: 9router, server giọng VieNeu, server Story Studio đang dùng
-_REAL_LOCAL_PORTS = {20128, 5005, 8000}
+# Dịch vụ thật chạy trên chính máy này: 9router, CLI Proxy, server giọng VieNeu, server Story Studio đang dùng
+_REAL_LOCAL_PORTS = {20128, 8317, 5005, 8000}
 
 
 class NetworkBlocked(ConnectionRefusedError):
