@@ -517,6 +517,14 @@ Dự án `proj_crime_03b5d8c5`, vụ `_cases/case_4242cd2b`, phong cách đầu 
 - [ ] Còn dưới mức 50% video Muse: app chỉ chọn tối đa một nửa số cảnh có người, 20 cảnh bảng chữ và lời cảnh báo không làm clip được; cảnh 004, 045 vẫn là ảnh tĩnh
 - Số lần gọi Muse cho clip: 25 lưới + 2 lưới vẽ lại; việc làm clip 29 lượt (lượt 1: 18 xong + 5 hỏng; lượt làm lại: 5 xong + 1 hỏng); mỗi lượt Muse tự khai tối đa 6 video + 4 ảnh
 
+### Bản tiếng Anh (10/11/2026)
+- [x] `POST /api/projects/proj_crime_03b5d8c5/create-language-version` trên server 8000: dự án `proj_crime_f297bced` "Shadows in the Cornfield", 72 cảnh, 72 ảnh, 23 clip Muse chép từ bản Việt; không cảnh nào phải viết lại (0 lượt LLM, 0 lượt Muse). Giọng `en-US-AndrewMultilingualNeural`
+- [x] Kiểm lời Anh (`.cache/vu_an/kiem_ten_en.py`): 41 tên trong danh sách cấm, lọt 0; con số nhận dạng 0; tên dạng Việt 0; 2.899 chữ. Cảnh 38, 68 (đã sửa tay ở bản Việt) đúng ý ở bản Anh
+- [x] Dựng: 1256,8 giây (20 phút 57 giây), 1080p; clip chiếm 404,1 giây = 32,2%; thẻ cảnh báo và bảng hồ sơ bằng tiếng Anh
+- [x] Lỗi phụ đề nháy hai dòng: kiểu `kinetic_pop` giữ mỗi chữ tối thiểu 0,12 giây nên dòng chữ trước chưa tắt thì dòng chữ sau đã hiện (bản Anh 388 chỗ, bản Việt 7 chỗ; lần kiểm trước chỉ đọc SRT nên không thấy). Sửa `subtitle_engine.generate_karaoke_ass()`: dòng tắt khi chữ sau hoặc cảnh sau bắt đầu; test `tests/test_subtitle_no_overlap.py` (đỏ trước khi sửa). Dựng lại cả hai bản trên server thử (cổng 8011 vì 8010 bị chương trình khác giữ): phụ đề ASS chồng 0 ở cả hai bản, SRT chồng 0, giọng cụt 0; xem khung hình phút 5:36 bản Anh còn một dòng. Bản trước giữ ở `.cache/vu_an/story_final_en_ban1.mp4`
+- [x] `tools/check.py --full`: 999 đạt, 1 lỗi có từ trước (`test_fleet_runner_10_accounts_loaded`). `projects/` chỉ thêm `proj_crime_f297bced`
+- [ ] Bản Anh: 14/23 cảnh có lời dài hơn clip, app giữ khung cuối của clip cho phần dư (dài nhất 3,2 giây ở cảnh 13, tổng 18,7 giây); muốn hết phải làm clip Muse dài hơn (tốn Muse)
+
 
 # TASKS — đổi cổng AI từ 9router sang CLI Proxy (2026-11-09, nhánh `doi-sang-cli-proxy`)
 
