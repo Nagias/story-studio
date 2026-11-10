@@ -42,8 +42,10 @@ from services.tts_service import MediaDurationError, get_audio_duration
 
 logger = logging.getLogger("story_studio.climax_video")
 
+# Phần thời lượng video TỐI THIỂU làm bằng video Muse (chủ dự án, CLAUDE.md mục 1.2 câu 24: "50% video youtube là
+# video"). Là mức sàn tính theo số giây lời kể của cả video, không phải mức trần theo số cảnh.
 CLIMAX_RATIO = 0.5
-CLIP_SECONDS = 5            # một ô lưới ứng với ~5 giây lời kể (số ô, số lưới); Muse tự quyết độ dài từng clip
+CLIP_SECONDS = 5           # một ô lưới ứng với ~5 giây lời kể (số ô, số lưới); Muse tự quyết độ dài từng clip
 PANELS_PER_GRID = 9
 SCENE_IMAGE_MIN_SIMILARITY = 0.45   # ảnh Muse gửi kèm phải giống ảnh cảnh cũ chừng này mới thay (ảnh góc sau thì không)
 SCENE_IMAGE_RATIO_TOL = 0.03
@@ -120,18 +122,39 @@ def scene_score(scene: Scene) -> int:
     return score
 
 
-def climax_limit(project: Project) -> int:
-    """Số cảnh tối đa được làm video: CLIMAX_RATIO số cảnh hợp lệ, làm tròn xuống."""
-    eligible = sum(1 for s in project.scenes if is_eligible(s))
-    return math.floor(CLIMAX_RATIO * eligible)
+def _scenes_with_people(project: Project) -> Optional[set[str]]:
+    """Id cảnh có nhân vật (lưới và clip chỉ làm được cho cảnh có người); None nếu dự án chưa có bảng nhân vật."""
+    cast = cs.peek_cast(project)
+    if cast is None:
+        return None
+    return {sid for sid, people in cs.scene_cast(project, cast).items() if people}
 
 
 def pick_climax_scenes(project: Project) -> list[str]:
-    """Id các cảnh nên làm video: điểm cao trước, bằng điểm thì cảnh đứng trước; trả theo thứ tự cảnh trong dự án."""
-    scored = [(scene_score(s), i, s.id) for i, s in enumerate(project.scenes)]
-    ranked = sorted((t for t in scored if t[0] > 0), key=lambda t: (-t[0], t[1]))
-    chosen = {sid for _, _, sid in ranked[:climax_limit(project)]}
+    """Id các cảnh nên làm video, đủ để lời kể của chúng chiếm ít nhất CLIMAX_RATIO tổng thời lượng lời kể cả video.
+    Chỉ cảnh hợp lệ có nhân vật; điểm cao trước, bằng điểm thì cảnh đứng trước; trả theo thứ tự cảnh trong dự án.
+    Chưa có giọng đọc (không biết thời lượng) thì lấy CLIMAX_RATIO số cảnh dùng được, làm tròn lên."""
+    people = _scenes_with_people(project)
+    usable = [(scene_score(s), i, s) for i, s in enumerate(project.scenes)
+              if is_eligible(s) and (people is None or s.id in people)]
+    ranked = sorted(usable, key=lambda t: (-t[0], t[1]))
+    total = sum(s.duration or 0 for s in project.scenes)
+    chosen: set[str] = set()
+    if total > 0:
+        covered = 0.0
+        for _, _, s in ranked:
+            if covered >= CLIMAX_RATIO * total:
+                break
+            chosen.add(s.id)
+            covered += s.duration or 0
+    else:
+        chosen = {s.id for _, _, s in ranked[:math.ceil(CLIMAX_RATIO * len(ranked))]}
     return [s.id for s in project.scenes if s.id in chosen]
+
+
+def climax_limit(project: Project) -> int:
+    """Số cảnh cần làm video để đạt CLIMAX_RATIO thời lượng (số cảnh `pick_climax_scenes()` chọn)."""
+    return len(pick_climax_scenes(project))
 
 
 # --------------------------------------------------------------------------------------------------- số clip, số grid

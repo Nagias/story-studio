@@ -225,9 +225,11 @@ def test_scene_score_counts_each_signal():
                                  sfx=["heartbeat"])) == 8
 
 
-def test_pick_limits_to_half_prefers_score_then_order():
+def test_pick_covers_half_of_runtime_prefers_score_then_order():
+    """50% là mức sàn thời lượng của cả video (CLAUDE.md mục 1.2 câu 24), không phải mức trần 50% số cảnh: video vụ
+    Khang Cúc Hoa (07/11/2026) chỉ ra 32,9% vì mức trần cũ."""
     scenes = [
-        _scene("scene_001", kind="disclaimer", beat="hook"),            # không hợp lệ
+        _scene("scene_001", kind="disclaimer", beat="hook"),            # không hợp lệ (vẫn tính vào tổng thời lượng)
         _scene("scene_002", beat="hook"),                               # 1
         _scene("scene_003", energy="tension_buildup"),                  # 1
         _scene("scene_004", kind="board", beat="climax"),               # không hợp lệ
@@ -238,13 +240,30 @@ def test_pick_limits_to_half_prefers_score_then_order():
         _scene("scene_009"),                                            # 0
     ]
     project = Project(id="proj_x", name="x", scenes=scenes)
-    # 7 cảnh hợp lệ -> tối đa floor(3,5) = 3: điểm 4, 3, rồi trong ba cảnh 1 điểm lấy cảnh đứng trước (scene_002)
-    assert cv.pick_climax_scenes(project) == ["scene_002", "scene_005", "scene_008"]
-    # ít cảnh có điểm hơn giới hạn: chỉ lấy cảnh có điểm > 0
+    # tổng 9 x 12 = 108 giây -> cần >= 54: điểm 4, 3, rồi ba cảnh 1 điểm theo thứ tự = 5 cảnh, 60 giây
+    assert cv.pick_climax_scenes(project) == ["scene_002", "scene_003", "scene_005", "scene_007", "scene_008"]
+    assert cv.climax_limit(project) == 5
+    # cảnh 0 điểm vẫn được lấy khi chưa đủ thời lượng
     few = Project(id="proj_y", name="y", scenes=[_scene("scene_001", beat="climax"), *[_scene(f"scene_00{i}")
                                                                                        for i in range(2, 7)]])
-    assert cv.pick_climax_scenes(few) == ["scene_001"]
-    assert cv.pick_climax_scenes(Project(id="proj_z", name="z", scenes=[_scene("scene_001", beat="climax")])) == []
+    assert cv.pick_climax_scenes(few) == ["scene_001", "scene_002", "scene_003"]
+    assert cv.pick_climax_scenes(Project(id="proj_z", name="z", scenes=[_scene("scene_001", beat="climax")])) == [
+        "scene_001"]
+    # cảnh ngắn: cần nhiều cảnh hơn cho đủ số giây
+    # tổng 14 giây -> cần >= 7: 2 + 2 chưa đủ, thêm cảnh 10 giây
+    short = Project(id="proj_s", name="s", scenes=[_scene("scene_001", beat="climax", duration=2.0),
+                                                   _scene("scene_002", duration=2.0), _scene("scene_003", duration=10.0)])
+    assert cv.pick_climax_scenes(short) == ["scene_001", "scene_002", "scene_003"]
+    # chưa có giọng đọc: CLIMAX_RATIO số cảnh, làm tròn lên
+    silent = Project(id="proj_t", name="t", scenes=[_scene(f"scene_00{i}", duration=0.0) for i in range(1, 4)])
+    assert cv.pick_climax_scenes(silent) == ["scene_001", "scene_002"]
+
+
+def test_pick_skips_scenes_without_people():
+    project = _save_project([_scene("scene_001", beat="climax"), _scene("scene_002"), _scene("scene_003")],
+                            pid="proj_crime_pick01")
+    cs.set_scene_cast(project.id, "scene_001", [])   # cảnh phong cảnh: không làm lưới/clip được
+    assert cv.pick_climax_scenes(project_service.get_project(project.id)) == ["scene_002", "scene_003"]
 
 
 def test_clip_count_and_grid_plan():
@@ -452,35 +471,37 @@ def test_api_pick_toggle_and_ids(client):
     project = _api_project()
     pid = project.id
     base = f"/api/projects/{pid}/climax-video"
-    # 4 cảnh hợp lệ -> tối đa 2: scene_002 (2 điểm), scene_004 (2 điểm)
+    # tổng 64 giây -> cần >= 32: 002 (2 điểm), 004 (2 điểm, 4 giây), 006 (1 điểm), 003 (0 điểm) = 40 giây
     r = client.post(f"{base}/pick")
-    assert r.status_code == 200 and r.json()["scene_ids"] == ["scene_002", "scene_004"]
-    assert _statuses(pid) == {"scene_001": None, "scene_002": "selected", "scene_003": None, "scene_004": "selected",
-                              "scene_005": None, "scene_006": None}
+    assert r.status_code == 200 and r.json()["scene_ids"] == ["scene_002", "scene_003", "scene_004", "scene_006"]
+    assert r.json()["limit"] == 4
+    assert _statuses(pid) == {"scene_001": None, "scene_002": "selected", "scene_003": "selected",
+                              "scene_004": "selected", "scene_005": None, "scene_006": "selected"}
 
-    # đã đủ 2 cảnh: bật thêm thì 400; tắt một cảnh rồi bật cảnh khác thì được
-    assert client.put(f"{base}/scenes/scene_006", json={"enabled": True}).status_code == 400
-    assert client.put(f"{base}/scenes/scene_002", json={"enabled": False}).json()["status"] is None
+    # 50% là mức sàn, không có mức trần: tắt rồi bật lại luôn được
+    assert client.put(f"{base}/scenes/scene_006", json={"enabled": False}).json()["status"] is None
     assert client.put(f"{base}/scenes/scene_006", json={"enabled": True}).json()["status"] == "selected"
     # cảnh bảng ghim / thẻ miễn trừ không bật được
     assert client.put(f"{base}/scenes/scene_005", json={"enabled": True}).status_code == 400
     assert client.put(f"{base}/scenes/scene_001", json={"enabled": True}).status_code == 400
     assert client.put(f"{base}/scenes/scene_999", json={"enabled": True}).status_code == 404
 
-    # chọn lại: bỏ dấu "selected" cũ (scene_006), không đụng cảnh "ready"
+    # chọn lại: bỏ dấu "selected" cũ của cảnh không còn chọn (scene_003 hết người), không đụng cảnh "ready"
     p = project_service.get_project(pid)
     for s in p.scenes:
         if s.id == "scene_004":
             s.metadata["climax_video"] = {"status": "ready", "clips": 1, "grids": 1, "attempts": 1}
     project_service.save_project(p)
+    cs.set_scene_cast(pid, "scene_003", [])
     r = client.post(f"{base}/pick")
-    assert r.json()["scene_ids"] == ["scene_002", "scene_004"]
-    assert _statuses(pid)["scene_004"] == "ready" and _statuses(pid)["scene_006"] is None
+    assert r.json()["scene_ids"] == ["scene_002", "scene_004", "scene_006"]
+    assert _statuses(pid)["scene_004"] == "ready" and _statuses(pid)["scene_003"] is None
     assert _statuses(pid)["scene_002"] == "selected"
 
     st = client.get(f"{base}/status").json()
-    assert st["running"] is False
-    assert {s["scene_id"]: s["status"] for s in st["scenes"]} == {"scene_002": "selected", "scene_004": "ready"}
+    assert st["running"] is False and st["limit"] == 3
+    assert {s["scene_id"]: s["status"] for s in st["scenes"]} == {"scene_002": "selected", "scene_004": "ready",
+                                                                  "scene_006": "selected"}
 
     assert client.post("/api/projects/proj_khong_co/climax-video/pick").status_code == 404
     assert client.get("/api/projects/proj_khong_co/climax-video/status").status_code == 404
