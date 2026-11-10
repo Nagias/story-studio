@@ -183,6 +183,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 for w_idx, active_item in enumerate(chunk):
                     w_start = cumulative_offset + active_item["start"]
                     w_end = cumulative_offset + max(active_item["start"] + 0.12, active_item["end"])
+                    # Mỗi chữ là một dòng: dòng phải tắt khi chữ sau (hoặc cảnh sau) bắt đầu, nếu không hai dòng
+                    # hiện cùng lúc và libass đẩy một dòng lên trên (10/11/2026: 388 chỗ nháy ở bản Anh).
+                    next_idx = i + w_idx + 1
+                    if next_idx < len(word_timings):
+                        w_end = min(w_end, cumulative_offset + word_timings[next_idx]["start"])
+                    w_end = min(w_end, cumulative_offset + duration)
+                    if w_end <= w_start:
+                        continue
 
                     line_parts = []
                     for other_idx, other_item in enumerate(chunk):
