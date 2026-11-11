@@ -182,7 +182,8 @@ def test_draft_goes_to_its_own_file_and_never_becomes_the_final_video(isolated_p
     state = _run_render(draft=True)
     assert state["status"] == "completed"
     assert Path(fake_render["assemble"][0]).name == video_share.DRAFT_VIDEO_NAME
-    assert any("BẢN NHÁP" in line for line in state["logs"])
+    assert any("BẢN NHÁP" in line for line in state["logs"]) and "BẢN NHÁP" in state["step_label"]
+    assert not any("Thành Phẩm" in line for line in state["logs"])
     p = project_service.get_project(PID)
     assert p.final_video_path is None and p.final_video_url is None and fake_render["thumbnail"] == 0
     assert p.metadata["video_share_draft"]["percent"] == 30.0 and "video_share" not in p.metadata
@@ -210,6 +211,7 @@ def test_scene_without_people_gets_a_landscape_video_without_grid(isolated_proje
     task = muse.tasks[0]
     assert "không có nhân vật" in task["prompt"] and "không lia, không zoom" in task["prompt"]
     assert "Không thêm người" in task["prompt"] and len(task["attachments"]) == 1
+    assert "CẤM tự dựng clip" in task["prompt"]
     scene_img = project_service.get_scene_media_paths(pid, sid)["image"]
     assert Path(task["attachments"][0]).resolve() == scene_img.resolve()
 

@@ -1408,7 +1408,7 @@ async def execute_full_render(project_id: str, render_id: str, options: RenderRe
             "status": "completed",
             "progress": 100,
             "step": 4,
-            "step_label": "Hoàn tất dựng video truyện thành công!",
+            "step_label": "Hoàn tất BẢN NHÁP (không phải thành phẩm)" if options.draft else "Hoàn tất dựng video truyện thành công!",
             "video_url": final_video_url,
             "video_path": assemble_res["video_path"],
             "logs": active_renders[render_id]["logs"] + [
@@ -1828,7 +1828,8 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
             "status": "completed",
             "progress": 100,
             "step": 5,
-            "step_label": "Hoàn tất sản xuất Video Dài thành công (100%)!",
+            "step_label": ("Hoàn tất BẢN NHÁP (không phải thành phẩm)" if req.draft
+                           else "Hoàn tất sản xuất Video Dài thành công (100%)!"),
             "video_url": final_video_url,
             "video_path": assemble_res["video_path"],
             "srt_url": final_srt_url,
@@ -1837,7 +1838,8 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
                 f"[Giai đoạn 5/5] Hoàn tất ghép video: {assemble_res['video_path']}",
                 f"[Giai đoạn 5/5] Tổng thời lượng: {assemble_res['duration']}s",
                 *share_lines,
-                "Video đã sẵn sàng phát tại Rạp Chiếu Phim Thành Phẩm!"
+                "Bản nháp xem được ở Rạp Chiếu Phim; video thành phẩm của dự án giữ nguyên." if req.draft
+                else "Video đã sẵn sàng phát tại Rạp Chiếu Phim Thành Phẩm!"
             ],
         })
 

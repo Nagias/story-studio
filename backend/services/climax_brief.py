@@ -64,6 +64,18 @@ def _female_hair_lines(project: Project) -> list[str]:
             f"{FEMALE_HAIR_RULE_EN}"]
 
 
+# Thử thật 11/11/2026 (vụ xưởng sắt cảnh 7): clip AI méo đầu ở giây 3, Muse bỏ rồi TỰ DỰNG 3 clip bằng công cụ trên máy
+# của nó từ ảnh tĩnh (máy quay di chuyển, đèn nhấp nháy, tối dần) và vẫn tự chấm ĐẠT ("thân người đứng yên").
+AI_CLIPS_ONLY = (
+    "- Mọi đoạn trong video cuối phải là video do công cụ tạo video AI (Muse Video) làm ra. CẤM tự dựng clip bằng "
+    "Python, ffmpeg, PIL hay công cụ khác từ ảnh tĩnh (lia, zoom, đèn nhấp nháy, tối dần, ghép lớp, chuyển động máy "
+    "quay giả): video như vậy là KHÔNG ĐẠT dù đẹp. ffmpeg chỉ được dùng để cắt bỏ phần hỏng, ghép các clip AI và chỉnh "
+    "màu cho khớp.",
+    "- Hết ngân sách mà không đủ clip AI đạt thì ghép những phần AI đạt được, video ngắn hơn cũng được, và báo KHÔNG "
+    "ĐẠT ở phần thiếu; không lấp chỗ thiếu bằng ảnh tĩnh chuyển động.",
+)
+
+
 def landscape_brief(project: Project, scene: Scene, seconds: float, done_token: str,
                     location_line: Optional[str], has_plate: bool) -> str:
     """Bản giao việc cho cảnh vẽ không có nhân vật (phong cảnh, căn phòng, đồ vật): chuyển động đến từ vật trong cảnh, máy
@@ -92,6 +104,7 @@ def landscape_brief(project: Project, scene: Scene, seconds: float, done_token: 
         "- Máy quay đứng yên như đặt trên chân máy: không lia, không zoom. Chỉ máy quay lia/zoom trên một khung đứng "
         "im là KHÔNG ĐẠT.",
         "- Không thêm người, không thêm con vật, không thêm chữ, phụ đề, logo.",
+        *AI_CLIPS_ONLY,
         "- Giữ đúng nét vẽ 2D, bố cục, màu sắc và ánh sáng của Ảnh 1 suốt video; không đổi sang ảnh thật.",
         "",
         "Các bước:",
@@ -149,6 +162,7 @@ def scene_brief(project: Project, scene: Scene, people: list[CharacterSheet], gr
         "- Đoạn nhân vật quay lưng phải bắt đầu từ một ảnh góc sau vẽ riêng (cùng nhân vật, cùng phong cách, chỉ thấy "
         "tóc phủ kín đầu, không chút màu trắng nào của đầu), dùng ảnh đó làm khung đầu của clip.",
         "- Máy quay đứng yên như đặt trên chân máy: không lia, không zoom; chuyển động đến từ nhân vật và vật trong cảnh.",
+        *AI_CLIPS_ONLY,
         "- Ảnh 1 khác Ảnh 2 ở dáng đầu hay mái tóc, hoặc có nhân vật nữ đầu trọc (tóc chỉ là một chỏm sau gáy), thì vẽ "
         "lại Ảnh 1 trước (giữ nguyên mọi thứ khác, chỉ sửa dáng đầu, mái tóc cho đúng), rồi dùng ảnh đã sửa làm khung "
         "đầu.",
@@ -157,7 +171,11 @@ def scene_brief(project: Project, scene: Scene, people: list[CharacterSheet], gr
         "1. Tự lập danh sách clip từ lời kể và storyboard: ô nào góc trước/nghiêng, ô nào góc sau, mỗi clip làm gì, cắt "
         "cảnh ở đâu. Ghi danh sách clip đó vào báo cáo.",
         "2. Vẽ các ảnh khởi đầu cần thiết (ảnh cảnh đã sửa, ảnh góc sau) và tự kiểm với Ảnh 2.",
-        "3. Làm từng clip từ ảnh khởi đầu của nó. Sau mỗi clip: trích khung mỗi giây và khung cuối, tự so với ảnh khởi "
+        "3. Làm từng clip bằng Muse Video, mỗi clip MỘT hành động đơn giản dài 3–6 giây: đưa ô storyboard của lúc bắt "
+        "đầu hành động làm khung ĐẦU và ô của lúc hành động xong làm khung CUỐI (ghi rõ trong prompt: ảnh thứ nhất là "
+        "khung đầu, ảnh thứ hai là khung cuối), kèm câu khoá: giữ đầu tròn trắng to, chấm mắt, tóc, quần áo như Ảnh 2; "
+        "clip sau nối từ khung cuối của clip trước (dùng resume_from_snapshot_id khi được). Đầu bắt đầu méo từ giây nào "
+        "thì cắt bỏ từ giây đó, giữ phần trước (ít nhất 2 giây) rồi làm clip tiếp từ khung cuối của phần giữ. Sau mỗi clip: trích khung mỗi giây và khung cuối, tự so với ảnh khởi "
         "đầu và Ảnh 2. Loại nếu có bất kỳ khung nào: mặt người hay mặt anime, đầu nhỏ lại hoặc méo, nhân vật nữ mất tóc "
         "trên đỉnh đầu, đĩa trắng sau tóc, đổi màu quần áo, thêm người, cắt cảnh trong clip; hoặc so các khung cách "
         "nhau một giây mà nhân vật gần như đứng im. Bị loại thì tạo lại (viết prompt khác, chia hành động thành clip "

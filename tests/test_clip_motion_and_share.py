@@ -138,6 +138,7 @@ def test_climax_brief_demands_body_motion_and_never_asks_to_reduce_it(isolated_p
     assert "cử động ít" not in brief and "giảm cử động" not in brief and "lia rất chậm" not in brief
     assert "không phải ảnh chuyển động" in brief and "không lia, không zoom" in brief
     assert "không được sửa bằng cách bớt cử động" in brief
+    assert "CẤM tự dựng clip" in brief and "khung CUỐI" in brief      # thử thật 11/11: Muse tự dựng clip giả từ ảnh tĩnh
 
 
 @pytest.mark.parametrize("score, warned", [(0.0, True), (6.0, False)])
