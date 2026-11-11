@@ -23,8 +23,9 @@
 
   function project() { return AppState.currentProject; }
 
-  function isEligible(scene) {   // cảnh có hình vẽ; cảnh không ghi loại (truyện chữ cũ) là cảnh ảnh
+  function isEligible(scene) {   // cảnh có hình vẽ; cảnh không ghi loại (truyện chữ cũ) là cảnh ảnh; ảnh thật thì không
     const kind = (scene && scene.metadata && scene.metadata.visual_kind) || 'image';
+    if (scene && scene.metadata && scene.metadata.real_photo) return false;   // services/climax_video.is_eligible()
     return kind === 'image' || kind === 'video';
   }
 

@@ -203,7 +203,7 @@ SERVER_OWNED_MEDIA_FIELDS = (
 )
 
 
-SERVER_OWNED_METADATA_KEYS = ("climax_video", "muse_dialogue_video", "motion_review")
+SERVER_OWNED_METADATA_KEYS = ("climax_video", "muse_dialogue_video", "motion_review", "real_photo")
 
 
 def _keep_server_media(existing: Optional[Project], incoming_scenes: List[Scene]) -> None:

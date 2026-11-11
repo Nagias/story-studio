@@ -49,6 +49,7 @@ CLIMAX_RATIO = 0.5
 # Dưới mức này không dựng được video thành phẩm (chủ dự án 11/11/2026: "Khoảng 50%, chặn dưới 45%"); chốt ở
 # services/video_share.py. CLIMAX_RATIO vẫn là mục tiêu khi chọn cảnh.
 GATE_MIN = 0.45
+REAL_PHOTO_KEY = "real_photo"   # scene.metadata: cảnh dùng ảnh thật của vụ án, không làm video Muse
 CLIP_SECONDS = 5          # một ô lưới ứng với ~5 giây lời kể (số ô, số lưới); Muse tự quyết độ dài từng clip
 PANELS_PER_GRID = 9
 SCENE_IMAGE_MIN_SIMILARITY = 0.45   # ảnh Muse gửi kèm phải giống ảnh cảnh cũ chừng này mới thay (ảnh góc sau thì không)
@@ -98,8 +99,10 @@ def _visual_kind(scene: Scene) -> Optional[str]:
 
 
 def is_eligible(scene: Scene) -> bool:
-    """Cảnh làm được video cao trào: cảnh có hình vẽ của câu chuyện (không phải bảng ghim, thẻ miễn trừ)."""
-    return _visual_kind(scene) in ELIGIBLE_KINDS
+    """Cảnh làm được video cao trào: cảnh có hình vẽ của câu chuyện (không phải bảng ghim, thẻ miễn trừ, ảnh thật).
+    Ảnh thật của vụ án (`metadata.real_photo`, vụ xưởng sắt có 8 ảnh) không bao giờ được Muse làm thành video: từ
+    11/11/2026 cảnh không người được làm video phong cảnh, không có dấu này thì ảnh thật bị chọn nhầm."""
+    return _visual_kind(scene) in ELIGIBLE_KINDS and not (scene.metadata or {}).get(REAL_PHOTO_KEY)
 
 
 def scene_score(scene: Scene) -> int:

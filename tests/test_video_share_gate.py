@@ -226,3 +226,19 @@ def test_project_without_any_character_list_is_not_treated_as_landscape(isolated
     project_service.ensure_project_dirs(project.id)
     project_service.save_project(project)
     assert cv.is_landscape(project, scene) is False
+
+
+def test_real_photo_scenes_are_never_made_into_muse_video(isolated_projects_dir):
+    """Vụ xưởng sắt có 8 ảnh thật không có người vẽ: không có dấu real_photo thì bị chọn làm video phong cảnh."""
+    project = _climax_project(duration=10.0, cast="none")
+    pid = project.id
+    p = project_service.get_project(pid)
+    for s in p.scenes:
+        if s.id == "scene_002":
+            s.metadata[cv.REAL_PHOTO_KEY] = True
+    project_service.save_project(p)
+    p = project_service.get_project(pid)
+    photo = next(s for s in p.scenes if s.id == "scene_002")
+    assert not cv.is_eligible(photo) and not cv.is_landscape(p, photo)
+    assert "scene_002" not in cv.pick_climax_scenes(p)
+    assert "real_photo" in api.SERVER_OWNED_METADATA_KEYS
