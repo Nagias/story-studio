@@ -12,30 +12,23 @@ from routers.muse_bridge import (
 )
 
 
-def test_fleet_runner_10_accounts_loaded():
+def test_fleet_accounts_loaded_with_capabilities_of_their_type():
+    """API trả về các tài khoản Fleet, mỗi tài khoản có khả năng đúng với loại của nó.
+
+    Số tài khoản và tên không cố định: chủ dự án 02/11/2026 (CLAUDE.md mục 1.2 câu 22) "có bao nhiêu dùng bấy nhiêu".
+    Test cũ đòi đúng 5 ảnh + 5 video và đoán loại theo tên (img/vid), nên lỗi khi chủ dự án đổi muse_acc_vid_01, 02 thành
+    tài khoản ảnh."""
     client = TestClient(app, base_url="http://127.0.0.1:8000", client=("127.0.0.1", 50000))
     resp = client.get("/api/muse-bridge/accounts")
     assert resp.status_code == 200
-    data = resp.json()
-    accounts = data["accounts"]
-
-    # Must contain the 10 fleet accounts
-    fleet_ids = [a["account_id"] for a in accounts if a["account_id"].startswith("muse_acc_img_") or a["account_id"].startswith("muse_acc_vid_")]
-    assert len(fleet_ids) >= 10, f"Expected 10 fleet accounts, got {len(fleet_ids)}"
-
-    img_fleet = [aid for aid in fleet_ids if "img" in aid]
-    vid_fleet = [aid for aid in fleet_ids if "vid" in aid]
-    assert len(img_fleet) == 5, f"Expected 5 image fleet accounts, got {len(img_fleet)}"
-    assert len(vid_fleet) == 5, f"Expected 5 video fleet accounts, got {len(vid_fleet)}"
-
-    # Check capabilities
-    for aid in img_fleet:
-        acc = next(a for a in accounts if a["account_id"] == aid)
-        assert "text-to-image" in acc["capabilities"]
-
-    for aid in vid_fleet:
-        acc = next(a for a in accounts if a["account_id"] == aid)
-        assert "image-to-video" in acc["capabilities"]
+    accounts = [a for a in resp.json()["accounts"] if a["account_id"].startswith("muse_acc_")]
+    assert accounts, "Không có tài khoản Fleet nào"
+    for acc in accounts:
+        assert acc.get("type") in ("image", "video"), acc["account_id"]
+        if acc["type"] == "image":
+            assert "text-to-image" in acc["capabilities"], acc["account_id"]
+        else:
+            assert "image-to-video" in acc["capabilities"], acc["account_id"]
 
 
 def test_image_payload_separation():

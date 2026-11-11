@@ -97,9 +97,10 @@ def is_path_within(path: Path, *bases: Path) -> bool:
 
 
 def discard_temp_file(path: Path) -> None:
-    """Xoá MỘT file tạm do runner tự tạo: ảnh đính kèm/ảnh phụ trong .work, video tải về không hợp lệ trong muse_outputs.
-    Chỗ xoá duy nhất cho file tạm của runner (đường cấm 12): file nằm ngoài hai thư mục này thì không xoá."""
-    if is_path_within(path, WORK_DIR, OUTPUTS_DIR) and Path(path).is_file():
+    """Xoá MỘT file tạm do runner tự tạo: ảnh đính kèm/ảnh phụ trong .work, video tải về không hợp lệ trong muse_outputs,
+    bằng chứng NO_MEDIA cũ (NO_MEDIA_DIAG_DIR). Chỗ xoá duy nhất cho file tạm của runner (đường cấm 12): file nằm ngoài
+    các thư mục này thì không xoá."""
+    if is_path_within(path, WORK_DIR, OUTPUTS_DIR, NO_MEDIA_DIAG_DIR) and Path(path).is_file():
         Path(path).unlink(missing_ok=True)
 
 
@@ -201,6 +202,11 @@ MIN_IMAGE_SIDE = 512
 MIN_VIDEO_SECONDS = 3.0
 MIN_VIDEO_SIDE = 360
 ACCOUNT_COOLDOWN_SEC = 60.0
+# Trần thời gian của cả một việc = thời gian chờ Muse + chừng này giây cho mở trình duyệt, tải trang, đính kèm, tải kết quả.
+# Quá trần thì bỏ việc (TASK_HUNG) và đóng trình duyệt (đóng cũng có trần). Gặp 09/11/2026: một lệnh đọc trang của
+# muse_acc_img_01 đứng im 5,5 giờ, vòng chờ 150 giây không tới được lần kiểm giờ sau, chiếm một luồng, 25 ảnh hết giờ.
+TASK_OVERHEAD_SEC = 600
+BROWSER_CLOSE_TIMEOUT_SEC = 30
 # Muse trả lời bằng chữ có từ báo lỗi (vd "hệ thống quá tải (503)") mà sau chừng này giây vẫn không có media: thất bại
 # ngay thay vì chờ hết MEDIA_WAIT_SEC (đo 27/10/2026: hai lần 503, runner cũ chờ trọn 7 phút)
 MUSE_REPLY_GRACE_SEC = 45
@@ -275,6 +281,26 @@ class TaskFailure(Exception):
 # -------------------------------------------------------------
 # Prompt Engineering Formatter (Phân tách Image vs Video)
 # -------------------------------------------------------------
+def task_ceiling_sec(task: Dict[str, Any]) -> float:
+    """Trần thời gian của một việc trên trình duyệt (xem TASK_OVERHEAD_SEC)."""
+    mode = str(task.get("mode") or "")
+    if mode == agent_turn.AGENT_VIDEO_MODE:
+        wait = int((task.get("agent") or {}).get("wait_sec") or 2700)
+    else:
+        wait = MEDIA_WAIT_SEC["video" if "video" in mode.lower() else "image"]
+    return wait + TASK_OVERHEAD_SEC
+
+
+async def close_context_quietly(context: Any, account_id: str) -> None:
+    """Đóng trình duyệt của việc, tối đa BROWSER_CLOSE_TIMEOUT_SEC giây: trình duyệt treo thì đóng cũng có thể treo."""
+    try:
+        await asyncio.wait_for(context.close(), timeout=BROWSER_CLOSE_TIMEOUT_SEC)
+    except asyncio.TimeoutError:
+        logger.error(f"[{account_id}] Đóng trình duyệt quá {BROWSER_CLOSE_TIMEOUT_SEC}s (trình duyệt treo), bỏ qua")
+    except Exception as e:
+        logger.warning(f"[{account_id}] Lỗi khi đóng trình duyệt: {e}")
+
+
 def clamp_video_duration(value: Any) -> int:
     """Muse chỉ tạo clip 5s hoặc 10s."""
     try:
@@ -536,6 +562,41 @@ FIND_NEW_MEDIA_JS = r"""([kind, preSrcs, rejected]) => {
   }
   return out;
 }"""
+
+# Lúc NO_MEDIA: mọi ảnh/video/canvas/ảnh nền trên trang và lý do FIND_NEW_MEDIA_JS bỏ qua chúng. Gặp 06/11/2026 (Khang
+# Cúc Hoa cảnh 2, 13): Muse viết "Đã tạo xong" cả 3 lượt trên 2 tài khoản mà runner không thấy ảnh, không còn bằng chứng.
+MEDIA_DIAGNOSTIC_JS = r"""() => {
+  const logs = [...document.querySelectorAll('[role=log]')];
+  const rows = [];
+  const els = [...document.querySelectorAll('img, video, canvas, [style*="background-image"]')];
+  for (const e of els.slice(-80)) {
+    const r = e.getBoundingClientRect();
+    rows.push({
+      tag: e.tagName.toLowerCase(),
+      src: String(e.currentSrc || e.src || (e.style && e.style.backgroundImage) || '').slice(0, 160),
+      natural: [e.naturalWidth || e.videoWidth || e.width || 0, e.naturalHeight || e.videoHeight || e.height || 0],
+      box: [Math.round(r.width), Math.round(r.height)],
+      complete: e.complete === undefined ? null : e.complete,
+      loading: e.getAttribute('loading'),
+      pre: e.hasAttribute('data-ss-pre'),
+      in_log: logs.some(l => l.contains(e)),
+      avatar: !!e.closest("[class*='rounded-full'], [class*='avatar'], [class*='landing']"),
+      classes: String(e.className || '').slice(0, 120),
+    });
+  }
+  return rows;
+}"""
+NO_MEDIA_DIAG_DIR = STORY_STUDIO_DIR / ".cache" / "muse_no_media"
+NO_MEDIA_DIAG_KEEP = 30
+
+
+def prune_diagnostics(folder: Path, keep: int) -> None:
+    """Giữ `keep` lần ghi gần nhất (mỗi lần một .json và một .png cùng tên)."""
+    stems = sorted({p.stem for p in folder.glob("*.json")}, key=lambda s: (folder / f"{s}.json").stat().st_mtime)
+    for stem in stems[:-keep] if keep > 0 else stems:
+        for ext in (".json", ".png"):
+            discard_temp_file(folder / f"{stem}{ext}")
+
 
 LOGIN_WALL_JS = r"""() => {
   const url = location.href.toLowerCase();
@@ -1482,6 +1543,8 @@ class MuseFleetRunner:
                     rejected.add(src)
                 await asyncio.sleep(SCAN_INTERVAL_SEC)
 
+            await self.save_no_media_evidence(page, task_id, acc.account_id,
+                                              {"kind": kind, "rejected": sorted(rejected), "net_candidates": net_candidates})
             raise TaskFailure("NO_MEDIA", f"Không nhận được {kind} hợp lệ sau {MEDIA_WAIT_SEC[kind]}s cho task {task_id}")
 
         except TaskFailure as tf:
@@ -1505,12 +1568,40 @@ class MuseFleetRunner:
             return False, None, f"BROWSER_ERROR: {e}"
         finally:
             if context:
-                try:
-                    await context.close()
-                except Exception:
-                    pass
+                await close_context_quietly(context, acc.account_id)
             for ap in attach_paths:
                 discard_temp_file(ap)
+
+    async def save_no_media_evidence(self, page: Any, task_id: str, account_id: str, extra: Dict[str, Any]) -> Optional[Path]:
+        """Lưu ảnh chụp trang và danh sách media (MEDIA_DIAGNOSTIC_JS) vào NO_MEDIA_DIAG_DIR để tìm vì sao không thấy
+        kết quả. Chỉ là bằng chứng: lỗi khi lưu thì ghi log, việc vẫn báo NO_MEDIA như cũ."""
+        stem = f"{time.strftime('%Y%m%d_%H%M%S')}_{task_id}"
+        try:
+            NO_MEDIA_DIAG_DIR.mkdir(parents=True, exist_ok=True)
+            rows = await asyncio.wait_for(page.evaluate(MEDIA_DIAGNOSTIC_JS), timeout=20)
+            data = {"task_id": task_id, "account_id": account_id, "url": page.url, **extra, "media": rows}
+            out = NO_MEDIA_DIAG_DIR / f"{stem}.json"
+            out.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+            await asyncio.wait_for(page.screenshot(path=str(NO_MEDIA_DIAG_DIR / f"{stem}.png"), full_page=True),
+                                   timeout=30)
+            prune_diagnostics(NO_MEDIA_DIAG_DIR, NO_MEDIA_DIAG_KEEP)
+            logger.warning(f"[{account_id}] Đã lưu bằng chứng NO_MEDIA: {out}")
+            return out
+        except Exception as e:
+            logger.warning(f"[{account_id}] Không lưu được bằng chứng NO_MEDIA cho {task_id}: {e}")
+            return None
+
+    async def run_task_with_ceiling(self, acc: FleetAccount, task: Dict[str, Any]) -> Tuple[bool, Optional[Path], str]:
+        """Chạy `execute_task_with_browser` trong trần `task_ceiling_sec`; quá trần thì huỷ việc (khối finally đóng trình
+        duyệt) và trả lỗi TASK_HUNG để luồng nhận việc khác."""
+        limit = task_ceiling_sec(task)
+        try:
+            return await asyncio.wait_for(self.execute_task_with_browser(acc, task), timeout=limit)
+        except asyncio.TimeoutError:
+            msg = (f"TASK_HUNG: việc {task.get('task_id')} quá {limit:.0f}s (trình duyệt treo), đã bỏ việc và đóng "
+                   f"trình duyệt của {acc.account_id}")
+            logger.error(f"[{acc.account_id}] {msg}")
+            return False, None, msg
 
     # ---------------------------------------------------------
     # Worker Task Loop with Concurrency Semaphore (N <= 2 slots)
@@ -1543,7 +1634,7 @@ class MuseFleetRunner:
                         task_id = task["task_id"]
                         self.save_accounts_config()
 
-                        success, out_path, err_msg = await self.execute_task_with_browser(account, task)
+                        success, out_path, err_msg = await self.run_task_with_ceiling(account, task)
 
                         if success and out_path:
                             meta = {
