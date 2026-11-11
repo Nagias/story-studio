@@ -5,10 +5,13 @@ Gặp 09/11/2026 (vụ xưởng sắt): `muse_acc_img_01` gửi prompt lúc 13:5
 giờ và 25 ảnh cảnh hết giờ. Nay mỗi việc có trần thời gian; quá trần thì bỏ việc, đóng trình duyệt (cũng có trần) và
 trả lỗi TASK_HUNG để luồng nhận việc khác."""
 import asyncio
+import io
 import inspect
 import sys
 import time
 from pathlib import Path
+
+from PIL import Image, ImageDraw
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent / "backend"
 if str(BACKEND_DIR) not in sys.path:
@@ -125,3 +128,39 @@ def test_no_media_evidence_failure_does_not_raise(tmp_path, monkeypatch):
         async def evaluate(self, js, *args):
             raise RuntimeError("trang đã đóng")
     assert asyncio.run(fr.MuseFleetRunner().save_no_media_evidence(Broken(), "t", "a", {})) is None
+
+
+# --- Ảnh cảnh vẽ theo ảnh chuẩn bối cảnh không bị coi là ảnh đính kèm gửi lại ---------------------------------------
+def _plate() -> Image.Image:
+    """Ảnh chuẩn bối cảnh giả: bố cục thô rõ ràng (trời sáng trên, đất tối dưới, con đường giữa)."""
+    img = Image.new("RGB", (2048, 1152), (70, 90, 60))
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, 2048, 460], fill=(170, 180, 190))
+    d.polygon([(900, 460), (1150, 460), (1500, 1152), (550, 1152)], fill=(140, 120, 90))
+    return img
+
+
+def _jpeg_bytes(img: Image.Image, fmt: str = "JPEG") -> bytes:
+    buf = io.BytesIO()
+    img.save(buf, fmt, quality=80)
+    return buf.getvalue()
+
+
+def test_scene_drawn_on_the_location_plate_is_not_rejected_as_an_echo():
+    """Gặp 06/11 và 12/11/2026 (Khang Cúc Hoa cảnh 2): Muse vẽ xong cảnh trên con đường của ảnh chuẩn, vân tay 8x8 giống
+    ảnh chuẩn nên runner loại ("trùng ảnh tham chiếu"), app rơi sang ảnh trả phí không theo bảng nhân vật."""
+    plate = _plate()
+    scene = plate.copy()
+    d = ImageDraw.Draw(scene)   # hai nhân vật đầu tròn, xe đạp, lá ngô: cùng bố cục, khác chi tiết
+    for x in (820, 1120):
+        d.ellipse([x, 520, x + 150, 670], fill=(250, 250, 250))
+        d.rectangle([x + 20, 670, x + 130, 980], fill=(60, 60, 80))
+    for x in range(0, 2048, 60):
+        d.line([(x, 700), (x + 30, 1152)], fill=(40, 110, 40), width=8)
+    ref = fr.echo_ref(plate)
+    assert bin(fr.average_hash(scene) ^ ref[0]).count("1") <= 6, "ca thử phải giống vân tay 8x8 như lỗi thật"
+    ok, info = fr.validate_image_bytes(_jpeg_bytes(scene), [ref])
+    assert ok, info
+    # ảnh đính kèm gửi lại thật (cùng ảnh, nén WEBP) vẫn bị loại
+    ok, info = fr.validate_image_bytes(_jpeg_bytes(plate, "WEBP"), [ref])
+    assert not ok and "tham chiếu" in info

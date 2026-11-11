@@ -365,7 +365,7 @@ def test_html_templates_escape_interpolations():
 # Chỗ cũ chưa rà từng chỗ: có chỗ hợp lệ (vd. is_within trả False khi khác ổ đĩa). Code mới: ghi log rồi mới trả.
 ALLOWED_SILENT_EXCEPT_RETURNS = {
     "backend/routers/muse_bridge.py": 1,
-    "backend/runners/muse_fleet_runner.py": 6,
+    "backend/runners/muse_fleet_runner.py": 5,
     "backend/runners/single_instance.py": 3,
     "backend/security.py": 2,  # hợp lệ: is_within/is_safe_id trả False nghĩa là "không an toàn"
     "backend/services/case_project_builder.py": 1,

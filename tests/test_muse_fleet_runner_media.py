@@ -23,11 +23,11 @@ from runners import single_instance  # noqa: E402
 from runners.muse_fleet_runner import (  # noqa: E402
     FleetAccount,
     MuseFleetRunner,
-    average_hash,
     clamp_video_duration,
     max_video_seconds,
     to_jpeg_bytes,
     validate_image_bytes,
+    echo_ref,
     validate_video_file,
 )
 
@@ -106,8 +106,8 @@ def test_validate_image_rejects_small_and_reference_copy():
     assert not ok and "nhỏ" in info
     good = _jpeg(1920, 1080)
     assert validate_image_bytes(good, [])[0]
-    ref_hash = average_hash(Image.open(io.BytesIO(good)))
-    ok, info = validate_image_bytes(good, [ref_hash])
+    ref = echo_ref(Image.open(io.BytesIO(good)))
+    ok, info = validate_image_bytes(good, [ref])
     assert not ok and "tham chiếu" in info
     assert not validate_image_bytes(b"not an image", [])[0]
 

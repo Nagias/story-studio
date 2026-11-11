@@ -55,7 +55,7 @@ except ImportError:
     sys.exit(1)
 
 import httpx
-from PIL import Image
+from PIL import Image, ImageChops, ImageStat
 
 try:
     from runners.single_instance import acquire_runner_lock, release_runner_lock
@@ -641,27 +641,53 @@ def average_hash(img: Image.Image) -> int:
     return bits
 
 
-def file_average_hash(path: Path) -> Optional[int]:
+# Ảnh đính kèm hiện lại trong chat (cùng ảnh, nén lại) khác ảnh gốc tối đa 0,3 điểm (0–255, ảnh xám 64x36); ảnh cảnh
+# vẽ mới theo ảnh chuẩn bối cảnh khác ít nhất 3,1 (đo 77 ảnh cảnh thật hai vụ, 12/11/2026). Chỉ vân tay 8x8 thì ảnh cảnh
+# vẽ đúng bố cục ảnh chuẩn bị loại nhầm (Khang Cúc Hoa cảnh 2, 06/11 và 12/11: Muse vẽ xong, runner báo NO_MEDIA).
+ECHO_MAX_DIFF = 1.5
+ECHO_THUMB = (64, 36)
+EchoRef = Tuple[int, Image.Image]
+
+
+def _echo_thumb(img: Image.Image) -> Image.Image:
+    return img.convert("L").resize(ECHO_THUMB)
+
+
+def echo_ref(img: Image.Image) -> EchoRef:
+    """Dấu để nhận ra ảnh đính kèm bị Muse hiện lại: vân tay 8x8 và ảnh xám nhỏ."""
+    return average_hash(img), _echo_thumb(img)
+
+
+def file_echo_ref(path: Path) -> Optional[EchoRef]:
     try:
         with Image.open(path) as img:
-            return average_hash(img)
-    except Exception:
+            return echo_ref(img)
+    except Exception as e:   # không đọc được ảnh đính kèm: không lọc được ảnh hiện lại của nó, ghi log
+        logger.warning(f"Không đọc được ảnh đính kèm {Path(path).name} để nhận ra ảnh hiện lại: {e}")
         return None
 
 
-def validate_image_bytes(data: bytes, reject_hashes: List[int]) -> Tuple[bool, str]:
+def is_echo(img: Image.Image, ref: EchoRef) -> bool:
+    """Ảnh `img` là ảnh đính kèm `ref` hiện lại (giống cả vân tay lẫn từng điểm ảnh), không phải ảnh mới."""
+    ref_hash, ref_thumb = ref
+    if bin(average_hash(img) ^ ref_hash).count("1") > 6:
+        return False
+    diff = ImageStat.Stat(ImageChops.difference(_echo_thumb(img), ref_thumb)).mean[0]
+    return diff < ECHO_MAX_DIFF
+
+
+def validate_image_bytes(data: bytes, reject_refs: List[EchoRef]) -> Tuple[bool, str]:
     try:
         with Image.open(io.BytesIO(data)) as img:
             img.load()
             w, h = img.size
-            ahash = average_hash(img)
+            echo = any(is_echo(img, ref) for ref in reject_refs)
     except Exception as e:
         return False, f"không phải ảnh hợp lệ ({e})"
     if min(w, h) < MIN_IMAGE_SIDE:
         return False, f"ảnh quá nhỏ {w}x{h}"
-    for ref in reject_hashes:
-        if bin(ahash ^ ref).count("1") <= 6:
-            return False, "trùng ảnh tham chiếu đã đính kèm (không phải ảnh mới tạo)"
+    if echo:
+        return False, "trùng ảnh tham chiếu đã đính kèm (không phải ảnh mới tạo)"
     ratio = w / h
     if abs(ratio - 16 / 9) > 0.2:
         logger.warning(f"Ảnh trả về {w}x{h} (tỉ lệ {ratio:.2f}) lệch 16:9")
@@ -1380,15 +1406,15 @@ class MuseFleetRunner:
         # Chuẩn bị ảnh đính kèm (một hay nhiều ảnh, theo thứ tự). Ảnh đính kèm hiện lại trong tin nhắn đã gửi, cùng cỡ
         # với kết quả (gặp 27/10/2026): loại theo nội dung MỌI ảnh đính kèm.
         attach_paths: List[Path] = []
-        reject_hashes: List[int] = []
+        reject_refs: List[EchoRef] = []
         for i, raw in enumerate(task_attachments(task)):
             got = await self.resolve_task_image({"task_id": f"{task_id}_{i}", "src": raw}, ("src",))
             if not got:
                 return False, None, f"INPUT_IMAGE_MISSING: task {task_id} không lấy được ảnh đính kèm {str(raw)[:120]}"
             attach_paths.append(got)
-            h = file_average_hash(got)
-            if h is not None:
-                reject_hashes.append(h)
+            ref = file_echo_ref(got)
+            if ref is not None:
+                reject_refs.append(ref)
         if kind == "video" and mode != "text-to-video" and not attach_paths:
             return False, None, f"INPUT_IMAGE_MISSING: task image-to-video {task_id} không có ảnh đầu vào dùng được"
         attach_path: Optional[Path] = attach_paths[0] if attach_paths else None
@@ -1517,7 +1543,7 @@ class MuseFleetRunner:
                         rejected.add(src)
                         continue
                     if kind == "image":
-                        ok, info = validate_image_bytes(data, reject_hashes)
+                        ok, info = validate_image_bytes(data, reject_refs)
                         if ok:
                             aspect = parse_aspect((task.get("parameters") or {}).get("aspect_ratio") or task.get("aspect_ratio") or "16:9")
                             dest_file.write_bytes(to_jpeg_bytes(data, aspect))
