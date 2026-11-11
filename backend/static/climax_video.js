@@ -7,7 +7,7 @@
 (function () {
   const el = (id) => document.getElementById(id);
   const POLL_MS = 4000;
-  const cx = { polling: null, running: false, lastSignature: '', cast: null };
+  const cx = { polling: null, running: false, lastSignature: '', cast: null, share: null };
 
   const LABEL = {
     selected: ['🎬 Sẽ làm video', 'bg-purple-50 text-purple-700 border-purple-200'],
@@ -111,7 +111,8 @@
     }
     const span = document.createElement('span');
     span.className = `climax-video-badge text-[11px] px-2 py-0.5 rounded border font-semibold ${cls}`;
-    span.textContent = text;
+    // Cảnh không có nhân vật: video phong cảnh (không lưới 9 ô), services/climax_video.is_landscape()
+    span.textContent = state.landscape ? `${text} · phong cảnh` : text;
     if (state.error) span.title = state.error;
     return span;
   }
@@ -261,12 +262,73 @@
       det.appendChild(pre);
       wrap.appendChild(det);
     }
-    if (state.grid_approved) {
+    if (state.grid_approved || state.landscape) {
       const b = smallButton('↻ Làm lại cảnh này', 'bg-white text-purple-700 border-purple-300', () => redo(scene.id));
       b.dataset.climaxRedo = scene.id;
       wrap.appendChild(b);
     }
     return wrap;
+  }
+
+  // Tỉ lệ video Muse và cảnh có clip gần như đứng hình, theo số đo của máy chủ (services/video_share.py): áp dụng cho
+  // MỌI cảnh dựng từ clip (clip cũ, clip theo lời thoại, clip tải lên), không chỉ clip cao trào mới làm
+  async function loadShare() {
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(project().id)}/video-share`);
+      cx.share = res.ok ? await res.json() : null;
+    } catch (err) {
+      console.warn('video-share', err);
+      cx.share = null;
+    }
+  }
+
+  // Clip không được tính vào tỉ lệ video Muse cho tới khi chủ dự án xem và bấm "Đã xem, có cử động" (máy đo bỏ sót cử
+  // động nhỏ). Clip đã duyệt có nút "Bỏ duyệt".
+  function reviewFor(scene) {
+    const share = cx.share;
+    if (!share) return null;
+    const still = (share.still_scenes || []).concat(share.unmeasured_scenes || []).includes(scene.order);
+    const reviewed = (share.reviewed_scenes || []).includes(scene.order);
+    if (!still && !reviewed) return null;
+    const box = node('div', 'motion-review flex flex-wrap items-center gap-1 text-[10px] px-2 py-1 mt-1 rounded bg-slate-50 border border-slate-200');
+    if (reviewed) {
+      box.appendChild(node('span', 'px-2 py-0.5 rounded border font-semibold bg-emerald-50 text-emerald-700 border-emerald-200',
+        '✓ Clip đã duyệt: có cử động'));
+      box.appendChild(smallButton('Bỏ duyệt', 'bg-white text-slate-600 border-slate-300', () => setReview(scene.id, false)));
+    } else {
+      const warn = node('span', 'px-2 py-0.5 rounded border font-semibold bg-amber-50 text-amber-700 border-amber-200',
+        '⚠ Clip gần như đứng hình: chưa tính');
+      warn.title = 'Máy đo thấy clip này gần như không có cử động (người hầu như đứng im, hoặc chỉ máy quay lia/zoom). '
+        + 'Clip chưa được tính vào tỉ lệ video Muse. Xem clip: có cử động thật thì bấm "Đã xem, có cử động", không thì làm lại.';
+      box.appendChild(warn);
+      const ok = smallButton('Đã xem, có cử động', 'bg-emerald-50 text-emerald-700 border-emerald-200', () => setReview(scene.id, true));
+      ok.dataset.motionReview = scene.id;
+      box.appendChild(ok);
+    }
+    return box;
+  }
+
+  async function setReview(sceneId, ok) {
+    try {
+      await flushProjectSave({ silent: true });
+      const p = project();
+      const res = await fetch(`/api/projects/${encodeURIComponent(p.id)}/scenes/${encodeURIComponent(sceneId)}/motion-review`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ok }),
+      });
+      let data = null;
+      try { data = await res.json(); } catch { /* thân không phải JSON */ }
+      if (!res.ok) {
+        const detail = data && data.detail;
+        throw new Error(typeof detail === 'string' ? detail : `Máy chủ trả lỗi HTTP ${res.status}`);
+      }
+      const scene = (p.scenes || []).find(s => s.id === sceneId);
+      if (scene) scene.metadata = { ...(scene.metadata || {}), motion_review: data.motion_review };
+      await loadShare();
+      decorateCards();
+      showToast(ok ? 'Đã duyệt: clip được tính vào tỉ lệ video Muse.' : 'Đã bỏ duyệt clip.', 'success', 4000);
+    } catch (err) {
+      showToast(`Không lưu được: ${escapeHtml(err.message)}`, 'error', 7000);
+    }
   }
 
   async function redo(sceneId) {
@@ -294,9 +356,12 @@
       const bar = card && card.querySelector('.flex.items-center.justify-between > .flex.items-center.gap-2');
       if (!bar) continue;
       bar.querySelectorAll('.climax-video-badge, .climax-video-toggle').forEach(n => n.remove());
+      card.querySelectorAll('.motion-review').forEach(n => n.remove());
       const badge = badgeFor(scene);
       if (badge) bar.appendChild(badge);
       bar.appendChild(toggleFor(scene));
+      const review = reviewFor(scene);   // hàng riêng dưới thanh tiêu đề: thanh tiêu đề hẹp, chữ bị bóp từng chữ
+      if (review) bar.parentElement.insertAdjacentElement('afterend', review);
       card.querySelectorAll('.climax-video-panel').forEach(n => n.remove());
       if (climaxState(scene).status && cx.cast) {
         bar.parentElement.insertAdjacentElement('afterend', panelFor(scene));
@@ -330,10 +395,15 @@
       const n = (data.scene_ids || []).length;
       const cov = data.coverage || {};
       const share = cov.percent == null ? '' : ` Lời kể của các cảnh này chiếm ${escapeHtml(String(cov.percent).replace('.', ','))}% thời lượng video.`;
-      if (n && cov.enough === false) {
-        // Không đủ 50% video Muse (CLAUDE.md mục 1.2 câu 24): báo rõ, không im lặng như bản Anh vụ Khang Cúc Hoa
-        showToast(`Đã chọn ${escapeHtml(n)} cảnh có nhân vật, nhưng chỉ đạt ${escapeHtml(String(cov.percent).replace('.', ','))}%, dưới mức ${escapeHtml(cov.target_percent)}% video Muse. `
-          + 'Cảnh có nhân vật không đủ: gán nhân vật cho thêm cảnh (nút "Nhân vật") rồi bấm chọn lại.', 'warning', 12000);
+      const pct = escapeHtml(String(cov.percent).replace('.', ','));
+      if (n && cov.gate_ok === false) {
+        // Dưới mức tối thiểu: "Sản xuất video dài" sẽ không dựng được thành phẩm (services/video_share.py)
+        showToast(`Đã chọn ${escapeHtml(n)} cảnh, nhưng chỉ đạt ${pct}%, dưới mức tối thiểu ${escapeHtml(cov.gate_percent)}%: `
+          + 'sẽ không dựng được video thành phẩm. Không còn cảnh vẽ nào để chọn thêm: thêm cảnh vẽ hoặc tách cảnh bảng chữ '
+          + 'thành cảnh có hình.', 'error', 15000);
+      } else if (n && cov.enough === false) {
+        showToast(`Đã chọn ${escapeHtml(n)} cảnh, đạt ${pct}%: trên mức tối thiểu ${escapeHtml(cov.gate_percent)}% nhưng dưới `
+          + `mục tiêu ${escapeHtml(cov.target_percent)}%. Bật/tắt từng cảnh trên thẻ rồi bấm "Tạo video".`, 'warning', 12000);
       } else {
         showToast(n
           ? `Đã chọn ${escapeHtml(n)} cảnh cao trào.${share} Bật/tắt từng cảnh trên thẻ rồi bấm "Tạo video".`
@@ -382,6 +452,7 @@ Cảnh chưa có grid: vẽ ảnh 9-grid (1 grid mỗi 45 giây lời kể) `
       cx.lastSignature = sig;
       await pullScenes((data.scenes || []).map(s => s.scene_id));
       await loadCast();
+      await loadShare();   // clip mới về: số đo cử động và tỉ lệ video Muse đổi
       renderSceneList();
     }
     if (wasRunning && !cx.running) {
@@ -412,6 +483,7 @@ Cảnh chưa có grid: vẽ ảnh 9-grid (1 grid mỗi 45 giây lời kể) `
       cx.lastSignature = signature(data.scenes);
       if (cx.running) startPolling();
       await loadCast();
+      await loadShare();
       decorateCards();
     } catch (err) {
       console.warn('climax-video status', err);

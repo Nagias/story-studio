@@ -8,6 +8,7 @@ Thiết kế: docs/superpowers/specs/2026-10-28-video-cao-trao-giao-viec-muse-de
 from __future__ import annotations
 
 import math
+from typing import Optional
 
 from models.schemas import Project, Scene
 from services.character_sheets import CharacterSheet, hair_rule_for
@@ -61,6 +62,55 @@ def _female_hair_lines(project: Project) -> list[str]:
         return []
     return ["", "Quy tắc tóc cho mọi nhân vật nữ trong cảnh, kể cả người không có trong bảng diễn viên: "
             f"{FEMALE_HAIR_RULE_EN}"]
+
+
+def landscape_brief(project: Project, scene: Scene, seconds: float, done_token: str,
+                    location_line: Optional[str], has_plate: bool) -> str:
+    """Bản giao việc cho cảnh vẽ không có nhân vật (phong cảnh, căn phòng, đồ vật): chuyển động đến từ vật trong cảnh, máy
+    quay đứng yên, không thêm người. Chủ dự án 11/11/2026: cảnh phong cảnh được làm video và được tính vào tỉ lệ video
+    Muse (services/video_share.py). Đính kèm: ảnh cảnh, rồi ảnh chuẩn bối cảnh nếu nơi đó đã khoá."""
+    target = target_seconds(seconds)
+    attachments = ["- Ảnh 1 — KHUNG CẢNH ĐÃ DUYỆT: khung hình mở đầu; chuẩn về bố cục, ánh sáng, nét vẽ 2D, màu sắc."]
+    if has_plate:
+        attachments.append("- Ảnh 2 — ẢNH CHUẨN CỦA BỐI CẢNH: nơi này phải giữ đúng kiến trúc, đồ vật cố định, màu sắc.")
+    parts = [
+        "Làm video cho một cảnh của phần mềm của mình. Tự làm trọn từ đầu tới cuối trong yêu cầu này, không hỏi lại "
+        f"giữa chừng. Ngân sách: tối đa {AGENT_MAX_VIDEOS} video và tối đa {AGENT_MAX_IMAGES} ảnh.",
+        "",
+        "Ảnh đính kèm, theo thứ tự:",
+        *attachments,
+        "",
+        f"Lời kể của cảnh (video cần dài khoảng {target} giây): \"{scene.text.strip()}\"",
+        f"Mô tả hình của cảnh: {' '.join((scene.image_prompt or '').split()) or '(xem Ảnh 1)'}",
+        *([f"Nơi chốn cố định: {location_line}"] if location_line else []),
+        "",
+        "Đây là VIDEO, không phải ảnh chuyển động: cảnh này không có nhân vật, nên chuyển động phải đến từ chính vật "
+        "trong cảnh và hợp với lời kể (gió lay cây, cỏ, lá ngô; mưa rơi; khói, sương trôi; nước chảy, gợn; đèn chập "
+        "chờn; cửa, rèm đung đưa; bụi bay). Chuyển động thấy rõ ở nhiều chỗ trong khung hình.",
+        "",
+        "Luật bắt buộc:",
+        "- Máy quay đứng yên như đặt trên chân máy: không lia, không zoom. Chỉ máy quay lia/zoom trên một khung đứng "
+        "im là KHÔNG ĐẠT.",
+        "- Không thêm người, không thêm con vật, không thêm chữ, phụ đề, logo.",
+        "- Giữ đúng nét vẽ 2D, bố cục, màu sắc và ánh sáng của Ảnh 1 suốt video; không đổi sang ảnh thật.",
+        "",
+        "Các bước:",
+        "1. Tự lập danh sách clip (mỗi clip một kiểu chuyển động rõ, dùng Ảnh 1 làm khung đầu). Ghi danh sách vào báo cáo.",
+        "2. Làm từng clip. Sau mỗi clip: trích khung mỗi giây và khung cuối, tự so với Ảnh 1. Loại nếu: so các khung "
+        "cách nhau một giây mà gần như không có gì chuyển động; chỉ có máy quay lia/zoom; có người, con vật hay chữ "
+        "xuất hiện; đổi nét vẽ, đổi màu, đổi nơi chốn. Bị loại thì tạo lại (viết prompt khác, chuyển động rõ hơn), "
+        "trong ngân sách.",
+        f"3. Ghép các đoạn tốt nhất thành một video khoảng {target} giây.",
+        "",
+        "GIAO KẾT QUẢ trong tin nhắn cuối (gửi file trong chat để mình tải về):",
+        "- Đúng chỉ một video: video cuối đã ghép (16:9, càng nét càng tốt). Không gửi kèm clip nháp trong tin cuối.",
+        f"- Ghi một dòng \"{NEW_SCENE_IMAGE_TAG}: không\".",
+        "- Báo cáo ngắn: danh sách clip đã lập; tổng số video và ảnh đã tạo; mỗi video đạt hay bị loại ở khung nào, vì "
+        "sao; kết quả cuối ĐẠT hay KHÔNG ĐẠT.",
+        "",
+        f"Dòng cuối cùng của tin nhắn cuối cùng ghi đúng nguyên văn: {done_token}",
+    ]
+    return "\n".join(parts)
 
 
 def scene_brief(project: Project, scene: Scene, people: list[CharacterSheet], grid_count: int, seconds: float,

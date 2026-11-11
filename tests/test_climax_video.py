@@ -408,7 +408,8 @@ def test_run_scene_fails_cleanly_when_grid_or_voice_missing(isolated_projects_di
     assert no_voice.image_path
 
 
-@pytest.mark.parametrize("cast, words", [("none", "Chưa chọn nhân vật"), ("draft", "Thẩm Nhã Uyên")])
+# Cảnh không có nhân vật ("none") không còn bị chặn: làm video phong cảnh (tests/test_video_share_gate.py)
+@pytest.mark.parametrize("cast, words", [("draft", "Thẩm Nhã Uyên")])
 def test_missing_cast_or_unapproved_sheet_blocks_without_muse(isolated_projects_dir, cast, words):
     project = _climax_project(cast=cast)
     muse = FakeMuse(project.id, "scene_003")
@@ -486,7 +487,8 @@ def test_api_pick_toggle_and_ids(client):
     assert client.put(f"{base}/scenes/scene_001", json={"enabled": True}).status_code == 400
     assert client.put(f"{base}/scenes/scene_999", json={"enabled": True}).status_code == 404
 
-    # chọn lại: bỏ dấu "selected" cũ của cảnh không còn chọn (scene_003 hết người), không đụng cảnh "ready"
+    # chọn lại: không đụng cảnh "ready". scene_003 hết người: cảnh có người còn 28/64 giây (< 50%) nên scene_003 vẫn được
+    # chọn, làm video phong cảnh (chủ dự án 11/11/2026: cảnh phong cảnh được làm video và được tính)
     p = project_service.get_project(pid)
     for s in p.scenes:
         if s.id == "scene_004":
@@ -494,9 +496,19 @@ def test_api_pick_toggle_and_ids(client):
     project_service.save_project(p)
     cs.set_scene_cast(pid, "scene_003", [])
     r = client.post(f"{base}/pick")
-    assert r.json()["scene_ids"] == ["scene_002", "scene_004", "scene_006"]
-    assert _statuses(pid)["scene_004"] == "ready" and _statuses(pid)["scene_003"] is None
+    assert r.json()["scene_ids"] == ["scene_002", "scene_003", "scene_004", "scene_006"]
+    assert _statuses(pid)["scene_004"] == "ready" and _statuses(pid)["scene_003"] == "selected"
     assert _statuses(pid)["scene_002"] == "selected"
+    assert cv.is_landscape(project_service.get_project(pid), next(
+        s for s in project_service.get_project(pid).scenes if s.id == "scene_003"))
+    # bỏ dấu "selected" cũ của cảnh không còn chọn: cảnh có người đã đủ (56/92 giây) thì cảnh phong cảnh không được chọn
+    p = project_service.get_project(pid)
+    for s in p.scenes:
+        if s.id == "scene_006":
+            s.duration = 40.0
+    project_service.save_project(p)
+    r = client.post(f"{base}/pick")
+    assert "scene_003" not in r.json()["scene_ids"] and _statuses(pid)["scene_003"] is None
 
     st = client.get(f"{base}/status").json()
     assert st["running"] is False and st["limit"] == 3
