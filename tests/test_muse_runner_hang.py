@@ -164,3 +164,43 @@ def test_scene_drawn_on_the_location_plate_is_not_rejected_as_an_echo():
     # ảnh đính kèm gửi lại thật (cùng ảnh, nén WEBP) vẫn bị loại
     ok, info = fr.validate_image_bytes(_jpeg_bytes(plate, "WEBP"), [ref])
     assert not ok and "tham chiếu" in info
+
+
+# --- Muse báo hết lượt dùng: bỏ việc ngay, không chờ hết 75 phút -----------------------------------------------------
+QUOTA_TEXT = "Muse: You've reached your usage limit. Upgrade now or invite friends to get more Muse tokens."
+
+
+def test_quota_message_is_recognised():
+    assert fr.muse_quota_message("cũ", "cũ " + QUOTA_TEXT, "") is not None
+    assert fr.muse_quota_message("cũ", "cũ Xong anh, video đã ghép.", "") is None
+
+
+class _QuotaPage:
+    url = "https://muse.ai/thread/abc"
+
+    def is_closed(self):
+        return False
+
+    async def evaluate(self, js, *args):
+        return "TRUOC " + QUOTA_TEXT if js == fr.LOG_TEXT_JS else False
+
+
+def test_agent_turn_stops_at_once_when_muse_is_out_of_quota(monkeypatch):
+    """Gặp 12/11/2026 (vụ xưởng sắt cảnh 26): Muse báo hết lượt ngay, runner vẫn chờ đủ 4.500 giây rồi mới báo
+    AGENT_TIMEOUT; các cảnh sau lỗi hàng loạt vì tài khoản bị khoá."""
+    runner = fr.MuseFleetRunner()
+
+    async def nothing(*a, **k):
+        return None
+
+    monkeypatch.setattr(runner, "_click_allow_if_asked", nothing)
+    monkeypatch.setattr(runner, "update_task_progress", nothing)
+    task = {"task_id": "t_quota", "mode": agent_turn.AGENT_VIDEO_MODE, "_result_meta": {},
+            "agent": {"done_token": "XONG-1", "wait_sec": 4500, "target_seconds": 10}}
+    started = time.monotonic()
+    import pytest
+    with pytest.raises(fr.TaskFailure) as err:
+        asyncio.run(asyncio.wait_for(   # trần 5 giây: bản lỗi chờ 4.500 giây thì test đỏ ngay chứ không treo
+            runner._finish_agent_turn(_account("video"), _QuotaPage(), None, task, "TRUOC", "prompt", []), 5))
+    assert time.monotonic() - started < 5
+    assert err.value.code == "QUOTA_EXCEEDED" and "usage limit" in str(err.value)

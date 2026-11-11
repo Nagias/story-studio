@@ -242,3 +242,26 @@ def test_real_photo_scenes_are_never_made_into_muse_video(isolated_projects_dir)
     assert not cv.is_eligible(photo) and not cv.is_landscape(p, photo)
     assert "scene_002" not in cv.pick_climax_scenes(p)
     assert "real_photo" in api.SERVER_OWNED_METADATA_KEYS
+
+
+def test_run_stops_when_no_video_account_is_left(monkeypatch):
+    """Gặp 12/11/2026: tài khoản video duy nhất hết lượt dùng Muse, lượt chạy vẫn đi tiếp và ghi lỗi 24 cảnh còn lại."""
+    from routers import climax_video as climax_router
+    called = []
+
+    async def fake_run(pid, sid, muse_call):
+        called.append(sid)
+        return {"status": "failed", "error": "Muse chưa làm xong video của cảnh: Muse task failed: QUOTA_EXCEEDED: "
+                                              "You've reached your usage limit."}
+    monkeypatch.setattr(climax_router.climax_video, "run_scene_climax_video", fake_run)
+    asyncio.run(climax_router._run_all("proj_x", ["scene_001", "scene_002", "scene_003"]))
+    assert called == ["scene_001"]
+
+    called.clear()
+
+    async def ordinary_failure(pid, sid, muse_call):
+        called.append(sid)
+        return {"status": "failed", "error": "Video Muse ngắn hơn 5 giây"}
+    monkeypatch.setattr(climax_router.climax_video, "run_scene_climax_video", ordinary_failure)
+    asyncio.run(climax_router._run_all("proj_x", ["scene_001", "scene_002"]))
+    assert called == ["scene_001", "scene_002"]                       # lỗi thường: làm tiếp cảnh sau

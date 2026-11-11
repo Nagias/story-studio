@@ -140,12 +140,23 @@ _ENQUEUE_ORIGINAL = enqueue_and_wait_muse_task
 _muse_call = muse_call_starting_runner   # tên cũ (test)
 
 
+# Lỗi cho biết không còn tài khoản video làm được: dừng cả lượt chạy, các cảnh chưa tới giữ nguyên trạng thái. Gặp
+# 12/11/2026: tài khoản video duy nhất hết lượt dùng Muse, 24 cảnh sau bị ghi "failed" hàng loạt trong vài giây.
+STOP_RUN_WORDS = ("Không có tài khoản Muse video nào đang online", "QUOTA_EXCEEDED", "usage limit", "Hết quota")
+
+
 async def _run_all(project_id: str, scene_ids: list[str]) -> None:
     for scene_id in scene_ids:
         try:
-            await climax_video.run_scene_climax_video(project_id, scene_id, muse_call=muse_call_starting_runner)
+            state = await climax_video.run_scene_climax_video(project_id, scene_id, muse_call=muse_call_starting_runner)
         except Exception:   # cảnh này đã được ghi "failed" kèm lý do; làm tiếp cảnh sau
             logger.exception(f"Video cao trào {project_id}/{scene_id}: lỗi ngoài dự kiến")
+            continue
+        error = str((state or {}).get("error") or "")
+        if (state or {}).get("status") == "failed" and any(w in error for w in STOP_RUN_WORDS):
+            logger.warning(f"Video cao trào {project_id}: dừng lượt chạy ở {scene_id}, không còn tài khoản video "
+                           f"làm được ({error[:200]})")
+            break
 
 
 @router.post("/projects/{project_id}/climax-video/run")

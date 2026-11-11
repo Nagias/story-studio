@@ -128,6 +128,13 @@ def muse_reply_error(text_before: str, text_now: str, prompt: str = "") -> Optio
     return said[-600:] if said and any(w in low for w in MUSE_ERROR_WORDS) else None
 
 
+def muse_quota_message(text_before: str, text_now: str, prompt: str = "") -> Optional[str]:
+    """Câu Muse báo tài khoản hết lượt dùng (sau prompt), không thì None."""
+    said = _muse_reply_part(text_before, text_now, prompt)
+    low = said.lower()
+    return said[-400:] if said and any(w in low for w in MUSE_QUOTA_WORDS) else None
+
+
 def muse_new_text(text_before: str, text_now: str) -> str:
     """Phần chữ Muse viết thêm sau khi gửi prompt (bỏ phần đã có trước đó)."""
     if not text_now or text_now == text_before:
@@ -218,6 +225,10 @@ EMPTY_POLL_BACKOFF_SEC = 30
 MUSE_ERROR_WORDS = ("503", "quá tải", "overload", "không tạo được", "chưa tạo được", "không khả dụng", "unavailable",
                     "báo lỗi", "gặp lỗi", "bị lỗi hệ thống", "failed to generate", "couldn't generate",
                     "could not generate", "không thể tạo")
+# Muse báo tài khoản hết lượt dùng: bỏ việc ngay với mã QUOTA_EXCEEDED (backend khoá tài khoản theo chữ "quota").
+# Gặp 12/11/2026: Muse báo ngay đầu lượt mà runner chờ đủ 4.500 giây của việc nhiều bước rồi mới báo AGENT_TIMEOUT.
+MUSE_QUOTA_WORDS = ("usage limit", "reached your usage", "more muse tokens", "out of tokens", "hết lượt dùng",
+                    "hết lượt sử dụng", "giới hạn sử dụng")
 LOG_TEXT_JS = "() => ((document.querySelector('[role=log]') || document.body).innerText || '')"
 SCROLL_LOG_JS = "() => document.querySelectorAll('[role=log]').forEach(l => { l.scrollTop = l.scrollHeight; })"
 # Trường trạng thái do runner ghi xuống muse_fleet_accounts.json (các trường khác do backend quản lý)
@@ -1329,6 +1340,9 @@ class MuseFleetRunner:
             if "/thread/" in page.url and not page.url.endswith("/thread/new"):
                 task["_result_meta"]["thread_url"] = page.url
             now_text = await page.evaluate(LOG_TEXT_JS)
+            quota = muse_quota_message(text_before, now_text, prompt)
+            if quota:
+                raise TaskFailure("QUOTA_EXCEEDED", quota)
             if now_text != last_text:
                 last_text, stable_since = now_text, time.time()
             said = _muse_reply_part(text_before, now_text, prompt)
@@ -1518,7 +1532,11 @@ class MuseFleetRunner:
                 await self._click_allow_if_asked(page, acc.account_id)
                 if "/thread/" in page.url and not page.url.endswith("/thread/new"):
                     task["_result_meta"]["thread_url"] = page.url
-                reply_err = muse_reply_error(text_before, await page.evaluate(LOG_TEXT_JS), prompt)
+                now_log = await page.evaluate(LOG_TEXT_JS)
+                quota = muse_quota_message(text_before, now_log, prompt)
+                if quota:
+                    raise TaskFailure("QUOTA_EXCEEDED", quota)
+                reply_err = muse_reply_error(text_before, now_log, prompt)
                 if reply_err:
                     error_since = error_since or time.time()
                     if time.time() - error_since >= MUSE_REPLY_GRACE_SEC:
