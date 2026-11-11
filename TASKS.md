@@ -587,3 +587,35 @@ Chủ dự án: "tổng hợp ... rồi giải quyết 1 lần. Đừng làm ki�
 - [ ] Bản giao việc mới (đòi cử động) chưa chạy thật với Muse: chưa biết Muse có giữ đầu tròn khi cử động nhiều không (thử 10/11 cảnh 20 thì giữ được)
 - [ ] Khang Cúc Hoa cảnh 2, 13 vẫn là ảnh 9router không đầu tròn; cảnh 004, 045 vẫn là ảnh tĩnh
 - Không sửa: hai nạn nhân cùng họ bị gộp (bài gốc chỉ gọi "cô gái họ Trương", hiếm, đã sửa tay, muốn tái hiện phải chạy LLM); 49 cảnh báo "bằng chứng chưa hiện lên bảng" (chỉ là thông báo); Muse từ chối cảnh có thuốc/dây trói (viết lại mô tả tay); chèn ảnh thật vẫn làm bằng script ngoài app (`.cache/vu_xuong_sat/ve_chu_anh.py`)
+
+# TASKS — khoá cứng "khoảng 50% video là video Muse" và làm lại hai video (11–12/11/2026, nhánh `khoa-cung-50-video-muse`)
+Plan chủ dự án duyệt: `C:\Users\pc\.claude\plans\gi-l-p-plan-c-c-effervescent-boole.md`. Chủ dự án chọn 11/11: chặn dưới 45% (mục tiêu 50%), áp dụng mọi dự án, cảnh phong cảnh không người được làm video và được tính, thử 2 cảnh trước rồi làm hết.
+
+## Phần 1–2: khoá cứng (code) và kiểm chứng không tốn Muse
+- [x] `services/video_share.py`: một nơi tính tỉ lệ; chỉ tính clip máy đo thấy có cử động hoặc chủ dự án đã duyệt ("Đã xem, có cử động", gắn với đúng file clip). `require_gate()` trước `assemble_full_video()` ở cả hai đường dựng; kiểm ngay khi bấm (409 `VIDEO_SHARE_LOW`) và chốt cuối trước giai đoạn 4. Bản nháp `draft` ra `renders/story_nhap_duoi_45.mp4`, không ghi đè thành phẩm, không đổi video cuối, không vẽ thumbnail
+- [x] `services/render_inputs.py` (chuyển từ `routers/api.py`); router mới `routers/video_share.py` (`GET video-share`, `PUT motion-review`)
+- [x] Giao diện: bị chặn thì hộp xác nhận hỏi dựng bản nháp; thẻ cảnh có clip nghi đứng hình hiện "Clip gần như đứng hình: chưa tính" + nút "Đã xem, có cử động" / "Bỏ duyệt" (theo số đo máy chủ, áp cho mọi clip, kể cả clip cũ); nút chọn cảnh báo đỏ dưới 45%, vàng dưới 50%
+- [x] Cảnh vẽ không có nhân vật: video phong cảnh (`landscape_brief()`, không lưới 9 ô), chọn thêm khi cảnh có người không đủ 50%. Cảnh ảnh thật (`metadata.real_photo`) không bao giờ làm video (gắn cho 8 ảnh thật vụ xưởng sắt: cảnh 8, 10, 13, 16, 28, 33, 43, 51)
+- [x] Khoá cứng: `tests/test_architecture.py::test_every_final_render_passes_the_video_share_gate` (thử gỡ chốt: test lỗi, trả lại: đạt), đường cấm 17 và dòng 17 bảng 5.1 trong CLAUDE.md
+- [x] Test: `tests/test_video_share_gate.py` 16 (đỏ trên code cũ: lỗi nạp vì chưa có chốt), sửa `test_climax_video.py`, `test_clip_motion_and_share.py`, `test_climax_brief.py`; `tools/check.py --full` 1.039 đạt, 0 lỗi (2 lần)
+- [x] Bấm thật server thử 8011, bản Anh Khang Cúc Hoa: 13 thẻ có nhãn + nút duyệt; "Sản xuất video dài" bị chặn, hộp xác nhận báo 14,2% (178,1 / 1.256,9 giây), thiếu 387,5 giây để đạt 45%, liệt kê 13 cảnh; chọn không: về Bước 2, không file nào được ghi; duyệt cảnh 21: 178,1 → 194,1 giây (đúng 16,08 giây của cảnh), bỏ duyệt: về 178,1; chọn bản nháp: ra `story_nhap_duoi_45.mp4` 1.256,8 giây 1920x1080, `story_final.mp4` giữ nguyên (14:17), video cuối của dự án không đổi, nhật ký ghi "BẢN NHÁP". File nháp thử chuyển ra `.cache/thu_khoa_cung/ban_nhap_kch_en/`. Dòng "Rạp Chiếu Phim Thành Phẩm" ở bản nháp đã sửa thành câu bản nháp
+
+## Phần 3: thử thật 2 cảnh vụ xưởng sắt với Muse (server 8000, tài khoản `muse_acc_vid_03`)
+- [x] Cảnh 2 (phong cảnh): 7 phút, điểm cử động 7,13; xem 6 khung: khói tràn vào, cửa đóng mở, giấy trên sàn đổi chỗ
+- [x] Cảnh 7 lần 1: Muse bỏ clip AI méo đầu rồi TỰ DỰNG 3 clip từ ảnh tĩnh bằng công cụ trên máy (máy quay, đèn nhấp nháy), vẫn tự chấm ĐẠT; máy đo 0,0 và gắn cảnh báo. Chỉnh bản giao việc một lần: cấm tự dựng clip giả (`AI_CLIPS_ONLY`), mỗi clip một hành động 3–6 giây với khung đầu và khung cuối từ storyboard
+- [x] Cảnh 7 lần 2: 9 phút, 5 video AI, điểm 14,37; xem 8 khung: cúi người, với tay tới điện thoại, chỉ vào cốc, đứng dậy chỉ ra cửa; đầu tròn trắng giữ nguyên
+- Clip cũ giữ ở `.cache/thu_khoa_cung/`
+
+## Phần 4: làm lại clip (đang chạy)
+- [x] Gốc lỗi "Muse vẽ xong mà runner không thấy ảnh" (Khang Cúc Hoa cảnh 2, 13): bằng chứng `.cache/muse_no_media/` cho thấy runner có thấy ảnh 2048x1152 nhưng loại vì vân tay 8x8 giống ảnh chuẩn bối cảnh đính kèm. Đo 77 ảnh cảnh thật: ảnh đính kèm hiện lại khác gốc ≤ 0,3, ảnh cảnh mới ≥ 3,1 (ảnh xám 64x36). Nay chỉ loại khi giống cả vân tay lẫn từng điểm ảnh (< 1,5). Test đỏ trước khi sửa
+- [x] Muse báo hết lượt dùng mà runner chờ đủ 75 phút rồi lượt chạy ghi lỗi hàng loạt: runner nhận câu hết lượt (`muse_quota_message()`, mã QUOTA_EXCEEDED) và bỏ việc ngay; lượt chạy video cao trào dừng khi không còn tài khoản video (`STOP_RUN_WORDS`), cảnh chưa tới giữ nguyên. Test đỏ trước khi sửa
+- [x] Cảnh ảnh thật bị chọn nhầm làm video phong cảnh: thêm `metadata.real_photo` (xem Phần 1–2)
+- [ ] **DỪNG ở điểm dừng của plan (12/11 03:22)**: tài khoản video duy nhất `muse_acc_vid_03` hết lượt dùng Muse ("You've reached your usage limit. Upgrade now or invite friends to get more Muse tokens."); 6 tài khoản video khác cần đăng nhập lại (`muse_acc_vid_04`, `vid_05`, `vp_01`–`vp_04`)
+- [~] Vụ xưởng sắt: 14 cảnh làm lại xong (2, 3, 4, 7, 9, 11, 12, 14, 15, 19, 20, 21, 22, 24; điểm cử động 3,84–29,58); tỉ lệ video Muse có cử động 8,2% → 23,9%. Còn 30 cảnh: 15 cảnh lỗi do hết lượt (26, 29, 30, 32, 35, 36, 37, 38, 39, 41, 42, 46, 47, 53, 54), 15 cảnh chưa tới lượt (55, 57, 59, 60, 62–67, 69, 70, 72, 73, 75); lưới 9 ô đã duyệt giữ nguyên, chạy lại được ngay
+- Xem tận mắt 14 clip: cử động thật ở cả 14; đầu tròn trắng đúng ở cảnh 2, 7, 11, 12, 14, 15, 21, 24; lệch nhẹ: nạn nhân (bảng duyệt là đầu tròn màu da, có tai) ở cảnh 9, 19 vẽ mặt chi tiết hơn bảng (nét mũi, nếp nhăn), người phụ nữ cảnh 20, 22 nét mặt gần mặt người, khung cuối cảnh 4 mặt ngả màu da
+- [x] Khang Cúc Hoa: vẽ lại ảnh cảnh 2, 13 bằng Muse sau khi khởi động lại runner (2 ảnh, không rơi sang trả phí: bản sửa phép so ảnh có tác dụng trên Muse thật); chép sang bản Anh. Ảnh 9router và ảnh cũ giữ ở `.cache/thu_khoa_cung/anh_kch_*`
+- [ ] Khang Cúc Hoa bản Việt: 12 cảnh có người mới (2, 4, 23, 24, 27, 28, 48, 52, 58, 60, 62, 69: vẽ lưới 9 ô, duyệt), 13 cảnh làm lại (7, 14, 17, 20, 21, 25, 30, 33, 37, 39, 40, 46, 68), cảnh 45: chưa làm (cần tài khoản video)
+- [ ] Khang Cúc Hoa bản Anh: chép clip mới từ bản Việt: chưa làm
+- [ ] Phần 5 (dựng lại 3 video): chưa làm. Chốt mới sẽ chặn dựng thành phẩm cả 3 video cho tới khi đủ 45% (đúng thiết kế)
+- Làm tiếp khi có tài khoản video: trên giao diện mở dự án, bấm "Tạo video" (`#btn-climax-video-run`): cảnh lỗi do hết lượt và cảnh chưa tới lượt đã nằm sẵn trong hàng chờ; Khang Cúc Hoa bấm "Chọn cảnh cao trào" trước
+- Số lần gọi: Muse video (việc nhiều bước) 17 lượt thành công (cảnh 2, 7 hai lần, 14 cảnh làm lại) + 1 lượt hết lượt dùng; Muse ảnh 2 thành công + 6 lượt NO_MEDIA do lỗi phép so cũ; ảnh trả phí 2 (cảnh 2, 13 Khang Cúc Hoa, rơi sang trước khi sửa runner); 0 lượt LLM
