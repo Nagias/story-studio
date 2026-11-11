@@ -55,7 +55,7 @@ except ImportError:
     sys.exit(1)
 
 import httpx
-from PIL import Image
+from PIL import Image, ImageChops, ImageStat
 
 try:
     from runners.single_instance import acquire_runner_lock, release_runner_lock
@@ -97,9 +97,10 @@ def is_path_within(path: Path, *bases: Path) -> bool:
 
 
 def discard_temp_file(path: Path) -> None:
-    """Xoá MỘT file tạm do runner tự tạo: ảnh đính kèm/ảnh phụ trong .work, video tải về không hợp lệ trong muse_outputs.
-    Chỗ xoá duy nhất cho file tạm của runner (đường cấm 12): file nằm ngoài hai thư mục này thì không xoá."""
-    if is_path_within(path, WORK_DIR, OUTPUTS_DIR) and Path(path).is_file():
+    """Xoá MỘT file tạm do runner tự tạo: ảnh đính kèm/ảnh phụ trong .work, video tải về không hợp lệ trong muse_outputs,
+    bằng chứng NO_MEDIA cũ (NO_MEDIA_DIAG_DIR). Chỗ xoá duy nhất cho file tạm của runner (đường cấm 12): file nằm ngoài
+    các thư mục này thì không xoá."""
+    if is_path_within(path, WORK_DIR, OUTPUTS_DIR, NO_MEDIA_DIAG_DIR) and Path(path).is_file():
         Path(path).unlink(missing_ok=True)
 
 
@@ -125,6 +126,13 @@ def muse_reply_error(text_before: str, text_now: str, prompt: str = "") -> Optio
     said = _muse_reply_part(text_before, text_now, prompt)
     low = said.lower()
     return said[-600:] if said and any(w in low for w in MUSE_ERROR_WORDS) else None
+
+
+def muse_quota_message(text_before: str, text_now: str, prompt: str = "") -> Optional[str]:
+    """Câu Muse báo tài khoản hết lượt dùng (sau prompt), không thì None."""
+    said = _muse_reply_part(text_before, text_now, prompt)
+    low = said.lower()
+    return said[-400:] if said and any(w in low for w in MUSE_QUOTA_WORDS) else None
 
 
 def muse_new_text(text_before: str, text_now: str) -> str:
@@ -201,6 +209,11 @@ MIN_IMAGE_SIDE = 512
 MIN_VIDEO_SECONDS = 3.0
 MIN_VIDEO_SIDE = 360
 ACCOUNT_COOLDOWN_SEC = 60.0
+# Trần thời gian của cả một việc = thời gian chờ Muse + chừng này giây cho mở trình duyệt, tải trang, đính kèm, tải kết quả.
+# Quá trần thì bỏ việc (TASK_HUNG) và đóng trình duyệt (đóng cũng có trần). Gặp 09/11/2026: một lệnh đọc trang của
+# muse_acc_img_01 đứng im 5,5 giờ, vòng chờ 150 giây không tới được lần kiểm giờ sau, chiếm một luồng, 25 ảnh hết giờ.
+TASK_OVERHEAD_SEC = 600
+BROWSER_CLOSE_TIMEOUT_SEC = 30
 # Muse trả lời bằng chữ có từ báo lỗi (vd "hệ thống quá tải (503)") mà sau chừng này giây vẫn không có media: thất bại
 # ngay thay vì chờ hết MEDIA_WAIT_SEC (đo 27/10/2026: hai lần 503, runner cũ chờ trọn 7 phút)
 MUSE_REPLY_GRACE_SEC = 45
@@ -212,6 +225,10 @@ EMPTY_POLL_BACKOFF_SEC = 30
 MUSE_ERROR_WORDS = ("503", "quá tải", "overload", "không tạo được", "chưa tạo được", "không khả dụng", "unavailable",
                     "báo lỗi", "gặp lỗi", "bị lỗi hệ thống", "failed to generate", "couldn't generate",
                     "could not generate", "không thể tạo")
+# Muse báo tài khoản hết lượt dùng: bỏ việc ngay với mã QUOTA_EXCEEDED (backend khoá tài khoản theo chữ "quota").
+# Gặp 12/11/2026: Muse báo ngay đầu lượt mà runner chờ đủ 4.500 giây của việc nhiều bước rồi mới báo AGENT_TIMEOUT.
+MUSE_QUOTA_WORDS = ("usage limit", "reached your usage", "more muse tokens", "out of tokens", "hết lượt dùng",
+                    "hết lượt sử dụng", "giới hạn sử dụng")
 LOG_TEXT_JS = "() => ((document.querySelector('[role=log]') || document.body).innerText || '')"
 SCROLL_LOG_JS = "() => document.querySelectorAll('[role=log]').forEach(l => { l.scrollTop = l.scrollHeight; })"
 # Trường trạng thái do runner ghi xuống muse_fleet_accounts.json (các trường khác do backend quản lý)
@@ -275,6 +292,26 @@ class TaskFailure(Exception):
 # -------------------------------------------------------------
 # Prompt Engineering Formatter (Phân tách Image vs Video)
 # -------------------------------------------------------------
+def task_ceiling_sec(task: Dict[str, Any]) -> float:
+    """Trần thời gian của một việc trên trình duyệt (xem TASK_OVERHEAD_SEC)."""
+    mode = str(task.get("mode") or "")
+    if mode == agent_turn.AGENT_VIDEO_MODE:
+        wait = int((task.get("agent") or {}).get("wait_sec") or 2700)
+    else:
+        wait = MEDIA_WAIT_SEC["video" if "video" in mode.lower() else "image"]
+    return wait + TASK_OVERHEAD_SEC
+
+
+async def close_context_quietly(context: Any, account_id: str) -> None:
+    """Đóng trình duyệt của việc, tối đa BROWSER_CLOSE_TIMEOUT_SEC giây: trình duyệt treo thì đóng cũng có thể treo."""
+    try:
+        await asyncio.wait_for(context.close(), timeout=BROWSER_CLOSE_TIMEOUT_SEC)
+    except asyncio.TimeoutError:
+        logger.error(f"[{account_id}] Đóng trình duyệt quá {BROWSER_CLOSE_TIMEOUT_SEC}s (trình duyệt treo), bỏ qua")
+    except Exception as e:
+        logger.warning(f"[{account_id}] Lỗi khi đóng trình duyệt: {e}")
+
+
 def clamp_video_duration(value: Any) -> int:
     """Muse chỉ tạo clip 5s hoặc 10s."""
     try:
@@ -537,6 +574,41 @@ FIND_NEW_MEDIA_JS = r"""([kind, preSrcs, rejected]) => {
   return out;
 }"""
 
+# Lúc NO_MEDIA: mọi ảnh/video/canvas/ảnh nền trên trang và lý do FIND_NEW_MEDIA_JS bỏ qua chúng. Gặp 06/11/2026 (Khang
+# Cúc Hoa cảnh 2, 13): Muse viết "Đã tạo xong" cả 3 lượt trên 2 tài khoản mà runner không thấy ảnh, không còn bằng chứng.
+MEDIA_DIAGNOSTIC_JS = r"""() => {
+  const logs = [...document.querySelectorAll('[role=log]')];
+  const rows = [];
+  const els = [...document.querySelectorAll('img, video, canvas, [style*="background-image"]')];
+  for (const e of els.slice(-80)) {
+    const r = e.getBoundingClientRect();
+    rows.push({
+      tag: e.tagName.toLowerCase(),
+      src: String(e.currentSrc || e.src || (e.style && e.style.backgroundImage) || '').slice(0, 160),
+      natural: [e.naturalWidth || e.videoWidth || e.width || 0, e.naturalHeight || e.videoHeight || e.height || 0],
+      box: [Math.round(r.width), Math.round(r.height)],
+      complete: e.complete === undefined ? null : e.complete,
+      loading: e.getAttribute('loading'),
+      pre: e.hasAttribute('data-ss-pre'),
+      in_log: logs.some(l => l.contains(e)),
+      avatar: !!e.closest("[class*='rounded-full'], [class*='avatar'], [class*='landing']"),
+      classes: String(e.className || '').slice(0, 120),
+    });
+  }
+  return rows;
+}"""
+NO_MEDIA_DIAG_DIR = STORY_STUDIO_DIR / ".cache" / "muse_no_media"
+NO_MEDIA_DIAG_KEEP = 30
+
+
+def prune_diagnostics(folder: Path, keep: int) -> None:
+    """Giữ `keep` lần ghi gần nhất (mỗi lần một .json và một .png cùng tên)."""
+    stems = sorted({p.stem for p in folder.glob("*.json")}, key=lambda s: (folder / f"{s}.json").stat().st_mtime)
+    for stem in stems[:-keep] if keep > 0 else stems:
+        for ext in (".json", ".png"):
+            discard_temp_file(folder / f"{stem}{ext}")
+
+
 LOGIN_WALL_JS = r"""() => {
   const url = location.href.toLowerCase();
   if (/login|signin|sign-in|auth|accounts\./.test(url)) return true;
@@ -580,27 +652,53 @@ def average_hash(img: Image.Image) -> int:
     return bits
 
 
-def file_average_hash(path: Path) -> Optional[int]:
+# Ảnh đính kèm hiện lại trong chat (cùng ảnh, nén lại) khác ảnh gốc tối đa 0,3 điểm (0–255, ảnh xám 64x36); ảnh cảnh
+# vẽ mới theo ảnh chuẩn bối cảnh khác ít nhất 3,1 (đo 77 ảnh cảnh thật hai vụ, 12/11/2026). Chỉ vân tay 8x8 thì ảnh cảnh
+# vẽ đúng bố cục ảnh chuẩn bị loại nhầm (Khang Cúc Hoa cảnh 2, 06/11 và 12/11: Muse vẽ xong, runner báo NO_MEDIA).
+ECHO_MAX_DIFF = 1.5
+ECHO_THUMB = (64, 36)
+EchoRef = Tuple[int, Image.Image]
+
+
+def _echo_thumb(img: Image.Image) -> Image.Image:
+    return img.convert("L").resize(ECHO_THUMB)
+
+
+def echo_ref(img: Image.Image) -> EchoRef:
+    """Dấu để nhận ra ảnh đính kèm bị Muse hiện lại: vân tay 8x8 và ảnh xám nhỏ."""
+    return average_hash(img), _echo_thumb(img)
+
+
+def file_echo_ref(path: Path) -> Optional[EchoRef]:
     try:
         with Image.open(path) as img:
-            return average_hash(img)
-    except Exception:
+            return echo_ref(img)
+    except Exception as e:   # không đọc được ảnh đính kèm: không lọc được ảnh hiện lại của nó, ghi log
+        logger.warning(f"Không đọc được ảnh đính kèm {Path(path).name} để nhận ra ảnh hiện lại: {e}")
         return None
 
 
-def validate_image_bytes(data: bytes, reject_hashes: List[int]) -> Tuple[bool, str]:
+def is_echo(img: Image.Image, ref: EchoRef) -> bool:
+    """Ảnh `img` là ảnh đính kèm `ref` hiện lại (giống cả vân tay lẫn từng điểm ảnh), không phải ảnh mới."""
+    ref_hash, ref_thumb = ref
+    if bin(average_hash(img) ^ ref_hash).count("1") > 6:
+        return False
+    diff = ImageStat.Stat(ImageChops.difference(_echo_thumb(img), ref_thumb)).mean[0]
+    return diff < ECHO_MAX_DIFF
+
+
+def validate_image_bytes(data: bytes, reject_refs: List[EchoRef]) -> Tuple[bool, str]:
     try:
         with Image.open(io.BytesIO(data)) as img:
             img.load()
             w, h = img.size
-            ahash = average_hash(img)
+            echo = any(is_echo(img, ref) for ref in reject_refs)
     except Exception as e:
         return False, f"không phải ảnh hợp lệ ({e})"
     if min(w, h) < MIN_IMAGE_SIDE:
         return False, f"ảnh quá nhỏ {w}x{h}"
-    for ref in reject_hashes:
-        if bin(ahash ^ ref).count("1") <= 6:
-            return False, "trùng ảnh tham chiếu đã đính kèm (không phải ảnh mới tạo)"
+    if echo:
+        return False, "trùng ảnh tham chiếu đã đính kèm (không phải ảnh mới tạo)"
     ratio = w / h
     if abs(ratio - 16 / 9) > 0.2:
         logger.warning(f"Ảnh trả về {w}x{h} (tỉ lệ {ratio:.2f}) lệch 16:9")
@@ -1242,6 +1340,9 @@ class MuseFleetRunner:
             if "/thread/" in page.url and not page.url.endswith("/thread/new"):
                 task["_result_meta"]["thread_url"] = page.url
             now_text = await page.evaluate(LOG_TEXT_JS)
+            quota = muse_quota_message(text_before, now_text, prompt)
+            if quota:
+                raise TaskFailure("QUOTA_EXCEEDED", quota)
             if now_text != last_text:
                 last_text, stable_since = now_text, time.time()
             said = _muse_reply_part(text_before, now_text, prompt)
@@ -1319,15 +1420,15 @@ class MuseFleetRunner:
         # Chuẩn bị ảnh đính kèm (một hay nhiều ảnh, theo thứ tự). Ảnh đính kèm hiện lại trong tin nhắn đã gửi, cùng cỡ
         # với kết quả (gặp 27/10/2026): loại theo nội dung MỌI ảnh đính kèm.
         attach_paths: List[Path] = []
-        reject_hashes: List[int] = []
+        reject_refs: List[EchoRef] = []
         for i, raw in enumerate(task_attachments(task)):
             got = await self.resolve_task_image({"task_id": f"{task_id}_{i}", "src": raw}, ("src",))
             if not got:
                 return False, None, f"INPUT_IMAGE_MISSING: task {task_id} không lấy được ảnh đính kèm {str(raw)[:120]}"
             attach_paths.append(got)
-            h = file_average_hash(got)
-            if h is not None:
-                reject_hashes.append(h)
+            ref = file_echo_ref(got)
+            if ref is not None:
+                reject_refs.append(ref)
         if kind == "video" and mode != "text-to-video" and not attach_paths:
             return False, None, f"INPUT_IMAGE_MISSING: task image-to-video {task_id} không có ảnh đầu vào dùng được"
         attach_path: Optional[Path] = attach_paths[0] if attach_paths else None
@@ -1431,7 +1532,11 @@ class MuseFleetRunner:
                 await self._click_allow_if_asked(page, acc.account_id)
                 if "/thread/" in page.url and not page.url.endswith("/thread/new"):
                     task["_result_meta"]["thread_url"] = page.url
-                reply_err = muse_reply_error(text_before, await page.evaluate(LOG_TEXT_JS), prompt)
+                now_log = await page.evaluate(LOG_TEXT_JS)
+                quota = muse_quota_message(text_before, now_log, prompt)
+                if quota:
+                    raise TaskFailure("QUOTA_EXCEEDED", quota)
+                reply_err = muse_reply_error(text_before, now_log, prompt)
                 if reply_err:
                     error_since = error_since or time.time()
                     if time.time() - error_since >= MUSE_REPLY_GRACE_SEC:
@@ -1456,7 +1561,7 @@ class MuseFleetRunner:
                         rejected.add(src)
                         continue
                     if kind == "image":
-                        ok, info = validate_image_bytes(data, reject_hashes)
+                        ok, info = validate_image_bytes(data, reject_refs)
                         if ok:
                             aspect = parse_aspect((task.get("parameters") or {}).get("aspect_ratio") or task.get("aspect_ratio") or "16:9")
                             dest_file.write_bytes(to_jpeg_bytes(data, aspect))
@@ -1482,6 +1587,8 @@ class MuseFleetRunner:
                     rejected.add(src)
                 await asyncio.sleep(SCAN_INTERVAL_SEC)
 
+            await self.save_no_media_evidence(page, task_id, acc.account_id,
+                                              {"kind": kind, "rejected": sorted(rejected), "net_candidates": net_candidates})
             raise TaskFailure("NO_MEDIA", f"Không nhận được {kind} hợp lệ sau {MEDIA_WAIT_SEC[kind]}s cho task {task_id}")
 
         except TaskFailure as tf:
@@ -1505,12 +1612,40 @@ class MuseFleetRunner:
             return False, None, f"BROWSER_ERROR: {e}"
         finally:
             if context:
-                try:
-                    await context.close()
-                except Exception:
-                    pass
+                await close_context_quietly(context, acc.account_id)
             for ap in attach_paths:
                 discard_temp_file(ap)
+
+    async def save_no_media_evidence(self, page: Any, task_id: str, account_id: str, extra: Dict[str, Any]) -> Optional[Path]:
+        """Lưu ảnh chụp trang và danh sách media (MEDIA_DIAGNOSTIC_JS) vào NO_MEDIA_DIAG_DIR để tìm vì sao không thấy
+        kết quả. Chỉ là bằng chứng: lỗi khi lưu thì ghi log, việc vẫn báo NO_MEDIA như cũ."""
+        stem = f"{time.strftime('%Y%m%d_%H%M%S')}_{task_id}"
+        try:
+            NO_MEDIA_DIAG_DIR.mkdir(parents=True, exist_ok=True)
+            rows = await asyncio.wait_for(page.evaluate(MEDIA_DIAGNOSTIC_JS), timeout=20)
+            data = {"task_id": task_id, "account_id": account_id, "url": page.url, **extra, "media": rows}
+            out = NO_MEDIA_DIAG_DIR / f"{stem}.json"
+            out.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+            await asyncio.wait_for(page.screenshot(path=str(NO_MEDIA_DIAG_DIR / f"{stem}.png"), full_page=True),
+                                   timeout=30)
+            prune_diagnostics(NO_MEDIA_DIAG_DIR, NO_MEDIA_DIAG_KEEP)
+            logger.warning(f"[{account_id}] Đã lưu bằng chứng NO_MEDIA: {out}")
+            return out
+        except Exception as e:
+            logger.warning(f"[{account_id}] Không lưu được bằng chứng NO_MEDIA cho {task_id}: {e}")
+            return None
+
+    async def run_task_with_ceiling(self, acc: FleetAccount, task: Dict[str, Any]) -> Tuple[bool, Optional[Path], str]:
+        """Chạy `execute_task_with_browser` trong trần `task_ceiling_sec`; quá trần thì huỷ việc (khối finally đóng trình
+        duyệt) và trả lỗi TASK_HUNG để luồng nhận việc khác."""
+        limit = task_ceiling_sec(task)
+        try:
+            return await asyncio.wait_for(self.execute_task_with_browser(acc, task), timeout=limit)
+        except asyncio.TimeoutError:
+            msg = (f"TASK_HUNG: việc {task.get('task_id')} quá {limit:.0f}s (trình duyệt treo), đã bỏ việc và đóng "
+                   f"trình duyệt của {acc.account_id}")
+            logger.error(f"[{acc.account_id}] {msg}")
+            return False, None, msg
 
     # ---------------------------------------------------------
     # Worker Task Loop with Concurrency Semaphore (N <= 2 slots)
@@ -1543,7 +1678,7 @@ class MuseFleetRunner:
                         task_id = task["task_id"]
                         self.save_accounts_config()
 
-                        success, out_path, err_msg = await self.execute_task_with_browser(account, task)
+                        success, out_path, err_msg = await self.run_task_with_ceiling(account, task)
 
                         if success and out_path:
                             meta = {

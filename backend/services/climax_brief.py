@@ -8,6 +8,7 @@ Thiết kế: docs/superpowers/specs/2026-10-28-video-cao-trao-giao-viec-muse-de
 from __future__ import annotations
 
 import math
+from typing import Optional
 
 from models.schemas import Project, Scene
 from services.character_sheets import CharacterSheet, hair_rule_for
@@ -63,6 +64,68 @@ def _female_hair_lines(project: Project) -> list[str]:
             f"{FEMALE_HAIR_RULE_EN}"]
 
 
+# Thử thật 11/11/2026 (vụ xưởng sắt cảnh 7): clip AI méo đầu ở giây 3, Muse bỏ rồi TỰ DỰNG 3 clip bằng công cụ trên máy
+# của nó từ ảnh tĩnh (máy quay di chuyển, đèn nhấp nháy, tối dần) và vẫn tự chấm ĐẠT ("thân người đứng yên").
+AI_CLIPS_ONLY = (
+    "- Mọi đoạn trong video cuối phải là video do công cụ tạo video AI (Muse Video) làm ra. CẤM tự dựng clip bằng "
+    "Python, ffmpeg, PIL hay công cụ khác từ ảnh tĩnh (lia, zoom, đèn nhấp nháy, tối dần, ghép lớp, chuyển động máy "
+    "quay giả): video như vậy là KHÔNG ĐẠT dù đẹp. ffmpeg chỉ được dùng để cắt bỏ phần hỏng, ghép các clip AI và chỉnh "
+    "màu cho khớp.",
+    "- Hết ngân sách mà không đủ clip AI đạt thì ghép những phần AI đạt được, video ngắn hơn cũng được, và báo KHÔNG "
+    "ĐẠT ở phần thiếu; không lấp chỗ thiếu bằng ảnh tĩnh chuyển động.",
+)
+
+
+def landscape_brief(project: Project, scene: Scene, seconds: float, done_token: str,
+                    location_line: Optional[str], has_plate: bool) -> str:
+    """Bản giao việc cho cảnh vẽ không có nhân vật (phong cảnh, căn phòng, đồ vật): chuyển động đến từ vật trong cảnh, máy
+    quay đứng yên, không thêm người. Chủ dự án 11/11/2026: cảnh phong cảnh được làm video và được tính vào tỉ lệ video
+    Muse (services/video_share.py). Đính kèm: ảnh cảnh, rồi ảnh chuẩn bối cảnh nếu nơi đó đã khoá."""
+    target = target_seconds(seconds)
+    attachments = ["- Ảnh 1 — KHUNG CẢNH ĐÃ DUYỆT: khung hình mở đầu; chuẩn về bố cục, ánh sáng, nét vẽ 2D, màu sắc."]
+    if has_plate:
+        attachments.append("- Ảnh 2 — ẢNH CHUẨN CỦA BỐI CẢNH: nơi này phải giữ đúng kiến trúc, đồ vật cố định, màu sắc.")
+    parts = [
+        "Làm video cho một cảnh của phần mềm của mình. Tự làm trọn từ đầu tới cuối trong yêu cầu này, không hỏi lại "
+        f"giữa chừng. Ngân sách: tối đa {AGENT_MAX_VIDEOS} video và tối đa {AGENT_MAX_IMAGES} ảnh.",
+        "",
+        "Ảnh đính kèm, theo thứ tự:",
+        *attachments,
+        "",
+        f"Lời kể của cảnh (video cần dài khoảng {target} giây): \"{scene.text.strip()}\"",
+        f"Mô tả hình của cảnh: {' '.join((scene.image_prompt or '').split()) or '(xem Ảnh 1)'}",
+        *([f"Nơi chốn cố định: {location_line}"] if location_line else []),
+        "",
+        "Đây là VIDEO, không phải ảnh chuyển động: cảnh này không có nhân vật, nên chuyển động phải đến từ chính vật "
+        "trong cảnh và hợp với lời kể (gió lay cây, cỏ, lá ngô; mưa rơi; khói, sương trôi; nước chảy, gợn; đèn chập "
+        "chờn; cửa, rèm đung đưa; bụi bay). Chuyển động thấy rõ ở nhiều chỗ trong khung hình.",
+        "",
+        "Luật bắt buộc:",
+        "- Máy quay đứng yên như đặt trên chân máy: không lia, không zoom. Chỉ máy quay lia/zoom trên một khung đứng "
+        "im là KHÔNG ĐẠT.",
+        "- Không thêm người, không thêm con vật, không thêm chữ, phụ đề, logo.",
+        *AI_CLIPS_ONLY,
+        "- Giữ đúng nét vẽ 2D, bố cục, màu sắc và ánh sáng của Ảnh 1 suốt video; không đổi sang ảnh thật.",
+        "",
+        "Các bước:",
+        "1. Tự lập danh sách clip (mỗi clip một kiểu chuyển động rõ, dùng Ảnh 1 làm khung đầu). Ghi danh sách vào báo cáo.",
+        "2. Làm từng clip. Sau mỗi clip: trích khung mỗi giây và khung cuối, tự so với Ảnh 1. Loại nếu: so các khung "
+        "cách nhau một giây mà gần như không có gì chuyển động; chỉ có máy quay lia/zoom; có người, con vật hay chữ "
+        "xuất hiện; đổi nét vẽ, đổi màu, đổi nơi chốn. Bị loại thì tạo lại (viết prompt khác, chuyển động rõ hơn), "
+        "trong ngân sách.",
+        f"3. Ghép các đoạn tốt nhất thành một video khoảng {target} giây.",
+        "",
+        "GIAO KẾT QUẢ trong tin nhắn cuối (gửi file trong chat để mình tải về):",
+        "- Đúng chỉ một video: video cuối đã ghép (16:9, càng nét càng tốt). Không gửi kèm clip nháp trong tin cuối.",
+        f"- Ghi một dòng \"{NEW_SCENE_IMAGE_TAG}: không\".",
+        "- Báo cáo ngắn: danh sách clip đã lập; tổng số video và ảnh đã tạo; mỗi video đạt hay bị loại ở khung nào, vì "
+        "sao; kết quả cuối ĐẠT hay KHÔNG ĐẠT.",
+        "",
+        f"Dòng cuối cùng của tin nhắn cuối cùng ghi đúng nguyên văn: {done_token}",
+    ]
+    return "\n".join(parts)
+
+
 def scene_brief(project: Project, scene: Scene, people: list[CharacterSheet], grid_count: int, seconds: float,
                 done_token: str) -> str:
     """Bản giao việc tiếng Việt gửi nguyên văn cho Muse; đính kèm theo thứ tự: ảnh cảnh, bảng diễn viên, các lưới."""
@@ -84,15 +147,22 @@ def scene_brief(project: Project, scene: Scene, people: list[CharacterSheet], gr
         "trắng RẤT TO, mặt trắng phẳng, hai chấm mắt và một nét miệng, KHÔNG BAO GIỜ thành mặt người hay mặt anime "
         "(không mũi, không mắt có tròng, không lông mi, không môi chi tiết). Được biểu cảm bằng nét đơn giản cùng kiểu "
         "vẽ: lông mày một nét nhíu hoặc nhướn, nước mắt, giọt mồ hôi, miệng há, nửa mặt tô xám khi sợ. Quần áo, màu sắc, "
-        "bối cảnh giữ như ảnh đã duyệt. Nhân vật cử "
-        "động ít hoặc chạy tại chỗ vẫn đạt; đổi sang mặt người thì không bao giờ đạt.",
+        "bối cảnh giữ như ảnh đã duyệt. Đổi sang mặt người thì không bao giờ đạt.",
+        "",
+        # 11/11/2026: câu cũ "nhân vật cử động ít hoặc chạy tại chỗ vẫn đạt" + "bị loại thì giảm cử động" làm 34/38 clip
+        # vụ xưởng sắt gần như đứng hình (chủ dự án 10/11: "phải di chuyển bình thường chứ, đây là ảnh chuyển động rồi").
+        # Thử 10/11: ép cử động + khoá máy quay vẫn giữ đầu tròn (cảnh 20).
+        "Đây là VIDEO, không phải ảnh chuyển động: mỗi clip nhân vật phải làm đúng hành động trong lời kể bằng cơ thể "
+        "(đi, bước vào, quay đầu, cúi xuống, ngồi xuống, giơ tay, cầm nắm đồ vật, ôm mặt khóc, run rẩy), thấy rõ trong "
+        "khung hình. Chỉ đổi nét mặt, chỉ chớp mắt, hay chỉ máy quay lia/zoom trên một khung đứng im đều KHÔNG ĐẠT.",
         "",
         "Luật bắt buộc (đo thật: video hỏng ở đúng các chỗ này):",
         "- Tuyệt đối không clip nào được để nhân vật xoay người từ trước ra sau (hoặc từ sau ra trước): sau tóc sẽ mọc một đĩa "
         "trắng như vầng hào quang. Chỗ đổi hướng là một cú cắt cảnh giữa hai clip.",
         "- Đoạn nhân vật quay lưng phải bắt đầu từ một ảnh góc sau vẽ riêng (cùng nhân vật, cùng phong cách, chỉ thấy "
         "tóc phủ kín đầu, không chút màu trắng nào của đầu), dùng ảnh đó làm khung đầu của clip.",
-        "- Máy quay đứng yên hoặc lia rất chậm; không zoom sát mặt.",
+        "- Máy quay đứng yên như đặt trên chân máy: không lia, không zoom; chuyển động đến từ nhân vật và vật trong cảnh.",
+        *AI_CLIPS_ONLY,
         "- Ảnh 1 khác Ảnh 2 ở dáng đầu hay mái tóc, hoặc có nhân vật nữ đầu trọc (tóc chỉ là một chỏm sau gáy), thì vẽ "
         "lại Ảnh 1 trước (giữ nguyên mọi thứ khác, chỉ sửa dáng đầu, mái tóc cho đúng), rồi dùng ảnh đã sửa làm khung "
         "đầu.",
@@ -101,10 +171,15 @@ def scene_brief(project: Project, scene: Scene, people: list[CharacterSheet], gr
         "1. Tự lập danh sách clip từ lời kể và storyboard: ô nào góc trước/nghiêng, ô nào góc sau, mỗi clip làm gì, cắt "
         "cảnh ở đâu. Ghi danh sách clip đó vào báo cáo.",
         "2. Vẽ các ảnh khởi đầu cần thiết (ảnh cảnh đã sửa, ảnh góc sau) và tự kiểm với Ảnh 2.",
-        "3. Làm từng clip từ ảnh khởi đầu của nó. Sau mỗi clip: trích khung mỗi giây và khung cuối, tự so với ảnh khởi "
+        "3. Làm từng clip bằng Muse Video, mỗi clip MỘT hành động đơn giản dài 3–6 giây: đưa ô storyboard của lúc bắt "
+        "đầu hành động làm khung ĐẦU và ô của lúc hành động xong làm khung CUỐI (ghi rõ trong prompt: ảnh thứ nhất là "
+        "khung đầu, ảnh thứ hai là khung cuối), kèm câu khoá: giữ đầu tròn trắng to, chấm mắt, tóc, quần áo như Ảnh 2; "
+        "clip sau nối từ khung cuối của clip trước (dùng resume_from_snapshot_id khi được). Đầu bắt đầu méo từ giây nào "
+        "thì cắt bỏ từ giây đó, giữ phần trước (ít nhất 2 giây) rồi làm clip tiếp từ khung cuối của phần giữ. Sau mỗi clip: trích khung mỗi giây và khung cuối, tự so với ảnh khởi "
         "đầu và Ảnh 2. Loại nếu có bất kỳ khung nào: mặt người hay mặt anime, đầu nhỏ lại hoặc méo, nhân vật nữ mất tóc "
-        "trên đỉnh đầu, đĩa trắng sau tóc, đổi màu quần áo, thêm người, cắt cảnh trong clip. Bị loại thì tạo lại (viết "
-        "prompt khác, giảm cử động), trong ngân sách.",
+        "trên đỉnh đầu, đĩa trắng sau tóc, đổi màu quần áo, thêm người, cắt cảnh trong clip; hoặc so các khung cách "
+        "nhau một giây mà nhân vật gần như đứng im. Bị loại thì tạo lại (viết prompt khác, chia hành động thành clip "
+        "ngắn hơn, mỗi clip một hành động rõ), trong ngân sách; không được sửa bằng cách bớt cử động.",
         f"4. Ghép các đoạn tốt nhất thành một video khoảng {target} giây, chỉnh màu các đoạn cho khớp nhau.",
         "",
         "GIAO KẾT QUẢ trong tin nhắn cuối (gửi file trong chat để mình tải về):",

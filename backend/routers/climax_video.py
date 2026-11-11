@@ -1,6 +1,6 @@
 """API video cho cảnh cao trào (dự án vụ án). Xử lý ở services/climax_video.py.
 
-- POST /api/projects/{project_id}/climax-video/pick                 tự chọn cảnh cao trào (tối đa CLIMAX_RATIO số cảnh)
+- POST /api/projects/{project_id}/climax-video/pick                 tự chọn cảnh có người đủ CLIMAX_RATIO thời lượng video
 - PUT  /api/projects/{project_id}/climax-video/scenes/{scene_id}   bật/tắt một cảnh
 - POST /api/projects/{project_id}/climax-video/run                  chạy nền các cảnh đã chọn (tốn lượt Muse)
 - GET  /api/projects/{project_id}/climax-video/status               tiến độ từng cảnh
@@ -83,7 +83,7 @@ async def pick_scenes(project_id: str):
     if _is_running(project_id):
         raise HTTPException(status_code=409, detail="Đang tạo video cao trào cho dự án này, chờ xong rồi chọn lại")
     project = await _load(project_id)
-    chosen = climax_video.pick_climax_scenes(project)
+    chosen = await asyncio.to_thread(climax_video.pick_climax_scenes, project)
     for scene in project.scenes:
         status = _state(scene).get("status")
         if status in KEEP_ON_PICK or _state(scene).get("grid_approved"):
@@ -93,7 +93,7 @@ async def pick_scenes(project_id: str):
         elif status == "selected":
             _set_state(scene, None)
     await asyncio.to_thread(project_service.save_project, project)
-    return {"scene_ids": chosen, "limit": climax_video.climax_limit(project)}
+    return {"scene_ids": chosen, "limit": len(chosen), "coverage": climax_video.coverage(project, chosen)}
 
 
 @router.put("/projects/{project_id}/climax-video/scenes/{scene_id}")
@@ -110,13 +110,8 @@ async def toggle_scene(project_id: str, scene_id: str, req: SceneToggle):
                                                     "mới làm video cao trào được")
     status = _state(scene).get("status")
     if req.enabled:
+        # 50% là mức sàn thời lượng (CLAUDE.md mục 1.2 câu 24), không phải mức trần: bật thêm cảnh luôn được
         if status not in ("selected", *KEEP_ON_PICK) and not _state(scene).get("grid_approved"):
-            limit = climax_video.climax_limit(project)
-            marked = sum(1 for s in project.scenes if _state(s).get("status") and s.id != scene_id)
-            if marked >= limit:
-                raise HTTPException(status_code=400, detail=f"Đã đủ {limit} cảnh video (tối đa "
-                                                            f"{climax_video.CLIMAX_RATIO:.0%} số cảnh): tắt bớt "
-                                                            "một cảnh khác trước")
             _set_state(scene, {"status": "selected"})
     else:
         if status == "ready" and scene.media_view_mode == "video":
@@ -145,12 +140,23 @@ _ENQUEUE_ORIGINAL = enqueue_and_wait_muse_task
 _muse_call = muse_call_starting_runner   # tên cũ (test)
 
 
+# Lỗi cho biết không còn tài khoản video làm được: dừng cả lượt chạy, các cảnh chưa tới giữ nguyên trạng thái. Gặp
+# 12/11/2026: tài khoản video duy nhất hết lượt dùng Muse, 24 cảnh sau bị ghi "failed" hàng loạt trong vài giây.
+STOP_RUN_WORDS = ("Không có tài khoản Muse video nào đang online", "QUOTA_EXCEEDED", "usage limit", "Hết quota")
+
+
 async def _run_all(project_id: str, scene_ids: list[str]) -> None:
     for scene_id in scene_ids:
         try:
-            await climax_video.run_scene_climax_video(project_id, scene_id, muse_call=muse_call_starting_runner)
+            state = await climax_video.run_scene_climax_video(project_id, scene_id, muse_call=muse_call_starting_runner)
         except Exception:   # cảnh này đã được ghi "failed" kèm lý do; làm tiếp cảnh sau
             logger.exception(f"Video cao trào {project_id}/{scene_id}: lỗi ngoài dự kiến")
+            continue
+        error = str((state or {}).get("error") or "")
+        if (state or {}).get("status") == "failed" and any(w in error for w in STOP_RUN_WORDS):
+            logger.warning(f"Video cao trào {project_id}: dừng lượt chạy ở {scene_id}, không còn tài khoản video "
+                           f"làm được ({error[:200]})")
+            break
 
 
 @router.post("/projects/{project_id}/climax-video/run")
@@ -235,12 +241,12 @@ async def climax_status(project_id: str):
             scenes.append({"scene_id": scene.id, "status": state["status"], "error": state.get("error"),
                            **{k: state[k] for k in ("clips", "grids", "grid", "done", "attempts", "grid_version",
                                                     "muse_report", "media_count", "warnings", "scene_image_updated",
-                                                    "backup_image", "video_seconds")
+                                                    "backup_image", "video_seconds", "motion_score")
                               if k in state},
                            "grid_count": len(state.get("grid_paths") or [])})
     return {
         "running": _is_running(project_id),
-        "limit": climax_video.climax_limit(project),
+        "limit": await asyncio.to_thread(climax_video.climax_limit, project),
         "eligible": sum(1 for s in project.scenes if climax_video.is_eligible(s)),
         "scenes": scenes,
     }

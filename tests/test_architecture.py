@@ -365,7 +365,7 @@ def test_html_templates_escape_interpolations():
 # Chỗ cũ chưa rà từng chỗ: có chỗ hợp lệ (vd. is_within trả False khi khác ổ đĩa). Code mới: ghi log rồi mới trả.
 ALLOWED_SILENT_EXCEPT_RETURNS = {
     "backend/routers/muse_bridge.py": 1,
-    "backend/runners/muse_fleet_runner.py": 6,
+    "backend/runners/muse_fleet_runner.py": 5,
     "backend/runners/single_instance.py": 3,
     "backend/security.py": 2,  # hợp lệ: is_within/is_safe_id trả False nghĩa là "không an toàn"
     "backend/services/case_project_builder.py": 1,
@@ -538,3 +538,27 @@ def test_case_assemble_requires_verified_parts():
     """Khoá cứng (mục 5 dòng 15): ráp kế hoạch vụ án chỉ khi lời Việt mọi nhịp đã qua kiểm (output["verified"])."""
     src = _function_source(BACKEND / "services" / "case_adaptation_steps.py", "_run_assemble")
     assert 'get("verified") is True' in src
+
+
+# --- Đường cấm 17: dựng video thành phẩm mà không qua chốt tỉ lệ video Muse ------------------------------------------
+def test_every_final_render_passes_the_video_share_gate():
+    """Khoá cứng (mục 5 dòng 17, chủ dự án 11/11/2026): mọi hàm trong routers/ gọi assemble_full_video() phải gọi
+    require_gate() (services/video_share.py) ở dòng trước đó. Gỡ chốt thì commit bị chặn. Phải nhắc 4 lần
+    (29/10, 06/11, hai lần 10/11/2026) vì video ra gần như toàn ảnh hoặc clip không có người cử động."""
+    found = []
+    for rel, tree in _trees():
+        if not rel.startswith("backend/routers/"):
+            continue
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            calls = [(n.lineno, n.func.id if isinstance(n.func, ast.Name) else getattr(n.func, "attr", ""))
+                     for n in ast.walk(fn) if isinstance(n, ast.Call)]
+            assembles = [ln for ln, name in calls if name == "assemble_full_video"]
+            gates = [ln for ln, name in calls if name == "require_gate"]
+            for ln in assembles:
+                found.append(rel)
+                assert any(g < ln for g in gates), (
+                    f"{rel}:{ln} ({fn.name}) dựng video bằng assemble_full_video() mà không qua require_gate() trước: "
+                    "video dưới 45% video Muse sẽ ra như thành phẩm (đường cấm 17)")
+    assert found, "không tìm thấy chỗ nào gọi assemble_full_video(): test này đang không kiểm gì"

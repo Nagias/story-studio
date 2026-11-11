@@ -7,7 +7,7 @@
   "S110": 3
  },
  "backend/runners/muse_fleet_runner.py": {
-  "S110": 4
+  "S110": 3
  },
  "backend/services/audio_engine.py": {
   "S110": 1

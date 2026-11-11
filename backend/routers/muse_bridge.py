@@ -20,6 +20,7 @@ from config import EXTRA_CHROME_PROFILES_DIRS, MUSE_AGENT_WAIT_MIN, PROJECTS_DIR
 from services.climax_brief import AGENT_REPLY_MAX_CHARS, AGENT_VIDEO_MODE
 from services import scene_locks
 from services.image_service import with_style
+from services.muse_motion import LOCKED_CAMERA_EN
 from security import (
     MEDIA_EXTS,
     MAX_UPLOAD_BYTES,
@@ -604,7 +605,7 @@ async def enqueue_and_wait_muse_task(task_dict: Dict[str, Any], timeout: Optiona
     if kind == "video":
         if task_dict.get("mode") != AGENT_VIDEO_MODE:   # việc nhiều bước giữ nguyên chế độ để runner nhận ra
             task_dict["mode"] = "image-to-video" if (task_dict.get("input_image_url") or params.get("input_image_url")) else "text-to-video"
-        camera_motion = task_dict.get("camera_motion") or params.get("camera_motion") or "cinematic slow tracking pan, smooth camera motion"
+        camera_motion = task_dict.get("camera_motion") or params.get("camera_motion") or LOCKED_CAMERA_EN
         duration = task_dict.get("duration") or params.get("duration") or params.get("duration_sec") or 5
         action_prompt = task_dict.get("action_prompt") or task_dict.get("prompt")
         input_img = task_dict.get("input_image_url") or params.get("input_image_url")
@@ -1010,7 +1011,7 @@ async def create_task(req: TaskCreateRequest):
     # Phân tách rõ ràng payload cho Image vs Video
     if is_video:
         mode = "image-to-video" if (req.input_image_url or ref_img or params.get("input_image_url")) else mode
-        camera_motion = req.camera_motion or params.get("camera_motion") or "cinematic slow tracking pan, smooth camera motion"
+        camera_motion = req.camera_motion or params.get("camera_motion") or LOCKED_CAMERA_EN
         duration = req.duration or params.get("duration") or params.get("duration_sec") or 5
         input_img = req.input_image_url or ref_url or ref_path or params.get("input_image_url")
         action_prompt = req.action_prompt or req.prompt

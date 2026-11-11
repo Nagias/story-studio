@@ -273,6 +273,27 @@ def ensure_speedlines_asset(asset_path: Optional[str] = None, dark: bool = False
     img.save(p, "PNG")
     return str(p)
 
+# Clip ngắn hơn lời kể thì kéo chậm tối đa chừng này lần trước khi giữ khung cuối. Bản Anh vụ Khang Cúc Hoa (10/11/2026):
+# 14/23 clip ngắn hơn lời Anh, đứng hình tới 3,2 giây; cần kéo nhiều nhất 1,18 lần. Chậm 1,25 lần khó nhận ra.
+MAX_CLIP_STRETCH = 1.25
+
+
+def clip_stretch(clip_seconds: Optional[float], scene_seconds: Optional[float]) -> float:
+    """Hệ số kéo chậm clip cho vừa cảnh: 1 khi clip đủ dài (lệch dưới 0,05 giây) hoặc không đo được clip."""
+    if not clip_seconds or not scene_seconds or clip_seconds <= 0 or scene_seconds <= clip_seconds + 0.05:
+        return 1.0
+    return min(MAX_CLIP_STRETCH, scene_seconds / clip_seconds)
+
+
+def _media_seconds(path: str) -> Optional[float]:
+    """Độ dài clip; không đo được thì None (dựng như cũ: giữ khung cuối), ghi log."""
+    try:
+        return get_audio_duration(path)
+    except Exception as e:
+        logger.warning(f"Không đo được độ dài clip {Path(path).name}: {e}; không kéo chậm")
+        return None
+
+
 async def render_scene_video(
     image_path: str,
     audio_path: Optional[str],
@@ -328,12 +349,14 @@ async def render_scene_video(
         except Exception:
             has_video_audio = False
 
-        # Clip ngắn hơn lời kể thì giữ khung cuối cho phần còn lại (tpad clone), không lặp clip: lặp lại thì nhân vật
-        # nhảy về tư thế đầu giữa câu. Dài hơn thì -t cắt đúng độ dài cảnh.
+        # Clip ngắn hơn lời kể: kéo chậm clip tối đa MAX_CLIP_STRETCH lần, còn thiếu thì giữ khung cuối (tpad clone).
+        # Không lặp clip: lặp lại thì nhân vật nhảy về tư thế đầu giữa câu. Dài hơn thì -t cắt đúng độ dài cảnh.
+        stretch = clip_stretch(_media_seconds(str(image_path)), duration)
         cmd = ["ffmpeg", "-y", "-i", str(image_path)]
         filter_complex_parts = [
             f"[0:v]scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,"
-            f"setsar=1,fps={fps},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration={duration:.3f}{fade_vf}[vout]"
+            f"setsar=1,setpts={stretch:.4f}*(PTS-STARTPTS),fps={fps},"
+            f"tpad=stop_mode=clone:stop_duration={duration:.3f}{fade_vf}[vout]"
         ]
 
         has_voice = audio_path and os.path.exists(audio_path)
@@ -509,6 +532,23 @@ async def build_xfade_video(
     await proc.communicate()
     return proc.returncode == 0 and output_video_path.exists() and output_video_path.stat().st_size > 1000
 
+def subtitle_scene_timing(scenes_data: List[Dict[str, Any]],
+                          scene_srt_infos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Bản sao scenes_data với `total_duration` = độ dài thật của từng đoạn hình đã dựng (như file .srt).
+
+    Phụ đề chữ nhảy (ASS) cộng dồn mốc từng cảnh theo `total_duration`, không có thì `duration` (độ dài giọng đọc).
+    Clip Muse dài hơn lời kể nên đoạn hình dài hơn giọng; cộng theo giọng thì chữ chạy trước hình, lệch dồn tới ~38
+    giây ở cuối video vụ xưởng sắt (11/11/2026)."""
+    if len(scenes_data) != len(scene_srt_infos):
+        raise ValueError(f"Số cảnh phụ đề ({len(scenes_data)}) khác số đoạn hình ({len(scene_srt_infos)}): "
+                         "không biết mốc thời gian từng cảnh")
+    out = []
+    for sc, info in zip(scenes_data, scene_srt_infos):
+        seconds = float(info.get("duration") or 0)
+        out.append({**sc, "total_duration": seconds} if seconds > 0 else dict(sc))
+    return out
+
+
 async def assemble_full_video(
     scene_video_paths: List[str],
     scene_srt_infos: List[Dict[str, Any]],
@@ -618,7 +658,7 @@ async def assemble_full_video(
             try:
                 from services.subtitle_engine import generate_karaoke_ass
                 generate_karaoke_ass(
-                    scenes_data=scenes_data,
+                    scenes_data=subtitle_scene_timing(scenes_data, scene_srt_infos),
                     output_ass_path=str(merged_ass_file),
                     style_mode=subtitle_style or "kinetic_pop"
                 )

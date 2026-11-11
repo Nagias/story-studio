@@ -366,6 +366,8 @@ class RenderRequest(BaseModel):
     fps: Optional[int] = 25
     camera_motion: Optional[str] = None
     transition: Optional[str] = "dip_to_black"  # dip_to_black, crossfade, cut, flash_white, wipe_left
+    # Bản nháp: bỏ qua chốt tỉ lệ video Muse (services/video_share.py), ra file nháp riêng, không ghi đè thành phẩm
+    draft: Optional[bool] = False
 
 class RenderStatusResponse(BaseModel):
     render_id: str
@@ -404,6 +406,8 @@ class LongVideoProduceRequest(BaseModel):
     transition: Optional[str] = "dip_to_black"
     # None = giữ provider đã chọn của dự án (trước đây mặc định "9router_gemini" ghi đè ngầm lựa chọn Muse/mock)
     image_provider: Optional[str] = None
+    # Bản nháp: bỏ qua chốt tỉ lệ video Muse (services/video_share.py), ra file nháp riêng, không ghi đè thành phẩm
+    draft: Optional[bool] = False
 
 
 class OpenFolderRequest(BaseModel):
