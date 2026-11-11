@@ -36,7 +36,7 @@ from config import MUSE_AGENT_WAIT_MIN, PROJECTS_DIR, STATIC_DIR
 from models.schemas import Project, Scene
 from security import is_within
 from services import character_sheets as cs
-from services import project_service
+from services import clip_motion, project_service
 from services.climax_brief import AGENT_REPLY_MAX_CHARS, AGENT_VIDEO_MODE, NEW_SCENE_IMAGE_TAG, scene_brief, target_seconds
 from services.tts_service import MediaDurationError, get_audio_duration
 
@@ -150,6 +150,20 @@ def pick_climax_scenes(project: Project) -> list[str]:
     else:
         chosen = {s.id for _, _, s in ranked[:math.ceil(CLIMAX_RATIO * len(ranked))]}
     return [s.id for s in project.scenes if s.id in chosen]
+
+
+def coverage(project: Project, scene_ids: list[str]) -> dict:
+    """Lời kể của các cảnh `scene_ids` chiếm bao nhiêu phần thời lượng lời kể cả video. `enough` sai khi chưa đạt
+    CLIMAX_RATIO (bản Anh vụ Khang Cúc Hoa 11/11/2026: cảnh có người chỉ đủ 49,2%, nút chọn cảnh không báo gì).
+    Chưa có giọng đọc thì không biết: percent None, enough None."""
+    total = sum(s.duration or 0 for s in project.scenes)
+    ids = set(scene_ids)
+    covered = sum(s.duration or 0 for s in project.scenes if s.id in ids)
+    if total <= 0:
+        return {"seconds": None, "total_seconds": None, "percent": None, "enough": None,
+                "target_percent": round(CLIMAX_RATIO * 100)}
+    return {"seconds": round(covered, 1), "total_seconds": round(total, 1), "percent": round(100 * covered / total, 1),
+            "enough": covered >= CLIMAX_RATIO * total - 1e-6, "target_percent": round(CLIMAX_RATIO * 100)}
 
 
 def climax_limit(project: Project) -> int:
@@ -389,6 +403,20 @@ def _mark_ready(project_id: str, scene_id: str, video: Path, state: dict) -> Non
         scene.metadata = dict(scene.metadata or {})
         scene.metadata["climax_video"] = state
     _update_scene(project_id, scene_id, change)
+
+
+def still_clip_warning(score: float) -> str:
+    return (f"Clip gần như đứng hình (điểm cử động {score:.1f}, cần từ {clip_motion.REAL_MOTION_MIN:.0f}): nhân vật "
+            "hầu như không cử động hoặc chỉ có máy quay lia/zoom. Xem clip; đúng vậy thì bấm \"Làm lại cảnh này\".")
+
+
+def _motion_or_none(video: Path) -> Optional[float]:
+    """Điểm cử động của clip; đo lỗi thì ghi log và trả None (không chặn việc nhận clip, thẻ cảnh không có cảnh báo)."""
+    try:
+        return clip_motion.motion_score(video)
+    except clip_motion.ClipMotionError as e:
+        logger.warning(f"Không đo được cử động của {video.name}: {e}")
+        return None
 
 
 # ---------------------------------------------------------------------------------------------------- chạy một cảnh
@@ -677,10 +705,15 @@ async def run_scene_clips(project_id: str, scene_id: str, muse_call: MuseCall) -
             frame = await asyncio.to_thread(video_frame_size, got)
             chosen = await asyncio.to_thread(choose_scene_image, image, extras, frame)
         backup = await asyncio.to_thread(replace_scene_image, project_id, scene_id, chosen) if chosen else None
+        warnings = list(result.get("warnings") or [])
+        motion = await asyncio.to_thread(_motion_or_none, final)
+        if motion is not None and not clip_motion.has_real_motion(motion):
+            warnings.append(still_clip_warning(motion))
         state = {**old, **thread.state(), "status": "ready", "clips": 1, "grids": len(grid_files), "attempts": 1,
                  "clip_version": version, "video_seconds": round(length, 1),
+                 "motion_score": None if motion is None else round(motion, 2),
                  "muse_report": str(result.get("muse_reply") or "")[-AGENT_REPLY_MAX_CHARS:],
-                 "media_count": result.get("media_count"), "warnings": list(result.get("warnings") or []),
+                 "media_count": result.get("media_count"), "warnings": warnings,
                  "scene_image_updated": chosen is not None, "backup_image": str(backup) if backup else None,
                  "grid": None, "done": None, "error": None}
         state = {k: v for k, v in state.items() if v is not None}

@@ -93,7 +93,7 @@ async def pick_scenes(project_id: str):
         elif status == "selected":
             _set_state(scene, None)
     await asyncio.to_thread(project_service.save_project, project)
-    return {"scene_ids": chosen, "limit": len(chosen)}
+    return {"scene_ids": chosen, "limit": len(chosen), "coverage": climax_video.coverage(project, chosen)}
 
 
 @router.put("/projects/{project_id}/climax-video/scenes/{scene_id}")
@@ -230,7 +230,7 @@ async def climax_status(project_id: str):
             scenes.append({"scene_id": scene.id, "status": state["status"], "error": state.get("error"),
                            **{k: state[k] for k in ("clips", "grids", "grid", "done", "attempts", "grid_version",
                                                     "muse_report", "media_count", "warnings", "scene_image_updated",
-                                                    "backup_image", "video_seconds")
+                                                    "backup_image", "video_seconds", "motion_score")
                               if k in state},
                            "grid_count": len(state.get("grid_paths") or [])})
     return {

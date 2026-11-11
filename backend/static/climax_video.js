@@ -328,9 +328,17 @@
       await loadCast();
       renderSceneList();
       const n = (data.scene_ids || []).length;
-      showToast(n
-        ? `Đã chọn ${escapeHtml(n)} cảnh cao trào (tối đa ${escapeHtml(data.limit)}). Bật/tắt từng cảnh trên thẻ rồi bấm "Tạo video".`
-        : 'Không có cảnh nào đủ dấu hiệu cao trào; bật tay từng cảnh trên thẻ cảnh.', n ? 'success' : 'info', 6000);
+      const cov = data.coverage || {};
+      const share = cov.percent == null ? '' : ` Lời kể của các cảnh này chiếm ${escapeHtml(String(cov.percent).replace('.', ','))}% thời lượng video.`;
+      if (n && cov.enough === false) {
+        // Không đủ 50% video Muse (CLAUDE.md mục 1.2 câu 24): báo rõ, không im lặng như bản Anh vụ Khang Cúc Hoa
+        showToast(`Đã chọn ${escapeHtml(n)} cảnh có nhân vật, nhưng chỉ đạt ${escapeHtml(String(cov.percent).replace('.', ','))}%, dưới mức ${escapeHtml(cov.target_percent)}% video Muse. `
+          + 'Cảnh có nhân vật không đủ: gán nhân vật cho thêm cảnh (nút "Nhân vật") rồi bấm chọn lại.', 'warning', 12000);
+      } else {
+        showToast(n
+          ? `Đã chọn ${escapeHtml(n)} cảnh cao trào.${share} Bật/tắt từng cảnh trên thẻ rồi bấm "Tạo video".`
+          : 'Không có cảnh nào đủ dấu hiệu cao trào; bật tay từng cảnh trên thẻ cảnh.', n ? 'success' : 'info', 8000);
+      }
     } catch (err) {
       showToast(`Không chọn được cảnh: ${escapeHtml(err.message)}`, 'error', 7000);
     }

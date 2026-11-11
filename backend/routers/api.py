@@ -94,6 +94,7 @@ from services import (
 )
 from services.case_project_builder import previous_scene_frame, redraw_board_images
 from services.dialogue_video import render_seconds
+from services.video_share import report_lines, share_report
 from services.scene_locks import scene_locks
 from services.scene_sound import (ENERGY_TRACKS, SILENCE, build_energy_bgm, energy_segments, has_energy_info,
                                   mix_scene_sfx, plan_scene_sfx, scene_energy, scene_sfx_files)
@@ -1306,6 +1307,7 @@ async def execute_full_render(project_id: str, render_id: str, options: RenderRe
 
         scene_video_paths = []
         scene_srt_infos = []
+        share_entries = []   # (cảnh, số giây, đầu vào) cho báo cáo tỉ lệ video Muse (services/video_share.py)
 
         for i, scene in enumerate(project.scenes, start=1):
             media = get_scene_media_paths(project_id, scene.id)
@@ -1331,6 +1333,7 @@ async def execute_full_render(project_id: str, render_id: str, options: RenderRe
             scene.video_segment_path = v_res["video_path"]
             scene.metadata["segment_rendered"] = True
             scene_video_paths.append(v_res["video_path"])
+            share_entries.append((scene.order or i, v_res["duration"], input_media))
             scene_srt_infos.append({
                 "srt_path": str(media["srt"]),
                 "duration": v_res["duration"],
@@ -1404,10 +1407,13 @@ async def execute_full_render(project_id: str, render_id: str, options: RenderRe
         ))
 
         # Save to project json directly to ensure persistence
+        share = await asyncio.to_thread(share_report, share_entries)
+        share_lines = report_lines(share)
         p_obj = get_project(project_id)
         if p_obj:
             p_obj.final_video_path = assemble_res["video_path"]
             p_obj.final_video_url = final_video_url
+            p_obj.metadata["video_share"] = share
             save_project(p_obj)
 
         await broadcast_render_update(render_id, {
@@ -1420,6 +1426,7 @@ async def execute_full_render(project_id: str, render_id: str, options: RenderRe
             "logs": active_renders[render_id]["logs"] + [
                 f"Xuất file thành công: {assemble_res['video_path']}",
                 f"Thời lượng tổng: {assemble_res['duration']}s",
+                *share_lines,
             ],
         })
 
@@ -1695,6 +1702,7 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
         scene_video_paths = []
         scene_srt_infos = []
         render_durations: List[float] = []
+        share_entries = []   # (cảnh, số giây, đầu vào) cho báo cáo tỉ lệ video Muse (services/video_share.py)
 
         # Tiếng động chỉ ở cảnh then chốt, phát một lần (scene_sound.plan_scene_sfx; tiết chế âm thanh), cùng một quy tắc
         # cho truyện chữ và vụ án. Độ căng của cảnh: bgm_energy (vụ án) hoặc nhịp kể narrative_beat (truyện chữ).
@@ -1739,6 +1747,7 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
             scene.video_segment_path = v_res["video_path"]
             scene.metadata["segment_rendered"] = True
             scene_video_paths.append(v_res["video_path"])
+            share_entries.append((scene.order or i, v_res["duration"], input_media))
             scene_srt_infos.append({
                 "srt_path": str(media["srt"]),
                 "duration": v_res["duration"],
@@ -1832,10 +1841,13 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
             thumbnail_url=project.thumbnail_url,
         ))
 
+        share = await asyncio.to_thread(share_report, share_entries)
+        share_lines = report_lines(share)
         p_obj = get_project(project_id)
         if p_obj:
             p_obj.final_video_path = assemble_res["video_path"]
             p_obj.final_video_url = final_video_url
+            p_obj.metadata["video_share"] = share
             save_project(p_obj)
 
         await broadcast_render_update(render_id, {
@@ -1850,6 +1862,7 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
             "logs": active_renders[render_id]["logs"] + [
                 f"[Giai đoạn 5/5] Hoàn tất ghép video: {assemble_res['video_path']}",
                 f"[Giai đoạn 5/5] Tổng thời lượng: {assemble_res['duration']}s",
+                *share_lines,
                 "Video đã sẵn sàng phát tại Rạp Chiếu Phim Thành Phẩm!"
             ],
         })
