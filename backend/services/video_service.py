@@ -509,6 +509,23 @@ async def build_xfade_video(
     await proc.communicate()
     return proc.returncode == 0 and output_video_path.exists() and output_video_path.stat().st_size > 1000
 
+def subtitle_scene_timing(scenes_data: List[Dict[str, Any]],
+                          scene_srt_infos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Bản sao scenes_data với `total_duration` = độ dài thật của từng đoạn hình đã dựng (như file .srt).
+
+    Phụ đề chữ nhảy (ASS) cộng dồn mốc từng cảnh theo `total_duration`, không có thì `duration` (độ dài giọng đọc).
+    Clip Muse dài hơn lời kể nên đoạn hình dài hơn giọng; cộng theo giọng thì chữ chạy trước hình, lệch dồn tới ~38
+    giây ở cuối video vụ xưởng sắt (11/11/2026)."""
+    if len(scenes_data) != len(scene_srt_infos):
+        raise ValueError(f"Số cảnh phụ đề ({len(scenes_data)}) khác số đoạn hình ({len(scene_srt_infos)}): "
+                         "không biết mốc thời gian từng cảnh")
+    out = []
+    for sc, info in zip(scenes_data, scene_srt_infos):
+        seconds = float(info.get("duration") or 0)
+        out.append({**sc, "total_duration": seconds} if seconds > 0 else dict(sc))
+    return out
+
+
 async def assemble_full_video(
     scene_video_paths: List[str],
     scene_srt_infos: List[Dict[str, Any]],
@@ -618,7 +635,7 @@ async def assemble_full_video(
             try:
                 from services.subtitle_engine import generate_karaoke_ass
                 generate_karaoke_ass(
-                    scenes_data=scenes_data,
+                    scenes_data=subtitle_scene_timing(scenes_data, scene_srt_infos),
                     output_ass_path=str(merged_ass_file),
                     style_mode=subtitle_style or "kinetic_pop"
                 )
