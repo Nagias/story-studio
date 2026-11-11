@@ -784,9 +784,15 @@ const API = {
       });
       if (res.ok) return await res.json();
       const err = await res.json().catch(() => ({ detail: 'Lỗi sản xuất video dài' }));
-      throw new Error(err.detail || 'Lỗi sản xuất video dài');
+      // Chốt tỉ lệ video Muse (services/video_share.py): 409 kèm {code, message, report}
+      if (err.detail && typeof err.detail === 'object' && err.detail.code === 'VIDEO_SHARE_LOW') {
+        const e = new Error(err.detail.message || 'Tỉ lệ video Muse quá thấp');
+        e.shareLow = err.detail;
+        throw e;
+      }
+      throw new Error((typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail)) || 'Lỗi sản xuất video dài');
     } catch (e) {
-      console.error("API produceLongVideo failed", e);
+      if (!e.shareLow) console.error("API produceLongVideo failed", e);   // bị chốt tỉ lệ chặn là việc bình thường
       throw e;
     }
   },
@@ -3932,7 +3938,9 @@ function updateProducerStageUI(stepNum, progressPercent, statusMsg, logs = []) {
   }
 }
 
-async function startProduceLongVideo() {
+async function startProduceLongVideo(opts) {
+  // Nút gắn bằng addEventListener truyền sự kiện click vào đây: chỉ coi là bản nháp khi gọi rõ { draft: true }
+  const draft = Boolean(opts && opts.draft === true);
   const project = AppState.currentProject;
   if (!project || !project.scenes || project.scenes.length === 0) {
     showToast("Vui lòng nhập kịch bản hoặc ảnh truyện tranh ở Bước 1 trước!", "warning");
@@ -3994,7 +4002,8 @@ async function startProduceLongVideo() {
       transition: DOM.selectTransition?.value || project.transition || "dip_to_black",
       subtitle_style: DOM.selectSubtitleStyle?.value || project.subtitle_style || "kinetic_pop",
       resolution: "1080p",
-      fps: 25
+      fps: 25,
+      draft,
       // Không gửi camera_motion chung: mỗi cảnh dùng chuyển động riêng (máy chủ lấy scene.camera_motion, không có thì
       // project.default_motion). Gặp 03/11/2026: gửi "zoom_in" chung đè hết, cả video chỉ một kiểu chuyển động.
     };
@@ -4011,6 +4020,17 @@ async function startProduceLongVideo() {
     listenToProduceProgress(renderId);
 
   } catch (err) {
+    if (err && err.shareLow) {
+      // Bị chốt tỉ lệ video Muse chặn trước khi dựng: không có gì chạy. Hỏi có dựng bản nháp (không phải thành phẩm) không.
+      AppState.produceState.isProducing = false;
+      updateProducerStageUI(1, 0, 'Chưa dựng: tỉ lệ video Muse chưa đủ', [err.message]);
+      const ok = window.confirm(`${err.message}\n\nDựng BẢN NHÁP để xem thử? Bản nháp ra file riêng, không phải thành phẩm, `
+        + 'không ghi đè video cuối của dự án.');
+      if (ok) return startProduceLongVideo({ draft: true });
+      switchStep(2);
+      showToast('Chưa dựng video. Làm thêm video Muse ("Chọn cảnh cao trào" rồi "Tạo video") hoặc duyệt clip trên thẻ cảnh.', 'warning', 9000);
+      return;
+    }
     console.error("startProduceLongVideo error", err);
     AppState.produceState.isProducing = false;
     updateProducerStageUI(1, 100, `Lỗi sản xuất: ${err.message || err}`, [

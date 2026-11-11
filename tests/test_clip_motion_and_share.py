@@ -99,17 +99,21 @@ def test_unreadable_clip_is_an_error_not_a_zero(tmp_path):
 
 
 def test_share_report_counts_video_seconds_and_lists_still_clips(tmp_path, monkeypatch):
+    """Clip gần như đứng hình (a.mp4) không được tính: chỉ clip có cử động (b.mp4) vào tỉ lệ."""
     scores = {"a.mp4": 0.0, "b.mp4": 6.0}
     monkeypatch.setattr(clip_motion, "motion_score", lambda p: scores[Path(p).name])
-    entries = [(1, 10.0, str(tmp_path / "1.jpg")), (2, 20.0, str(tmp_path / "a.mp4")),
-               (3, 10.0, str(tmp_path / "b.mp4")), (4, 40.0, str(tmp_path / "4.jpg"))]
-    rep = video_share.share_report(entries)
-    assert rep["video_seconds"] == 30.0 and rep["total_seconds"] == 80.0 and rep["percent"] == 37.5
-    assert rep["enough"] is False and rep["still_scenes"] == [2]
-    text = "\n".join(video_share.report_lines(rep))
-    assert "37,5%" in text and "DƯỚI 50%" in text and "thiếu khoảng 10,0 giây" in text and "cảnh 2" in text
 
-    rep2 = video_share.share_report([(1, 10.0, str(tmp_path / "b.mp4")), (2, 10.0, str(tmp_path / "1.jpg"))])
+    def sc(order):
+        return Scene(id=f"scene_{order:03d}", order=order, text="x")
+    entries = [(sc(1), 10.0, str(tmp_path / "1.jpg")), (sc(2), 20.0, str(tmp_path / "a.mp4")),
+               (sc(3), 10.0, str(tmp_path / "b.mp4")), (sc(4), 40.0, str(tmp_path / "4.jpg"))]
+    rep = video_share.share_report(entries)
+    assert rep["video_seconds"] == 10.0 and rep["clip_seconds"] == 30.0 and rep["total_seconds"] == 80.0
+    assert rep["percent"] == 12.5 and rep["enough"] is False and rep["gate_ok"] is False and rep["still_scenes"] == [2]
+    text = "\n".join(video_share.report_lines(rep))
+    assert "12,5%" in text and "DƯỚI 50%" in text and "thiếu khoảng 30,0 giây" in text and "cảnh 2" in text
+
+    rep2 = video_share.share_report([(sc(1), 10.0, str(tmp_path / "b.mp4")), (sc(2), 10.0, str(tmp_path / "1.jpg"))])
     assert rep2["enough"] is True and rep2["still_scenes"] == []
     assert not any("DƯỚI" in line or "đứng hình" in line for line in video_share.report_lines(rep2))
 

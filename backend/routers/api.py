@@ -18,7 +18,6 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks, WebSocket, Upload
 from fastapi.responses import FileResponse
 
 from config import (
-    STORY_STUDIO_DIR,
     PROJECTS_DIR,
     BGM_DIR,
     COMIC_SLICES_DIR,
@@ -94,7 +93,11 @@ from services import (
 )
 from services.case_project_builder import previous_scene_frame, redraw_board_images
 from services.dialogue_video import render_seconds
-from services.video_share import report_lines, share_report
+from services.video_share import (DRAFT_VIDEO_NAME, GATE_CODE, VideoShareTooLow, gate_problem, has_all_durations,
+                                  project_share, report_lines, require_gate, share_report)
+from services.render_inputs import (resolve_studio_path as _resolve_studio_path,  # noqa: F401
+                                    scene_motion_clip as _scene_motion_clip,
+                                    scene_render_input as _scene_render_input)
 from services.scene_locks import scene_locks
 from services.scene_sound import (ENERGY_TRACKS, SILENCE, build_energy_bgm, energy_segments, has_energy_info,
                                   mix_scene_sfx, plan_scene_sfx, scene_energy, scene_sfx_files)
@@ -189,46 +192,6 @@ def _save_scene_fields(project_id: str, scene: Scene, fields: List[str]) -> None
     update_project(project_id, ProjectUpdateRequest(scenes=latest.scenes))
 
 
-def _scene_motion_clip(scene: Scene, media: Dict[str, Path]) -> Optional[Path]:
-    """
-    Clip chuyển động gốc của cảnh (Muse hoặc tải lên). Không bao giờ trả về chính file
-    segment dựng ra (media["video"]), để ffmpeg không đọc và ghi cùng một file.
-    """
-    segment = media["video"].resolve()
-    candidates: List[Path] = []
-    if scene.motion_video_path:
-        candidates.append(_resolve_studio_path(scene.motion_video_path))
-    candidates.append(media["motion_video"])
-    if scene.media_view_mode == "video" and scene.video_segment_path:
-        # Dữ liệu cũ: clip gắn từ Gallery Muse được lưu vào video_segment_path
-        candidates.append(_resolve_studio_path(scene.video_segment_path))
-    for cand in candidates:
-        try:
-            if (cand.exists() and cand.stat().st_size > 0 and cand.resolve() != segment
-                    and is_within(cand, PROJECTS_DIR, STATIC_DIR)):
-                return cand
-        except OSError:
-            continue
-    # Dữ liệu cũ: clip Muse từng được lưu đè đúng lên file segment. Tách ra file riêng một lần.
-    if (scene.media_view_mode == "video" and not scene.metadata.get("segment_rendered")
-            and segment.exists() and segment.stat().st_size > 0):
-        shutil.copy2(segment, media["motion_video"])
-        scene.motion_video_path = str(media["motion_video"])
-        return media["motion_video"]
-    return None
-
-
-def _scene_render_input(scene: Scene, media: Dict[str, Path]) -> Optional[str]:
-    """Đầu vào để dựng segment: clip chuyển động nếu cảnh đang dùng video, ngược lại là ảnh."""
-    clip = _scene_motion_clip(scene, media)
-    has_image = media["image"].exists()
-    if clip is not None and (scene.media_view_mode == "video" or not has_image):
-        return str(clip)
-    if has_image:
-        return str(media["image"])
-    return None
-
-
 # Media do server tạo ra (Muse, TTS, render) có thể về trong lúc giao diện đang giữ bản cũ của cảnh.
 # Khi giao diện tự lưu bản đó lên, các trường này để trống không được xoá mất kết quả trên server.
 SERVER_OWNED_MEDIA_FIELDS = (
@@ -240,7 +203,7 @@ SERVER_OWNED_MEDIA_FIELDS = (
 )
 
 
-SERVER_OWNED_METADATA_KEYS = ("climax_video", "muse_dialogue_video")
+SERVER_OWNED_METADATA_KEYS = ("climax_video", "muse_dialogue_video", "motion_review")
 
 
 def _keep_server_media(existing: Optional[Project], incoming_scenes: List[Scene]) -> None:
@@ -264,12 +227,6 @@ def _keep_server_media(existing: Optional[Project], incoming_scenes: List[Scene]
                 sc.metadata[key] = old.metadata[key]
             else:
                 sc.metadata.pop(key, None)
-
-
-def _resolve_studio_path(value: str) -> Path:
-    """Đường dẫn tương đối được tính từ thư mục gốc Story Studio (không phụ thuộc cwd)."""
-    p = Path(value)
-    return p if p.is_absolute() else STORY_STUDIO_DIR / p
 
 
 def _require_studio_media_path(value: Optional[str], field: str) -> None:
@@ -1236,6 +1193,54 @@ async def generate_standalone_image(req: ImageGenRequest):
 
 # ----------------- FULL VIDEO RENDER & WEBSOCKET -----------------
 
+async def _preflight_video_share(project: Optional[Project], draft: bool) -> None:
+    """Kiểm tỉ lệ video Muse ngay khi bấm dựng (services/video_share.py): mọi cảnh đã có giọng mà dưới 45% thì trả 409
+    mã VIDEO_SHARE_LOW, chưa xếp việc dựng. Chưa đủ giọng thì để chốt cuối trong lúc dựng quyết định."""
+    if draft or not project or not has_all_durations(project):
+        return
+    report = await asyncio.to_thread(project_share, project)
+    problem = gate_problem(report)
+    if problem:
+        raise HTTPException(status_code=409, detail={"code": GATE_CODE, "message": problem, "report": report})
+
+
+async def _finish_render(project_id: str, project: Project, assemble_res: Dict[str, Any], share_entries: list,
+                         draft: bool) -> tuple:
+    """Sau khi ghép: thành phẩm thì gắn làm video cuối của dự án và vẽ thumbnail; bản nháp (services/video_share.py)
+    thì không đụng video cuối và thumbnail. Trả (đường dẫn xem video, các dòng báo tỉ lệ video Muse)."""
+    video_url = f"/api/projects/{project_id}/media/renders/{Path(assemble_res['video_path']).name}"
+    if not draft:
+        project.final_video_path = assemble_res["video_path"]
+        project.final_video_url = video_url
+        # Tự vẽ thumbnail mặc định sau khi dựng (gói SEO làm riêng ở Bước 4)
+        try:
+            t_res = await asyncio.to_thread(generate_youtube_thumbnail, project)
+            project.thumbnail_path = t_res["thumbnail_path"]
+            project.thumbnail_url = t_res["thumbnail_url"]
+        except Exception as e:
+            logger.warning(f"Auto thumbnail generation warning: {e}")
+
+    update_project(project_id, ProjectUpdateRequest(
+        scenes=project.scenes,
+        thumbnail_path=project.thumbnail_path,
+        thumbnail_url=project.thumbnail_url,
+    ))
+
+    share = await asyncio.to_thread(share_report, share_entries)
+    lines = report_lines(share)
+    if draft:
+        lines = [f"BẢN NHÁP (không phải thành phẩm): {assemble_res['video_path']}. Video cuối của dự án giữ nguyên.",
+                 *lines]
+    p_obj = get_project(project_id)
+    if p_obj:
+        if not draft:
+            p_obj.final_video_path = assemble_res["video_path"]
+            p_obj.final_video_url = video_url
+        p_obj.metadata["video_share_draft" if draft else "video_share"] = share
+        save_project(p_obj)
+    return video_url, lines
+
+
 async def execute_full_render(project_id: str, render_id: str, options: RenderRequest):
     """Background pipeline executing the 4-step movie rendering process."""
     try:
@@ -1299,6 +1304,13 @@ async def execute_full_render(project_id: str, render_id: str, options: RenderRe
 
         update_project(project_id, ProjectUpdateRequest(scenes=project.scenes))
 
+        # Chốt tỉ lệ video Muse (services/video_share.py): dưới 45% thì không dựng thành phẩm, trừ bản nháp
+        pre_share = await asyncio.to_thread(project_share, project)
+        require_gate(pre_share, bool(options.draft))
+        if options.draft:
+            await broadcast_render_update(render_id, {"logs": active_renders[render_id]["logs"] + [
+                f"BẢN NHÁP (không phải thành phẩm): ra file {DRAFT_VIDEO_NAME}, không ghi đè video cuối."]})
+
         # Step 2: Render individual scene segments (25% -> 60%)
         await broadcast_render_update(render_id, {
             "step": 2,
@@ -1333,7 +1345,7 @@ async def execute_full_render(project_id: str, render_id: str, options: RenderRe
             scene.video_segment_path = v_res["video_path"]
             scene.metadata["segment_rendered"] = True
             scene_video_paths.append(v_res["video_path"])
-            share_entries.append((scene.order or i, v_res["duration"], input_media))
+            share_entries.append((scene, v_res["duration"], input_media))
             scene_srt_infos.append({
                 "srt_path": str(media["srt"]),
                 "duration": v_res["duration"],
@@ -1376,7 +1388,8 @@ async def execute_full_render(project_id: str, render_id: str, options: RenderRe
         assemble_res = await assemble_full_video(
             scene_video_paths=scene_video_paths,
             scene_srt_infos=scene_srt_infos,
-            output_video_path=str(render_paths["final_video"]),
+            output_video_path=str(render_paths["renders_dir"] / DRAFT_VIDEO_NAME if options.draft
+                                  else render_paths["final_video"]),
             bgm_path=bgm_file_path,
             bgm_volume=options.bgm_volume if options.bgm_volume is not None else project.bgm_volume,
             ducking=options.ducking if options.ducking is not None else project.ducking,
@@ -1388,33 +1401,8 @@ async def execute_full_render(project_id: str, render_id: str, options: RenderRe
             progress_callback=sync_progress,
         )
 
-        final_video_url = f"/api/projects/{project_id}/media/renders/story_final.mp4"
-        project.final_video_path = assemble_res["video_path"]
-        project.final_video_url = final_video_url
-
-        # Tự vẽ thumbnail mặc định sau khi dựng (gói SEO làm riêng ở Bước 4)
-        try:
-            t_res = await asyncio.to_thread(generate_youtube_thumbnail, project)
-            project.thumbnail_path = t_res["thumbnail_path"]
-            project.thumbnail_url = t_res["thumbnail_url"]
-        except Exception as e:
-            logger.warning(f"Auto thumbnail generation warning: {e}")
-
-        update_project(project_id, ProjectUpdateRequest(
-            scenes=project.scenes,
-            thumbnail_path=project.thumbnail_path,
-            thumbnail_url=project.thumbnail_url,
-        ))
-
-        # Save to project json directly to ensure persistence
-        share = await asyncio.to_thread(share_report, share_entries)
-        share_lines = report_lines(share)
-        p_obj = get_project(project_id)
-        if p_obj:
-            p_obj.final_video_path = assemble_res["video_path"]
-            p_obj.final_video_url = final_video_url
-            p_obj.metadata["video_share"] = share
-            save_project(p_obj)
+        final_video_url, share_lines = await _finish_render(project_id, project, assemble_res, share_entries,
+                                                            bool(options.draft))
 
         await broadcast_render_update(render_id, {
             "status": "completed",
@@ -1436,6 +1424,7 @@ async def execute_full_render(project_id: str, render_id: str, options: RenderRe
             "status": "failed",
             "progress": 0,
             "error": err_msg,
+            "error_code": GATE_CODE if isinstance(e, VideoShareTooLow) else None,
             "logs": (active_renders.get(render_id, {}).get("logs", [])) + [f"LỖI RENDER: {err_msg}"],
         })
 
@@ -1448,6 +1437,7 @@ async def start_render(project_id: str, options: RenderRequest, background_tasks
 
     if not project.scenes:
         raise HTTPException(status_code=400, detail="Project must have at least one scene to render.")
+    await _preflight_video_share(project, bool(options.draft))
 
     render_id = f"render_{uuid.uuid4().hex[:8]}"
     active_renders[render_id] = {
@@ -1692,6 +1682,14 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
                 board_note = f"[Giai đoạn 3/5] ⚠ Không vẽ lại được bảng ghim với ảnh cảnh ({e}); dùng bảng ghim có sẵn."
             await broadcast_render_update(render_id, {"logs": active_renders[render_id]["logs"] + [board_note]})
 
+        # Chốt tỉ lệ video Muse (services/video_share.py): sau khi đã có giọng và ảnh, trước khi dựng. Dưới 45% thì không
+        # dựng thành phẩm, trừ bản nháp
+        pre_share = await asyncio.to_thread(project_share, project)
+        require_gate(pre_share, bool(req.draft))
+        if req.draft:
+            await broadcast_render_update(render_id, {"logs": active_renders[render_id]["logs"] + [
+                f"BẢN NHÁP (không phải thành phẩm): ra file {DRAFT_VIDEO_NAME}, không ghi đè video cuối."]})
+
         # ----------------- PHASE 4: MOTION FX SCENE SEGMENTS (65% -> 85%) -----------------
         await broadcast_render_update(render_id, {
             "step": 4,
@@ -1747,7 +1745,7 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
             scene.video_segment_path = v_res["video_path"]
             scene.metadata["segment_rendered"] = True
             scene_video_paths.append(v_res["video_path"])
-            share_entries.append((scene.order or i, v_res["duration"], input_media))
+            share_entries.append((scene, v_res["duration"], input_media))
             scene_srt_infos.append({
                 "srt_path": str(media["srt"]),
                 "duration": v_res["duration"],
@@ -1809,7 +1807,8 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
         assemble_res = await assemble_full_video(
             scene_video_paths=scene_video_paths,
             scene_srt_infos=scene_srt_infos,
-            output_video_path=str(render_paths["final_video"]),
+            output_video_path=str(render_paths["renders_dir"] / DRAFT_VIDEO_NAME if req.draft
+                                  else render_paths["final_video"]),
             bgm_path=bgm_file_path,
             bgm_volume=req.bgm_volume if req.bgm_volume is not None else project.bgm_volume,
             ducking=req.ducking if req.ducking is not None else project.ducking,
@@ -1821,34 +1820,9 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
             progress_callback=sync_progress,
         )
 
-        final_video_url = f"/api/projects/{project_id}/media/renders/story_final.mp4"
+        final_video_url, share_lines = await _finish_render(project_id, project, assemble_res, share_entries,
+                                                            bool(req.draft))
         final_srt_url = f"/api/projects/{project_id}/download-srt"
-
-        project.final_video_path = assemble_res["video_path"]
-        project.final_video_url = final_video_url
-
-        # Tự vẽ thumbnail mặc định sau khi dựng (gói SEO làm riêng ở Bước 4)
-        try:
-            t_res = await asyncio.to_thread(generate_youtube_thumbnail, project)
-            project.thumbnail_path = t_res["thumbnail_path"]
-            project.thumbnail_url = t_res["thumbnail_url"]
-        except Exception as e:
-            logger.warning(f"Auto thumbnail generation warning: {e}")
-
-        update_project(project_id, ProjectUpdateRequest(
-            scenes=project.scenes,
-            thumbnail_path=project.thumbnail_path,
-            thumbnail_url=project.thumbnail_url,
-        ))
-
-        share = await asyncio.to_thread(share_report, share_entries)
-        share_lines = report_lines(share)
-        p_obj = get_project(project_id)
-        if p_obj:
-            p_obj.final_video_path = assemble_res["video_path"]
-            p_obj.final_video_url = final_video_url
-            p_obj.metadata["video_share"] = share
-            save_project(p_obj)
 
         await broadcast_render_update(render_id, {
             "status": "completed",
@@ -1873,6 +1847,7 @@ async def execute_produce_long_video(project_id: str, render_id: str, req: LongV
             "status": "failed",
             "progress": 0,
             "error": err_msg,
+            "error_code": GATE_CODE if isinstance(e, VideoShareTooLow) else None,
             "logs": (active_renders.get(render_id, {}).get("logs", [])) + [f"LỖI SẢN XUẤT: {err_msg}"],
         })
 
@@ -1893,6 +1868,8 @@ async def produce_long_video_endpoint(
     project = get_project(project_id)
     if not project:
         project = update_project(project_id, ProjectUpdateRequest(name="Dự án Video Dài"))
+    if not req.text:   # có text thì cảnh sẽ chia lại: chỉ còn chốt cuối trước giai đoạn 4
+        await _preflight_video_share(project, bool(req.draft))
 
     render_id = f"produce_{uuid.uuid4().hex[:8]}"
     active_renders[render_id] = {
