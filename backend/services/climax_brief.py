@@ -84,15 +84,21 @@ def scene_brief(project: Project, scene: Scene, people: list[CharacterSheet], gr
         "trắng RẤT TO, mặt trắng phẳng, hai chấm mắt và một nét miệng, KHÔNG BAO GIỜ thành mặt người hay mặt anime "
         "(không mũi, không mắt có tròng, không lông mi, không môi chi tiết). Được biểu cảm bằng nét đơn giản cùng kiểu "
         "vẽ: lông mày một nét nhíu hoặc nhướn, nước mắt, giọt mồ hôi, miệng há, nửa mặt tô xám khi sợ. Quần áo, màu sắc, "
-        "bối cảnh giữ như ảnh đã duyệt. Nhân vật cử "
-        "động ít hoặc chạy tại chỗ vẫn đạt; đổi sang mặt người thì không bao giờ đạt.",
+        "bối cảnh giữ như ảnh đã duyệt. Đổi sang mặt người thì không bao giờ đạt.",
+        "",
+        # 11/11/2026: câu cũ "nhân vật cử động ít hoặc chạy tại chỗ vẫn đạt" + "bị loại thì giảm cử động" làm 34/38 clip
+        # vụ xưởng sắt gần như đứng hình (chủ dự án 10/11: "phải di chuyển bình thường chứ, đây là ảnh chuyển động rồi").
+        # Thử 10/11: ép cử động + khoá máy quay vẫn giữ đầu tròn (cảnh 20).
+        "Đây là VIDEO, không phải ảnh chuyển động: mỗi clip nhân vật phải làm đúng hành động trong lời kể bằng cơ thể "
+        "(đi, bước vào, quay đầu, cúi xuống, ngồi xuống, giơ tay, cầm nắm đồ vật, ôm mặt khóc, run rẩy), thấy rõ trong "
+        "khung hình. Chỉ đổi nét mặt, chỉ chớp mắt, hay chỉ máy quay lia/zoom trên một khung đứng im đều KHÔNG ĐẠT.",
         "",
         "Luật bắt buộc (đo thật: video hỏng ở đúng các chỗ này):",
         "- Tuyệt đối không clip nào được để nhân vật xoay người từ trước ra sau (hoặc từ sau ra trước): sau tóc sẽ mọc một đĩa "
         "trắng như vầng hào quang. Chỗ đổi hướng là một cú cắt cảnh giữa hai clip.",
         "- Đoạn nhân vật quay lưng phải bắt đầu từ một ảnh góc sau vẽ riêng (cùng nhân vật, cùng phong cách, chỉ thấy "
         "tóc phủ kín đầu, không chút màu trắng nào của đầu), dùng ảnh đó làm khung đầu của clip.",
-        "- Máy quay đứng yên hoặc lia rất chậm; không zoom sát mặt.",
+        "- Máy quay đứng yên như đặt trên chân máy: không lia, không zoom; chuyển động đến từ nhân vật và vật trong cảnh.",
         "- Ảnh 1 khác Ảnh 2 ở dáng đầu hay mái tóc, hoặc có nhân vật nữ đầu trọc (tóc chỉ là một chỏm sau gáy), thì vẽ "
         "lại Ảnh 1 trước (giữ nguyên mọi thứ khác, chỉ sửa dáng đầu, mái tóc cho đúng), rồi dùng ảnh đã sửa làm khung "
         "đầu.",
@@ -103,8 +109,9 @@ def scene_brief(project: Project, scene: Scene, people: list[CharacterSheet], gr
         "2. Vẽ các ảnh khởi đầu cần thiết (ảnh cảnh đã sửa, ảnh góc sau) và tự kiểm với Ảnh 2.",
         "3. Làm từng clip từ ảnh khởi đầu của nó. Sau mỗi clip: trích khung mỗi giây và khung cuối, tự so với ảnh khởi "
         "đầu và Ảnh 2. Loại nếu có bất kỳ khung nào: mặt người hay mặt anime, đầu nhỏ lại hoặc méo, nhân vật nữ mất tóc "
-        "trên đỉnh đầu, đĩa trắng sau tóc, đổi màu quần áo, thêm người, cắt cảnh trong clip. Bị loại thì tạo lại (viết "
-        "prompt khác, giảm cử động), trong ngân sách.",
+        "trên đỉnh đầu, đĩa trắng sau tóc, đổi màu quần áo, thêm người, cắt cảnh trong clip; hoặc so các khung cách "
+        "nhau một giây mà nhân vật gần như đứng im. Bị loại thì tạo lại (viết prompt khác, chia hành động thành clip "
+        "ngắn hơn, mỗi clip một hành động rõ), trong ngân sách; không được sửa bằng cách bớt cử động.",
         f"4. Ghép các đoạn tốt nhất thành một video khoảng {target} giây, chỉnh màu các đoạn cho khớp nhau.",
         "",
         "GIAO KẾT QUẢ trong tin nhắn cuối (gửi file trong chat để mình tải về):",

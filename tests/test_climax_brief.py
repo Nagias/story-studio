@@ -61,7 +61,7 @@ def test_brief_has_every_rule_and_ends_with_token(isolated_projects_dir):
     b = scene_brief(project, scene, [nu, nam], grid_count=1, seconds=11.877, done_token=TOKEN)
     assert b.rstrip().splitlines()[-1].strip().endswith(TOKEN)
     for must in ["6 video", "4 ảnh", "không clip nào", "xoay", "góc sau", "mỗi giây", "khung cuối", "mặt người",
-                 "chạy tại chỗ", "danh sách clip", NARRATION, nu.name_vi, nam.name_vi, "ANH_CANH_MOI: có",
+                 "không phải ảnh chuyển động", "danh sách clip", NARRATION, nu.name_vi, nam.name_vi, "ANH_CANH_MOI: có",
                  "chỉ một video", "12 giây"]:
         assert must in b, must
     assert "WHOLE BACK HALF" in b and "Silver-streaked" in b      # thiết kế đã duyệt của từng người

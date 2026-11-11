@@ -5166,14 +5166,13 @@ async function generateSceneWithMuse(index, mode = 'image') {
       action_prompt: promptText,
       negative_prompt: scene.negative_prompt || "",
       input_image_url: isVideo ? (scene.image_url || null) : null,
-      camera_motion: scene.camera_motion || "cinematic slow tracking pan, smooth camera motion",
+      // Máy quay do máy chủ đặt (đứng yên, services/muse_motion.py); chuyển động Ken Burns của ảnh không gửi cho Muse
       parameters: {
         resolution: "2K",
         aspect_ratio: "16:9",
         style_preset: stylePreset,
         duration_sec: 5,
         fps: 25,
-        camera_motion: scene.camera_motion || "cinematic slow tracking pan, smooth camera motion",
         action_cues: promptText,
       }
     }, assignedAccount);

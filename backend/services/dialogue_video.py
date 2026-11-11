@@ -30,6 +30,7 @@ from models.schemas import Project, Scene
 from security import is_within
 from services import location_sheets, project_service
 from services.case_adaptation_checks import EN_WORDS_PER_MINUTE, VI_WORDS_PER_MINUTE
+from services.muse_motion import REAL_MOTION_RULES_VI
 from services.tts_service import MediaDurationError, get_audio_duration
 
 logger = logging.getLogger("story_studio.dialogue_video")
@@ -209,6 +210,7 @@ def segment_prompt(project: Project, scene: Scene, segments: list[dict], k: int,
         "Luật:",
         "- Lời kể đoạn này chuyển sang NƠI KHÁC hoặc VIỆC KHÁC so với ảnh cảnh hay đoạn trước thì ĐỔI CẢNH theo lời kể "
         "(nơi chốn, hành động, đồ vật mới mà lời kể nói tới), không được chỉ đổi góc máy trên cùng một khung cảnh.",
+        *REAL_MOTION_RULES_VI,
         "- Giữ đúng phong cách vẽ và nhân vật như ảnh cảnh; không thêm người mà lời kể không nói tới.",
         *_style_rules(project),
         "- Không chữ, không phụ đề, không logo, không máu, không vết thương.",
