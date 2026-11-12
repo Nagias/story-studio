@@ -211,6 +211,8 @@ def test_account_whose_shared_profile_is_open_elsewhere_is_skipped_before_taking
     """Gặp 12/11/2026: app VideoPic mở profile của muse_acc_vp_04; runner vẫn nhận việc cho tài khoản này, mỗi việc hỏng
     ngay (PROFILE_IN_USE) và 29 cảnh video cao trào bị ghi lỗi trong 10 phút."""
     runner = fr.MuseFleetRunner()
+    monkeypatch.setattr(fr, "EXTRA_PROFILES_DIRS", [tmp_path])     # thư mục profile của app khác (đã khai báo)
+    monkeypatch.setattr(fr.FleetAccount, "is_logged_in", lambda self: True)
     busy = fr.FleetAccount({"account_id": "muse_acc_vp_thu", "type": "video", "profile_dir": str(tmp_path / "videopic")})
     free = fr.FleetAccount({"account_id": "muse_acc_vid_thu", "type": "video"})
     assert busy.is_external
