@@ -250,9 +250,59 @@ def test_enqueue_and_wait_requires_same_kind_online(fleet):
 def test_enqueue_and_wait_timeout_removes_task(fleet):
     online("muse_acc_img_01")
     with pytest.raises(TimeoutError):
-        asyncio.run(mb.enqueue_and_wait_muse_task({"mode": "text-to-image", "prompt": "x"}, timeout=0.3))
+        asyncio.run(mb.enqueue_and_wait_muse_task({"mode": "text-to-image", "prompt": "x"}, timeout=0.3,
+                                                  queue_timeout=0.3))
     assert not mb.pending_tasks
     assert mb.task_history[0]["abandoned"] is True
+
+
+def _start(task_id):
+    """Giả runner nhận việc: rời hàng chờ, bắt đầu chạy (như /tasks/poll)."""
+    idx = next(i for i, t in enumerate(mb.pending_tasks) if t["task_id"] == task_id)
+    task = mb.pending_tasks.pop(idx)
+    task["status"], task["started_at"] = "processing", time.time()
+    mb.active_tasks[task_id] = task
+
+
+def test_time_waiting_in_queue_does_not_count_against_the_run_timeout(fleet, monkeypatch):
+    """Gặp 12/11/2026: việc vẽ lưới 9 ô xếp hàng 11 phút sau việc làm video của dự án khác trên tài khoản duy nhất,
+    tới lượt được 1 phút thì app bỏ cuộc vì đồng hồ 720 giây tính từ lúc xếp hàng (cảnh 2, 27 Khang Cúc Hoa)."""
+    monkeypatch.setattr(mb, "QUEUE_POLL_SEC", 0.05)
+    online("muse_acc_img_01")
+
+    async def scenario():
+        job = asyncio.create_task(mb.enqueue_and_wait_muse_task(
+            {"mode": "text-to-image", "prompt": "x", "task_id": "task_m_hang"}, timeout=0.4, queue_timeout=30))
+        await asyncio.sleep(0.8)                 # nằm hàng chờ lâu gấp đôi thời gian chạy cho phép
+        assert not job.done(), "việc còn trong hàng chờ không được hết giờ"
+        _start("task_m_hang")
+        await asyncio.sleep(0.25)
+        assert not job.done(), "đồng hồ chạy tính từ lúc runner nhận việc"
+        with pytest.raises(TimeoutError):
+            await job
+
+    asyncio.run(scenario())
+    assert mb.task_history[0]["abandoned"] is True
+
+
+def test_queued_task_gives_up_when_no_account_of_its_kind_stays_online(fleet, monkeypatch):
+    """Hết sạch tài khoản đúng loại trong lúc chờ: báo đúng câu "không có tài khoản ... online" để lượt chạy video cao
+    trào dừng (STOP_RUN_WORDS), không chờ tới hết giờ hàng chờ."""
+    monkeypatch.setattr(mb, "QUEUE_POLL_SEC", 0.05)
+    monkeypatch.setattr(mb, "NO_ACCOUNT_GRACE_SEC", 0.2)
+    state = {"on": True}
+    monkeypatch.setattr(mb, "is_kind_online", lambda kind: state["on"])
+
+    async def scenario():
+        job = asyncio.create_task(mb.enqueue_and_wait_muse_task(
+            {"mode": "image-to-video", "prompt": "x", "input_image_url": "/static/a.jpg"}, queue_timeout=30))
+        await asyncio.sleep(0.1)
+        state["on"] = False
+        with pytest.raises(RuntimeError, match="Không có tài khoản Muse video nào đang online"):
+            await asyncio.wait_for(job, 5)
+
+    asyncio.run(scenario())
+    assert not mb.pending_tasks
 
 
 # ---------------- Endpoint ----------------

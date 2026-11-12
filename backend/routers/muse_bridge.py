@@ -611,10 +611,54 @@ def get_worker_status_string() -> str:
     return "online"
 
 
-async def enqueue_and_wait_muse_task(task_dict: Dict[str, Any], timeout: Optional[float] = None) -> Dict[str, Any]:
+# Thời gian nằm hàng chờ không tính vào thời gian chạy của việc. Gặp 12/11/2026: còn 1 tài khoản video, việc vẽ lưới 9 ô
+# xếp hàng 11 phút sau việc làm video của dự án khác, tới lượt được 1 phút thì app bỏ cuộc (đồng hồ 720 giây tính từ lúc
+# xếp hàng), cảnh bị ghi lỗi dù Muse chưa kịp vẽ.
+QUEUE_WAIT_MAX_SEC = 4 * 3600.0
+NO_ACCOUNT_GRACE_SEC = 300.0   # hết sạch tài khoản đúng loại lâu hơn mức này khi việc còn trong hàng chờ: bỏ cuộc
+QUEUE_POLL_SEC = 5.0
+
+
+async def _wait_task(task_id: str, waiter: asyncio.Event, route: str, run_sec: float, queue_sec: float) -> None:
+    """Chờ việc xong. Hết giờ chạy (`run_sec`, tính từ lúc runner nhận việc), hết giờ hàng chờ, hoặc hết sạch tài
+    khoản đúng loại khi việc còn nằm chờ thì gỡ việc (abandon_task) và báo lỗi."""
+    loop = asyncio.get_running_loop()
+    queued_at = loop.time()
+    run_from = offline_since = None
+    while True:
+        try:
+            await asyncio.wait_for(waiter.wait(), timeout=QUEUE_POLL_SEC)
+            return
+        except asyncio.TimeoutError:
+            pass
+        now = loop.time()
+        if run_from is None and task_id in active_tasks:
+            run_from = now
+        if run_from is not None:
+            if now - run_from > run_sec:
+                abandon_task(task_id, f"Caller timed out after {int(run_sec)}s")
+                raise TimeoutError(f"Meta Muse task {task_id} timed out after {int(run_sec)}s")
+            continue
+        if now - queued_at > queue_sec:
+            abandon_task(task_id, f"Nằm hàng chờ quá {int(queue_sec)}s, chưa tài khoản nào nhận")
+            raise TimeoutError(f"Meta Muse task {task_id} chờ trong hàng quá {int(queue_sec)}s, chưa tài khoản nào nhận")
+        if is_kind_online(route):
+            offline_since = None
+        elif offline_since is None:
+            offline_since = now
+        elif now - offline_since > NO_ACCOUNT_GRACE_SEC:
+            label = "video" if route == "video" else "ảnh"
+            abandon_task(task_id, f"Không có tài khoản Muse {label} nào đang online trong lúc việc nằm chờ")
+            raise RuntimeError(f"Không có tài khoản Muse {label} nào đang online (việc {task_id} nằm chờ, mọi "
+                               f"tài khoản đúng loại đều offline, bị khoá hoặc mất đăng nhập)")
+
+
+async def enqueue_and_wait_muse_task(task_dict: Dict[str, Any], timeout: Optional[float] = None,
+                                     queue_timeout: Optional[float] = None) -> Dict[str, Any]:
     """
     Hàm gọi từ Python Service (image_service / video_service) để đưa task vào queue và chờ kết quả.
     Raise lỗi nếu không có tài khoản đúng loại đang online hoặc timeout để service fallback sang engine khác.
+    `timeout`: thời gian chạy tối đa, tính từ lúc runner nhận việc. `queue_timeout`: thời gian nằm hàng chờ tối đa.
     """
     validate_thread_fields(task_dict)
     kind = task_kind(task_dict.get("mode"))   # loại media: quyết định cách chuẩn hoá payload bên dưới
@@ -701,10 +745,7 @@ async def enqueue_and_wait_muse_task(task_dict: Dict[str, Any], timeout: Optiona
     )
 
     try:
-        await asyncio.wait_for(waiter.wait(), timeout=wait_sec)
-    except asyncio.TimeoutError:
-        abandon_task(task_id, f"Caller timed out after {int(wait_sec)}s")
-        raise TimeoutError(f"Meta Muse task {task_id} timed out after {int(wait_sec)}s")
+        await _wait_task(task_id, waiter, route, wait_sec, queue_timeout or QUEUE_WAIT_MAX_SEC)
     finally:
         task_waiters.pop(task_id, None)
 
