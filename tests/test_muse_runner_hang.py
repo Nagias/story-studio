@@ -204,3 +204,18 @@ def test_agent_turn_stops_at_once_when_muse_is_out_of_quota(monkeypatch):
             runner._finish_agent_turn(_account("video"), _QuotaPage(), None, task, "TRUOC", "prompt", []), 5))
     assert time.monotonic() - started < 5
     assert err.value.code == "QUOTA_EXCEEDED" and "usage limit" in str(err.value)
+
+
+# --- Profile dùng chung đang bị app khác mở: không nhận việc cho tài khoản đó ------------------------------------------
+def test_account_whose_shared_profile_is_open_elsewhere_is_skipped_before_taking_a_task(monkeypatch, tmp_path):
+    """Gặp 12/11/2026: app VideoPic mở profile của muse_acc_vp_04; runner vẫn nhận việc cho tài khoản này, mỗi việc hỏng
+    ngay (PROFILE_IN_USE) và 29 cảnh video cao trào bị ghi lỗi trong 10 phút."""
+    runner = fr.MuseFleetRunner()
+    busy = fr.FleetAccount({"account_id": "muse_acc_vp_thu", "type": "video", "profile_dir": str(tmp_path / "videopic")})
+    free = fr.FleetAccount({"account_id": "muse_acc_vid_thu", "type": "video"})
+    assert busy.is_external
+    runner.accounts = {busy.account_id: busy, free.account_id: free}
+    busy.last_used, free.last_used = 0, 100          # busy đứng đầu hàng chọn
+    monkeypatch.setattr(fr, "profile_in_use", lambda d: Path(d) == Path(busy.profile_dir))
+    got = runner._reserve_account(["video"])
+    assert got is free and busy.status == "cooldown" and busy.cooldown_until > time.time()

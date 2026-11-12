@@ -213,6 +213,7 @@ ACCOUNT_COOLDOWN_SEC = 60.0
 # Quá trần thì bỏ việc (TASK_HUNG) và đóng trình duyệt (đóng cũng có trần). Gặp 09/11/2026: một lệnh đọc trang của
 # muse_acc_img_01 đứng im 5,5 giờ, vòng chờ 150 giây không tới được lần kiểm giờ sau, chiếm một luồng, 25 ảnh hết giờ.
 TASK_OVERHEAD_SEC = 600
+PROFILE_BUSY_COOLDOWN_SEC = 300   # profile dùng chung đang bị app khác mở: chừng này giây sau mới hỏi lại
 BROWSER_CLOSE_TIMEOUT_SEC = 30
 # Muse trả lời bằng chữ có từ báo lỗi (vd "hệ thống quá tải (503)") mà sau chừng này giây vẫn không có media: thất bại
 # ngay thay vì chờ hết MEDIA_WAIT_SEC (đo 27/10/2026: hai lần 503, runner cũ chờ trọn 7 phút)
@@ -1014,10 +1015,18 @@ class MuseFleetRunner:
         return candidates[0]
 
     def _reserve_account(self, kinds: List[str]) -> Optional[FleetAccount]:
-        """Giữ chỗ 1 tài khoản trước khi poll để 2 slot không cùng poll 1 tài khoản."""
+        """Giữ chỗ 1 tài khoản trước khi poll để 2 slot không cùng poll 1 tài khoản. Tài khoản dùng profile chung mà app
+        khác đang mở (vd app VideoPic) thì cho nghỉ PROFILE_BUSY_COOLDOWN_SEC, KHÔNG nhận việc: gặp 12/11/2026, nhận việc
+        rồi mới thấy profile bận nên mỗi việc hỏng ngay (PROFILE_IN_USE), 29 cảnh video cao trào bị ghi lỗi trong 10 phút."""
         for kind in kinds:
-            acc = self.select_available_account(kind)
-            if acc:
+            for _ in range(len(self.accounts) + 1):
+                acc = self.select_available_account(kind)
+                if not acc:
+                    break
+                if acc.is_external and profile_in_use(acc.profile_dir):
+                    logger.info(f"[{acc.account_id}] Profile đang được app khác mở, tạm không nhận việc")
+                    acc.set_cooldown(PROFILE_BUSY_COOLDOWN_SEC)
+                    continue
                 acc.status = "reserved"
                 return acc
         return None
