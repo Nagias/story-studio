@@ -221,3 +221,10 @@ def test_account_whose_shared_profile_is_open_elsewhere_is_skipped_before_taking
     monkeypatch.setattr(fr, "profile_in_use", lambda d: Path(d) == Path(busy.profile_dir))
     got = runner._reserve_account(["video"])
     assert got is free and busy.status == "cooldown" and busy.cooldown_until > time.time()
+
+
+def test_muse_usage_limit_blocks_the_account_for_hours_not_minutes():
+    """Gặp 12/11/2026: khoá 15 phút thì cứ 15 phút lại giao cảnh cho tài khoản hết lượt và cảnh hỏng ngay."""
+    from routers import muse_bridge as mb
+    assert mb.block_seconds_for("QUOTA_EXCEEDED: Muse: You've reached your usage limit.") >= 6 * 3600
+    assert mb.block_seconds_for("Hết quota / bị chặn: 429 rate limit") == mb.ACCOUNT_BLOCK_SEC

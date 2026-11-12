@@ -49,6 +49,14 @@ IMAGE_TASK_TIMEOUT_SEC = 720.0
 VIDEO_TASK_TIMEOUT_SEC = 1200.0
 # Khóa tài khoản khi Muse báo hết quota / chặn vùng / mất phiên đăng nhập
 ACCOUNT_BLOCK_SEC = 900.0
+# Muse báo tài khoản hết lượt dùng (mã QUOTA_EXCEEDED của Fleet Runner): lượt dùng hồi sau nhiều giờ, khoá lâu hơn. Gặp
+# 12/11/2026: khoá 15 phút thì cứ 15 phút lại giao một cảnh cho tài khoản đó và cảnh hỏng ngay.
+MUSE_USAGE_LIMIT_BLOCK_SEC = 6 * 3600.0
+
+
+def block_seconds_for(error: str) -> float:
+    low = str(error).lower()
+    return MUSE_USAGE_LIMIT_BLOCK_SEC if ("quota_exceeded" in low or "usage limit" in low) else ACCOUNT_BLOCK_SEC
 MAX_TASK_RETRIES = 2
 # ID của 2 trạm VM cũ (đã ngừng dùng). Client cũ còn gửi thì coi như "không chỉ định tài khoản".
 LEGACY_ALIAS_ACCOUNTS = {"muse_acc_image", "muse_acc_video"}
@@ -427,13 +435,14 @@ def pick_fallback_account(kind: str, exclude: Optional[str] = None,
     return candidates[0] if candidates else None
 
 
-def block_account(account_id: str, reason: str) -> None:
-    """Khóa tài khoản 15 phút (hết quota / mất phiên) và chuyển cờ active sang tài khoản khác cùng loại."""
+def block_account(account_id: str, reason: str, seconds: float = ACCOUNT_BLOCK_SEC) -> None:
+    """Khóa tài khoản `seconds` giây (mặc định 15 phút: hết quota / mất phiên) và chuyển cờ active sang tài khoản khác
+    cùng loại."""
     acc = find_account(account_id)
     kind = account_kind(acc)
     if not acc or not kind:
         return
-    acc["blocked_until"] = time.time() + ACCOUNT_BLOCK_SEC
+    acc["blocked_until"] = time.time() + seconds
     acc["block_reason"] = reason[:200]
     active_key = "is_active_for_video" if kind == "video" else "is_active_for_image"
     if acc.get(active_key):
@@ -444,7 +453,7 @@ def block_account(account_id: str, reason: str) -> None:
                     a[active_key] = a["account_id"] == nxt["account_id"]
             logger.info(f"[AUTO-FAILOVER] Tài khoản {kind} active chuyển từ {account_id} sang {nxt['account_id']}")
     save_muse_accounts(muse_accounts)
-    logger.warning(f"Khóa tài khoản {account_id} trong {int(ACCOUNT_BLOCK_SEC)}s: {reason[:120]}")
+    logger.warning(f"Khóa tài khoản {account_id} trong {int(seconds)}s: {reason[:120]}")
 
 # -------------------------------------------------------------
 # Pydantic Schemas
@@ -1345,7 +1354,7 @@ async def fail_task(task_id: str, req: TaskFailRequest):
     if failed_acc and any(kw in err_str for kw in SESSION_ERROR_KEYWORDS):
         block_account(failed_acc, f"Mất phiên đăng nhập: {req.error}")
     elif failed_acc and any(kw in err_str for kw in QUOTA_ERROR_KEYWORDS):
-        block_account(failed_acc, f"Hết quota / bị chặn: {req.error}")
+        block_account(failed_acc, f"Hết quota / bị chặn: {req.error}", block_seconds_for(req.error))
 
     if current_worker.get("active_task_id") == task_id:
         current_worker["active_task_id"] = None
