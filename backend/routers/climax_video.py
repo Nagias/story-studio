@@ -142,7 +142,8 @@ _muse_call = muse_call_starting_runner   # tên cũ (test)
 
 # Lỗi cho biết không còn tài khoản video làm được: dừng cả lượt chạy, các cảnh chưa tới giữ nguyên trạng thái. Gặp
 # 12/11/2026: tài khoản video duy nhất hết lượt dùng Muse, 24 cảnh sau bị ghi "failed" hàng loạt trong vài giây.
-STOP_RUN_WORDS = ("Không có tài khoản Muse video nào đang online", "QUOTA_EXCEEDED", "usage limit", "Hết quota")
+# Một tài khoản hết lượt (QUOTA_EXCEEDED) thì backend khoá riêng tài khoản đó, tài khoản khác làm tiếp: không dừng.
+STOP_RUN_WORDS = ("Không có tài khoản Muse video nào đang online",)
 
 
 async def _run_all(project_id: str, scene_ids: list[str]) -> None:

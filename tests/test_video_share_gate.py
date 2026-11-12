@@ -251,11 +251,14 @@ def test_run_stops_when_no_video_account_is_left(monkeypatch):
 
     async def fake_run(pid, sid, muse_call):
         called.append(sid)
-        return {"status": "failed", "error": "Muse chưa làm xong video của cảnh: Muse task failed: QUOTA_EXCEEDED: "
-                                              "You've reached your usage limit."}
+        if sid == "scene_001":   # tài khoản đầu hết lượt: tài khoản khác làm tiếp, không dừng
+            return {"status": "failed", "error": "Muse chưa làm xong video của cảnh: Muse task failed: QUOTA_EXCEEDED: "
+                                                  "You've reached your usage limit."}
+        return {"status": "failed", "error": "Muse chưa làm xong video của cảnh: Không có tài khoản Muse video nào "
+                                              "đang online (Fleet Runner chưa chạy hoặc tài khoản chưa đăng nhập)"}
     monkeypatch.setattr(climax_router.climax_video, "run_scene_climax_video", fake_run)
     asyncio.run(climax_router._run_all("proj_x", ["scene_001", "scene_002", "scene_003"]))
-    assert called == ["scene_001"]
+    assert called == ["scene_001", "scene_002"]                       # hết sạch tài khoản thì dừng
 
     called.clear()
 
