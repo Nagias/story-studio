@@ -228,3 +228,23 @@ def test_muse_usage_limit_blocks_the_account_for_hours_not_minutes():
     from routers import muse_bridge as mb
     assert mb.block_seconds_for("QUOTA_EXCEEDED: Muse: You've reached your usage limit.") >= 6 * 3600
     assert mb.block_seconds_for("Hết quota / bị chặn: 429 rate limit") == mb.ACCOUNT_BLOCK_SEC
+
+
+def test_muse_usage_limit_blocks_until_the_reset_time_muse_states():
+    """Gặp 12/11/2026 21:49: tài khoản hết lượt tuần bị khoá 6 tiếng, hết 6 tiếng app mở lại, giao cảnh 29 và cảnh hỏng
+    ngay. Muse ghi rõ giờ lượt dùng hồi lại: khoá đúng tới giờ đó (giờ máy, Muse hiện theo giờ trình duyệt)."""
+    import datetime as dt
+    from routers import muse_bridge as mb
+    now = dt.datetime(2026, 11, 12, 21, 49).timestamp()
+    msg = ("QUOTA_EXCEEDED: Muse: You've reached your usage limit. Upgrade now or invite friends to get more Muse "
+           "tokens. Your full weekly usage will reset at \u206811:34 PM\u2069 on \u2068Tuesday, November 17\u2069.")
+    reset = dt.datetime(2026, 11, 17, 23, 34).timestamp()
+    got = mb.block_seconds_for(msg, now=now)
+    assert reset - now <= got <= reset - now + 600
+    # qua năm mới: tháng 1 là năm sau
+    late = dt.datetime(2026, 12, 30, 10, 0).timestamp()
+    got = mb.block_seconds_for("usage limit. Your full weekly usage will reset at 9:05 AM on Monday, January 4", now=late)
+    assert abs(got - (dt.datetime(2027, 1, 4, 9, 5).timestamp() - late)) <= 600
+    # không đọc được giờ, hoặc giờ vô lý (quá 8 ngày) thì về mức 6 tiếng
+    assert mb.block_seconds_for("QUOTA_EXCEEDED: usage limit", now=now) == mb.MUSE_USAGE_LIMIT_BLOCK_SEC
+    assert mb.block_seconds_for("usage limit, reset at 1:00 AM on Friday, March 5", now=now) == mb.MUSE_USAGE_LIMIT_BLOCK_SEC

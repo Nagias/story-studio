@@ -54,9 +54,41 @@ ACCOUNT_BLOCK_SEC = 900.0
 MUSE_USAGE_LIMIT_BLOCK_SEC = 6 * 3600.0
 
 
-def block_seconds_for(error: str) -> float:
+# Muse ghi giờ lượt dùng hồi lại, ví dụ "will reset at ⁨11:34 PM⁩ on ⁨Tuesday, November 17⁩" (giờ trình duyệt = giờ máy).
+# Gặp 12/11/2026 21:49: khoá 6 tiếng hết hạn trước giờ đó, app giao cảnh cho tài khoản và cảnh hỏng ngay.
+_USAGE_RESET_RE = re.compile(r"reset at\s+(\d{1,2}):(\d{2})\s*([AP]M)\s+on\s+(?:[A-Za-z]+,\s*)?([A-Za-z]+)\s+(\d{1,2})",
+                             re.IGNORECASE)
+_USAGE_RESET_MAX_SEC = 8 * 86400.0   # lượt dùng tuần: giờ đọc ra xa hơn 8 ngày là đọc sai, không tin
+
+
+def usage_reset_seconds(error: str, now: Optional[float] = None) -> Optional[float]:
+    """Số giây tới giờ Muse ghi là lượt dùng hồi lại; None khi không đọc được hoặc giờ vô lý."""
+    from datetime import datetime, timedelta
+    text = str(error).replace("⁨", "").replace("⁩", "")
+    m = _USAGE_RESET_RE.search(text)
+    if not m:
+        return None
+    hour, minute, ampm, month_name, day = m.groups()
+    try:
+        month = datetime.strptime(month_name[:3].title(), "%b").month
+        hour = int(hour) % 12 + (12 if ampm.upper() == "PM" else 0)
+        now_dt = datetime.fromtimestamp(time.time() if now is None else now)
+        reset = datetime(now_dt.year, month, int(day), hour, int(minute))
+        if reset < now_dt - timedelta(days=1):       # tháng 1 khi đang cuối năm: năm sau
+            reset = reset.replace(year=now_dt.year + 1)
+    except ValueError as e:
+        logger.warning(f"Không đọc được giờ Muse hồi lượt dùng ({m.group(0)!r}): {e}; khoá theo mức mặc định")
+        return None
+    seconds = (reset - now_dt).total_seconds()
+    return seconds if 0 < seconds <= _USAGE_RESET_MAX_SEC else None
+
+
+def block_seconds_for(error: str, now: Optional[float] = None) -> float:
     low = str(error).lower()
-    return MUSE_USAGE_LIMIT_BLOCK_SEC if ("quota_exceeded" in low or "usage limit" in low) else ACCOUNT_BLOCK_SEC
+    if not ("quota_exceeded" in low or "usage limit" in low):
+        return ACCOUNT_BLOCK_SEC
+    until_reset = usage_reset_seconds(error, now)
+    return until_reset + 120.0 if until_reset else MUSE_USAGE_LIMIT_BLOCK_SEC
 MAX_TASK_RETRIES = 2
 # ID của 2 trạm VM cũ (đã ngừng dùng). Client cũ còn gửi thì coi như "không chỉ định tài khoản".
 LEGACY_ALIAS_ACCOUNTS = {"muse_acc_image", "muse_acc_video"}
