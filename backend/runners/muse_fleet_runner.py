@@ -39,6 +39,7 @@ import io
 import json
 import logging
 import logging.handlers
+import re
 import shutil
 import socket
 import subprocess
@@ -133,6 +134,21 @@ def muse_quota_message(text_before: str, text_now: str, prompt: str = "") -> Opt
     said = _muse_reply_part(text_before, text_now, prompt)
     low = said.lower()
     return said[-400:] if said and any(w in low for w in MUSE_QUOTA_WORDS) else None
+
+
+# Việc nhiều bước kết thúc mà không có video: Muse tự viết là bị chặn hạn mức, hoặc khai đã tạo 0 video. Gặp 13/11/2026:
+# tài khoản video cuối cùng chạm hạn mức, trang không hiện thông báo hết lượt, Muse viết "Tổng số đã tạo: 0 video / 0 ảnh
+# mới — lần gọi clip A bị chặn ở cổng hạn mức"; trước đó vp_03 hỏng 12 việc cùng kiểu mà không bị khoá.
+AGENT_LIMIT_WORDS = ("hạn mức", "quota", "rate limit", "rate-limit", "usage limit", "limit reached", "hết lượt")
+_ZERO_VIDEO_RE = re.compile(r"(?<![\d.,])0\s+video", re.IGNORECASE)
+
+
+def agent_no_video_reason(said: str) -> Optional[str]:
+    """Câu Muse cho biết không tạo được video nào vì hạn mức (dùng khi lượt kết thúc không có video), không thì None."""
+    low = (said or "").lower()
+    if _ZERO_VIDEO_RE.search(low) or any(w in low for w in AGENT_LIMIT_WORDS):
+        return " ".join(said.split())[-400:]
+    return None
 
 
 def muse_new_text(text_before: str, text_now: str) -> str:
@@ -1375,6 +1391,9 @@ class MuseFleetRunner:
                     break
             await page.wait_for_timeout(2000)
         if final is None:
+            limit = agent_no_video_reason(said)
+            if limit:   # tài khoản hết hạn mức tạo video: backend khoá tài khoản, cảnh sau sang tài khoản khác
+                raise TaskFailure("QUOTA_EXCEEDED", f"Muse không tạo được video nào (hạn mức video): {limit}")
             raise TaskFailure("NO_FINAL", "Muse ghi dòng kết thúc nhưng không có video nào sau prompt")
         if not data:
             raise TaskFailure("NO_FINAL", f"Không tải được video cuối của Muse sau {agent_turn.DOWNLOAD_TRIES} lần: {final[:100]}")

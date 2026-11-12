@@ -248,3 +248,16 @@ def test_muse_usage_limit_blocks_until_the_reset_time_muse_states():
     # không đọc được giờ, hoặc giờ vô lý (quá 8 ngày) thì về mức 6 tiếng
     assert mb.block_seconds_for("QUOTA_EXCEEDED: usage limit", now=now) == mb.MUSE_USAGE_LIMIT_BLOCK_SEC
     assert mb.block_seconds_for("usage limit, reset at 1:00 AM on Friday, March 5", now=now) == mb.MUSE_USAGE_LIMIT_BLOCK_SEC
+
+
+def test_agent_turn_without_any_video_because_of_a_limit_counts_as_quota():
+    """Gặp 13/11/2026 02:09: tài khoản video cuối cùng chạm hạn mức tạo video; trang Muse không hiện thông báo hết lượt
+    mà Muse tự viết báo cáo "Tổng số đã tạo: 0 video / 0 ảnh mới — lần gọi clip A bị chặn ở cổng hạn mức". Runner ghi
+    NO_FINAL nên tài khoản không bị khoá và nhận tiếp cảnh sau để hỏng tiếp (trước đó vp_03 hỏng 12 việc cùng kiểu)."""
+    said = ("Kế hoạch clip A, B, C... Tổng số đã tạo: 0 video / 0 ảnh mới — lần gọi clip A bị chặn ở cổng hạn mức, "
+            "chưa sinh ra file nào. Kết quả: KHÔNG ĐẠT. XONG-fe4c7191")
+    assert fr.agent_no_video_reason(said)
+    assert fr.agent_no_video_reason("Video generation is rate limited right now, no clip was created. XONG-1")
+    # Muse có làm video nhưng tải về lỗi: không phải hết hạn mức
+    assert fr.agent_no_video_reason("Tổng số đã tạo: 4 video / 2 ảnh. Kết quả: ĐẠT. XONG-1") is None
+    assert fr.agent_no_video_reason("Đã tạo 10 video, giữ 3. XONG-1") is None
