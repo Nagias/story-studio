@@ -41,7 +41,7 @@ def test_enqueue_keeps_agent_video_mode(fleet):
     async def run():
         job = asyncio.create_task(mb.enqueue_and_wait_muse_task(
             {"mode": "agent-video", "route_kind": "video", "raw_prompt": True, "prompt": "brief",
-             "agent": {"done_token": "XONG-1", "wait_sec": 60, "target_seconds": 12}}, timeout=1))
+             "agent": {"done_token": "XONG-1", "wait_sec": 60, "target_seconds": 12}}, timeout=1, queue_timeout=1))
         await asyncio.sleep(0.2)
         seen = [dict(t) for t in mb.pending_tasks]
         with pytest.raises(TimeoutError):
