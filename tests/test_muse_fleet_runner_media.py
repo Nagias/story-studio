@@ -249,3 +249,21 @@ def test_previous_scene_reference_asks_muse_for_the_next_frame():
     assert "khung hình của cảnh ngay trước" in chained and "TIẾP THEO" in chained
     plain = MusePromptFormatter.format_image_prompt({"prompt": "x", "parameters": {}}, has_reference=True)
     assert "Giữ đúng gương mặt" in plain and "cảnh ngay trước" not in plain
+
+
+def test_image_slot_helps_with_video_when_image_queue_is_empty(tmp_path, monkeypatch):
+    """Gặp 13/11/2026: slot ưu tiên ảnh cứ hỏi mãi tài khoản ảnh không có việc, chỉ một slot làm video nên tài khoản video
+    thứ hai đứng chờ nửa tiếng dù có việc ghim cho nó."""
+    runner = make_runner(tmp_path)
+    monkeypatch.setattr(FleetAccount, "is_logged_in", lambda self: True)
+    busy = runner._reserve_account(["video", "image"])            # slot video giữ một tài khoản video
+    assert busy.type == "video"
+    for acc in runner.accounts.values():
+        if acc.type == "image":
+            acc.last_empty_poll = time.time()                     # vừa hỏi: không có việc ảnh
+    helper = runner._reserve_account(["image", "video"])          # slot ưu tiên ảnh
+    assert helper.type == "video" and helper.account_id != busy.account_id
+    runner._release_account(helper)
+    for acc in runner.accounts.values():
+        acc.last_empty_poll = time.time()                         # mọi tài khoản vừa hỏi rỗng: về thứ tự ưu tiên thường
+    assert runner._reserve_account(["image", "video"]).type == "image"

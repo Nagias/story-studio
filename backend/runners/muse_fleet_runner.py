@@ -1046,18 +1046,25 @@ class MuseFleetRunner:
     def _reserve_account(self, kinds: List[str]) -> Optional[FleetAccount]:
         """Giữ chỗ 1 tài khoản trước khi poll để 2 slot không cùng poll 1 tài khoản. Tài khoản dùng profile chung mà app
         khác đang mở (vd app VideoPic) thì cho nghỉ PROFILE_BUSY_COOLDOWN_SEC, KHÔNG nhận việc: gặp 12/11/2026, nhận việc
-        rồi mới thấy profile bận nên mỗi việc hỏng ngay (PROFILE_IN_USE), 29 cảnh video cao trào bị ghi lỗi trong 10 phút."""
-        for kind in kinds:
-            for _ in range(len(self.accounts) + 1):
-                acc = self.select_available_account(kind)
-                if not acc:
-                    break
-                if acc.is_external and profile_in_use(acc.profile_dir):
-                    logger.info(f"[{acc.account_id}] Profile đang được app khác mở, tạm không nhận việc")
-                    acc.set_cooldown(PROFILE_BUSY_COOLDOWN_SEC)
-                    continue
-                acc.status = "reserved"
-                return acc
+        rồi mới thấy profile bận nên mỗi việc hỏng ngay (PROFILE_IN_USE), 29 cảnh video cao trào bị ghi lỗi trong 10 phút.
+
+        Lượt đầu bỏ qua tài khoản vừa hỏi việc mà không có (EMPTY_POLL_BACKOFF_SEC), kể cả khi đó là loại ưu tiên của
+        slot: slot ưu tiên ảnh mà không có việc ảnh thì sang giúp làm video. Gặp 13/11/2026: slot ảnh cứ hỏi mãi tài khoản
+        ảnh rỗng, chỉ một slot làm video, tài khoản video thứ hai đứng chờ cả nửa tiếng dù có việc ghim cho nó."""
+        for fresh_only in (True, False):
+            for kind in kinds:
+                for _ in range(len(self.accounts) + 1):
+                    acc = self.select_available_account(kind)
+                    if not acc:
+                        break
+                    if fresh_only and time.time() - acc.last_empty_poll < EMPTY_POLL_BACKOFF_SEC:
+                        break   # danh sách đã xếp tài khoản vừa hỏi rỗng xuống cuối: loại này không còn ai mới
+                    if acc.is_external and profile_in_use(acc.profile_dir):
+                        logger.info(f"[{acc.account_id}] Profile đang được app khác mở, tạm không nhận việc")
+                        acc.set_cooldown(PROFILE_BUSY_COOLDOWN_SEC)
+                        continue
+                    acc.status = "reserved"
+                    return acc
         return None
 
     @staticmethod
