@@ -515,6 +515,19 @@ CHROME_STEALTH_ARGS = [
     "--lang=vi-VN,vi,en-US,en",
 ]
 
+HEADLESS_VIEWPORT = {"width": 1280, "height": 800}
+
+
+def browser_window_options(headless: bool) -> dict:
+    """Cỡ khung trang khi mở Chrome.
+    Chạy ngầm: giữ khung cố định 1280x800 như cũ. Có giao diện (người dùng đăng nhập, xem hạn mức): cửa sổ phóng to và
+    trang theo đúng cỡ cửa sổ. Màn hình 1280x720 mà khoá khung 1280x800 thì phần dưới trang Muse bị cắt, không bấm được."""
+    if headless:
+        return {"args": CHROME_STEALTH_ARGS, "viewport": HEADLESS_VIEWPORT}
+    args = [a for a in CHROME_STEALTH_ARGS if not a.startswith("--window-size=")] + ["--start-maximized"]
+    return {"args": args, "no_viewport": True}
+
+
 CHROME_IGNORE_DEFAULT_ARGS = [
     "--enable-automation",
     "--enable-blink-features=IdleDetection",
@@ -1224,9 +1237,8 @@ class MuseFleetRunner:
         context = await self.playwright.chromium.launch_persistent_context(
             user_data_dir=str(acc.profile_dir),
             headless=headless,
-            args=CHROME_STEALTH_ARGS,
+            **browser_window_options(headless),
             ignore_default_args=CHROME_IGNORE_DEFAULT_ARGS,
-            viewport={"width": 1280, "height": 800},
             user_agent=REALISTIC_USER_AGENT,
             accept_downloads=True,
             channel=channel,
@@ -1796,9 +1808,8 @@ class MuseFleetRunner:
         context = await playwright.chromium.launch_persistent_context(
             user_data_dir=str(acc.profile_dir),
             headless=False,
-            args=CHROME_STEALTH_ARGS,
+            **browser_window_options(False),
             ignore_default_args=CHROME_IGNORE_DEFAULT_ARGS,
-            viewport={"width": 1280, "height": 850},
             user_agent=REALISTIC_USER_AGENT,
             channel=channel,
         )
