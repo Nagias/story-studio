@@ -514,15 +514,24 @@ def _muse_error_switch_account(err: BaseException) -> bool:
 class SceneThread:
     """Side chat Muse của một cảnh: địa chỉ, tài khoản sở hữu, tài khoản nên tránh (vừa lỗi)."""
 
-    def __init__(self, state: dict):
+    def __init__(self, state: dict, account: Optional[str] = None):
         self.url: Optional[str] = None if state.get("thread_dirty") else state.get("thread_url")
         self.account: Optional[str] = None if state.get("thread_dirty") else state.get("account_id")
+        # `account`: lượt chạy chia cảnh theo tài khoản giao cảnh này cho đúng một tài khoản. Chat cũ thuộc tài khoản
+        # khác thì bỏ (mở chat mới trên tài khoản được giao): một cảnh không chia cho hai tài khoản trong một lượt.
+        self.fixed = account
+        if account and self.account != account:
+            self.url, self.account = None, account
         # Mỗi lần bấm chạy là một lần thử mới: tài khoản quá tải lúc trước có thể đã ổn (chạy thật 28/10/2026: đêm qua
         # lỗi hết thì sáng hôm sau không thử được tài khoản nào). Chỉ tránh tài khoản lỗi ngay trong lần chạy này.
         self.avoid: list[str] = []
 
     def apply(self, task: dict) -> dict:
-        if self.url and self.account:
+        if self.fixed:
+            task.update(assigned_account=self.fixed, pin_account=True)
+            if self.url:
+                task["thread_url"] = self.url
+        elif self.url and self.account:
             task.update(thread_url=self.url, assigned_account=self.account, pin_account=True)
         elif self.avoid:
             task["avoid_accounts"] = list(self.avoid)
@@ -603,13 +612,13 @@ def _cast_for(project: Project, scene: Scene) -> tuple[list, list[str], Path]:
     return people, cs.board_positions(len(people)), board
 
 
-async def run_scene_grid(project_id: str, scene_id: str, muse_call: MuseCall) -> dict:
+async def run_scene_grid(project_id: str, scene_id: str, muse_call: MuseCall, account: Optional[str] = None) -> dict:
     """Pha 1: Muse (tài khoản video, side chat của cảnh) vẽ mọi ảnh 9-grid của cảnh, đính kèm [ảnh cảnh hoặc ô 9 grid
     trước, bảng diễn viên]. Xong: trạng thái "grid_review" chờ duyệt. Lỗi: "failed" kèm lý do, giữ ảnh."""
     project, scene = await asyncio.to_thread(_load_scene, project_id, scene_id)
     work = project_service.get_scene_media_paths(project_id, scene_id)["video"].parent / "climax"
     old = _scene_state(scene)
-    thread = SceneThread(old)
+    thread = SceneThread(old, account)
     try:
         seconds, image = await asyncio.to_thread(_prepare, scene, project_id)
         people, positions, board = await asyncio.to_thread(_cast_for, project, scene)
@@ -679,7 +688,7 @@ def reject_grid(project_id: str, scene_id: str, feedback: str) -> dict:
                                                 "grid_feedback": list(state.get("grid_feedback") or []) + [fb]})
 
 
-async def run_scene_clips(project_id: str, scene_id: str, muse_call: MuseCall) -> dict:
+async def run_scene_clips(project_id: str, scene_id: str, muse_call: MuseCall, account: Optional[str] = None) -> dict:
     """Pha 2 (sau khi duyệt grid): MỘT việc giao nhiều bước cho Muse trong side chat của cảnh (services/climax_brief.py):
     Muse tự chia đoạn, tự trích khung kiểm, tự làm lại, gửi một video cuối và ảnh cảnh đã sửa tóc (nếu có). App kiểm
     video, gắn làm clip của cảnh, thay ảnh cảnh (giữ bản cũ). Lỗi: giữ ảnh, bỏ chat (lần sau chat mới), không tự thử lại."""
@@ -689,7 +698,7 @@ async def run_scene_clips(project_id: str, scene_id: str, muse_call: MuseCall) -
     if not landscape and (not old.get("grid_approved") or not old.get("grid_paths")):
         raise ClimaxVideoError("Grid của cảnh chưa được duyệt")
     work = project_service.get_scene_media_paths(project_id, scene_id)["video"].parent / "climax"
-    thread = SceneThread(old)
+    thread = SceneThread(old, account)
     called = False
     try:
         seconds, image = await asyncio.to_thread(_prepare, scene, project_id)
@@ -774,7 +783,8 @@ def redo_scene(project_id: str, scene_id: str) -> dict:
                                                 "thread_dirty": True, "error": None})
 
 
-async def run_scene_climax_video(project_id: str, scene_id: str, muse_call: MuseCall) -> dict:
+async def run_scene_climax_video(project_id: str, scene_id: str, muse_call: MuseCall,
+                                 account: Optional[str] = None) -> dict:
     """Bước tiếp theo của một cảnh: grid đã duyệt thì làm clip, không thì vẽ grid (rồi dừng chờ duyệt).
 
     Id sai, dự án/cảnh không có: LookupError/ValueError (chưa gọi Muse). Muse lỗi hay clip không đạt: ghi
@@ -783,8 +793,8 @@ async def run_scene_climax_video(project_id: str, scene_id: str, muse_call: Muse
     project, scene = await asyncio.to_thread(_load_scene, project_id, scene_id)
     state = _scene_state(scene)
     if state.get("grid_approved"):
-        return await run_scene_clips(project_id, scene_id, muse_call)
+        return await run_scene_clips(project_id, scene_id, muse_call, account)
     if state.get("landscape") is True or await asyncio.to_thread(is_landscape, project, scene):
         await asyncio.to_thread(_merge_climax, project_id, scene_id, {"landscape": True})
-        return await run_scene_clips(project_id, scene_id, muse_call)
-    return await run_scene_grid(project_id, scene_id, muse_call)
+        return await run_scene_clips(project_id, scene_id, muse_call, account)
+    return await run_scene_grid(project_id, scene_id, muse_call, account)

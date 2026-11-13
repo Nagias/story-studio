@@ -350,6 +350,12 @@ def is_kind_online(kind: str) -> bool:
     )
 
 
+def usable_online_accounts(kind: str) -> List[str]:
+    """Id các tài khoản đúng loại đang online và dùng được (không khoá, còn đăng nhập), theo thứ tự id."""
+    return sorted(a["account_id"] for a in muse_accounts
+                  if account_kind(a) == kind and is_account_available(a) and is_account_online(a["account_id"]))
+
+
 def get_enriched_accounts() -> List[Dict[str, Any]]:
     now = time.time()
     # Nạp lại trạng thái chạy (status/cooldown/thống kê) do runner ghi xuống đĩa

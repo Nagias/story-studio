@@ -16,6 +16,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -23,7 +24,8 @@ from pydantic import BaseModel, Field
 
 from models.schemas import Project
 from routers import muse_bridge
-from routers.muse_bridge import enqueue_and_wait_muse_task, ensure_local_fleet_runner, is_kind_online, routing_kind
+from routers.muse_bridge import (enqueue_and_wait_muse_task, ensure_local_fleet_runner, is_kind_online, routing_kind,
+                                 usable_online_accounts)
 from runners import single_instance
 from security import is_within, validate_path_ids
 from services import climax_video, project_service
@@ -32,6 +34,7 @@ logger = logging.getLogger("story_studio.climax_video_router")
 
 router = APIRouter(prefix="/api", tags=["Climax video"], dependencies=[Depends(validate_path_ids)])
 
+WORKER_STAGGER_S = 20   # tài khoản thứ hai bắt đầu sau một chút: hai tài khoản không gửi Muse cùng một giây
 RUNNER_START_WAIT_S = 60   # như image_service: runner vừa bật cần chừng này để đăng ký tài khoản
 RUNNABLE = ("selected", "failed", "grid_approved")
 KEEP_ON_PICK = ("ready", "grid_review", "grid_approved")   # "Chọn cảnh cao trào" không xoá công đã làm
@@ -146,18 +149,51 @@ _muse_call = muse_call_starting_runner   # tên cũ (test)
 STOP_RUN_WORDS = ("Không có tài khoản Muse video nào đang online",)
 
 
+# Lỗi cho biết riêng tài khoản đang làm không dùng được nữa (hết lượt, mất đăng nhập, bị khoá): người làm của tài khoản
+# đó nghỉ, tài khoản khác làm tiếp các cảnh còn lại.
+ACCOUNT_DOWN_WORDS = ("không dùng được (offline, bị khoá hoặc mất", "QUOTA_EXCEEDED", "SESSION_EXPIRED", "hạn mức",
+                      "usage limit")
+
+
+async def _run_one(project_id: str, scene_id: str, account: Optional[str]) -> str:
+    """Chạy một cảnh; trả chuỗi lỗi ("" khi không lỗi). Lỗi ngoài dự kiến: cảnh đã được ghi "failed"."""
+    try:
+        state = await climax_video.run_scene_climax_video(project_id, scene_id, muse_call=muse_call_starting_runner,
+                                                          account=account)
+    except Exception as e:
+        logger.exception(f"Video cao trào {project_id}/{scene_id}: lỗi ngoài dự kiến")
+        return f"{type(e).__name__}: {e}"
+    return str((state or {}).get("error") or "") if (state or {}).get("status") == "failed" else ""
+
+
 async def _run_all(project_id: str, scene_ids: list[str]) -> None:
-    for scene_id in scene_ids:
-        try:
-            state = await climax_video.run_scene_climax_video(project_id, scene_id, muse_call=muse_call_starting_runner)
-        except Exception:   # cảnh này đã được ghi "failed" kèm lý do; làm tiếp cảnh sau
-            logger.exception(f"Video cao trào {project_id}/{scene_id}: lỗi ngoài dự kiến")
-            continue
-        error = str((state or {}).get("error") or "")
-        if (state or {}).get("status") == "failed" and any(w in error for w in STOP_RUN_WORDS):
-            logger.warning(f"Video cao trào {project_id}: dừng lượt chạy ở {scene_id}, không còn tài khoản video "
-                           f"làm được ({error[:200]})")
-            break
+    """Mỗi tài khoản video đang dùng được có một người làm, các người làm lấy lần lượt cảnh tiếp theo trong hàng chung:
+    các tài khoản thay phiên nhau và chạy song song. Mỗi cảnh ghim vào đúng một tài khoản từ đầu tới cuối (chủ dự án
+    13/11/2026: "không được 1 cảnh mà chia sang 2 tài khoản lại lệch nhân vật"). Chưa có tài khoản nào online (runner
+    vừa bật): chạy lần lượt như cũ, không ghim."""
+    accounts = usable_online_accounts("video")
+    queue = list(scene_ids)
+    if not accounts:
+        for scene_id in queue:
+            error = await _run_one(project_id, scene_id, None)
+            if any(w in error for w in STOP_RUN_WORDS):
+                logger.warning(f"Video cao trào {project_id}: dừng lượt chạy ở {scene_id}, không còn tài khoản video "
+                               f"làm được ({error[:200]})")
+                break
+        return
+    logger.info(f"Video cao trào {project_id}: {len(queue)} cảnh, chia cho {len(accounts)} tài khoản {accounts}")
+
+    async def worker(account: str, delay: float) -> None:
+        await asyncio.sleep(delay)
+        while queue:
+            scene_id = queue.pop(0)
+            logger.info(f"Video cao trào {project_id}/{scene_id}: giao cho {account}")
+            error = await _run_one(project_id, scene_id, account)
+            if any(w in error for w in STOP_RUN_WORDS + ACCOUNT_DOWN_WORDS):
+                logger.warning(f"Video cao trào {project_id}: {account} nghỉ sau {scene_id} ({error[:200]})")
+                return
+
+    await asyncio.gather(*(worker(a, i * WORKER_STAGGER_S) for i, a in enumerate(accounts)))
 
 
 @router.post("/projects/{project_id}/climax-video/run")
