@@ -261,3 +261,18 @@ def test_agent_turn_without_any_video_because_of_a_limit_counts_as_quota():
     # Muse có làm video nhưng tải về lỗi: không phải hết hạn mức
     assert fr.agent_no_video_reason("Tổng số đã tạo: 4 video / 2 ảnh. Kết quả: ĐẠT. XONG-1") is None
     assert fr.agent_no_video_reason("Đã tạo 10 video, giữ 3. XONG-1") is None
+
+
+def test_new_media_must_come_after_the_prompt_just_sent():
+    """Gặp 13/11/2026 (vụ Khang Cúc Hoa cảnh 004): không mở được chat mới, runner dùng lại chat cũ và sau 15 giây nhận một
+    ảnh cũ của chat đó (tải lười khi cuộn, địa chỉ blob mới) làm ảnh mới. Nay chỉ nhận media sau tin nhắn prompt vừa gửi."""
+    from runners import muse_fleet_runner as fr
+    assert fr.prompt_anchor("tạo cho tôi 1 hình ảnh 2K tỉ lệ 16:9: Style: horror\ndòng hai") == \
+        "tạo cho tôi 1 hình ảnh 2K tỉ lệ 16:9: St"
+    assert fr.prompt_anchor("") == "" and fr.prompt_anchor(None) == ""
+    js = fr.FIND_NEW_MEDIA_JS
+    assert "anchorText" in js and "DOCUMENT_POSITION_FOLLOWING" in js and "afterPrompt(el)" in js
+    import inspect
+    src = inspect.getsource(fr)
+    calls = src.count("page.evaluate(FIND_NEW_MEDIA_JS,")
+    assert calls >= 3 and src.count("prompt_anchor(prompt)])") == calls   # mọi chỗ tìm media đều truyền mốc prompt

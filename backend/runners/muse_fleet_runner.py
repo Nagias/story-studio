@@ -573,12 +573,22 @@ MARK_EXISTING_MEDIA_JS = r"""() => {
 }"""
 
 # Tìm media mới trong khung chat (ưu tiên vùng [role=log]), loại avatar/mascot (khung tròn, video vuông)
-FIND_NEW_MEDIA_JS = r"""([kind, preSrcs, rejected]) => {
+FIND_NEW_MEDIA_JS = r"""([kind, preSrcs, rejected, anchorText]) => {
   const pre = new Set(preSrcs), bad = new Set(rejected);
   const logs = [...document.querySelectorAll('[role=log]')];
   const inChat = el => logs.length ? logs.some(l => l.contains(el)) : !!el.closest("[class*='message'], [class*='bubble']");
   const isAvatar = el => !!el.closest("[class*='rounded-full'], [class*='avatar'], [class*='landing']");
-  const fresh = (el, src) => src && !el.hasAttribute('data-ss-pre') && !pre.has(src) && !bad.has(src);
+  // Chỉ nhận media nằm SAU tin nhắn prompt vừa gửi (lần xuất hiện cuối của đoạn đầu prompt). Ảnh cũ của đoạn chat dùng
+  // lại được tải lười khi cuộn và mang địa chỉ blob mới, nên đánh dấu trước khi gửi không bắt được hết (13/11/2026).
+  let anchor = null;
+  if (anchorText) {
+    const walker = document.createTreeWalker(logs[logs.length - 1] || document.body, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (n.nodeValue && n.nodeValue.includes(anchorText)) anchor = n.parentElement;
+    }
+  }
+  const afterPrompt = el => !anchor || !!(anchor.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const fresh = (el, src) => src && !el.hasAttribute('data-ss-pre') && !pre.has(src) && !bad.has(src) && afterPrompt(el);
   const out = [];
   if (kind === 'video') {
     for (const a of document.querySelectorAll('a[href]')) {
@@ -603,6 +613,12 @@ FIND_NEW_MEDIA_JS = r"""([kind, preSrcs, rejected]) => {
   }
   return out;
 }"""
+
+def prompt_anchor(prompt: Optional[str]) -> str:
+    """Đoạn đầu dòng đầu của prompt (tối đa 40 ký tự): FIND_NEW_MEDIA_JS chỉ nhận media nằm sau lần xuất hiện cuối của nó."""
+    lines = (prompt or "").strip().splitlines()
+    return lines[0].strip()[:40].strip() if lines else ""
+
 
 # Lúc NO_MEDIA: mọi ảnh/video/canvas/ảnh nền trên trang và lý do FIND_NEW_MEDIA_JS bỏ qua chúng. Gặp 06/11/2026 (Khang
 # Cúc Hoa cảnh 2, 13): Muse viết "Đã tạo xong" cả 3 lượt trên 2 tài khoản mà runner không thấy ảnh, không còn bằng chứng.
@@ -1402,7 +1418,7 @@ class MuseFleetRunner:
         # fetch"): chỉ lấy địa chỉ đang có trên trang (không dùng blob bắt từ mạng, đã cũ) và đọc lại trang trước mỗi lần thử
         data, final, videos = None, None, []
         for _ in range(agent_turn.DOWNLOAD_TRIES):
-            videos = [c["src"] for c in await page.evaluate(FIND_NEW_MEDIA_JS, ["video", pre_srcs, []])]
+            videos = [c["src"] for c in await page.evaluate(FIND_NEW_MEDIA_JS, ["video", pre_srcs, [], prompt_anchor(prompt)])]
             final = agent_turn.pick_final_video(videos)
             if final is not None:
                 data = await self._download_media(page, context, final)
@@ -1416,7 +1432,7 @@ class MuseFleetRunner:
             raise TaskFailure("NO_FINAL", "Muse ghi dòng kết thúc nhưng không có video nào sau prompt")
         if not data:
             raise TaskFailure("NO_FINAL", f"Không tải được video cuối của Muse sau {agent_turn.DOWNLOAD_TRIES} lần: {final[:100]}")
-        images = [c["src"] for c in await page.evaluate(FIND_NEW_MEDIA_JS, ["image", pre_srcs, []])]
+        images = [c["src"] for c in await page.evaluate(FIND_NEW_MEDIA_JS, ["image", pre_srcs, [], prompt_anchor(prompt)])]
         dest_file = OUTPUTS_DIR / f"{task_id}.mp4"
         dest_file.write_bytes(data)
         ok, info = validate_video_file(dest_file, 2 * target + 1)
@@ -1592,7 +1608,7 @@ class MuseFleetRunner:
                 else:
                     error_since = None
 
-                candidates = await page.evaluate(FIND_NEW_MEDIA_JS, [kind, pre_srcs, list(rejected)])
+                candidates = await page.evaluate(FIND_NEW_MEDIA_JS, [kind, pre_srcs, list(rejected), prompt_anchor(prompt)])
                 srcs = [c["src"] for c in candidates] + [u for u in net_candidates if u not in rejected]
                 for src in dict.fromkeys(srcs):
                     seen_count[src] = seen_count.get(src, 0) + 1
