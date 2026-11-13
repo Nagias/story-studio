@@ -135,6 +135,36 @@ def default_design(entity: CaseEntity, style_id: str) -> str:
     return design_text(entity.appearance_en or "", entity.gender, entity.age_range, entity.role, style_id)
 
 
+# Chữ tả mặt thật trong câu ngoại hình (lấy từ bài báo của vụ án): với phong cách đầu tròn chúng kéo Muse vẽ mặt nhăn chi
+# tiết. Gặp 13/11/2026: "deep sun-etched wrinkles" (Tống Đức Minh), "weathered features" (Trịnh Đức Toàn) cho ra mặt
+# nhăn, mũi rõ khi khóc ở 9 cảnh của hai vụ, dù quy tắc đầu tròn nằm ngay sau trong cùng thiết kế.
+FACE_DETAIL_RE = re.compile(
+    r"\b(?:wrinkl\w*|creases?|cheeks?|cheekbones?|jaw\w*|chin|nose|nostrils?|lips?|complexion|freckles?|"
+    r"weathered (?:features|face|skin)|gaunt face|sun-?etched|eyes|eyelids?|eyebrows?|brows?|facial features|"
+    r"crow'?s feet|stubble|moustache|mustache|beard|dimples?)\b", re.IGNORECASE)
+
+
+def without_face_details(design_en: str) -> str:
+    """Thiết kế bỏ các vế tả mặt trong câu "Appearance:" (vế cắt theo dấu phẩy, "and", "with"); phần còn lại (tuổi, tóc,
+    dáng, quần áo, các câu quy tắc vẽ) giữ nguyên. Chỉ dùng lúc ghép prompt cho phong cách đầu tròn, không ghi đè thiết
+    kế đã duyệt."""
+    out = []
+    for line in (design_en or "").splitlines():
+        m = re.match(r"(\s*Appearance:\s*)(.*)$", line, re.IGNORECASE)
+        if not m:
+            out.append(line)
+            continue
+        sentences = re.split(r"(?<=\.)\s+", m.group(2))
+        kept_sentences = []
+        for sentence in sentences:
+            parts = re.split(r",\s*|\s+and\s+|\s+with\s+", sentence.rstrip("."))
+            kept = [p for p in parts if p.strip() and not FACE_DETAIL_RE.search(p)]
+            if kept:
+                kept_sentences.append(", ".join(kept) + ".")
+        out.append(m.group(1) + " ".join(kept_sentences))
+    return "\n".join(out)
+
+
 def look_text(design_en: str) -> str:
     """Phần ngoại hình của thiết kế (bỏ dòng nét vẽ và quy tắc vẽ bảng) để chèn vào prompt ảnh cảnh."""
     text = (design_en or "").replace(ANGLE_RULE_EN, " ")
@@ -269,6 +299,12 @@ def reference_image(project: Project, cast: ProjectCast, entity_id: str) -> Opti
 
 
 # ------------------------------------------------------------------------------------------------- vẽ, duyệt
+def prompt_design(project: Project, design_en: str) -> str:
+    """Thiết kế dùng trong prompt gửi Muse: phong cách đầu tròn thì bỏ vế tả mặt (without_face_details)."""
+    from services.image_service import ROUND_HEAD_STYLES   # nạp muộn như hair_rule_for
+    return without_face_details(design_en) if project.style_preset in ROUND_HEAD_STYLES else (design_en or "")
+
+
 def hair_rule_for(project: Project, entity_id: str) -> str:
     """Câu quy tắc tóc nếu người này là nữ và dự án dùng phong cách đầu tròn; không thì chuỗi rỗng.
     Ghép lúc dựng prompt (không ghi vào design_en đã lưu) để thiết kế cũ, kể cả đã duyệt, cũng nhận quy tắc."""

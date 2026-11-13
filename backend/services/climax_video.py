@@ -238,7 +238,7 @@ def grid_plan(n_clips: int) -> list[list[int]]:
 
 
 # ------------------------------------------------------------------------------------------------------------ prompt
-def _cast_lines(cast: Optional[list], positions: Optional[list[str]]) -> list[str]:
+def _cast_lines(project: Project, cast: Optional[list], positions: Optional[list[str]]) -> list[str]:
     """Mỗi nhân vật một dòng: tên, vị trí bảng của họ trong ảnh bảng diễn viên, thiết kế cố định."""
     lines = []
     for i, ch in enumerate(cast or []):
@@ -248,7 +248,7 @@ def _cast_lines(cast: Optional[list], positions: Optional[list[str]]) -> list[st
             where = " — character sheet = the SECOND attached image"
         else:
             where = f" — character sheet at the {positions[i]} of the SECOND attached image"
-        lines.append(f"* {ch.name_vi}{where}:\n{ch.design_en.strip()}")
+        lines.append(f"* {ch.name_vi}{where}:\n{cs.prompt_design(project, ch.design_en).strip()}")
     return lines
 
 
@@ -278,7 +278,7 @@ def grid_prompt(scene: Scene, project: Project, first_grid: bool, cast: Optional
         parts.append("CHARACTER LOCK — the second attached image is the approved character reference board. Every "
                      "character below must match their sheet exactly in all nine panels, from whatever angle they are "
                      "seen (head shape, face, hair, clothes, shoes, colours):")
-        parts += _cast_lines(cast, positions)
+        parts += _cast_lines(project, cast, positions)
     parts.append(STYLE_LOCK_EN)
     for fb in feedback or []:
         parts.append(f"Bản grid trước SAI: {fb.strip()} — sửa đúng chỗ này.")

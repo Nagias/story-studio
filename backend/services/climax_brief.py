@@ -12,6 +12,7 @@ from typing import Optional
 
 from models.schemas import Project, Scene
 from services.character_sheets import CharacterSheet, hair_rule_for
+from services.character_sheets import prompt_design as cs_prompt_design
 from services.image_service import FEMALE_HAIR_RULE_EN, ROUND_HEAD_STYLES
 
 AGENT_MAX_VIDEOS = 6        # giới hạn của Muse cho một yêu cầu (Muse tự khai 28/10/2026)
@@ -47,7 +48,8 @@ def _cast_lines(project: Project, people: list[CharacterSheet]) -> list[str]:
         rule = hair_rule_for(project, p.entity_id)
         # Câu quy tắc có thể nằm sẵn trong thiết kế (thiết kế mặc định chép phong cách vẽ), ở sau chỗ cắt: bỏ khỏi thiết
         # kế rồi luôn ghi một dòng riêng, để cắt bao nhiêu cũng không rơi mất (giám khảo 28/10/2026)
-        design = p.design_en.replace(rule, " ") if rule else p.design_en
+        design = cs_prompt_design(project, p.design_en)
+        design = design.replace(rule, " ") if rule else design
         lines.append(f"- {p.name_vi}: {' '.join(design.split())[:DESIGN_MAX_CHARS]}")
         if rule:
             lines.append("  This hair rule overrides any other hair placement in the design: "
@@ -69,7 +71,9 @@ ROUND_HEAD_GOAL = (
     "trắng RẤT TO, mặt trắng phẳng, hai chấm mắt và một nét miệng, KHÔNG BAO GIỜ thành mặt người hay mặt anime "
     "(không mũi, không mắt có tròng, không lông mi, không môi chi tiết). Được biểu cảm bằng nét đơn giản cùng kiểu "
     "vẽ: lông mày một nét nhíu hoặc nhướn, nước mắt, giọt mồ hôi, miệng há, nửa mặt tô xám khi sợ. Quần áo, màu sắc, "
-    "bối cảnh giữ như ảnh đã duyệt. Đổi sang mặt người thì không bao giờ đạt.")
+    "bối cảnh giữ như ảnh đã duyệt. Đổi sang mặt người thì không bao giờ đạt. Người già, người gầy cũng chỉ là quả bóng "
+    "tròn phẳng như vậy: tuổi thể hiện bằng tóc bạc, dáng người, quần áo; không nếp nhăn, không má hóp, không mũi, kể "
+    "cả lúc khóc hay sợ (đo thật 13/11/2026: mặt ông già hay bị vẽ nhăn chi tiết đúng lúc khóc).")
 
 
 # Thử thật 11/11/2026 (vụ xưởng sắt cảnh 7): clip AI méo đầu ở giây 3, Muse bỏ rồi TỰ DỰNG 3 clip bằng công cụ trên máy

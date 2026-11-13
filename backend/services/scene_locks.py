@@ -43,7 +43,7 @@ def character_lock(project_id: str, scene_id: str) -> Optional[dict]:
     lines = [CHARACTER_LINE_EN]
     for p in people:
         rule = cs.hair_rule_line(p.design_en, cs.hair_rule_for(project, p.entity_id))
-        lines.append(f"- {p.name_vi}: {cs.look_text(p.design_en)}" + (f" {rule}" if rule else ""))
+        lines.append(f"- {p.name_vi}: {cs.look_text(cs.prompt_design(project, p.design_en))}" + (f" {rule}" if rule else ""))
     approved = [p for p in people if p.status == "approved" and p.sheet_path and Path(p.sheet_path).is_file()]
     board = None
     if approved:
