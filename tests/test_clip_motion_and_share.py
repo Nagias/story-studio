@@ -102,6 +102,7 @@ def test_share_report_counts_video_seconds_and_lists_still_clips(tmp_path, monke
     """Clip gần như đứng hình (a.mp4) không được tính: chỉ clip có cử động (b.mp4) vào tỉ lệ."""
     scores = {"a.mp4": 0.0, "b.mp4": 6.0}
     monkeypatch.setattr(clip_motion, "motion_score", lambda p: scores[Path(p).name])
+    monkeypatch.setattr(video_share, "_clip_seconds", lambda p: 60.0)   # clip giả: dài hơn mọi cảnh
 
     def sc(order):
         return Scene(id=f"scene_{order:03d}", order=order, text="x")

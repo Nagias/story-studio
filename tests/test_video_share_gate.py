@@ -33,6 +33,7 @@ def _fake_motion(monkeypatch):
     """Clip tên chứa "dung_hinh" là clip gần như đứng hình, còn lại có cử động."""
     monkeypatch.setattr(clip_motion, "motion_score", lambda p: STILL if "dung_hinh" in Path(p).name else MOVING)
     monkeypatch.setattr(cv, "MUSE_PACE_SEC", 0)
+    monkeypatch.setattr(video_share, "_clip_seconds", lambda p: 60.0)   # clip giả: dài hơn mọi cảnh
 
 
 def _project(seconds: list[float], clips: dict[int, str]) -> Project:
@@ -268,3 +269,20 @@ def test_run_stops_when_no_video_account_is_left(monkeypatch):
     monkeypatch.setattr(climax_router.climax_video, "run_scene_climax_video", ordinary_failure)
     asyncio.run(climax_router._run_all("proj_x", ["scene_001", "scene_002"]))
     assert called == ["scene_001", "scene_002"]                       # lỗi thường: làm tiếp cảnh sau
+
+
+def test_short_clip_counts_only_the_moving_part(isolated_projects_dir, monkeypatch):
+    """Gặp 13/11/2026 (vụ Khang Cúc Hoa cảnh 048): lời kể 18,1 giây, Muse trả clip 9 giây. Lúc dựng clip kéo chậm tối đa
+    1,25 lần (11,25 giây) rồi giữ khung cuối đứng yên: cách đếm cũ tính đủ 18,1 giây là video."""
+    from services.video_service import MAX_CLIP_STRETCH
+    _project([18.1, 21.9], {1: "scene_001_muse.mp4"})
+    monkeypatch.setattr(video_share, "_clip_seconds", lambda p: 9.0)
+    rep = _share()
+    assert rep["video_seconds"] == round(9.0 * MAX_CLIP_STRETCH, 1) and rep["clip_seconds"] == 18.1
+    assert rep["short_scenes"] == [1]
+    assert any("ngắn hơn lời kể" in line for line in video_share.report_lines(rep))
+    monkeypatch.setattr(video_share, "_clip_seconds", lambda p: None)   # không đo được độ dài: không tính bừa
+    assert _share()["video_seconds"] == 0
+    monkeypatch.setattr(video_share, "_clip_seconds", lambda p: 18.0)   # gần bằng lời kể: kéo chậm đủ, tính hết
+    rep = _share()
+    assert rep["video_seconds"] == 18.1 and rep["short_scenes"] == []

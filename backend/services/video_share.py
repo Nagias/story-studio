@@ -21,10 +21,13 @@ from services import clip_motion, project_service
 from services.climax_video import CLIMAX_RATIO, GATE_MIN
 from services.dialogue_video import render_seconds
 from services.render_inputs import scene_render_input
+from services.tts_service import MediaDurationError, get_audio_duration
+from services.video_service import moving_seconds
 
 logger = logging.getLogger("story_studio.video_share")
 
 VIDEO_EXTS = (".mp4", ".mov", ".webm", ".avi", ".mkv")
+SHORT_CLIP_TOLERANCE_S = 0.5   # khung cuối đứng yên dài hơn chừng này thì báo cảnh có clip ngắn hơn lời kể
 REVIEW_KEY = "motion_review"          # scene.metadata: chủ dự án đã xem clip, có cử động
 DRAFT_VIDEO_NAME = "story_nhap_duoi_45.mp4"
 GATE_CODE = "VIDEO_SHARE_LOW"
@@ -84,6 +87,14 @@ def review_valid(scene: Scene, clip: Path) -> bool:
         return False
 
 
+def _clip_seconds(path: Path) -> Optional[float]:
+    try:
+        return get_audio_duration(str(path))
+    except MediaDurationError as e:
+        logger.warning(f"Không đo được độ dài clip {path.name}: {e}")
+        return None
+
+
 def _score(path: Path) -> Optional[float]:
     try:
         return clip_motion.motion_score(path)
@@ -99,6 +110,7 @@ def share_report(entries: Iterable[tuple[Scene, float, Optional[str]]]) -> dict:
     still: list[int] = []
     unmeasured: list[int] = []
     reviewed: list[int] = []
+    short: list[int] = []
     for scene, seconds, source in entries:
         seconds = float(seconds or 0)
         total += seconds
@@ -108,22 +120,30 @@ def share_report(entries: Iterable[tuple[Scene, float, Optional[str]]]) -> dict:
         clips += seconds
         order = scene.order
         if review_valid(scene, path):
-            counted += seconds
+            ok = True
             reviewed.append(order)
-            continue
-        score = _score(path)
-        if score is None:
-            unmeasured.append(order)
-        elif clip_motion.has_real_motion(score):
-            counted += seconds
         else:
-            still.append(order)
+            score = _score(path)
+            ok = score is not None and clip_motion.has_real_motion(score)
+            if score is None:
+                unmeasured.append(order)
+            elif not ok:
+                still.append(order)
+        if not ok:
+            continue
+        # Clip ngắn hơn lời kể: lúc dựng chỉ kéo chậm có giới hạn rồi giữ khung cuối đứng yên. Phần đứng yên không phải
+        # video (gặp 13/11/2026: Muse trả clip 9 giây cho lời kể 18 giây, cách đếm cũ tính đủ 18 giây).
+        moved = moving_seconds(_clip_seconds(path), seconds)
+        counted += moved
+        if seconds - moved > SHORT_CLIP_TOLERANCE_S:
+            short.append(order)
     percent = round(100 * counted / total, 1) if total > 0 else 0.0
     return {"video_seconds": round(counted, 1), "clip_seconds": round(clips, 1), "total_seconds": round(total, 1),
             "percent": percent, "target_percent": round(CLIMAX_RATIO * 100), "gate_percent": round(GATE_MIN * 100),
             "enough": total > 0 and counted >= CLIMAX_RATIO * total - 1e-6,
             "gate_ok": total > 0 and counted >= GATE_MIN * total - 1e-6,
-            "still_scenes": still, "unmeasured_scenes": unmeasured, "reviewed_scenes": reviewed}
+            "still_scenes": still, "unmeasured_scenes": unmeasured, "reviewed_scenes": reviewed,
+            "short_scenes": short}
 
 
 def project_entries(project: Project) -> list[tuple[Scene, float, Optional[str]]]:
@@ -193,6 +213,9 @@ def report_lines(report: dict) -> list[str]:
     if report["unmeasured_scenes"]:
         lines.append(f"⚠ Không đo được cử động ở cảnh {', '.join(str(o) for o in report['unmeasured_scenes'])}, "
                      "không được tính cho tới khi duyệt.")
+    if report.get("short_scenes"):
+        lines.append(f"⚠ {len(report['short_scenes'])} cảnh có clip ngắn hơn lời kể (cuối cảnh là khung đứng yên, phần "
+                     f"đó không tính là video): cảnh {', '.join(str(o) for o in report['short_scenes'])}.")
     if report["reviewed_scenes"]:
         lines.append(f"Clip đã được duyệt tay: cảnh {', '.join(str(o) for o in report['reviewed_scenes'])}.")
     return lines

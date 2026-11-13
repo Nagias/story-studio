@@ -285,6 +285,15 @@ def clip_stretch(clip_seconds: Optional[float], scene_seconds: Optional[float]) 
     return min(MAX_CLIP_STRETCH, scene_seconds / clip_seconds)
 
 
+def moving_seconds(clip_seconds: Optional[float], scene_seconds: Optional[float]) -> float:
+    """Số giây của cảnh mà clip thật sự chạy khi dựng (kéo chậm tối đa MAX_CLIP_STRETCH, phần còn lại là khung cuối
+    đứng yên). Không đo được clip: 0 (không tính bừa là video)."""
+    scene = float(scene_seconds or 0)
+    if not clip_seconds or clip_seconds <= 0 or scene <= 0:
+        return 0.0
+    return min(scene, clip_seconds * clip_stretch(clip_seconds, scene))
+
+
 def _media_seconds(path: str) -> Optional[float]:
     """Độ dài clip; không đo được thì None (dựng như cũ: giữ khung cuối), ghi log."""
     try:
