@@ -9,6 +9,7 @@ from services import climax_video as cv
 def _fake_accounts(monkeypatch, accounts):
     monkeypatch.setattr(climax_router, "usable_online_accounts", lambda kind: list(accounts))
     monkeypatch.setattr(climax_router, "WORKER_STAGGER_S", 0)
+    monkeypatch.setattr(climax_router, "_scene_owners", lambda pid, ids, accs: {})
 
 
 def test_scenes_alternate_between_accounts_one_account_per_scene(monkeypatch):
@@ -68,3 +69,35 @@ def test_without_given_account_behaviour_unchanged():
     old = {"thread_url": "https://muse.ai/thread/abc", "account_id": "acc_old"}
     task = cv.SceneThread(old).apply({})
     assert task == {"thread_url": "https://muse.ai/thread/abc", "assigned_account": "acc_old", "pin_account": True}
+
+
+def test_scene_started_on_an_account_goes_back_to_that_account(monkeypatch):
+    """Gặp 13/11/2026: cảnh 052 bắt đầu trên vp_01, server tắt giữa chừng; lần chạy lại hàng chỉ còn cảnh đó và tài khoản
+    kia vào trước nên nhận mất. Cảnh đã có chủ thì chỉ chủ làm tiếp."""
+    _fake_accounts(monkeypatch, ["acc_a", "acc_b"])
+    monkeypatch.setattr(climax_router, "_scene_owners",
+                        lambda pid, ids, accs: {"s1": "acc_b", "s2": None, "s3": "acc_b"})
+    log = []
+
+    async def fake_run(pid, sid, muse_call, account=None):
+        log.append((sid, account))
+        await asyncio.sleep(0.01)
+        return {"status": "ready"}
+    monkeypatch.setattr(climax_router.climax_video, "run_scene_climax_video", fake_run)
+    asyncio.run(climax_router._run_all("proj_x", ["s1", "s2", "s3"]))
+    got = dict(log)
+    assert got["s1"] == "acc_b" and got["s3"] == "acc_b"           # cảnh có chủ: đúng chủ, dù acc_a vào trước
+    assert got["s2"] == "acc_a"                                    # cảnh chưa có chủ: tài khoản rảnh nhận
+    assert len(log) == 3
+
+
+def test_scene_owners_reads_saved_account_and_ignores_unusable_ones(isolated_projects_dir):
+    from models.schemas import Project, Scene
+    from services import project_service
+    scenes = [Scene(id="s1", order=1, text="a", metadata={"climax_video": {"account_id": "acc_b"}}),
+              Scene(id="s2", order=2, text="b", metadata={"climax_video": {"account_id": "acc_khoa"}}),
+              Scene(id="s3", order=3, text="c")]
+    project_service.ensure_project_dirs("proj_owner01")
+    project_service.save_project(Project(id="proj_owner01", name="Thử", scenes=scenes))
+    owners = climax_router._scene_owners("proj_owner01", ["s1", "s2", "s3"], ["acc_a", "acc_b"])
+    assert owners == {"s1": "acc_b", "s2": None, "s3": None}

@@ -155,6 +155,18 @@ ACCOUNT_DOWN_WORDS = ("không dùng được (offline, bị khoá hoặc mất",
                       "usage limit")
 
 
+def _scene_owners(project_id: str, scene_ids: list[str], accounts: list[str]) -> dict[str, Optional[str]]:
+    """Tài khoản đã nhận từng cảnh ở lượt trước (metadata climax_video.account_id), nếu tài khoản đó đang dùng được."""
+    project = project_service.get_project(project_id)
+    wanted = set(scene_ids)
+    out: dict[str, Optional[str]] = {}
+    for scene in project.scenes if project else []:
+        if scene.id in wanted:
+            acc = _state(scene).get("account_id")
+            out[scene.id] = acc if acc in accounts else None
+    return out
+
+
 async def _run_one(project_id: str, scene_id: str, account: Optional[str]) -> str:
     """Chạy một cảnh; trả chuỗi lỗi ("" khi không lỗi). Lỗi ngoài dự kiến: cảnh đã được ghi "failed"."""
     try:
@@ -181,12 +193,18 @@ async def _run_all(project_id: str, scene_ids: list[str]) -> None:
                                f"làm được ({error[:200]})")
                 break
         return
+    owner = await asyncio.to_thread(_scene_owners, project_id, queue, accounts)
     logger.info(f"Video cao trào {project_id}: {len(queue)} cảnh, chia cho {len(accounts)} tài khoản {accounts}")
 
     async def worker(account: str, delay: float) -> None:
         await asyncio.sleep(delay)
-        while queue:
-            scene_id = queue.pop(0)
+        while True:
+            # Cảnh đã bắt đầu trên một tài khoản đang dùng được thì chỉ tài khoản đó làm tiếp (gặp 13/11/2026: cảnh 052
+            # bắt đầu trên vp_01, server tắt giữa chừng, lần chạy lại tài khoản kia nhận mất).
+            scene_id = next((s for s in queue if owner.get(s) in (None, account)), None)
+            if scene_id is None:
+                return
+            queue.remove(scene_id)
             logger.info(f"Video cao trào {project_id}/{scene_id}: giao cho {account}")
             error = await _run_one(project_id, scene_id, account)
             if any(w in error for w in STOP_RUN_WORDS + ACCOUNT_DOWN_WORDS):
