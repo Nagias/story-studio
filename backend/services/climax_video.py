@@ -22,6 +22,7 @@ import asyncio
 import logging
 import math
 import os
+import re
 import shutil
 import unicodedata
 import subprocess
@@ -37,7 +38,8 @@ from models.schemas import Project, Scene
 from security import is_within
 from services import character_sheets as cs
 from services import clip_motion, project_service
-from services.climax_brief import (AGENT_REPLY_MAX_CHARS, AGENT_VIDEO_MODE, NEW_SCENE_IMAGE_TAG, landscape_brief,
+from services.climax_brief import (AGENT_REPLY_MAX_CHARS, AGENT_VIDEO_MODE, NEW_SCENE_IMAGE_TAG, crowd_brief,
+                                   landscape_brief,
                                    scene_brief, target_seconds)
 from services.tts_service import MediaDurationError, get_audio_duration
 
@@ -164,11 +166,34 @@ def pick_climax_scenes(project: Project) -> list[str]:
     return [s.id for s in project.scenes if s.id in chosen]
 
 
-def is_landscape(project: Project, scene: Scene) -> bool:
-    """Cảnh vẽ không có nhân vật nào trong danh sách nhân vật của dự án: làm video phong cảnh (không lưới 9 ô, không bảng
-    nhân vật). Dự án chưa có danh sách nhân vật thì không phải (phải tìm nhân vật trước)."""
+# Chữ chỉ người trong prompt ảnh cảnh (prompt viết tiếng Anh). Không tính "police" đứng một mình (police station, police
+# tape) và "character(s)" (câu phong cách chung "Characters have big round white heads" có cả ở cảnh không người).
+PERSON_WORDS_RE = re.compile(
+    r"\b(?:man|men|woman|women|person|persons|people|officers?|policem[ae]n|detectives?|investigators?|villagers?|"
+    r"officials?|judges?|crowd|figures?|silhouettes?|workers?|boys?|girls?|child|children|couple|guards?|suspects?|"
+    r"witness(?:es)?|lawyers?|prosecutors?|doctors?|nurses?|reporters?|elderly|teenagers?|youth|someone|"
+    r"family|parents?|mother|father|husband|wife|son|daughter)\b", re.IGNORECASE)
+
+
+def scene_people_kind(project: Project, scene: Scene) -> str:
+    """"cast": có nhân vật trong bảng nhân vật (lưới 9 ô + bảng diễn viên); "unnamed": có người nhưng không ai trong bảng
+    (cảnh sát, dân làng, quan toà không tên: giao việc giữ đúng người trong ảnh, crowd_brief); "none": không có người
+    (phong cảnh, landscape_brief). Dự án chưa có bảng nhân vật thì "cast" (phải tìm nhân vật trước).
+    Gặp 13/11/2026: cảnh có cảnh sát không tên bị coi là phong cảnh, Muse nhận bản giao việc "không có người"."""
     people = _scenes_with_people(project)
-    return people is not None and is_eligible(scene) and scene.id not in people
+    if people is None or scene.id in people:
+        return "cast"
+    return "unnamed" if PERSON_WORDS_RE.search(scene.image_prompt or "") else "none"
+
+
+def is_landscape(project: Project, scene: Scene) -> bool:
+    """Cảnh vẽ thật sự không có người: làm video phong cảnh (không lưới 9 ô, không bảng nhân vật)."""
+    return is_eligible(scene) and scene_people_kind(project, scene) == "none"
+
+
+def needs_no_grid(project: Project, scene: Scene) -> bool:
+    """Cảnh không có nhân vật trong bảng (không người, hoặc người không tên): làm video bằng một việc, không lưới 9 ô."""
+    return is_eligible(scene) and scene_people_kind(project, scene) != "cast"
 
 
 def coverage(project: Project, scene_ids: list[str]) -> dict:
@@ -694,7 +719,8 @@ async def run_scene_clips(project_id: str, scene_id: str, muse_call: MuseCall, a
     video, gắn làm clip của cảnh, thay ảnh cảnh (giữ bản cũ). Lỗi: giữ ảnh, bỏ chat (lần sau chat mới), không tự thử lại."""
     project, scene = await asyncio.to_thread(_load_scene, project_id, scene_id)
     old = _scene_state(scene)
-    landscape = old.get("landscape") is True
+    crowd = old.get("crowd") is True
+    landscape = old.get("landscape") is True or crowd   # cả hai: một việc, không lưới, không bảng diễn viên
     if not landscape and (not old.get("grid_approved") or not old.get("grid_paths")):
         raise ClimaxVideoError("Grid của cảnh chưa được duyệt")
     work = project_service.get_scene_media_paths(project_id, scene_id)["video"].parent / "climax"
@@ -711,7 +737,8 @@ async def run_scene_clips(project_id: str, scene_id: str, muse_call: MuseCall, a
             lock = await asyncio.to_thread(location_sheets.scene_lock, project_id, scene_id, scene.image_prompt or "")
             plate = (lock or {}).get("plate_path")
             grid_files: list[Path] = []
-            prompt = landscape_brief(project, scene, seconds, token, (lock or {}).get("prompt_line"), bool(plate))
+            brief = crowd_brief if crowd else landscape_brief
+            prompt = brief(project, scene, seconds, token, (lock or {}).get("prompt_line"), bool(plate))
             attachments = [str(image), *([str(plate)] if plate else [])]
         else:
             people, _positions, board = await asyncio.to_thread(_cast_for, project, scene)
@@ -776,7 +803,7 @@ def redo_scene(project_id: str, scene_id: str) -> dict:
     """"Làm lại cảnh này": cảnh đã có kết quả (xong hoặc lỗi) với grid đã duyệt quay về chờ làm clip, chat mới."""
     _, scene = _load_scene(project_id, scene_id)
     state = _scene_state(scene)
-    landscape = state.get("landscape") is True
+    landscape = state.get("landscape") is True or state.get("crowd") is True
     if not (state.get("grid_approved") or landscape) or state.get("status") not in ("ready", "failed"):
         raise ClimaxVideoError("Cảnh chưa có video hay lần làm lỗi với grid đã duyệt để làm lại")
     return _merge_climax(project_id, scene_id, {"status": "selected" if landscape else GRID_APPROVED,
@@ -794,7 +821,11 @@ async def run_scene_climax_video(project_id: str, scene_id: str, muse_call: Muse
     state = _scene_state(scene)
     if state.get("grid_approved"):
         return await run_scene_clips(project_id, scene_id, muse_call, account)
-    if state.get("landscape") is True or await asyncio.to_thread(is_landscape, project, scene):
-        await asyncio.to_thread(_merge_climax, project_id, scene_id, {"landscape": True})
+    # Xếp loại lại mỗi lần (không tin cờ đã lưu: cờ "landscape" cũ gắn cả cho cảnh có người không tên)
+    kind = await asyncio.to_thread(scene_people_kind, project, scene)
+    if kind != "cast":
+        await asyncio.to_thread(_merge_climax, project_id, scene_id,
+                                {"landscape": kind == "none", "crowd": kind == "unnamed"})
         return await run_scene_clips(project_id, scene_id, muse_call, account)
+    await asyncio.to_thread(_merge_climax, project_id, scene_id, {"landscape": None, "crowd": None})
     return await run_scene_grid(project_id, scene_id, muse_call, account)

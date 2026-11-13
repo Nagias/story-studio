@@ -112,8 +112,8 @@
     }
     const span = document.createElement('span');
     span.className = `climax-video-badge text-[11px] px-2 py-0.5 rounded border font-semibold ${cls}`;
-    // Cảnh không có nhân vật: video phong cảnh (không lưới 9 ô), services/climax_video.is_landscape()
-    span.textContent = state.landscape ? `${text} · phong cảnh` : text;
+    // Cảnh không có nhân vật trong bảng: một việc, không lưới 9 ô (services/climax_video.scene_people_kind())
+    span.textContent = state.crowd ? `${text} · người không tên` : state.landscape ? `${text} · phong cảnh` : text;
     if (state.error) span.title = state.error;
     return span;
   }
@@ -263,7 +263,7 @@
       det.appendChild(pre);
       wrap.appendChild(det);
     }
-    if (state.grid_approved || state.landscape) {
+    if (state.grid_approved || state.landscape || state.crowd) {
       const b = smallButton('↻ Làm lại cảnh này', 'bg-white text-purple-700 border-purple-300', () => redo(scene.id));
       b.dataset.climaxRedo = scene.id;
       wrap.appendChild(b);

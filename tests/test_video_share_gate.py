@@ -286,3 +286,43 @@ def test_short_clip_counts_only_the_moving_part(isolated_projects_dir, monkeypat
     monkeypatch.setattr(video_share, "_clip_seconds", lambda p: 18.0)   # gần bằng lời kể: kéo chậm đủ, tính hết
     rep = _share()
     assert rep["video_seconds"] == 18.1 and rep["short_scenes"] == []
+
+
+def test_scene_with_unnamed_people_keeps_them_instead_of_landscape_brief(isolated_projects_dir):
+    """Gặp 13/11/2026 (vụ Khang Cúc Hoa cảnh 036, 041, 008): cảnh có cảnh sát không tên bị coi là phong cảnh, Muse nhận
+    bản giao việc "không có nhân vật, không thêm người" dù ảnh cảnh có người."""
+    project = _climax_project(duration=10.0, cast="none")
+    pid, sid = project.id, "scene_003"
+    p = project_service.get_project(pid)
+    for s in p.scenes:
+        if s.id == sid:
+            s.image_prompt = "Medium shot. Two police officers in navy uniforms study an open case file under a lamp."
+            s.metadata["climax_video"] = {"status": "selected", "landscape": True}   # cờ cũ xếp nhầm
+    project_service.save_project(p)
+    scene = next(s for s in project_service.get_project(pid).scenes if s.id == sid)
+    assert cv.scene_people_kind(project_service.get_project(pid), scene) == "unnamed"
+    assert not cv.is_landscape(project_service.get_project(pid), scene)
+    muse = FakeMuse(pid, sid)
+    state = asyncio.run(cv.run_scene_climax_video(pid, sid, muse_call=muse))
+    assert state["status"] == "ready" and state["crowd"] is True and state["landscape"] is False
+    assert [t["mode"] for t in muse.tasks] == ["agent-video"]                 # không lưới 9 ô, không bảng diễn viên
+    prompt = muse.tasks[0]["prompt"]
+    assert "những người có trong Ảnh 1" in prompt and "Không thêm người mới" in prompt
+    assert "không có nhân vật" not in prompt and "quả bóng tròn" in prompt
+    assert cv.redo_scene(pid, sid)["status"] == "selected"
+
+
+@pytest.mark.parametrize("prompt, kind", [
+    ("Wide shot of a deserted dirt road at night, an abandoned bicycle in the weeds.", "none"),
+    ("Inside a police station corridor with yellow police tape, empty chairs.", "none"),
+    ("Characters have big round white heads. An empty archive room with a desk lamp.", "none"),
+    ("Distant silhouettes of police officers hold flashlights by the well.", "unnamed"),
+    ("A crowd of villagers sweeps through the cornfield.", "unnamed"),
+    ("Three officials in dark suits sit behind a long table.", "unnamed"),
+])
+def test_people_words_in_scene_prompt(isolated_projects_dir, prompt, kind):
+    project = _climax_project(duration=10.0, cast="none")
+    p = project_service.get_project(project.id)
+    scene = next(s for s in p.scenes if s.id == "scene_003")
+    scene.image_prompt = prompt
+    assert cv.scene_people_kind(p, scene) == kind

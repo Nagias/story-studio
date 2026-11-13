@@ -64,6 +64,14 @@ def _female_hair_lines(project: Project) -> list[str]:
             f"{FEMALE_HAIR_RULE_EN}"]
 
 
+ROUND_HEAD_GOAL = (
+    "Mục tiêu (không cần hoàn hảo): phong cách đồng bộ từ đầu tới cuối. Nhân vật đầu tròn luôn là quả bóng tròn "
+    "trắng RẤT TO, mặt trắng phẳng, hai chấm mắt và một nét miệng, KHÔNG BAO GIỜ thành mặt người hay mặt anime "
+    "(không mũi, không mắt có tròng, không lông mi, không môi chi tiết). Được biểu cảm bằng nét đơn giản cùng kiểu "
+    "vẽ: lông mày một nét nhíu hoặc nhướn, nước mắt, giọt mồ hôi, miệng há, nửa mặt tô xám khi sợ. Quần áo, màu sắc, "
+    "bối cảnh giữ như ảnh đã duyệt. Đổi sang mặt người thì không bao giờ đạt.")
+
+
 # Thử thật 11/11/2026 (vụ xưởng sắt cảnh 7): clip AI méo đầu ở giây 3, Muse bỏ rồi TỰ DỰNG 3 clip bằng công cụ trên máy
 # của nó từ ảnh tĩnh (máy quay di chuyển, đèn nhấp nháy, tối dần) và vẫn tự chấm ĐẠT ("thân người đứng yên").
 AI_CLIPS_ONLY = (
@@ -126,6 +134,65 @@ def landscape_brief(project: Project, scene: Scene, seconds: float, done_token: 
     return "\n".join(parts)
 
 
+def crowd_brief(project: Project, scene: Scene, seconds: float, done_token: str,
+                location_line: Optional[str], has_plate: bool) -> str:
+    """Bản giao việc cho cảnh vẽ có người nhưng không ai trong bảng nhân vật (cảnh sát, dân làng, quan toà không tên):
+    giữ đúng những người trong ảnh cảnh, đầu tròn, cử động thật; không lưới 9 ô, không bảng diễn viên. Gặp 13/11/2026:
+    các cảnh này bị coi là phong cảnh và nhận bản giao việc "không có người, không thêm người" dù ảnh có người."""
+    target = target_seconds(seconds)
+    attachments = ["- Ảnh 1 — KHUNG CẢNH ĐÃ DUYỆT: khung hình mở đầu; chuẩn về số người, dáng người, quần áo, bố cục, "
+                   "ánh sáng, nét vẽ 2D, màu sắc."]
+    if has_plate:
+        attachments.append("- Ảnh 2 — ẢNH CHUẨN CỦA BỐI CẢNH: nơi này phải giữ đúng kiến trúc, đồ vật cố định, màu sắc.")
+    parts = [
+        "Làm video cho một cảnh của phần mềm của mình. Tự làm trọn từ đầu tới cuối trong yêu cầu này, không hỏi lại "
+        f"giữa chừng. Ngân sách: tối đa {AGENT_MAX_VIDEOS} video và tối đa {AGENT_MAX_IMAGES} ảnh.",
+        "",
+        "Ảnh đính kèm, theo thứ tự:",
+        *attachments,
+        "",
+        f"Lời kể của cảnh (video cần dài khoảng {target} giây): \"{scene.text.strip()}\"",
+        f"Mô tả hình của cảnh: {' '.join((scene.image_prompt or '').split()) or '(xem Ảnh 1)'}",
+        *([f"Nơi chốn cố định: {location_line}"] if location_line else []),
+        *_female_hair_lines(project),
+        "",
+        "Những người trong cảnh là những người có trong Ảnh 1: giữ đúng số người, quần áo, màu sắc và dáng của họ như "
+        "Ảnh 1 suốt video.",
+        ROUND_HEAD_GOAL,
+        "",
+        "Đây là VIDEO, không phải ảnh chuyển động: người trong cảnh phải làm hành động hợp lời kể bằng cơ thể (đi, bước "
+        "tới, quay đầu, cúi xuống, giơ tay, chỉ tay, cầm nắm đồ vật, run rẩy), thấy rõ trong khung hình; vật trong cảnh "
+        "cũng có thể chuyển động (gió, mưa, khói, đèn). Chỉ đổi nét mặt, chỉ chớp mắt, hay chỉ máy quay lia/zoom trên một "
+        "khung đứng im đều KHÔNG ĐẠT.",
+        "",
+        "Luật bắt buộc:",
+        "- Máy quay đứng yên như đặt trên chân máy: không lia, không zoom.",
+        "- Không clip nào để người xoay từ trước ra sau (hoặc từ sau ra trước): sau tóc sẽ mọc một đĩa trắng.",
+        "- Không thêm người mới, không thêm con vật, không thêm chữ, phụ đề, logo.",
+        *AI_CLIPS_ONLY,
+        "- Giữ đúng nét vẽ 2D, bố cục, màu sắc và ánh sáng của Ảnh 1 suốt video; không đổi sang ảnh thật.",
+        "",
+        "Các bước:",
+        "1. Tự lập danh sách clip (mỗi clip MỘT hành động đơn giản 3–6 giây, dùng Ảnh 1 hoặc khung cuối của clip trước "
+        "làm khung đầu). Ghi danh sách vào báo cáo.",
+        "2. Làm từng clip. Sau mỗi clip: trích khung mỗi giây và khung cuối, tự so với Ảnh 1. Loại nếu có bất kỳ khung "
+        "nào: mặt người hay mặt anime, đầu nhỏ lại hoặc méo, đĩa trắng sau tóc, đổi quần áo, thêm người, đổi nét vẽ, cắt "
+        "cảnh trong clip; hoặc so các khung cách nhau một giây mà người gần như đứng im. Đầu bắt đầu méo từ giây nào thì "
+        "cắt bỏ từ giây đó, giữ phần trước (ít nhất 2 giây). Bị loại thì tạo lại (prompt khác, hành động ngắn hơn), "
+        "trong ngân sách; không được sửa bằng cách bớt cử động.",
+        f"3. Ghép các đoạn tốt nhất thành một video khoảng {target} giây, chỉnh màu các đoạn cho khớp nhau.",
+        "",
+        "GIAO KẾT QUẢ trong tin nhắn cuối (gửi file trong chat để mình tải về):",
+        "- Đúng chỉ một video: video cuối đã ghép (16:9, càng nét càng tốt). Không gửi kèm clip nháp trong tin cuối.",
+        f"- Ghi một dòng \"{NEW_SCENE_IMAGE_TAG}: không\".",
+        "- Báo cáo ngắn: danh sách clip đã lập; tổng số video và ảnh đã tạo; mỗi video đạt hay bị loại ở khung nào, vì "
+        "sao; kết quả cuối ĐẠT hay KHÔNG ĐẠT.",
+        "",
+        f"Dòng cuối cùng của tin nhắn cuối cùng ghi đúng nguyên văn: {done_token}",
+    ]
+    return "\n".join(parts)
+
+
 def scene_brief(project: Project, scene: Scene, people: list[CharacterSheet], grid_count: int, seconds: float,
                 done_token: str) -> str:
     """Bản giao việc tiếng Việt gửi nguyên văn cho Muse; đính kèm theo thứ tự: ảnh cảnh, bảng diễn viên, các lưới."""
@@ -143,11 +210,7 @@ def scene_brief(project: Project, scene: Scene, people: list[CharacterSheet], gr
         *_cast_lines(project, people),
         *_female_hair_lines(project),
         "",
-        "Mục tiêu (không cần hoàn hảo): phong cách đồng bộ từ đầu tới cuối. Nhân vật đầu tròn luôn là quả bóng tròn "
-        "trắng RẤT TO, mặt trắng phẳng, hai chấm mắt và một nét miệng, KHÔNG BAO GIỜ thành mặt người hay mặt anime "
-        "(không mũi, không mắt có tròng, không lông mi, không môi chi tiết). Được biểu cảm bằng nét đơn giản cùng kiểu "
-        "vẽ: lông mày một nét nhíu hoặc nhướn, nước mắt, giọt mồ hôi, miệng há, nửa mặt tô xám khi sợ. Quần áo, màu sắc, "
-        "bối cảnh giữ như ảnh đã duyệt. Đổi sang mặt người thì không bao giờ đạt.",
+        ROUND_HEAD_GOAL,
         "",
         # 11/11/2026: câu cũ "nhân vật cử động ít hoặc chạy tại chỗ vẫn đạt" + "bị loại thì giảm cử động" làm 34/38 clip
         # vụ xưởng sắt gần như đứng hình (chủ dự án 10/11: "phải di chuyển bình thường chứ, đây là ảnh chuyển động rồi").
