@@ -37,7 +37,7 @@ from config import MUSE_AGENT_WAIT_MIN, PROJECTS_DIR, STATIC_DIR
 from models.schemas import Project, Scene
 from security import is_within
 from services import character_sheets as cs
-from services import clip_motion, project_service
+from services import clip_border, clip_motion, project_service
 from services.climax_brief import (AGENT_REPLY_MAX_CHARS, AGENT_VIDEO_MODE, NEW_SCENE_IMAGE_TAG, crowd_brief,
                                    landscape_brief,
                                    scene_brief, target_seconds)
@@ -772,6 +772,15 @@ async def run_scene_clips(project_id: str, scene_id: str, muse_call: MuseCall, a
             chosen = await asyncio.to_thread(choose_scene_image, image, extras, frame)
         backup = await asyncio.to_thread(replace_scene_image, project_id, scene_id, chosen) if chosen else None
         warnings = list(result.get("warnings") or [])
+        # Viền trắng Muse để lại khi tự ghép đoạn: cắt ở bản dùng để dựng (bản gốc vẫn là `got` trong thư mục climax)
+        try:
+            trimmed = await asyncio.to_thread(clip_border.trim_in_place, final)
+        except clip_border.ClipBorderError as e:
+            logger.warning(f"Clip cao trào {project_id}/{scene_id}: không đo/cắt được viền: {e}")
+            warnings.append(f"Không kiểm được viền sáng ở mép clip: {e}")
+        else:
+            if trimmed:
+                warnings.append(f"Đã cắt viền sáng ở mép clip (trên/dưới/trái/phải {list(trimmed)} điểm ảnh)")
         motion = await asyncio.to_thread(_motion_or_none, final)
         if motion is not None and not clip_motion.has_real_motion(motion):
             warnings.append(still_clip_warning(motion))
