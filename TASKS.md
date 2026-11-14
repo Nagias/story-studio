@@ -690,4 +690,16 @@ Chủ dự án duyệt bản xem thử 15/11: "Duyệt, viết kế hoạch". Th
 - [x] Viết thiết kế, cho người đọc độc lập soát (6 câu hỏi, 4 chỗ lệch code), sửa theo
 - [x] Đổi so với bản xem thử sau khi đọc code: phong cách hình chọn ở trang Ý tưởng (AI viết mô tả ảnh theo phong cách ngay lúc viết kịch bản); nguồn tạo ảnh ở trang Hình mẫu (cài đặt của từng dự án, không phải của cả app); thẻ Dàn ý và Tên hư cấu chỉ hiện khi đang theo dõi vụ chưa tạo dự án (như cửa sổ hiện nay); giọng từng cảnh ở trang Kịch bản
 - [x] Kiểm: mọi id và tên hàm trong hai tài liệu có trong code; `tools/check.py` ĐẠT (40 test kiến trúc, 26 giây)
-- [ ] Làm 12 task của kế hoạch (chưa bắt đầu, chờ chủ dự án chọn cách làm)
+- [ ] Làm 12 task của kế hoạch (đang làm, từng task tick bên dưới)
+- [x] Task 1: Khoá cứng giữ id và test bố cục
+- [ ] Task 2: Khung mới (thanh bên, thanh trên, 8 trang, ngăn kéo)
+- [ ] Task 3: Trang Kịch bản và giọng (phần chung cho mọi thể loại)
+- [ ] Task 4: Trang Hình mẫu
+- [ ] Task 5: Trang Cảnh và trang Dựng và xuất bản
+- [ ] Task 6: Trang Dự án, Thư viện Muse, Tài khoản (phần Muse)
+- [ ] Task 7: Khuôn thể loại và trang Ý tưởng
+- [ ] Task 8: Hồ Sơ Kỳ Án vào trang Kịch bản
+- [ ] Task 9: Gỡ các cửa sổ và nút trùng còn lại
+- [ ] Task 10: Dọn màu trang trí sang hệ đen trắng xám
+- [ ] Task 11: Trang Tài khoản và kết nối — trạng thái kết nối
+- [ ] Task 12: Kiểm chứng cuối và tài liệu
