@@ -3493,6 +3493,10 @@ const STEP_TO_PAGE = { 1: 'idea', 2: 'scenes', 3: 'publish', 4: 'publish' };
 function switchStep(stepNumber) {
   AppState.currentStep = stepNumber;
   showPage(STEP_TO_PAGE[stepNumber]);
+  // Bước 3 và 4 chung trang Dựng và xuất bản (bước 3 ở trên): bước 4 cuộn tới khối Rạp chiếu
+  if (stepNumber === 4) {
+    document.getElementById('step-view-4')?.scrollIntoView({ block: 'start' });
+  }
 }
 
 // Vào trang Dựng và xuất bản thì nạp video thành phẩm và gói YouTube (trước đây switchStep(4) gọi thẳng)
