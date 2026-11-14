@@ -79,3 +79,8 @@ def test_no_window_lookup_of_const_globals_of_app_js():
     bad = [p.name for p in (ROOT / "backend" / "static").glob("*.js") if p.name != "app.js"
            and any(s in p.read_text(encoding="utf-8") for s in ("window.AppState", "window.DOM"))]
     assert not bad, f"dùng window.AppState/window.DOM (luôn undefined): {bad}"
+
+
+def test_scenes_page_rerenders_cards_when_shown():
+    src = (ROOT / "backend" / "static" / "script_page.js").read_text(encoding="utf-8")
+    assert "onPageShow('scenes'" in src and "renderSceneList()" in src

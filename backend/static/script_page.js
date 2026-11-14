@@ -112,5 +112,7 @@
   });
 
   if (typeof window.onPageShow === 'function') window.onPageShow('script', renderScriptList);
+  // Lời kể sửa ở trang này không vẽ lại thẻ cảnh khi gõ; vẽ lại khi mở trang Cảnh để dòng lời kể chỉ đọc khớp.
+  if (typeof window.onPageShow === 'function') window.onPageShow('scenes', () => { if (typeof renderSceneList === 'function') renderSceneList(); });
   renderScriptList();
 })();
