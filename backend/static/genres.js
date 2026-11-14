@@ -1,7 +1,7 @@
 /* Khuôn thể loại và trang Ý tưởng (spec 4.3, 4.4). Nạp sau app.js, trước true_crime.js.
  * Một nơi duy nhất khai báo thể loại: thêm thể loại mới thì thêm một mục vào GENRES.
  * Thẻ thể loại đặt giá trị cho ô #step1-content-kind rồi phát sự kiện change, để applyStep1ContentKind() của app.js chạy như cũ.
- * Không đọc AppState/DOM của app.js (không nằm trên window). */
+ * AppState của app.js là const (không nằm trên window): chỉ đọc qua typeof AppState, lúc chạy. */
 (function () {
   'use strict';
 
@@ -15,19 +15,19 @@
   const GENRES = [
     { code: 'story', name: 'Truyện chữ', desc: 'Dán truyện, AI kể lại kiểu review.',
       rewriteNote: 'AI kể lại kiểu review, kiểm đủ ý từng phần.',
-      hasCaseTabs: false, skipLook: false, enabled: true, contentKind: 'story' },
+      skipLook: false, enabled: true, contentKind: 'story' },
     { code: 'case', name: 'Vụ án có thật', desc: 'Dán bài, AI lập dàn ý, đổi tên người và nơi chốn.',
       rewriteNote: 'AI lập dàn ý cho bạn duyệt, đổi tên, rồi viết lại.',
-      hasCaseTabs: true, skipLook: false, enabled: true, contentKind: 'case' },
+      skipLook: false, enabled: true, contentKind: 'case' },
     { code: 'comic', name: 'Truyện tranh', desc: 'Thả ảnh trang truyện, app cắt thành từng khung.',
       rewriteNote: 'Không viết lại. Mỗi khung thành một cảnh, bạn tự gõ lời.',
-      hasCaseTabs: false, skipLook: true, enabled: true },
+      skipLook: true, enabled: true },
     { code: 'news', name: 'Tổng hợp tin tức', desc: SOON_DESC, rewriteNote: '',
-      hasCaseTabs: false, skipLook: false, enabled: false },
+      skipLook: false, enabled: false },
     { code: 'knowledge', name: 'Video kiến thức', desc: SOON_DESC, rewriteNote: '',
-      hasCaseTabs: false, skipLook: false, enabled: false },
+      skipLook: false, enabled: false },
     { code: 'shorts', name: 'Tổng hợp video ngắn', desc: SOON_DESC, rewriteNote: '',
-      hasCaseTabs: false, skipLook: false, enabled: false },
+      skipLook: false, enabled: false },
   ];
 
   // Thể loại của dự án đang mở, suy từ dữ liệu có sẵn (spec 4.3): không thêm trường mới vào dự án
@@ -137,6 +137,15 @@
       if (block && typeof openDrawer === 'function') openDrawer('Tuỳ chọn', block);
     });
   }
+
+  // Trang Hình mẫu của dự án có cờ skipLook (truyện tranh): hiện câu báo có thể bỏ qua bước này
+  function paintLookSkipNote() {
+    const note = el('look-skip-note');
+    if (!note) return;
+    const project = typeof AppState !== 'undefined' && AppState ? AppState.currentProject : null;
+    note.hidden = !(project && byCode(projectGenre(project)).skipLook);
+  }
+  if (typeof onPageShow === 'function') onPageShow('look', paintLookSkipNote);
 
   window.GENRES = GENRES;
   window.projectGenre = projectGenre;

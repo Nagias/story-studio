@@ -54,10 +54,8 @@
       const pop = morePopover();
       if (pop && !pop.hidden) setMore(false);
     });
-    // Rời trang thì đóng ngăn kéo để khối xem thử hay tuỳ chỉnh dựng không treo sang trang khác
-    for (const page of ['scenes', 'publish']) {
-      if (typeof onPageShow === 'function') onPageShow(page, () => { setMore(false); if (typeof closeDrawer === 'function') closeDrawer(); });
-    }
+    // Đóng ngăn kéo khi đổi trang do showPage() (workspace.js) làm cho mọi trang; ở đây chỉ đóng ô nổi "Thêm"
+    if (typeof onPageShow === 'function') onPageShow('scenes', () => setMore(false));
     watchPreviewDrawer();
   }
 

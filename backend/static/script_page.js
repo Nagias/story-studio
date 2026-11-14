@@ -82,9 +82,24 @@
     if (dur && project && typeof calculateTotalDuration === 'function') dur.textContent = calculateTotalDuration();
   }
 
+  // Vẽ lại danh sách khi đang gõ trong một dòng thì mất chữ đang gõ và mất con trỏ (vòng hỏi Muse, video cao trào gọi
+  // renderSceneList() liên tục). Nên: đang gõ thì hoãn, rời ô thì vẽ một lần; không ở trang Kịch bản thì hoãn tới lúc mở trang.
+  let pendingRender = false;
+
+  function rowIsFocused(box) {
+    const a = document.activeElement;
+    return !!(a && a.tagName === 'TEXTAREA' && box.contains(a));
+  }
+
   function renderScriptList() {
     const box = document.getElementById('script-scene-list');
     if (!box) return;
+    const page = typeof window.currentPage === 'function' ? window.currentPage() : null;
+    if ((page && page !== 'script') || rowIsFocused(box)) {
+      pendingRender = true;
+      return;
+    }
+    pendingRender = false;
     const project = typeof AppState !== 'undefined' && AppState ? AppState.currentProject : null;
     const scenes = (project && project.scenes) || [];
     box.replaceChildren();
@@ -109,6 +124,14 @@
 
   document.querySelectorAll('#script-tabs [data-tab]').forEach((t) => {
     t.addEventListener('click', () => showScriptTab(t.dataset.tab));
+  });
+
+  // Rời ô đang gõ (sự kiện change đã chạy trước focusout) thì vẽ phần đã hoãn, trừ khi con trỏ sang một dòng khác
+  document.getElementById('script-scene-list')?.addEventListener('focusout', () => {
+    setTimeout(() => {
+      const box = document.getElementById('script-scene-list');
+      if (pendingRender && box && !rowIsFocused(box)) renderScriptList();
+    }, 0);
   });
 
   if (typeof window.onPageShow === 'function') window.onPageShow('script', renderScriptList);

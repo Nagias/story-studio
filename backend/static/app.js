@@ -14,6 +14,12 @@ const AppState = {
   playAllIndex: 0,
   playbackTimer: null,
   produceState: {
+    // Trạng thái dựng gắn với một dự án (projectId): đổi sang dự án khác thì trang Dựng vẽ trạng thái "chưa dựng" của
+    // dự án đó, còn lần dựng đang chạy vẫn nhận tiến độ và hiện lại khi mở lại đúng dự án đang dựng.
+    projectId: null,
+    draft: false,
+    statusMsg: '',
+    failed: null,
     isProducing: false,
     renderId: null,
     progress: 0,
@@ -1064,7 +1070,7 @@ async function checkServerHealth() {
   if (DOM.backendStatusDot && DOM.backendStatusText) {
     if (isHealthy) {
       DOM.backendStatusDot.className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
-      DOM.backendStatusText.textContent = "FastAPI Backend Online (Port 8000)";
+      DOM.backendStatusText.textContent = `FastAPI Backend Online (Port ${window.location.port || (window.location.protocol === 'https:' ? '443' : '80')})`;
     } else {
       DOM.backendStatusDot.className = "w-2 h-2 rounded-full bg-amber-500";
       DOM.backendStatusText.textContent = "Backend Offline - Chế độ Client Studio";
@@ -1097,6 +1103,7 @@ function renderFullUI() {
   renderSceneList();
   renderPreviewPlayer();
   renderSettings();
+  paintProducerForCurrentProject();
   // Nút "Tạo bản tiếng Anh" (true_crime.js) hiện hay ẩn tuỳ dự án đang mở. Hook ở đây thay vì ở switchProject để
   // cũng đúng khi tải lại trang, tạo dự án mới hay nhập dự án.
   window.refreshLanguageVersionButton?.(AppState.currentProject);
@@ -1825,6 +1832,14 @@ function handleGlobalKeydown(e) {
   }
 
   if (e.code === 'Space') {
+    // Space trên nút, liên kết, ô nhập hay vùng sửa chữ thì để trình duyệt xử lý (bấm nút, gõ chữ)
+    const t = e.target;
+    if (t && t.closest && t.closest('button, a, input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+    // Chỉ phát/dừng khi đang ở trang Cảnh hoặc ngăn Xem thử đang mở
+    const previewOpen = !!document.getElementById('scenes-preview-block')?.closest('#ws-drawer-body')
+      && document.getElementById('ws-drawer')?.classList.contains('open');
+    const onScenes = typeof currentPage === 'function' && currentPage() === 'scenes';
+    if (!onScenes && !previewOpen) return;
     e.preventDefault();
     togglePreviewPlayback();
   } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
@@ -2868,22 +2883,7 @@ async function loadCinemaYouTubePackage() {
   const project = AppState.currentProject;
   if (!project) return;
 
-  const videoUrl = AppState.produceState.videoUrl || project.final_video_url || `/api/projects/${project.id}/media/renders/story_final.mp4`;
-  const srtUrl = AppState.produceState.srtUrl || `/api/projects/${project.id}/download-srt`;
-
-  // Hydrate video player & download links directly
-  if (DOM.cinemaVideoPlayer) {
-    DOM.cinemaVideoPlayer.src = videoUrl;
-  }
-  if (DOM.btnCinemaDownloadVideo) {
-    DOM.btnCinemaDownloadVideo.href = `/api/projects/${project.id}/download`;
-  }
-  if (DOM.btnCinemaDownloadSrt) {
-    DOM.btnCinemaDownloadSrt.href = srtUrl;
-  }
-  if (DOM.btnCinemaDownloadAss) {
-    DOM.btnCinemaDownloadAss.href = `/api/projects/${project.id}/download-ass`;
-  }
+  renderFinalVideoBlock(project);
 
   const thumbUrl = `/api/projects/${project.id}/thumbnail?t=${Date.now()}`;
   if (DOM.cinemaThumbnailPreview) {
@@ -3166,6 +3166,71 @@ async function handleStep1ProcessComic() {
   }
 }
 
+// Video thành phẩm của một dự án: lần dựng vừa xong trong phiên này (đúng dự án), hoặc video máy chủ đã ghi vào dự án.
+// Không có thì trả null: trang Dựng không được trỏ trình phát vào story_final.mp4 khi file chưa có (đường cấm 3).
+function finalVideoOf(project) {
+  if (!project) return null;
+  const ps = AppState.produceState;
+  if (ps.projectId === project.id && ps.videoUrl) {
+    return { videoUrl: ps.videoUrl, srtUrl: ps.srtUrl || `/api/projects/${project.id}/download-srt`, draft: !!ps.draft };
+  }
+  const videoUrl = project.final_video_url
+    || (project.final_video_path ? `/api/projects/${project.id}/media/renders/story_final.mp4` : null);
+  return videoUrl ? { videoUrl, srtUrl: `/api/projects/${project.id}/download-srt`, draft: false } : null;
+}
+
+// Khối video thành phẩm (tiêu đề, trình phát, nút tải) chỉ hiện khi dự án có video; chưa có thì một dòng "Chưa có video thành phẩm"
+function renderFinalVideoBlock(project) {
+  const box = document.getElementById('publish-final-video');
+  const none = document.getElementById('publish-no-video');
+  const found = finalVideoOf(project);
+  if (box) box.hidden = !found;
+  if (none) none.hidden = !!found;
+  if (!found) {
+    if (DOM.cinemaVideoPlayer && DOM.cinemaVideoPlayer.getAttribute('src')) {
+      DOM.cinemaVideoPlayer.pause();
+      DOM.cinemaVideoPlayer.removeAttribute('src');
+      DOM.cinemaVideoPlayer.load();
+    }
+    return;
+  }
+  // Bản nháp (dưới mức video Muse) ra file riêng, không phải video cuối: ghi rõ trên tiêu đề
+  const title = document.getElementById('publish-final-title');
+  if (title) title.textContent = found.draft ? 'Bản nháp (không phải thành phẩm)' : 'Video thành phẩm';
+  if (DOM.cinemaVideoPlayer && DOM.cinemaVideoPlayer.getAttribute('src') !== found.videoUrl) {
+    DOM.cinemaVideoPlayer.src = found.videoUrl;
+  }
+  if (DOM.btnCinemaDownloadVideo) DOM.btnCinemaDownloadVideo.href = `/api/projects/${project.id}/download`;
+  if (DOM.btnCinemaDownloadSrt) DOM.btnCinemaDownloadSrt.href = found.srtUrl;
+  if (DOM.btnCinemaDownloadAss) DOM.btnCinemaDownloadAss.href = `/api/projects/${project.id}/download-ass`;
+}
+
+// Khối tiến độ dựng về trạng thái chưa dựng: không vòng quay, 0%, năm giai đoạn trung tính
+const PRODUCER_STATUS_CLASS = 'text-sm font-bold text-slate-800 flex items-center gap-2';
+function resetProducerUI() {
+  updateProducerStageUI(0, 0, 'Chưa dựng', []);
+  if (DOM.producerStatusText) DOM.producerStatusText.className = PRODUCER_STATUS_CLASS;
+  if (DOM.producerLogConsole) DOM.producerLogConsole.textContent = '> Chưa dựng lần nào trong phiên này.';
+  if (DOM.producerTimerText) DOM.producerTimerText.textContent = '00:00';
+}
+
+// Vẽ khối tiến độ và khối video theo dự án đang mở (renderFullUI() gọi mỗi lần đổi, tạo hay nạp dự án).
+// Lần dựng đang chạy của dự án khác không bị ngắt: tiến độ vẫn ghi vào AppState.produceState, mở lại đúng dự án thì vẽ lại.
+function paintProducerForCurrentProject() {
+  const project = AppState.currentProject;
+  const ps = AppState.produceState;
+  if (project && ps.projectId === project.id && (ps.isProducing || ps.progress > 0)) {
+    updateProducerStageUI(ps.step, ps.progress, ps.statusMsg || 'Đang xử lý...', ps.logs);
+    if (ps.failed && DOM.producerStatusText) {
+      DOM.producerStatusText.textContent = `Thất bại: ${ps.failed}`;
+      DOM.producerStatusText.className = "text-xs font-bold text-red-600 truncate";
+    }
+  } else {
+    resetProducerUI();
+  }
+  renderFinalVideoBlock(project);
+}
+
 // STEP 3: PRODUCTION STEPPER EXECUTION
 function updateProducerStageUI(stepNum, progressPercent, statusMsg, logs = []) {
   // Update phase indicators (1 to 5)
@@ -3194,7 +3259,11 @@ function updateProducerStageUI(stepNum, progressPercent, statusMsg, logs = []) {
 
   // Update status text and progress bar
   if (DOM.producerStatusText) {
-    DOM.producerStatusText.innerHTML = `<i class="fa-solid ${progressPercent >= 100 ? 'fa-circle-check text-emerald-600' : 'fa-spinner fa-spin text-slate-700'} mr-1.5"></i> <span>${statusMsg}</span>`;
+    if (stepNum === 0) {
+      DOM.producerStatusText.textContent = statusMsg;   // chưa dựng: không vòng quay
+    } else {
+      DOM.producerStatusText.innerHTML = `<i class="fa-solid ${progressPercent >= 100 ? 'fa-circle-check text-emerald-600' : 'fa-spinner fa-spin text-slate-700'} mr-1.5"></i> <span>${statusMsg}</span>`;
+    }
   }
   if (DOM.producerPercentText) {
     DOM.producerPercentText.textContent = `${progressPercent}%`;
@@ -3234,7 +3303,14 @@ async function startProduceLongVideo(opts) {
   // Switch to Step 3 immediately
   switchStep(3);
 
-  // Reset produce state
+  // Reset produce state (gắn với dự án đang dựng)
+  AppState.produceState.projectId = project.id;
+  AppState.produceState.renderId = null;
+  AppState.produceState.videoUrl = null;
+  AppState.produceState.srtUrl = null;
+  AppState.produceState.failed = null;
+  AppState.produceState.draft = draft;
+  AppState.produceState.statusMsg = "Bước 1/5: Phân tích kịch bản & Khóa đặc điểm nhân vật đồng bộ...";
   AppState.produceState.isProducing = true;
   AppState.produceState.progress = 5;
   AppState.produceState.step = 1;
@@ -3248,6 +3324,7 @@ async function startProduceLongVideo(opts) {
       clearInterval(AppState.produceState.timerInterval);
       return;
     }
+    if (AppState.currentProject?.id !== AppState.produceState.projectId) return;
     const elapsedSecs = Math.floor((Date.now() - AppState.produceState.startTime) / 1000);
     const m = Math.floor(elapsedSecs / 60);
     const s = elapsedSecs % 60;
@@ -3293,6 +3370,9 @@ async function startProduceLongVideo(opts) {
     if (err && err.shareLow) {
       // Bị chốt tỉ lệ video Muse chặn trước khi dựng: không có gì chạy. Hỏi có dựng bản nháp (không phải thành phẩm) không.
       AppState.produceState.isProducing = false;
+      AppState.produceState.progress = 0;
+      AppState.produceState.statusMsg = 'Chưa dựng: tỉ lệ video Muse chưa đủ';
+      AppState.produceState.logs = [err.message];
       updateProducerStageUI(1, 0, 'Chưa dựng: tỉ lệ video Muse chưa đủ', [err.message]);
       const ok = window.confirm(`${err.message}\n\nDựng BẢN NHÁP để xem thử? Bản nháp ra file riêng, không phải thành phẩm, `
         + 'không ghi đè video cuối của dự án.');
@@ -3303,6 +3383,9 @@ async function startProduceLongVideo(opts) {
     }
     console.error("startProduceLongVideo error", err);
     AppState.produceState.isProducing = false;
+    AppState.produceState.progress = 100;
+    AppState.produceState.statusMsg = `Lỗi sản xuất: ${err.message || err}`;
+    AppState.produceState.logs = [`LỖI: ${err.message || err}`];
     updateProducerStageUI(1, 100, `Lỗi sản xuất: ${err.message || err}`, [
       `LỖI: ${err.message || err}`
     ]);
@@ -3348,17 +3431,23 @@ function listenToProduceProgress(renderId) {
 
   function handleProduceStatusUpdate(data) {
     if (!data) return;
+    // Tin của một lần dựng cũ (đã bắt đầu lần khác) thì bỏ, để không ghi đè trạng thái lần mới
+    if (AppState.produceState.renderId !== renderId) return;
 
     const progress = data.progress || 0;
     const step = data.step || 1;
     const stepLabel = data.step_label || "Đang xử lý...";
     const logs = data.logs || [];
+    const renderedProjectId = AppState.produceState.projectId;
+    // Đang mở dự án khác thì chỉ giữ trạng thái; mở lại dự án đang dựng thì paintProducerForCurrentProject() vẽ lại
+    const visible = AppState.currentProject?.id === renderedProjectId;
 
     AppState.produceState.progress = progress;
     AppState.produceState.step = step;
     AppState.produceState.logs = logs;
+    AppState.produceState.statusMsg = stepLabel;
 
-    updateProducerStageUI(step, progress, stepLabel, logs);
+    if (visible) updateProducerStageUI(step, progress, stepLabel, logs);
 
     // Fail-Safe: Check failure first (Anti-Fail-Open)
     if (data.status === 'failed' || data.error) {
@@ -3368,8 +3457,9 @@ function listenToProduceProgress(renderId) {
       }
       if (pollInterval) clearInterval(pollInterval);
       const errMsg = data.error || 'Quy trình sản xuất video dài thất bại!';
+      AppState.produceState.failed = errMsg;
       showToast(`❌ LỖI SẢN XUẤT: ${escapeHtml(errMsg)}`, "error", 6000);
-      if (DOM.producerStatusText) {
+      if (visible && DOM.producerStatusText) {
         DOM.producerStatusText.textContent = `Thất bại: ${errMsg}`;
         DOM.producerStatusText.className = "text-xs font-bold text-red-600 truncate";
       }
@@ -3384,31 +3474,24 @@ function listenToProduceProgress(renderId) {
       }
       if (pollInterval) clearInterval(pollInterval);
 
-      const videoUrl = data.video_url || `/api/projects/${AppState.currentProject.id}/media/renders/story_final.mp4`;
-      const srtUrl = data.srt_url || `/api/projects/${AppState.currentProject.id}/download-srt`;
+      const videoUrl = data.video_url || `/api/projects/${renderedProjectId}/media/renders/story_final.mp4`;
+      const srtUrl = data.srt_url || `/api/projects/${renderedProjectId}/download-srt`;
 
       AppState.produceState.videoUrl = videoUrl;
       AppState.produceState.srtUrl = srtUrl;
 
-      // Populate Cinema Player
-      if (DOM.cinemaVideoPlayer) {
-        DOM.cinemaVideoPlayer.src = videoUrl;
+      if (!visible) {
+        showToast("Đã dựng xong video của dự án đang dựng. Mở lại dự án đó để xem.", "success", 6000);
+        return;
       }
-      if (DOM.btnCinemaDownloadVideo) {
-        DOM.btnCinemaDownloadVideo.href = `/api/projects/${AppState.currentProject.id}/download`;
-      }
-      if (DOM.btnCinemaDownloadSrt) {
-        DOM.btnCinemaDownloadSrt.href = srtUrl;
-      }
-      if (DOM.btnCinemaDownloadAss) {
-        DOM.btnCinemaDownloadAss.href = `/api/projects/${AppState.currentProject.id}/download-ass`;
-      }
+      // Hiện trình phát và nút tải (chỉ khi đúng dự án đang mở)
+      renderFinalVideoBlock(AppState.currentProject);
 
       showToast("🎉 Hoàn tất sản xuất Video Dài 1080p! Đang mở Rạp Chiếu Phim...", "success", 4000);
 
       // Auto switch to Step 4 after 1.5 seconds
       setTimeout(() => {
-        switchStep(4);
+        if (AppState.currentProject?.id === renderedProjectId) switchStep(4);
       }, 1500);
     }
   }

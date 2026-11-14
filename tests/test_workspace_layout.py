@@ -249,3 +249,90 @@ def test_case_tabs_follow_tracked_case():
     assert "await tcAnalyze();" in js[start:js.index("\n}\n", start)]
     ws = (ROOT / "backend" / "static" / "workspace.js").read_text(encoding="utf-8")
     assert "ws-case-note" in ws and "ws-case-banner" in ws and "escapeHtml(" in ws
+
+
+def test_every_static_asset_has_a_version_query():
+    """Trình duyệt giữ bản cũ của file JS/CSS trong bộ nhớ đệm: mỗi tham chiếu phải có ?v= để đổi file là nạp bản mới."""
+    import re
+    refs = re.findall(r'(?:src|href)="(/static/[^"]+\.(?:js|css)(?:\?[^"]*)?)"', INDEX_HTML)
+    assert len(refs) >= 10
+    missing = [r for r in refs if "?v=" not in r]
+    assert not missing, f"thiếu ?v=: {missing}"
+
+
+def test_page_change_closes_the_drawer():
+    ws = (ROOT / "backend" / "static" / "workspace.js").read_text(encoding="utf-8")
+    body = ws[ws.index("function showPage("):ws.index("// ---------- Vụ án đang theo dõi")]
+    assert "closeDrawer()" in body
+    sp = (ROOT / "backend" / "static" / "scenes_publish_page.js").read_text(encoding="utf-8")
+    assert "closeDrawer" not in sp and "pausePlayback()" in sp
+
+
+def test_publish_page_does_not_fake_a_render():
+    """Đường cấm 3: lúc chưa dựng không được hiện vòng quay, 15% hay 'đã hoàn tất'; trình phát chỉ có khi có video."""
+    h = INDEX_HTML
+    progress = h[h.index('id="step-view-3"'):h.index('id="step-view-4"')]
+    assert "fa-spin" not in progress and "Chưa dựng" in progress
+    assert 'id="producer-percent-text" class="text-xl font-extrabold text-slate-700 font-mono">0%<' in progress
+    assert "Video đã hoàn tất quy trình kết xuất" not in h
+    assert inside(h, "cinema-video-player", "publish-final-video")
+    assert inside(h, "btn-cinema-download-video", "publish-final-video")
+    tag = h[h.index('id="publish-final-video"') - 10:h.index('id="publish-final-video"') + 80]
+    assert " hidden" in tag
+    assert page_of(h, "publish-no-video") == "publish"
+    app = (ROOT / "backend" / "static" / "app.js").read_text(encoding="utf-8")
+    load = app[app.index("async function loadCinemaYouTubePackage("):]
+    load = load[:load.index("\nasync function ")]
+    assert "story_final.mp4" not in load and "renderFinalVideoBlock(project)" in load
+    final = app[app.index("function finalVideoOf("):app.index("function renderFinalVideoBlock(")]
+    assert "final_video_path" in final and "final_video_url" in final
+
+
+def test_render_state_follows_the_open_project():
+    app = (ROOT / "backend" / "static" / "app.js").read_text(encoding="utf-8")
+    full = app[app.index("function renderFullUI("):app.index("function formatDisplayVoice(")]
+    assert "paintProducerForCurrentProject()" in full
+    listen = app[app.index("function listenToProduceProgress("):app.index("// ================= MODAL 4")]
+    assert "AppState.produceState.renderId !== renderId" in listen
+    assert "AppState.currentProject.id" not in listen   # URL lấy theo dự án đang dựng, không theo dự án đang mở
+
+
+def test_space_only_toggles_playback_on_scenes_or_preview():
+    app = (ROOT / "backend" / "static" / "app.js").read_text(encoding="utf-8")
+    body = app[app.index("function handleGlobalKeydown("):app.index("// ================= SCENE CRUD")]
+    assert "closest('button, a, input, textarea, select" in body and "currentPage() === 'scenes'" in body
+
+
+def test_hidden_sidebar_and_drawer_leave_tab_order():
+    css = (ROOT / "backend" / "static" / "workspace.css").read_text(encoding="utf-8")
+    collapsed = css[css.index("body.ws-collapsed .ws-sidebar"):]
+    assert "visibility: hidden" in collapsed[:200]
+    drawer = css[css.index(".ws-drawer {"):css.index(".ws-drawer-head")]
+    assert "visibility: hidden" in drawer and "visibility: visible" in drawer
+
+
+def test_script_list_waits_while_typing():
+    js = (ROOT / "backend" / "static" / "script_page.js").read_text(encoding="utf-8")
+    body = js[js.index("function renderScriptList("):js.index("window.renderScriptList")]
+    assert "rowIsFocused(box)" in body and "page !== 'script'" in body
+    assert "'focusout'" in js
+
+
+def test_comic_projects_may_skip_look_page():
+    js = (ROOT / "backend" / "static" / "genres.js").read_text(encoding="utf-8")
+    assert "hasCaseTabs" not in js and "onPageShow('look', paintLookSkipNote)" in js
+    assert page_of(INDEX_HTML, "look-skip-note") == "look"
+    assert "Truyện tranh: hình đã có sẵn, có thể bỏ qua bước này." in INDEX_HTML
+
+
+def test_case_banner_follows_case_status():
+    ws = (ROOT / "backend" / "static" / "workspace.js").read_text(encoding="utf-8")
+    for text in ("chờ duyệt dàn ý", "đã phân tích xong, tạo dự án ở Kịch bản", "bị dừng, xem ở Kịch bản"):
+        assert text in ws, text
+    tc = (ROOT / "backend" / "static" / "true_crime.js").read_text(encoding="utf-8")
+    assert "status: p ? status : null" in tc
+
+
+def test_backend_footer_shows_the_real_port():
+    app = (ROOT / "backend" / "static" / "app.js").read_text(encoding="utf-8")
+    assert "Port 8000)\"" not in app and "window.location.port" in app

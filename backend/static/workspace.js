@@ -55,6 +55,9 @@
     const previous = current;
     current = name;
     if (previous === 'look' && name !== 'look') stopLookPolling();
+    // Đổi trang thì đóng ngăn kéo: khối Xem thử không phát tiếng, khối Tuỳ chọn không treo sang trang khác
+    // (đóng ngăn xem thử thì scenes_publish_page.js dừng tiếng đang phát)
+    if (previous !== name) closeDrawer();
     closeStylePopover();
     for (const code of Object.keys(PAGES)) {
       const page = document.getElementById(`page-${code}`);
@@ -80,7 +83,17 @@
   // Dự án đang mở vẫn là dự án cũ (spec 5.2): trang Kịch bản ghi rõ điều đó, các trang Hình mẫu, Cảnh, Dựng có dải
   // "Vụ mới đang phân tích NN%" bấm để về trang Kịch bản. Dữ liệu do true_crime.js đưa qua renderCaseStrip().
   const CASE_BANNER_PAGES = ['look', 'scenes', 'publish'];
-  let caseStrip = { tracking: false, percent: null };
+  let caseStrip = { tracking: false, percent: null, status: null };
+
+  // Chữ trên dải theo trạng thái vụ (true_crime.js đưa status của việc phân tích)
+  function caseBannerText() {
+    const status = caseStrip.status;
+    if (status === 'review') return 'Vụ mới chờ duyệt dàn ý: xem ở Kịch bản';
+    if (status === 'done') return 'Vụ mới đã phân tích xong, tạo dự án ở Kịch bản';
+    if (status === 'failed' || status === 'stopped') return 'Vụ mới bị dừng, xem ở Kịch bản';
+    const pct = caseStrip.percent === null ? '' : ' ' + caseStrip.percent + '%';
+    return 'Vụ mới đang phân tích' + pct + ': xem ở Kịch bản';
+  }
 
   function paintCaseStrip() {
     const note = document.getElementById('ws-case-note');
@@ -99,8 +112,7 @@
     if (banner) {
       banner.hidden = !(tracking && CASE_BANNER_PAGES.includes(current));
       if (!banner.hidden) {
-        const pct = caseStrip.percent === null ? '' : ' ' + caseStrip.percent + '%';
-        banner.textContent = 'Vụ mới đang phân tích' + pct + ': xem ở Kịch bản';
+        banner.textContent = caseBannerText();
       }
     }
   }
@@ -109,7 +121,8 @@
     // percent null: chưa hỏi được tiến độ lần nào (vd. vừa tải lại trang, chưa mở trang Kịch bản)
     const raw = state ? state.percent : null;
     const percent = raw === null || raw === undefined ? NaN : Number(raw);
-    caseStrip = { tracking: !!(state && state.tracking), percent: Number.isFinite(percent) ? Math.round(percent) : null };
+    const status = state && typeof state.status === 'string' ? state.status : null;
+    caseStrip = { tracking: !!(state && state.tracking), percent: Number.isFinite(percent) ? Math.round(percent) : null, status };
     paintCaseStrip();
   }
 

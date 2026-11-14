@@ -603,7 +603,7 @@ function tcRenderProgress() {
   const caseLabel = tcEl('tc-progress-case');
   if (caseLabel) caseLabel.textContent = s.caseId ? `Mã vụ: ${s.caseId}` : '';
   tcSyncCaseTabs();
-  if (typeof window.renderCaseStrip === 'function') window.renderCaseStrip({ tracking: !!s.caseId, percent: p ? percent : null });
+  if (typeof window.renderCaseStrip === 'function') window.renderCaseStrip({ tracking: !!s.caseId, percent: p ? percent : null, status: p ? status : null });
   tcRefreshButtons();
 }
 

@@ -151,7 +151,7 @@
   <!-- Tailwind CSS build cục bộ (tools/tailwind, bản 3.4.17), đặt cuối head giống thứ tự của bản CDN cũ -->
   <link rel="stylesheet" href="/static/tailwind.css?v=2026-10-21a">
   <!-- Khung giao diện gọn (thanh bên, thanh trên, trang, ngăn kéo); nạp sau Tailwind để đè lên -->
-  <link rel="stylesheet" href="/static/workspace.css?v=1.1.0">
+  <link rel="stylesheet" href="/static/workspace.css?v=1.2.0">
 </head>
 
 <body class="ws-app">
@@ -612,6 +612,8 @@
       <div class="ws-page-head">
         <h1 class="ws-h1">Hình mẫu</h1>
         <p class="ws-lede">Khoá người và nơi chốn trước khi vẽ ảnh cảnh, để mọi cảnh vẽ đúng một người, đúng một nơi.</p>
+        <!-- Chỉ hiện với dự án truyện tranh (cờ skipLook trong genres.js) -->
+        <p id="look-skip-note" class="ws-card text-sm text-slate-600" style="padding:10px 14px;margin-top:10px" hidden>Truyện tranh: hình đã có sẵn, có thể bỏ qua bước này.</p>
       </div>
 
       <!-- Phong cách và nguồn ảnh của dự án đang mở. Chọn phong cách ở trang Ý tưởng; ở đây chỉ đổi được phần đuôi gắn vào mô tả ảnh lúc vẽ -->
@@ -930,7 +932,7 @@
         <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-center text-xs">
           <!-- Phase 1 -->
           <div id="producer-step-1" class="p-3 rounded-2xl border border-slate-200 bg-white transition shadow-2xs font-semibold">
-            <div id="producer-step-icon-1" class="w-7 h-7 rounded-full bg-slate-900 text-white flex items-center justify-center mx-auto mb-1.5 text-xs font-bold">1</div>
+            <div id="producer-step-icon-1" class="w-7 h-7 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center mx-auto mb-1.5 text-xs font-bold">1</div>
             <div class="font-bold text-xs text-slate-800">Khóa Kịch Bản</div>
             <div class="text-[10px] text-slate-400 font-mono mt-0.5">15% • Character</div>
           </div>
@@ -963,14 +965,14 @@
         <!-- Big Progress Bar -->
         <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
           <div class="flex items-center justify-between">
+            <!-- Lúc chưa dựng: "Chưa dựng", 0%, không vòng quay (resetProducerUI() trong app.js vẽ lại đúng trạng thái này) -->
             <span id="producer-status-text" class="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <i class="fa-solid fa-spinner fa-spin text-slate-700"></i>
-              <span>Đang phân tích kịch bản & khóa nhân vật...</span>
+              <span>Chưa dựng</span>
             </span>
-            <span id="producer-percent-text" class="text-xl font-extrabold text-slate-700 font-mono">15%</span>
+            <span id="producer-percent-text" class="text-xl font-extrabold text-slate-700 font-mono">0%</span>
           </div>
           <div class="w-full h-4 bg-slate-100 rounded-full overflow-hidden border border-slate-200 shadow-inner">
-            <div id="producer-progress-bar" class="h-full bg-slate-900 transition-all duration-300 w-[15%]"></div>
+            <div id="producer-progress-bar" class="h-full bg-slate-900 transition-all duration-300" style="width: 0%"></div>
           </div>
         </div>
 
@@ -985,7 +987,7 @@
             <span id="producer-timer-text" class="text-emerald-400">00:00</span>
           </div>
           <div id="producer-log-console" class="h-48 overflow-y-auto space-y-1 font-mono text-[11px] text-emerald-400 pr-2">
-            <div>> Đã khởi tạo quy trình sản xuất video dài tự động...</div>
+            <div>> Chưa dựng lần nào trong phiên này.</div>
           </div>
         </div>
         </details>
@@ -995,6 +997,9 @@
     <!-- Thành phẩm và gói YouTube (Bước 4 cũ) -->
     <div id="step-view-4" class="step-view ws-publish-result">
       <div class="space-y-6">
+        <!-- Chưa có video thành phẩm thì chỉ hiện dòng này; loadCinemaYouTubePackage() / showFinalVideo() trong app.js bật khối video -->
+        <p id="publish-no-video" class="ws-card text-sm text-slate-600" style="padding:14px 16px">Chưa có video thành phẩm. Bấm "Dựng video" ở đầu trang để dựng.</p>
+        <div id="publish-final-video" class="space-y-6" hidden>
         <!-- Header banner -->
         <div class="flex flex-wrap items-center justify-between gap-3 bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
           <div class="flex items-center gap-3">
@@ -1002,8 +1007,8 @@
               <i class="fa-solid fa-circle-check"></i>
             </div>
             <div>
-              <h2 class="text-base font-bold text-slate-900">Video thành phẩm</h2>
-              <p class="text-xs text-slate-500">Video đã hoàn tất quy trình kết xuất 1080p, đồng bộ voiceover & hardsub chuẩn YouTube</p>
+              <h2 id="publish-final-title" class="text-base font-bold text-slate-900">Video thành phẩm</h2>
+              <p class="text-xs text-slate-500">Bản dựng cuối của dự án: giọng đọc, ảnh, clip và phụ đề đã ghép thành một file</p>
             </div>
           </div>
           <div class="flex items-center gap-2">
@@ -1042,6 +1047,7 @@
             <i class="fa-solid fa-folder-open text-amber-500 text-sm"></i>
             <span>Mở Thư Mục File</span>
           </button>
+        </div>
         </div>
 
         <!-- ================= GÓI YOUTUBE: THUMBNAIL + SEO (xử lý SEO trong /static/youtube_seo.js) ================= -->
@@ -1487,22 +1493,22 @@
 
   <!-- Main JavaScript Logic (v2.9.1 Cache Buster: renderFullUI báo cho true_crime.js để hiện nút "Tạo bản tiếng Anh") -->
   <!-- Khung giao diện gọn: showPage(), ngăn kéo, thanh bên (nạp trước app.js) -->
-  <script src="/static/workspace.js?v=1.1.0"></script>
-  <script src="/static/app.js?v=3.0.2"></script>
-  <script src="/static/script_page.js?v=1.0.0"></script>
+  <script src="/static/workspace.js?v=1.2.0"></script>
+  <script src="/static/app.js?v=3.1.0"></script>
+  <script src="/static/script_page.js?v=1.1.0"></script>
   <!-- Trang Tài khoản và kết nối: khối trạng thái AI, YouTube, VieNeu, nút Gọi thử -->
   <script src="/static/connections.js?v=1.0.0"></script>
-  <script src="/static/scenes_publish_page.js?v=1.0.0"></script>
-  <script src="/static/genres.js?v=1.1.0"></script>
-  <script src="/static/true_crime.js?v=1.6.0"></script>
+  <script src="/static/scenes_publish_page.js?v=1.1.0"></script>
+  <script src="/static/genres.js?v=1.2.0"></script>
+  <script src="/static/true_crime.js?v=1.7.0"></script>
   <!-- Gói SEO YouTube ở Bước 4 (app.js gọi ytSeoLoad khi mở Bước 4) -->
-  <script src="/static/youtube_seo.js?v=1.0.0"></script>
+  <script src="/static/youtube_seo.js?v=1.1.0"></script>
   <!-- Video cảnh cao trào ở Bước 2 (dự án vụ án): gắn nhãn/nút lên thẻ cảnh sau mỗi lần renderSceneList vẽ lại -->
-  <script src="/static/climax_video.js?v=1.3.0"></script>
+  <script src="/static/climax_video.js?v=1.4.0"></script>
   <!-- Bảng nhân vật đủ góc (dự án vụ án) -->
-  <script src="/static/character_sheets.js?v=1.1.0"></script>
+  <script src="/static/character_sheets.js?v=1.2.0"></script>
   <!-- Khoá bối cảnh (mọi dự án có từ 2 cảnh) -->
-  <script src="/static/location_sheets.js?v=1.0.0"></script>
+  <script src="/static/location_sheets.js?v=1.1.0"></script>
   <!-- Nút "Muse Video" trên thẻ cảnh: video dài theo lời thoại, báo số video Muse trước khi chạy -->
   <script src="/static/scene_muse_video.js?v=1.0.0"></script>
 </body>
