@@ -45,3 +45,10 @@ def test_removed_ids_are_really_gone():
 def test_every_fixed_js_id_exists():
     missing = {i: files for i, files in js_fixed_ids().items() if i not in ids_in(INDEX_HTML) | JS_BUILT_IDS}
     assert not missing, f"JS gọi id mà trang không có: {missing}"
+
+
+REMOVED |= {i: "spec 4.2: nhân vật chính kiểu cũ, app tự bỏ khi có bảng nhân vật" for i in (
+    "step1-char-preset-select", "step1-char-name", "step1-char-anchor", "step1-char-ref-file-input",
+    "step1-char-ref-url", "btn-step1-char-ref-apply-url", "btn-step1-char-ref-remove", "step1-char-ref-dropzone",
+    "step1-char-ref-preview-card", "step1-char-ref-preview-img", "step1-char-ref-file-name")}
+REMOVED |= {"btn-step1-open-true-crime": "spec 4.2: không còn cửa sổ Hồ Sơ Kỳ Án để mở"}

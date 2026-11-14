@@ -2139,7 +2139,6 @@ function initTrueCrimeStudio() {
   const on = (id, event, handler) => tcEl(id)?.addEventListener(event, handler);
 
   on('btn-open-true-crime-modal', 'click', openTrueCrimeModal);
-  on('btn-step1-open-true-crime', 'click', openTrueCrimeModal);
   on('btn-close-true-crime-modal', 'click', closeTrueCrimeModal);
   on('btn-cancel-true-crime-modal', 'click', closeTrueCrimeModal);
 

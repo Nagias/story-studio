@@ -9,7 +9,6 @@ const AppState = {
   projectsList: [],
   selectedSceneIndex: 0,
   currentStep: 2, // 1: Nhập liệu, 2: Bảng đạo diễn, 3: Tiến trình, 4: Rạp chiếu
-  characterReferenceImage: null, // Base64 data URL or image URL for Step 1 character anchor
   isPlaying: false,
   isPlayingAll: false,
   playAllIndex: 0,
@@ -318,17 +317,6 @@ const DOM = {
   step1StyleSelect: document.getElementById('step1-style-select'),
   step1ContentKind: document.getElementById('step1-content-kind'),
   step1CaseDuration: document.getElementById('step1-case-duration'),
-  step1CharPresetSelect: document.getElementById('step1-char-preset-select'),
-  step1CharName: document.getElementById('step1-char-name'),
-  step1CharAnchor: document.getElementById('step1-char-anchor'),
-  step1CharRefDropzone: document.getElementById('step1-char-ref-dropzone'),
-  step1CharRefFileInput: document.getElementById('step1-char-ref-file-input'),
-  step1CharRefPreviewCard: document.getElementById('step1-char-ref-preview-card'),
-  step1CharRefPreviewImg: document.getElementById('step1-char-ref-preview-img'),
-  step1CharRefFileName: document.getElementById('step1-char-ref-file-name'),
-  btnStep1CharRefRemove: document.getElementById('btn-step1-char-ref-remove'),
-  step1CharRefUrl: document.getElementById('step1-char-ref-url'),
-  btnStep1CharRefApplyUrl: document.getElementById('btn-step1-char-ref-apply-url'),
   btnStep1ProcessScript: document.getElementById('btn-step1-process-script'),
   step1ComicDropzone: document.getElementById('step1-comic-dropzone'),
   step1ComicFileInput: document.getElementById('step1-comic-file-input'),
@@ -1736,72 +1724,6 @@ function bindEventListeners() {
   DOM.step1ContentKind?.addEventListener('change', applyStep1ContentKind);
   applyStep1ContentKind();
 
-  // Step 1 Character Reference Image Event Listeners
-  DOM.step1CharRefDropzone?.addEventListener('click', () => DOM.step1CharRefFileInput?.click());
-  DOM.step1CharRefFileInput?.addEventListener('change', (e) => {
-    if (e.target.files && e.target.files[0]) {
-      handleCharRefFileSelect(e.target.files[0]);
-    }
-  });
-  DOM.step1CharRefDropzone?.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    DOM.step1CharRefDropzone?.classList.add('border-indigo-500', 'bg-indigo-50');
-  });
-  DOM.step1CharRefDropzone?.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    DOM.step1CharRefDropzone?.classList.remove('border-indigo-500', 'bg-indigo-50');
-  });
-  DOM.step1CharRefDropzone?.addEventListener('drop', (e) => {
-    e.preventDefault();
-    DOM.step1CharRefDropzone?.classList.remove('border-indigo-500', 'bg-indigo-50');
-    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleCharRefFileSelect(e.dataTransfer.files[0]);
-    }
-  });
-  DOM.btnStep1CharRefRemove?.addEventListener('click', handleCharRefRemove);
-  DOM.btnStep1CharRefApplyUrl?.addEventListener('click', handleCharRefUrlApply);
-  DOM.step1CharRefUrl?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleCharRefUrlApply();
-    }
-  });
-
-  const charPresetSelect = document.getElementById('step1-char-preset-select');
-  if (charPresetSelect) {
-    charPresetSelect.addEventListener('change', () => {
-      const val = charPresetSelect.value;
-      if (val === 'custom') {
-        if (DOM.step1CharName && DOM.step1CharName.value.includes("Võ Giả Cuồng Nộ")) DOM.step1CharName.value = "";
-        if (DOM.step1CharAnchor && DOM.step1CharAnchor.value.includes("Tattered dark martial arts")) DOM.step1CharAnchor.value = "";
-      } else if (val === 'murata_fighter') {
-        if (DOM.step1CharName) DOM.step1CharName.value = "Võ Giả Cuồng Nộ (Murata Fighter)";
-        if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Tattered dark martial arts dogi gi pants, bare muscular athletic chest, scarred arms wrapped in white combat tape, radiant fiery red shockwave energy fists";
-        if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "manga_murata_battle";
-      } else if (val === 'spartan_leon') {
-        if (DOM.step1CharName) DOM.step1CharName.value = "Dũng Tướng Leon (Spartan Champion)";
-        if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Spartan hoplite champion, sculpted bronze muscle cuirass with filigree, golden Corinthian helmet with plume, circular bronze hoplon shield with embossed sun, sharp dory spear";
-        if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "spartan_epic_mythology";
-      } else if (val === 'paladin_kai') {
-        if (DOM.step1CharName) DOM.step1CharName.value = "Dũng Sĩ Kai (Paladin)";
-        if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Silver full plate armor with glowing cyan turquoise gemstones, crimson velvet cape, two-handed carved gold broadsword";
-        if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "fantasy_paladin_armor";
-      } else if (val === 'roman_titus') {
-        if (DOM.step1CharName) DOM.step1CharName.value = "Chiến Binh Titus (Quân Đoàn La Mã)";
-        if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Roman legionary soldier, polished iron lorica segmentata, bronze galea helmet with red crest, curved red scutum shield with golden bull, pilum spear";
-        if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "roman_legionary_epic";
-      } else if (val === 'kingdom_shin') {
-        if (DOM.step1CharName) DOM.step1CharName.value = "Tướng Quân Shin (Kingdom)";
-        if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Young warrior general, pale blue scale lamellar armor, messy black ponytail, massive broadsword carried on back, determined battle smirk";
-        if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "manga_historical_war";
-      } else if (val === 'tienhiep_lam') {
-        if (DOM.step1CharName) DOM.step1CharName.value = "Lâm (Chiến binh áo lam)";
-        if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Asian warrior boy, sharp amber eyes, spiky black hair, dark navy tunic, glowing blue talisman necklace";
-        if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "anime";
-      }
-    });
-  }
-  
   document.querySelectorAll('.btn-step1-sample').forEach(btn => {
     btn.addEventListener('click', () => {
       const sampleKey = btn.getAttribute('data-sample');
@@ -1809,32 +1731,21 @@ function bindEventListeners() {
         DOM.step1ScriptTextarea.value = SAMPLE_STORIES[sampleKey];
         handleStep1ScriptInput();
 
-        const charSelect = document.getElementById('step1-char-preset-select');
         if (sampleKey === 'us_murata_battle') {
           if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "manga_murata_battle";
-          if (charSelect) charSelect.value = "murata_fighter";
-          if (DOM.step1CharName) DOM.step1CharName.value = "Võ Giả Cuồng Nộ (Murata Fighter)";
-          if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Tattered dark martial arts dogi gi pants, bare muscular athletic chest, scarred arms wrapped in white combat tape, radiant fiery red shockwave energy fists";
           if (DOM.selectVoice) DOM.selectVoice.value = "en-US-BrianMultilingualNeural";
         } else if (sampleKey === 'us_spartan') {
           if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "spartan_epic_mythology";
-          if (charSelect) charSelect.value = "spartan_leon";
-          if (DOM.step1CharName) DOM.step1CharName.value = "Dũng Tướng Leon (Spartan Champion)";
-          if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Spartan hoplite champion, sculpted bronze muscle cuirass with filigree, golden Corinthian helmet with plume, circular bronze hoplon shield with embossed sun, sharp dory spear";
           if (DOM.selectVoice) DOM.selectVoice.value = "en-US-AndrewMultilingualNeural";
         } else if (sampleKey === 'paladin') {
           if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "fantasy_paladin_armor";
-          if (charSelect) charSelect.value = "paladin_kai";
-          if (DOM.step1CharName) DOM.step1CharName.value = "Dũng Sĩ Kai (Paladin)";
-          if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Silver full plate armor with glowing cyan turquoise gemstones, crimson velvet cape, two-handed carved gold broadsword";
           if (DOM.selectVoice) DOM.selectVoice.value = "vi-VN-NamMinhNeural";
         } else if (sampleKey === 'kingdom') {
           if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "manga_historical_war";
-          if (charSelect) charSelect.value = "kingdom_shin";
-          if (DOM.step1CharName) DOM.step1CharName.value = "Tướng Quân Shin (Kingdom)";
-          if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Young warrior general, pale blue scale lamellar armor, messy black ponytail, massive broadsword carried on back, determined battle smirk";
           if (DOM.selectVoice) DOM.selectVoice.value = "vi-VN-NamMinhNeural";
         }
+        // Thẻ phong cách ở trang Ý tưởng (genres.js) theo dõi sự kiện change của ô chọn
+        DOM.step1StyleSelect?.dispatchEvent(new Event('change'));
 
         showToast(`Đã nạp kịch bản & visual prompt: ${btn.textContent.trim()}`, "info");
       }
@@ -3542,57 +3453,6 @@ function copyToClipboard(elemId, toastMsg) {
 }
 window.copyToClipboard = copyToClipboard;
 
-// CHARACTER REFERENCE IMAGE HANDLERS
-function handleCharRefFileSelect(file) {
-  if (!file) return;
-  if (!file.type.startsWith('image/')) {
-    showToast("Vui lòng chọn file ảnh hợp lệ (PNG, JPG, WebP)!", "warning");
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const dataUrl = e.target.result;
-    AppState.characterReferenceImage = dataUrl;
-    if (DOM.step1CharRefPreviewImg) DOM.step1CharRefPreviewImg.src = dataUrl;
-    if (DOM.step1CharRefFileName) DOM.step1CharRefFileName.textContent = `${file.name} (${(file.size / 1024).toFixed(0)} KB)`;
-    if (DOM.step1CharRefPreviewCard) DOM.step1CharRefPreviewCard.classList.remove('hidden');
-    if (DOM.step1CharRefDropzone) DOM.step1CharRefDropzone.classList.add('hidden');
-    if (DOM.step1CharRefUrl) DOM.step1CharRefUrl.value = '';
-    showToast(`Đã nạp ảnh tham chiếu nhân vật: ${escapeHtml(file.name)}`, "success");
-  };
-  reader.onerror = () => {
-    showToast("Không thể đọc file ảnh tham chiếu!", "error");
-  };
-  reader.readAsDataURL(file);
-}
-
-function handleCharRefUrlApply() {
-  const url = DOM.step1CharRefUrl?.value.trim();
-  if (!url) {
-    showToast("Vui lòng dán liên kết URL ảnh tham chiếu trước!", "warning");
-    return;
-  }
-  if (!/^https?:\/\//i.test(url) && !url.startsWith('data:image/')) {
-    showToast("URL ảnh phải bắt đầu bằng http:// hoặc https://", "warning");
-    return;
-  }
-  AppState.characterReferenceImage = url;
-  if (DOM.step1CharRefPreviewImg) DOM.step1CharRefPreviewImg.src = url;
-  if (DOM.step1CharRefFileName) DOM.step1CharRefFileName.textContent = url.length > 40 ? url.substring(0, 37) + '...' : url;
-  if (DOM.step1CharRefPreviewCard) DOM.step1CharRefPreviewCard.classList.remove('hidden');
-  if (DOM.step1CharRefDropzone) DOM.step1CharRefDropzone.classList.add('hidden');
-  showToast("Đã nạp ảnh tham chiếu từ URL!", "success");
-}
-
-function handleCharRefRemove() {
-  AppState.characterReferenceImage = null;
-  if (DOM.step1CharRefPreviewCard) DOM.step1CharRefPreviewCard.classList.add('hidden');
-  if (DOM.step1CharRefDropzone) DOM.step1CharRefDropzone.classList.remove('hidden');
-  if (DOM.step1CharRefFileInput) DOM.step1CharRefFileInput.value = '';
-  if (DOM.step1CharRefUrl) DOM.step1CharRefUrl.value = '';
-  showToast("Đã gỡ bỏ ảnh tham chiếu nhân vật", "info");
-}
-
 // STEP 1 HANDLERS
 function handleStep1ScriptInput() {
   const text = DOM.step1ScriptTextarea?.value.trim() || '';
@@ -3660,10 +3520,6 @@ async function handleStep1ProcessScript() {
   const pacing = DOM.step1PacingSelect?.value || 'fast';
   const style = DOM.step1StyleSelect?.value || 'horror_cartoon_2d';
   const imageProvider = DOM.step1EngineSelect?.value || DOM.selectImageProvider?.value || 'meta_muse_cloud';
-  const charName = DOM.step1CharName?.value.trim() || '';
-  const charAnchor = DOM.step1CharAnchor?.value.trim() || '';
-  const charPreset = document.getElementById('step1-char-preset-select')?.value || '';
-  const charRefImage = AppState.characterReferenceImage || DOM.step1CharRefUrl?.value.trim() || undefined;
 
   const isEnglish = !(/[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđĐ]/i.test(text));
   // Ngôn ngữ lời review (CLAUDE.md mục 1.2 câu 15): rỗng = theo ngôn ngữ truyện
@@ -3696,10 +3552,6 @@ async function handleStep1ProcessScript() {
         text: text,
         pacing: pacing,
         style_preset: style,
-        character_preset_id: charPreset && charPreset !== 'custom' ? charPreset : undefined,
-        character_name: charName || undefined,
-        character_anchor: charAnchor,
-        character_reference_image: charRefImage,
         voice: autoVoice,
         image_provider: imageProvider,
         // Làm từng bước (CLAUDE.md mục 1.2 câu 4): ảnh cảnh tạo sau khi khoá nhân vật và bối cảnh
@@ -3711,9 +3563,6 @@ async function handleStep1ProcessScript() {
 
     if (createdProject && Array.isArray(createdProject.scenes) && createdProject.scenes.length > 0) {
       AppState.currentProject = adoptServerProject(createdProject);
-      if (charRefImage && !AppState.currentProject.character_reference_image) {
-        AppState.currentProject.character_reference_image = charRefImage;
-      }
       saveStateToLocal();
       renderFullUI();
       selectScene(0);

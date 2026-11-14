@@ -242,323 +242,131 @@
 
     <!-- ================= TRANG Ý TƯỞNG ================= -->
     <section id="page-idea" data-page="idea" class="ws-page" hidden>
-
-
-    <!-- STEP 1: NHẬP LIỆU (Novel / Script or Comic Slicer) -->
-    <div id="step-view-1" class="step-view flex-1 overflow-y-auto p-4 lg:p-6 bg-slate-50 min-h-0">
-      <div class="max-w-6xl mx-auto space-y-6">
-        <!-- Header banner -->
-        <div class="bg-gradient-to-r from-indigo-900 via-indigo-800 to-purple-900 rounded-3xl p-6 lg:p-8 text-white shadow-xl relative overflow-hidden">
-          <div class="relative z-10 max-w-2xl">
-            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-xs font-semibold mb-3">
-              <i class="fa-solid fa-sparkles text-amber-300"></i>
-              <span>Bước 1: Lựa chọn Nguồn Nhập Liệu</span>
-            </div>
-            <h2 class="text-2xl lg:text-3xl font-extrabold tracking-tight">Tạo Kịch Bản hoặc Nhập Truyện Tranh</h2>
-            <p class="text-sm text-indigo-200 mt-2 leading-relaxed">
-              Bắt đầu chu trình tự động hóa Video Dài kiểu MoneyPrinterTurbo. Bạn có thể nhập kịch bản truyện chữ (AI phân tích theo phong cách Vox 10 phút) hoặc tải ảnh truyện tranh Manga/Webtoon (OpenCV bóc tách panel tự động).
-            </p>
-          </div>
-          <div class="absolute -right-10 -bottom-10 opacity-15 pointer-events-none text-white text-9xl">
-            <i class="fa-solid fa-clapperboard"></i>
-          </div>
+      <div id="step-view-1" class="step-view">
+        <div class="ws-page-head">
+          <h1 class="ws-h1">Ý tưởng</h1>
+          <p class="ws-lede">Chọn thể loại rồi dán nội dung. Mỗi thể loại là một khuôn làm sẵn, nên các trang sau tự biết phải làm gì.</p>
         </div>
 
-        <!-- Mode: True Crime Studio Quick Launch Banner -->
-        <div class="bg-gradient-to-r from-slate-950 via-red-950 to-slate-900 rounded-3xl border border-red-700/60 p-6 shadow-xl relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-5 text-white">
-          <div class="relative z-10 flex items-start gap-4 max-w-3xl">
-            <div class="w-12 h-12 rounded-2xl bg-red-600/20 border border-red-500/40 flex items-center justify-center text-red-400 text-2xl shadow-inner shrink-0">
-              <i class="fa-solid fa-user-secret"></i>
-            </div>
-            <div>
-              <div class="flex flex-wrap items-center gap-2">
-                <h3 class="text-base sm:text-lg font-extrabold tracking-tight text-white">Chế Độ Chuyên Sâu: 🕵️ Hồ Sơ Kỳ Án (True Crime Studio)</h3>
-                <span class="text-[10px] bg-red-600 text-white font-extrabold px-2 py-0.5 rounded-full border border-red-400 shadow-xs">SONG NGỮ VIỆT/ANH</span>
-                <span class="text-[10px] bg-amber-500/20 text-amber-300 font-bold px-2 py-0.5 rounded-full border border-amber-500/30">BẢNG GHIM CORKBOARD</span>
-                <span class="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">ĐỔI TÊN NGƯỜI &amp; ĐỊA DANH</span>
-              </div>
-              <p class="text-xs text-slate-300 mt-1.5 leading-relaxed">
-                Vụ án mới: chọn "Vụ án có thật" ở ô Loại nội dung bên dưới rồi dán bài • LLM đọc từng đoạn, giữ nguyên diễn biến, chỉ thay tên người và địa danh riêng • Duyệt dàn ý, bảng tên và lời kể trong cửa sổ này trước khi tạo dự án • Sau đó vụ án đi chung luồng với truyện chữ.
-              </p>
-            </div>
+        <!-- Thẻ thể loại: genres.js vẽ vào đây; bấm thẻ thì đặt giá trị cho #step1-content-kind rồi phát sự kiện change -->
+        <div id="idea-genre-cards" class="ws-pick-grid ws-pick-grid-3" role="group" aria-label="Thể loại"></div>
+        <p id="idea-genre-note" class="ws-note"></p>
+        <select id="step1-content-kind" class="hidden" aria-hidden="true" tabindex="-1">
+          <option value="story" selected>Truyện chữ</option>
+          <option value="case">Vụ án có thật</option>
+        </select>
+
+        <!-- Khối dán chữ (truyện chữ, vụ án) -->
+        <div id="idea-text-block">
+          <h2 class="ws-h2 ws-h2-gap">Nội dung</h2>
+          <div data-step1-kind="story" class="ws-samples">
+            <span class="ws-note">Kịch bản mẫu:</span>
+            <button type="button" class="btn-step1-sample ws-btn" data-sample="us_murata_battle">US Novel: Murata Battle Clash</button>
+            <button type="button" class="btn-step1-sample ws-btn" data-sample="us_spartan">US Novel: 300 Spartan Stand</button>
+            <button type="button" class="btn-step1-sample ws-btn" data-sample="paladin">Sử thi: Dũng Sĩ Thánh Giáp</button>
+            <button type="button" class="btn-step1-sample ws-btn" data-sample="kingdom">Đại chiến Kingdom</button>
           </div>
-          <button type="button" id="btn-step1-open-true-crime" class="relative z-10 px-5 py-3 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-rose-500 text-white rounded-xl text-xs sm:text-sm font-extrabold shadow-lg shadow-red-600/30 flex items-center gap-2.5 shrink-0 transition transform active:scale-95 cursor-pointer whitespace-nowrap">
-            <i class="fa-solid fa-magnifying-glass-arrow-right text-sm"></i>
-            <span>Theo dõi vụ án đang làm</span>
-            <i class="fa-solid fa-bolt text-amber-300"></i>
-          </button>
-          <div class="absolute -right-8 -bottom-8 opacity-10 pointer-events-none text-red-500 text-9xl">
-            <i class="fa-solid fa-user-secret"></i>
+          <div class="ws-idea-count"><span id="step1-word-count">0 từ</span></div>
+          <textarea id="step1-script-textarea" rows="10" class="ws-idea-textarea" placeholder="Dán nội dung truyện chữ vào đây."></textarea>
+
+          <h2 class="ws-h2 ws-h2-gap">Phong cách hình</h2>
+          <div id="idea-style-cards" class="ws-pick-grid ws-pick-grid-4" role="group" aria-label="Phong cách hình"></div>
+          <p class="ws-note">Chọn ở đây vì lúc viết kịch bản, AI viết luôn mô tả ảnh của từng cảnh theo phong cách này.</p>
+          <select id="step1-style-select" class="hidden" aria-hidden="true" tabindex="-1">
+            <option value="neo_noir_silhouette">🕵️ Neo-Noir Silhouette (Án Mạng Đêm Mưa / Phim Noir)</option>
+            <option value="horror_cartoon_2d" selected>👻 Hoạt hình 2D rùng rợn (nhân vật đầu tròn, nền vẽ tay tối)</option>
+            <option value="manga_murata_battle">⚔️ Manga Murata Battle Action (One Punch Man / SFX)</option>
+            <option value="spartan_epic_mythology">🏺 Spartan Epic Mythology (Sử thi Hy Lạp giáp đồng sơn dầu)</option>
+            <option value="intricate_ink_crosshatch">🖋️ Intricate Ink Crosshatch (Tranh mực đan nét Graphic Novel)</option>
+            <option value="dark_fantasy">🗡️ Dark Fantasy (Thần thoại u tối Dark Souls / Elden Ring)</option>
+            <option value="manga_historical_war">🚩 Kingdom War (Chiến Quốc Vạn Quân)</option>
+            <option value="roman_legionary_epic">🏛️ Roman Legionary Epic (Quân Đoàn La Mã)</option>
+            <option value="spartan_mythic_warrior">🛡️ Spartan Mythic Warrior (Chiến Binh Sparta)</option>
+            <option value="fantasy_paladin_armor">🛡️ Fantasy Paladin (Dũng Sĩ Thánh Giáp)</option>
+            <option value="cinematic_realistic">🎬 Cinematic Realistic (Điện ảnh chân thực 35mm)</option>
+            <option value="anime">🌸 Anime & Ghibli (Hoạt hình Nhật Bản)</option>
+            <option value="cyberpunk">🌃 Cyberpunk Metropolis (Tương lai viễn tưởng)</option>
+            <option value="comic_book">💥 Western Comic Book (Truyện tranh Marvel/DC)</option>
+            <option value="3d_animation">🧸 3D Animation Pixar / Disney</option>
+          </select>
+
+          <div class="ws-idea-row">
+            <label data-step1-kind="story" class="ws-idea-field">
+              <span>Ngôn ngữ lời review</span>
+              <select id="step1-language-select" class="ws-select">
+                <option value="" selected>Theo ngôn ngữ của truyện</option>
+                <option value="vi">Tiếng Việt</option>
+                <option value="en">Tiếng Anh</option>
+              </select>
+            </label>
+            <label data-step1-kind="case" class="ws-idea-field hidden">
+              <span>Thời lượng video</span>
+              <select id="step1-case-duration" class="ws-select">
+                <option value="8">8 phút (thử)</option>
+                <option value="15">15 phút</option>
+                <option value="20" selected>20 phút</option>
+                <option value="30">30 phút</option>
+              </select>
+            </label>
+            <button type="button" id="btn-idea-options" class="ws-btn ws-btn-ghost">Tuỳ chọn</button>
           </div>
-        </div>
 
-        <!-- 2 Source Selection Cards -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <!-- CARD A: NOVEL / LONG SCRIPT -->
-          <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:border-indigo-400 hover:shadow-md transition flex flex-col justify-between space-y-4">
-            <div class="space-y-4">
-              <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 text-lg shadow-2xs">
-                    <i class="fa-solid fa-pen-nib"></i>
-                  </div>
-                  <div>
-                    <h3 class="font-bold text-slate-900 text-base">Làm video từ truyện chữ hoặc vụ án</h3>
-                    <p class="text-xs text-slate-500">Một luồng chung: nội dung → nhân vật, bối cảnh cố định → ảnh, video → dựng</p>
-                  </div>
-                </div>
-                <span class="text-[11px] bg-indigo-50 text-indigo-700 font-bold px-2.5 py-1 rounded-full border border-indigo-200">Truyện / Vụ án</span>
-              </div>
-
-              <!-- Loại nội dung: chỉ khác bước nội dung (truyện chữ kể kiểu review, vụ án viết lại và đổi tên); phần sau dùng chung -->
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                <div class="sm:col-span-2">
-                  <label for="step1-content-kind" class="text-slate-700 font-bold block mb-1">Loại nội dung:</label>
-                  <select id="step1-content-kind" class="w-full bg-white border border-indigo-300 rounded-xl p-2 text-slate-800 font-bold focus:border-indigo-500">
-                    <option value="story" selected>📖 Truyện chữ — AI kể lại kiểu review truyện</option>
-                    <option value="case">🕵️ Vụ án có thật — AI lập dàn ý, viết lại, đổi tên người và nơi chốn</option>
-                  </select>
-                </div>
-                <div data-step1-kind="case" class="hidden">
-                  <label for="step1-case-duration" class="text-slate-700 font-bold block mb-1">Thời lượng video:</label>
-                  <select id="step1-case-duration" class="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-800 font-medium focus:border-indigo-500">
-                    <option value="8">8 phút (thử)</option>
-                    <option value="15">15 phút</option>
-                    <option value="20" selected>20 phút</option>
-                    <option value="30">30 phút</option>
-                  </select>
-                </div>
-              </div>
-
-              <!-- Sample Quick Buttons -->
-              <div data-step1-kind="story">
-                <label class="text-xs font-bold text-slate-700 block mb-1.5">Chọn kịch bản mẫu nhanh (US Light Novel & Epic):</label>
-                <div class="flex flex-wrap gap-2">
-                  <button type="button" class="btn-step1-sample px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold rounded-lg border border-amber-300 transition" data-sample="us_murata_battle">
-                    ⚔️ US Novel: Murata Battle Clash
-                  </button>
-                  <button type="button" class="btn-step1-sample px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold rounded-lg border border-amber-300 transition" data-sample="us_spartan">
-                    🏺 US Novel: 300 Spartan Stand
-                  </button>
-                  <button type="button" class="btn-step1-sample px-2.5 py-1 bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-xs font-semibold rounded-lg border border-slate-200 transition" data-sample="paladin">
-                    🛡️ Sử thi: Dũng Sĩ Thánh Giáp
-                  </button>
-                  <button type="button" class="btn-step1-sample px-2.5 py-1 bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-xs font-semibold rounded-lg border border-slate-200 transition" data-sample="kingdom">
-                    🚩 Đại chiến Kingdom
-                  </button>
-                </div>
-              </div>
-
-              <!-- Script Textarea -->
-              <div>
-                <div class="flex items-center justify-between mb-1 text-xs">
-                  <label class="font-bold text-slate-700">Nội dung câu chuyện / Chương Light Novel:</label>
-                  <span id="step1-word-count" class="text-slate-400 font-mono text-[11px]">0 từ</span>
-                </div>
-                <textarea id="step1-script-textarea" rows="6" class="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs text-slate-800 focus:bg-white focus:border-indigo-500 focus:outline-none leading-relaxed transition shadow-2xs" placeholder="Dán nội dung chương Light Novel tiếng Anh/tiếng Việt vào đây. AI 9router Gemini sẽ tự động chuyển thể thành kịch bản Podcast US và gen visual prompt chuẩn nét..."></textarea>
-              </div>
-
-              <!-- Engine, Pacing & Style Selector -->
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                <div>
-                  <label class="text-slate-700 font-bold block mb-1 flex items-center justify-between">
-                    <span>Engine sinh ảnh AI:</span>
-                    <span class="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded font-bold">Free 2K</span>
-                  </label>
-                  <select id="step1-engine-select" class="w-full bg-white border border-emerald-300 rounded-xl p-2 text-slate-800 font-bold focus:border-emerald-500 text-xs shadow-2xs">
-                    <option value="meta_muse_cloud" selected>💎 Meta Muse Cloud (Free 2K)</option>
-                    <option value="9router_gemini">⚡ 9router: Gemini 3.1 Flash</option>
-                    <option value="pollinations">🌐 Pollinations.ai</option>
-                  </select>
-                </div>
-                <div data-step1-kind="story">
-                  <label class="text-slate-700 font-bold block mb-1">Nhịp độ cắt cảnh (Pacing):</label>
-                  <select id="step1-pacing-select" class="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-800 font-medium focus:border-indigo-500">
-                    <option value="fast" selected>⚡ Nhanh (Vox 3-4s/cảnh)</option>
-                    <option value="balanced">⚖️ Cân bằng (5s/cảnh)</option>
-                    <option value="narrative">📖 Tự sự (7s/cảnh)</option>
-                  </select>
-                </div>
-                <div data-step1-kind="story">
-                  <label class="text-slate-700 font-bold block mb-1">Ngôn ngữ lời review:</label>
-                  <select id="step1-language-select" class="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-800 font-medium focus:border-indigo-500">
-                    <option value="" selected>Theo ngôn ngữ của truyện</option>
-                    <option value="vi">🇻🇳 Tiếng Việt</option>
-                    <option value="en">🇺🇸 Tiếng Anh</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="text-slate-700 font-bold block mb-1">Phong cách hình ảnh AI:</label>
-                  <select id="step1-style-select" class="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-800 font-medium focus:border-indigo-500">
-                    <option value="neo_noir_silhouette">🕵️ Neo-Noir Silhouette (Án Mạng Đêm Mưa / Phim Noir)</option>
-                    <option value="horror_cartoon_2d" selected>👻 Hoạt hình 2D rùng rợn (nhân vật đầu tròn, nền vẽ tay tối)</option>
-                    <option value="manga_murata_battle">⚔️ Manga Murata Battle Action (One Punch Man / SFX)</option>
-                    <option value="spartan_epic_mythology">🏺 Spartan Epic Mythology (Sử thi Hy Lạp giáp đồng sơn dầu)</option>
-                    <option value="intricate_ink_crosshatch">🖋️ Intricate Ink Crosshatch (Tranh mực đan nét Graphic Novel)</option>
-                    <option value="dark_fantasy">🗡️ Dark Fantasy (Thần thoại u tối Dark Souls / Elden Ring)</option>
-                    <option value="manga_historical_war">🚩 Kingdom War (Chiến Quốc Vạn Quân)</option>
-                    <option value="roman_legionary_epic">🏛️ Roman Legionary Epic (Quân Đoàn La Mã)</option>
-                    <option value="spartan_mythic_warrior">🛡️ Spartan Mythic Warrior (Chiến Binh Sparta)</option>
-                    <option value="fantasy_paladin_armor">🛡️ Fantasy Paladin (Dũng Sĩ Thánh Giáp)</option>
-                    <option value="cinematic_realistic">🎬 Cinematic Realistic (Điện ảnh chân thực 35mm)</option>
-                    <option value="anime">🌸 Anime & Ghibli (Hoạt hình Nhật Bản)</option>
-                    <option value="cyberpunk">🌃 Cyberpunk Metropolis (Tương lai viễn tưởng)</option>
-                    <option value="comic_book">💥 Western Comic Book (Truyện tranh Marvel/DC)</option>
-                    <option value="3d_animation">🧸 3D Animation Pixar / Disney</option>
-                  </select>
-                </div>
-              </div>
-
-              <!-- Character Consistency & Reference Image (truyện chữ; nhân vật cố định từng người làm ở nút "Nhân vật" của Bước 2) -->
-              <div data-step1-kind="story" class="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 space-y-2.5">
-                <div class="flex items-center justify-between">
-                  <span class="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
-                    <i class="fa-solid fa-user-ninja text-indigo-600"></i> Cố định nhân vật (Character Consistency):
-                  </span>
-                  <select id="step1-char-preset-select" class="text-[11px] bg-white border border-indigo-200 rounded-lg px-2 py-1 text-indigo-950 font-semibold focus:border-indigo-500">
-                    <option value="custom" selected>🤖 Tự động theo truyện / Tùy chỉnh</option>
-                    <option value="murata_fighter">⚔️ Võ Giả Cuồng Nộ (Murata Martial Fighter)</option>
-                    <option value="spartan_leon">🏺 Dũng Tướng Leon (Thần Thoại Sparta)</option>
-                    <option value="paladin_kai">🛡️ Dũng Sĩ Kai (Giáp Bạc & Ngọc Lam)</option>
-                    <option value="roman_titus">🏛️ Chiến Binh Titus (Quân Đoàn La Mã)</option>
-                    <option value="kingdom_shin">🚩 Tướng Quân Shin (Kingdom)</option>
-                  </select>
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                  <input type="text" id="step1-char-name" placeholder="Tên nhân vật chính (để trống: AI tự trích xuất theo truyện)..." class="bg-white border border-slate-300 rounded-lg p-2 text-slate-800 font-medium focus:border-indigo-500" value="">
-                  <input type="text" id="step1-char-anchor" placeholder="Đặc điểm ngoại hình, trang phục, màu tóc... (để trống: AI tự nhận diện)" class="bg-white border border-slate-300 rounded-lg p-2 text-slate-800 text-[11px] focus:border-indigo-500" value="">
-                </div>
-
-                <!-- Character Reference Image Upload / Dropzone & URL Input -->
-                <div class="pt-2 border-t border-indigo-100/80 space-y-2">
-                  <div class="flex items-center justify-between text-xs">
-                    <span class="font-bold text-indigo-950 flex items-center gap-1.5 text-[11px]">
-                      <i class="fa-solid fa-image text-indigo-600"></i> Ảnh tham chiếu nhân vật (Character Reference Image):
-                    </span>
-                    <span class="text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 font-semibold">Meta Muse Face Anchor</span>
-                  </div>
-
-                  <!-- Dropzone -->
-                  <div id="step1-char-ref-dropzone" class="border-2 border-dashed border-indigo-200 hover:border-indigo-400 bg-white/90 hover:bg-white rounded-xl p-3 text-center cursor-pointer transition flex flex-col items-center justify-center gap-1 group">
-                    <input type="file" id="step1-char-ref-file-input" accept="image/*" class="hidden">
-                    <div class="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm group-hover:scale-110 transition-transform">
-                      <i class="fa-solid fa-cloud-arrow-up"></i>
-                    </div>
-                    <div class="text-[11px] font-semibold text-slate-700">
-                      Kéo thả ảnh mẫu nhân vật vào đây hoặc <span class="text-indigo-600 underline">chọn file từ máy</span>
-                    </div>
-                    <p class="text-[10px] text-slate-400">Hỗ trợ PNG, JPG, WebP — Meta Muse sẽ dùng ảnh này để khóa khuôn mặt và trang phục xuyên suốt mọi cảnh</p>
-                  </div>
-
-                  <!-- Preview Card (Hidden initially) -->
-                  <div id="step1-char-ref-preview-card" class="hidden bg-white border border-emerald-300 rounded-xl p-2.5 flex items-center justify-between gap-3 shadow-2xs">
-                    <div class="flex items-center gap-2.5 min-w-0">
-                      <img id="step1-char-ref-preview-img" src="" alt="Character Reference" class="w-12 h-12 rounded-lg object-cover border border-slate-200 shadow-2xs shrink-0">
-                      <div class="min-w-0">
-                        <div id="step1-char-ref-file-name" class="text-xs font-bold text-slate-800 truncate">character_reference.png</div>
-                        <div class="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
-                          <i class="fa-solid fa-circle-check text-emerald-600"></i> Sẵn sàng làm ảnh mẫu cố định nhân vật (Muse AI)
-                        </div>
-                      </div>
-                    </div>
-                    <button type="button" id="btn-step1-char-ref-remove" class="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition shrink-0" title="Gỡ bỏ ảnh tham chiếu">
-                      <i class="fa-solid fa-trash-can text-xs"></i>
-                    </button>
-                  </div>
-
-                  <!-- URL Input Alternative -->
-                  <div class="flex items-center gap-1.5 text-xs">
-                    <div class="relative flex-1">
-                      <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400 text-[10px]">
-                        <i class="fa-solid fa-link"></i>
-                      </div>
-                      <input type="text" id="step1-char-ref-url" placeholder="Hoặc dán URL ảnh tham chiếu (https://...)" class="w-full pl-7 pr-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-[11px] text-slate-800 focus:border-indigo-500 focus:outline-none">
-                    </div>
-                    <button type="button" id="btn-step1-char-ref-apply-url" class="px-2.5 py-1.5 bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 rounded-lg border border-slate-200 text-[11px] font-semibold transition shrink-0">
-                      Nạp URL
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <button id="btn-step1-process-script" class="w-full py-3.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl text-xs sm:text-sm font-extrabold shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 transition transform active:scale-98 cursor-pointer">
-              <i class="fa-solid fa-bolt-lightning text-amber-300 animate-bounce"></i>
+          <div class="ws-actions">
+            <button id="btn-step1-process-script" type="button" class="ws-btn ws-btn-primary">
               <span id="step1-process-label">⚡ Tạo dự án review truyện</span>
-              <i class="fa-solid fa-arrow-right ml-1"></i>
             </button>
           </div>
+        </div>
 
-          <!-- CARD B: COMIC & WEBTOON SLICER -->
-          <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:border-amber-400 hover:shadow-md transition flex flex-col justify-between space-y-4">
-            <div class="space-y-4">
-              <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 text-lg shadow-2xs">
-                    <i class="fa-solid fa-book-open"></i>
-                  </div>
-                  <div>
-                    <h3 class="font-bold text-slate-900 text-base">Nhập Ảnh Truyện Tranh (Comic Slicer)</h3>
-                    <p class="text-xs text-slate-500">OpenCV tự động nhận diện rãnh ngăn cách & bóc tách khung tranh</p>
-                  </div>
-                </div>
-                <span class="text-[11px] bg-amber-50 text-amber-800 font-bold px-2.5 py-1 rounded-full border border-amber-300">OpenCV AI</span>
-              </div>
-
-              <!-- Dropzone -->
-              <div id="step1-comic-dropzone" class="border-2 border-dashed border-amber-300 hover:border-amber-500 bg-amber-50/40 hover:bg-amber-50 rounded-2xl p-6 text-center cursor-pointer transition flex flex-col items-center justify-center gap-2">
-                <input type="file" id="step1-comic-file-input" accept="image/*" class="hidden">
-                <div class="w-10 h-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-lg shadow-inner">
-                  <i class="fa-solid fa-cloud-arrow-up"></i>
-                </div>
-                <div class="text-xs font-bold text-slate-800">
-                  Kéo thả ảnh Manga / Webtoon hoặc <span class="text-amber-700 underline">chọn file từ máy</span>
-                </div>
-                <div id="step1-comic-file-name" class="text-xs text-emerald-700 font-mono bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 hidden font-semibold"></div>
-              </div>
-
-              <!-- Slicer Settings -->
-              <div class="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <label class="text-slate-700 font-bold block mb-1">Định dạng tranh:</label>
-                  <select id="step1-comic-mode" class="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-800 font-medium focus:border-amber-500">
-                    <option value="grid" selected>📖 Grid Layout (Manga 1 trang)</option>
-                    <option value="strip">📜 Strip Layout (Webtoon dải dọc)</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="text-slate-700 font-bold block mb-1">Hướng đọc (Reading Order):</label>
-                  <select id="step1-comic-order" class="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-800 font-medium focus:border-amber-500">
-                    <option value="rtl" selected>⬅️ Phải sang Trái (Manga RTL)</option>
-                    <option value="ltr">➡️ Trái sang Phải (Comic LTR)</option>
-                  </select>
-                </div>
-              </div>
-
-              <!-- Sample Buttons -->
-              <div>
-                <label class="text-xs font-bold text-slate-700 block mb-1.5">Hoặc trải nghiệm ngay ảnh mẫu:</label>
-                <div class="flex items-center gap-2">
-                  <button type="button" id="btn-step1-sample-grid" class="flex-1 py-1.5 bg-slate-100 hover:bg-amber-50 text-slate-700 hover:text-amber-800 text-xs font-semibold rounded-lg border border-slate-200 transition">
-                    🖼️ Manga Grid mẫu (3 ô)
-                  </button>
-                  <button type="button" id="btn-step1-sample-strip" class="flex-1 py-1.5 bg-slate-100 hover:bg-amber-50 text-slate-700 hover:text-amber-800 text-xs font-semibold rounded-lg border border-slate-200 transition">
-                    📜 Webtoon Strip mẫu (3 cảnh)
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <button id="btn-step1-process-comic" class="w-full py-3 bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl text-xs font-bold shadow-md shadow-amber-600/20 flex items-center justify-center gap-2 transition transform active:scale-98 disabled:opacity-50" disabled>
-              <i class="fa-solid fa-scissors"></i>
-              <span>Cắt Khung Tranh & Sang Bước 2 (Bảng Đạo Diễn)</span>
-              <i class="fa-solid fa-arrow-right ml-1"></i>
+        <!-- Khối truyện tranh: hiện thay khối dán chữ khi chọn thẻ Truyện tranh -->
+        <div id="idea-comic-block" class="hidden">
+          <h2 class="ws-h2 ws-h2-gap">Ảnh trang truyện</h2>
+          <div id="step1-comic-dropzone" class="ws-dropzone">
+            <input type="file" id="step1-comic-file-input" accept="image/*" class="hidden">
+            <div>Kéo thả ảnh Manga hoặc Webtoon vào đây, hoặc <u>chọn file từ máy</u></div>
+            <div id="step1-comic-file-name" class="ws-note hidden"></div>
+          </div>
+          <div class="ws-idea-row">
+            <label class="ws-idea-field">
+              <span>Định dạng tranh</span>
+              <select id="step1-comic-mode" class="ws-select">
+                <option value="grid" selected>Grid Layout (Manga 1 trang)</option>
+                <option value="strip">Strip Layout (Webtoon dải dọc)</option>
+              </select>
+            </label>
+            <label class="ws-idea-field">
+              <span>Hướng đọc</span>
+              <select id="step1-comic-order" class="ws-select">
+                <option value="rtl" selected>Phải sang Trái (Manga RTL)</option>
+                <option value="ltr">Trái sang Phải (Comic LTR)</option>
+              </select>
+            </label>
+          </div>
+          <div class="ws-samples">
+            <span class="ws-note">Hoặc thử ảnh mẫu:</span>
+            <button type="button" id="btn-step1-sample-grid" class="ws-btn">Manga Grid mẫu (3 ô)</button>
+            <button type="button" id="btn-step1-sample-strip" class="ws-btn">Webtoon Strip mẫu (3 cảnh)</button>
+          </div>
+          <div class="ws-actions">
+            <button id="btn-step1-process-comic" type="button" class="ws-btn ws-btn-primary" disabled>
+              <span>Cắt khung tranh và sang trang Kịch bản</span>
             </button>
           </div>
+        </div>
+
+        <!-- Khối Tuỳ chọn: nằm sẵn ở đây (ẩn), openDrawer() dời vào ngăn kéo khi bấm "Tuỳ chọn" và trả lại khi đóng -->
+        <div id="idea-options-block" class="ws-drawer-src">
+          <div data-step1-kind="story" class="ws-idea-field">
+            <span>Nhịp độ cắt cảnh</span>
+            <select id="step1-pacing-select" class="ws-select">
+              <option value="fast" selected>Nhanh (3-4 giây mỗi cảnh)</option>
+              <option value="balanced">Cân bằng (5 giây mỗi cảnh)</option>
+              <option value="narrative">Tự sự (7 giây mỗi cảnh)</option>
+            </select>
+          </div>
+          <p data-step1-kind="case" class="ws-note hidden">Thể loại này chưa có tuỳ chọn nào thêm.</p>
         </div>
       </div>
-    </div>
-
     </section>
 
     <!-- ================= TRANG KỊCH BẢN VÀ GIỌNG ================= -->
@@ -1482,7 +1290,14 @@
   </div>
 
   <!-- Chỗ cất các ô nhập ẩn mà JS cần nhưng không trang nào hiện (các task sau dời vào) -->
-  <div id="ws-hidden-inputs" hidden></div>
+  <div id="ws-hidden-inputs" hidden>
+    <!-- Nguồn ảnh lúc tạo dự án truyện: giữ mặc định Muse (miễn phí); nguồn ảnh của dự án chọn ở trang Hình mẫu (spec 4.5) -->
+    <select id="step1-engine-select">
+      <option value="meta_muse_cloud" selected>Meta Muse Cloud (Free 2K)</option>
+      <option value="9router_gemini">9router: Gemini 3.1 Flash</option>
+      <option value="pollinations">Pollinations.ai</option>
+    </select>
+  </div>
 
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <symbol id="ws-i-film" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM7 5v14M17 5v14M3 9h4M3 15h4M17 9h4M17 15h4"/></symbol>
@@ -2245,6 +2060,7 @@
   <script src="/static/app.js?v=3.0.1"></script>
   <script src="/static/script_page.js?v=1.0.0"></script>
   <script src="/static/scenes_publish_page.js?v=1.0.0"></script>
+  <script src="/static/genres.js?v=1.0.0"></script>
   <script src="/static/true_crime.js?v=1.5.0"></script>
   <!-- Gói SEO YouTube ở Bước 4 (app.js gọi ytSeoLoad khi mở Bước 4) -->
   <script src="/static/youtube_seo.js?v=1.0.0"></script>

@@ -167,3 +167,37 @@ def test_startup_restore_skips_projects_gallery_accounts():
     i = app.index("const savedPage = rememberedPage(")
     assert "['projects', 'gallery', 'accounts'].includes(savedPage)" in app[i:i + 600]
     assert "10 tài khoản" not in app
+
+
+PLACEMENT |= {"idea-genre-cards": "idea", "idea-style-cards": "idea", "step1-content-kind": "idea",
+              "step1-script-textarea": "idea", "step1-style-select": "idea", "step1-language-select": "idea",
+              "step1-case-duration": "idea", "btn-step1-process-script": "idea", "step1-comic-dropzone": "idea",
+              "btn-step1-process-comic": "idea", "step1-pacing-select": "idea", "btn-idea-options": "idea"}
+
+
+def test_genres_declare_three_live_templates():
+    js = (ROOT / "backend" / "static" / "genres.js").read_text(encoding="utf-8")
+    for code in ("'story'", "'case'", "'comic'"):
+        assert f"code: {code}" in js
+    assert js.count("enabled: false") == 3
+
+
+def test_idea_page_engine_select_is_in_hidden_store():
+    assert inside(INDEX_HTML, "step1-engine-select", HIDDEN_STORE)
+
+
+def test_idea_page_options_drawer_holds_pacing():
+    assert inside(INDEX_HTML, "step1-pacing-select", "idea-options-block")
+
+
+def test_genres_loaded_between_app_and_true_crime_and_shipped():
+    h = INDEX_HTML
+    tag = lambda name: h.index(f'<script src="/static/{name}.js')
+    assert tag("app") < tag("genres") < tag("true_crime")
+    src = (ROOT / "tools" / "build_release.py").read_text(encoding="utf-8")
+    assert src.count("backend/static/genres.js") >= 2
+
+
+def test_genres_js_has_no_raw_text_in_html():
+    js = (ROOT / "backend" / "static" / "genres.js").read_text(encoding="utf-8")
+    assert "escapeHtml" in js and "window.projectGenre" in js and "window.renderGenreCards" in js
