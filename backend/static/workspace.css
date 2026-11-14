@@ -164,3 +164,21 @@ body[data-ws-page="scenes"] .ws-canvas-inner { padding-top: 16px; padding-bottom
   border: 1px solid #FDE68A; border-radius: 8px; padding: 8px 10px; }
 .ws-look-block { padding: 18px; margin-bottom: 16px; }
 .ws-look-intro { margin: 0 0 14px; font-size: 13px; color: var(--ws-mute); line-height: 1.6; }
+
+/* Trang Cảnh và trang Dựng và xuất bản */
+.ws-drawer-src { display: none; }
+.ws-drawer-body .ws-drawer-src { display: block; }
+.ws-scenes-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 0 0 12px; border-bottom: 1px solid var(--ws-line); margin-bottom: 12px; }
+.ws-scenes-bar > div:first-child { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ws-scenes-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ws-btn.hidden { display: none; }
+.ws-scenes-more-wrap { position: relative; }
+.ws-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; width: min(300px, 80vw); background: #fff;
+  border: 1px solid var(--ws-line); border-radius: 12px; padding: 12px; box-shadow: 0 6px 20px rgba(9, 9, 11, .08); }
+.ws-legacy-char { margin-bottom: 12px; padding: 8px 14px; flex-shrink: 0; }
+.ws-legacy-char > summary { cursor: pointer; font-size: 13px; color: var(--ws-mute); }
+.ws-publish-ready { margin-bottom: 20px; }
+.ws-publish-progress, .ws-publish-result { margin-bottom: 24px; }
+.ws-log-details { padding: 10px 14px; }
+.ws-log-details > summary { cursor: pointer; font-size: 13px; color: var(--ws-mute); margin-bottom: 8px; }

@@ -15,6 +15,12 @@ REMOVED: dict[str, str] = {
     "btn-location-sheets": "spec 4.2/4.1: Hình mẫu là một trang, không còn nút mở cửa sổ",
     "btn-close-character-sheets": "spec 4.2/4.1: Hình mẫu là một trang, không còn nút đóng cửa sổ",
     "btn-close-location-sheets": "spec 4.2/4.1: Hình mẫu là một trang, không còn nút đóng cửa sổ",
+    "btn-producer-goto-cinema": "spec 4.2: Bước 3 gộp vào trang Dựng, không cần nút sang rạp chiếu",
+    "btn-toggle-asset-accordion": "spec 4.1: nút Nâng cao không còn gì để mở",
+    "advanced-asset-accordion": "spec 4.1: nút Nâng cao không còn gì để mở",
+    "asset-accordion-body": "spec 4.1: nút Nâng cao không còn gì để mở",
+    "asset-accordion-chevron": "spec 4.1: nút Nâng cao không còn gì để mở",
+    "audio-settings-card": "spec 4.1: thẻ cấu hình dựng thành #render-settings trong ngăn Tuỳ chỉnh dựng",
 }
 
 # id do JS tự dựng lúc chạy (không có sẵn trong index.html). Task sau thêm vào đây.

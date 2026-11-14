@@ -92,3 +92,39 @@ PLACEMENT |= {"modal-character-sheets": "look", "modal-location-sheets": "look",
 
 def test_style_popover_warns_about_old_prompts():
     assert "Mô tả ảnh của các cảnh đã viết theo phong cách cũ" in INDEX_HTML
+
+
+PLACEMENT |= {"scene-list-container": "scenes", "btn-auto-gen-all": "scenes", "btn-climax-video-pick": "scenes",
+              "btn-climax-video-run": "scenes", "btn-regen-all-images": "scenes", "btn-preview-play-toggle": "scenes",
+              "btn-produce-from-board": "publish", "select-bgm": "publish", "select-transition": "publish",
+              "select-subtitle-style": "publish", "toggle-hardsub": "publish", "toggle-audio-ducking": "publish",
+              "cinema-video-player": "publish", "btn-yt-seo-generate": "publish",
+              "btn-scenes-more": "scenes", "btn-scenes-preview": "scenes", "btn-render-settings": "publish",
+              "render-settings": "publish", "bgm-upload-input": "publish", "producer-log-console": "publish"}
+
+
+def test_scenes_page_is_only_pictures_and_publish_page_holds_render_settings():
+    h = INDEX_HTML
+    assert inside(h, "btn-regen-all-images", "scenes-more-popover")
+    assert inside(h, "btn-preview-play-toggle", "scenes-preview-block")
+    assert inside(h, "select-bgm", "render-settings") and inside(h, "select-subtitle-style", "render-settings")
+    # Bước 3 thu gọn: nhật ký nằm trong <details>, nút Dựng không còn nằm trong cột phải cũ
+    assert inside(h, "producer-log-console", "publish-log-details")
+    assert not inside(h, "btn-produce-from-board", "step-view-2")
+    assert page_of(h, "board-asset-readiness") == "publish"
+
+
+def test_drawer_sources_are_hidden_on_page_but_shown_in_drawer():
+    css = (ROOT / "backend" / "static" / "workspace.css").read_text(encoding="utf-8")
+    assert ".ws-drawer-src" in css and ".ws-drawer-body .ws-drawer-src" in css
+    import re
+    for i in ("scenes-preview-block", "render-settings"):
+        tag = re.search(r'<[^>]*id="%s"[^>]*>' % i, INDEX_HTML).group(0)
+        assert "ws-drawer-src" in tag, i
+
+
+def test_scenes_publish_page_script_loaded_after_app_and_shipped():
+    h = INDEX_HTML
+    assert h.index("/static/app.js") < h.index("/static/scenes_publish_page.js")
+    src = (ROOT / "tools" / "build_release.py").read_text(encoding="utf-8")
+    assert src.count("backend/static/scenes_publish_page.js") >= 2

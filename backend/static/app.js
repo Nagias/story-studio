@@ -349,9 +349,6 @@ const DOM = {
   readinessVoiceCount: document.getElementById('readiness-voice-count'),
   readinessImageCount: document.getElementById('readiness-image-count'),
   readinessLabelBadge: document.getElementById('readiness-label-badge'),
-  btnToggleAssetAccordion: document.getElementById('btn-toggle-asset-accordion'),
-  assetAccordionBody: document.getElementById('asset-accordion-body'),
-  assetAccordionChevron: document.getElementById('asset-accordion-chevron'),
   btnRegenAllImages: document.getElementById('btn-regen-all-images'),
   btnRegenAllVoices: document.getElementById('btn-regen-all-voices'),
 
@@ -361,7 +358,6 @@ const DOM = {
   producerProgressBar: document.getElementById('producer-progress-bar'),
   producerTimerText: document.getElementById('producer-timer-text'),
   producerLogConsole: document.getElementById('producer-log-console'),
-  btnProducerGotoCinema: document.getElementById('btn-producer-goto-cinema'),
   producerStep1: document.getElementById('producer-step-1'),
   producerStep2: document.getElementById('producer-step-2'),
   producerStep3: document.getElementById('producer-step-3'),
@@ -1708,14 +1704,6 @@ function updateAssetReadiness() {
       labelElem.textContent = "Chưa đủ Asset";
     }
   }
-
-  // If all ready, keep advanced accordion collapsed by default to avoid confusion
-  const accordionBody = DOM.assetAccordionBody || document.getElementById('asset-accordion-body');
-  if (isAllReady && accordionBody && !accordionBody.dataset.userOpened) {
-    accordionBody.classList.add('hidden');
-    const chevron = DOM.assetAccordionChevron || document.getElementById('asset-accordion-chevron');
-    if (chevron) chevron.classList.remove('rotate-180');
-  }
 }
 
 function renderSettings() {
@@ -1904,24 +1892,6 @@ function bindEventListeners() {
 
   DOM.btnProduceFromBoard?.addEventListener('click', startProduceLongVideo);
   DOM.btnProduceLongVideo?.addEventListener('click', startProduceLongVideo);
-
-  // Asset Regeneration Accordion
-  DOM.btnToggleAssetAccordion?.addEventListener('click', () => {
-    const body = DOM.assetAccordionBody || document.getElementById('asset-accordion-body');
-    const chevron = DOM.assetAccordionChevron || document.getElementById('asset-accordion-chevron');
-    if (body) {
-      const isHidden = body.classList.contains('hidden');
-      if (isHidden) {
-        body.classList.remove('hidden');
-        body.dataset.userOpened = "true";
-        if (chevron) chevron.classList.add('rotate-180');
-      } else {
-        body.classList.add('hidden');
-        delete body.dataset.userOpened;
-        if (chevron) chevron.classList.remove('rotate-180');
-      }
-    }
-  });
 
   DOM.btnRegenAllImages?.addEventListener('click', handleRegenAllImages);
   DOM.btnRegenAllVoices?.addEventListener('click', handleRegenAllVoices);
@@ -3904,8 +3874,6 @@ async function startProduceLongVideo(opts) {
   AppState.produceState.logs = ["Bắt đầu quy trình sản xuất Video Dài (MoneyPrinterTurbo Stepper Pipeline)..."];
   AppState.produceState.startTime = Date.now();
 
-  if (DOM.btnProducerGotoCinema) DOM.btnProducerGotoCinema.disabled = true;
-
   // Start timer
   if (AppState.produceState.timerInterval) clearInterval(AppState.produceState.timerInterval);
   AppState.produceState.timerInterval = setInterval(() => {
@@ -4067,9 +4035,6 @@ function listenToProduceProgress(renderId) {
       }
       if (DOM.btnCinemaDownloadAss) {
         DOM.btnCinemaDownloadAss.href = `/api/projects/${AppState.currentProject.id}/download-ass`;
-      }
-      if (DOM.btnProducerGotoCinema) {
-        DOM.btnProducerGotoCinema.disabled = false;
       }
 
       showToast("🎉 Hoàn tất sản xuất Video Dài 1080p! Đang mở Rạp Chiếu Phim...", "success", 4000);
