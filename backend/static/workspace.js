@@ -1,6 +1,7 @@
 /**
  * Khung giao diện gọn: 8 trang, thanh bên thu gọn được, đường dẫn trang ở thanh trên, ô tìm cảnh, ngăn kéo bên phải.
- * Nạp trước app.js. Gắn lên window: showPage, onPageShow, openDrawer, closeDrawer, currentPage, rememberedPage.
+ * Nạp trước app.js. Gắn lên window: showPage, onPageShow, openDrawer, closeDrawer, currentPage, rememberedPage,
+ * renderCaseStrip (true_crime.js gọi mỗi lần vẽ tiến độ vụ án).
  * Dùng các global của app.js lúc chạy (không lúc nạp): AppState, selectScene, showToast, escapeHtml.
  * localStorage luôn đọc ghi trong try/catch: bị chặn thì trang vẫn chạy, chỉ không nhớ.
  */
@@ -65,6 +66,7 @@
     });
     document.body.dataset.wsPage = name;
     renderCrumb(name);
+    paintCaseStrip();
     const canvas = document.getElementById('ws-canvas');
     if (canvas) canvas.scrollTop = 0;
     const proj = project();
@@ -72,6 +74,43 @@
     for (const fn of hooks[name] || []) {
       try { fn(); } catch (err) { console.error(`Móc của trang ${name} bị lỗi:`, err); }
     }
+  }
+
+  // ---------- Vụ án đang theo dõi (chưa tạo dự án) ----------
+  // Dự án đang mở vẫn là dự án cũ (spec 5.2): trang Kịch bản ghi rõ điều đó, các trang Hình mẫu, Cảnh, Dựng có dải
+  // "Vụ mới đang phân tích NN%" bấm để về trang Kịch bản. Dữ liệu do true_crime.js đưa qua renderCaseStrip().
+  const CASE_BANNER_PAGES = ['look', 'scenes', 'publish'];
+  let caseStrip = { tracking: false, percent: null };
+
+  function paintCaseStrip() {
+    const note = document.getElementById('ws-case-note');
+    const banner = document.getElementById('ws-case-banner');
+    const tracking = caseStrip.tracking;
+    if (note) {
+      note.hidden = !(tracking && current === 'script');
+      if (!note.hidden) {
+        const proj = project();
+        const name = (proj && (proj.name || proj.id)) || 'chưa có tên';
+        const line = (shown) => 'Đang làm vụ mới. Dự án đang mở là «' + shown + '»: xem ở Hình mẫu, Cảnh, Dựng';
+        if (typeof escapeHtml === 'function') note.innerHTML = line(escapeHtml(String(name)));
+        else note.textContent = line(String(name));
+      }
+    }
+    if (banner) {
+      banner.hidden = !(tracking && CASE_BANNER_PAGES.includes(current));
+      if (!banner.hidden) {
+        const pct = caseStrip.percent === null ? '' : ' ' + caseStrip.percent + '%';
+        banner.textContent = 'Vụ mới đang phân tích' + pct + ': xem ở Kịch bản';
+      }
+    }
+  }
+
+  function renderCaseStrip(state) {
+    // percent null: chưa hỏi được tiến độ lần nào (vd. vừa tải lại trang, chưa mở trang Kịch bản)
+    const raw = state ? state.percent : null;
+    const percent = raw === null || raw === undefined ? NaN : Number(raw);
+    caseStrip = { tracking: !!(state && state.tracking), percent: Number.isFinite(percent) ? Math.round(percent) : null };
+    paintCaseStrip();
   }
 
   // ---------- Trang Hình mẫu ----------
@@ -255,6 +294,7 @@
     initKeys();
     initLookPage();
     document.getElementById('btn-ws-drawer-close')?.addEventListener('click', closeDrawer);
+    document.getElementById('ws-case-banner')?.addEventListener('click', () => showPage('script'));
   }
 
   window.showPage = showPage;
@@ -264,6 +304,7 @@
   window.currentPage = currentPage;
   window.renderLookStyleLine = renderLookStyleLine;
   window.rememberedPage = rememberedPage;
+  window.renderCaseStrip = renderCaseStrip;
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

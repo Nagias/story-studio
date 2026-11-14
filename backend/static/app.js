@@ -522,10 +522,8 @@ const DOM = {
   museFleetImageIndicator: document.getElementById('muse-fleet-image-indicator'),
   museFleetVideoIndicator: document.getElementById('muse-fleet-video-indicator'),
   museFleetConcurrency: document.getElementById('muse-fleet-concurrency'),
-  btnMuseRefreshAccounts: document.getElementById('btn-muse-refresh-accounts'),
-
-  // True Crime Studio: chỉ giữ modal (closeAllModals dùng); các phần tử khác do true_crime.js tự tra
-  modalTrueCrime: document.getElementById('modal-true-crime')
+  btnMuseRefreshAccounts: document.getElementById('btn-muse-refresh-accounts')
+  // Hồ Sơ Kỳ Án: các phần tử do true_crime.js tự tra (khối của vụ nằm trong trang Kịch bản)
 };
 
 // ================= API SERVICE LAYER =================
@@ -4129,9 +4127,7 @@ function closeAllModals() {
   DOM.modalComicSlicer?.classList.add('hidden');
   DOM.modalCharacterEditor?.classList.add('hidden');
   document.getElementById('modal-master-storyboard')?.classList.add('hidden');
-  // closeTrueCrimeModal (true_crime.js) còn dừng việc hỏi tiến độ phân tích
-  if (typeof closeTrueCrimeModal === 'function') closeTrueCrimeModal();
-  else DOM.modalTrueCrime?.classList.add('hidden');
+  // Hồ Sơ Kỳ Án không còn là cửa sổ (nằm trong trang Kịch bản): Esc không dừng việc hỏi tiến độ của vụ
 }
 
 // ================= OP_CTOOL MASTER STORYBOARD SPEC HANDLER =================

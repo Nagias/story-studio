@@ -234,3 +234,42 @@ body[data-ws-page="scenes"] .ws-canvas-inner { padding-top: 16px; padding-bottom
 .ws-dropzone:hover { border-color: var(--ws-ink); }
 [data-step1-kind].hidden, .ws-idea-field.hidden, .ws-note.hidden { display: none; }
 @media (max-width: 900px) { .ws-pick-grid-3, .ws-pick-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ---------- Hồ Sơ Kỳ Án trong trang Kịch bản (thẻ Dàn ý, Tên hư cấu, giọng của vụ) ----------
+   Khối và mẫu HTML do true_crime.js vẽ còn lớp Tailwind tông tối của cửa sổ cũ; trong .ws-case đổi về tông sáng của
+   vùng làm việc. Bảng ghim (gỗ, bần) và chú thích của nó giữ nguyên màu. */
+.ws-case { color: var(--ws-body); }
+.ws-case [class*="bg-slate-9"], .ws-case [class*="bg-slate-8"], .ws-case [class*="bg-slate-7"] { background: #fff; }
+.ws-case [class*="bg-slate-900"], .ws-case thead[class*="bg-slate-9"] { background: var(--ws-soft); }
+.ws-case [class*="border-slate-"] { border-color: var(--ws-line); }
+.ws-case .text-white, .ws-case .text-slate-100, .ws-case .text-slate-200 { color: var(--ws-ink); }
+.ws-case .text-slate-300 { color: var(--ws-body); }
+.ws-case .text-slate-400, .ws-case .text-slate-500 { color: var(--ws-mute); }
+.ws-case .text-amber-400, .ws-case .text-amber-300, .ws-case [class*="text-amber-300/"] { color: #B45309; }
+.ws-case .text-amber-200 { color: #92400E; }
+.ws-case .text-emerald-400, .ws-case .text-emerald-300, .ws-case .text-emerald-200 { color: #047857; }
+.ws-case .text-rose-400, .ws-case .text-rose-300, .ws-case .text-rose-200, .ws-case .text-red-300 { color: #B91C1C; }
+.ws-case [class*="bg-[#2d161a]"] { background: #FEF2F2; border-color: #FECACA; }
+.ws-case [class*="bg-[#2c2214]"], .ws-case [class*="bg-amber-500/"] { background: #FFFBEB; border-color: #FDE68A; }
+.ws-case [class*="bg-[#14261e]"] { background: #ECFDF5; border-color: #A7F3D0; }
+.ws-case input, .ws-case select, .ws-case textarea { color: var(--ws-body); }
+.ws-case [class*="hover:bg-slate-"]:hover { background: var(--ws-soft); }
+.ws-case .bg-emerald-600, .ws-case .bg-amber-600 { color: #fff; }
+.ws-case .h-2.rounded-full.bg-slate-800 { background: #E4E4E7; }   /* rãnh thanh tiến độ */
+.ws-case #tc-canvas-tooltip { background: rgba(2, 6, 23, .95); color: #F1F5F9; }
+.ws-case #tc-canvas-tooltip #tc-tooltip-title { color: #FCD34D; }
+.ws-case #tc-canvas-tooltip #tc-tooltip-body { color: #CBD5E1; }
+.ws-case > * + * { margin-top: 12px; }
+.ws-case-create { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
+  margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--ws-line); font-size: 13px; color: var(--ws-mute); }
+.ws-case-hint { display: inline-flex; align-items: center; gap: 8px; }
+.ws-btn:disabled { opacity: .5; cursor: default; }
+.ws-case-note { margin: -14px 0 16px; font-size: 13px; color: var(--ws-nav); background: var(--ws-soft);
+  border-radius: 8px; padding: 8px 12px; }
+.ws-case-banner { display: block; width: 100%; text-align: left; margin-bottom: 12px; padding: 8px 12px;
+  border: 1px solid #FDE68A; background: #FFFBEB; color: #92400E; border-radius: 8px; font: inherit; font-size: 13px;
+  font-weight: 500; cursor: pointer; }
+.ws-case-banner:hover { background: #FEF3C7; }
+.ws-case-error { margin: 6px 0 0; font-size: 13px; color: #B91C1C; background: #FEF2F2; border: 1px solid #FECACA;
+  border-radius: 8px; padding: 6px 10px; }
+.ws-case-error.hidden, .ws-case-idea.hidden { display: none; }

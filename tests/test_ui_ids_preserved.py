@@ -52,3 +52,7 @@ REMOVED |= {i: "spec 4.2: nhân vật chính kiểu cũ, app tự bỏ khi có b
     "step1-char-ref-url", "btn-step1-char-ref-apply-url", "btn-step1-char-ref-remove", "step1-char-ref-dropzone",
     "step1-char-ref-preview-card", "step1-char-ref-preview-img", "step1-char-ref-file-name")}
 REMOVED |= {"btn-step1-open-true-crime": "spec 4.2: không còn cửa sổ Hồ Sơ Kỳ Án để mở"}
+REMOVED |= {"modal-true-crime": "spec 4.2: Hồ Sơ Kỳ Án vào trang Kịch bản",
+            "btn-open-true-crime-modal": "như trên", "btn-close-true-crime-modal": "như trên",
+            "btn-cancel-true-crime-modal": "như trên", "btn-tc-analyze": "spec 4.2: trùng nút chính trang Ý tưởng",
+            "btn-tc-sample-1": "spec 4.2: nút mẫu gỡ hẳn", "btn-tc-sample-2": "như trên", "btn-tc-sample-3": "như trên"}

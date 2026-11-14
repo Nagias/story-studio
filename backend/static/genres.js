@@ -141,6 +141,7 @@
   window.GENRES = GENRES;
   window.projectGenre = projectGenre;
   window.renderGenreCards = renderGenreCards;
+  window.pickGenre = pickGenre;   // nút "Phân tích vụ khác" (true_crime.js) chọn lại thẻ Vụ án có thật
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

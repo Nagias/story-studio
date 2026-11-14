@@ -1,4 +1,4 @@
-/* ================= TRUE CRIME STUDIO (modal Hồ Sơ Kỳ Án, spec 7.9) =================
+/* ================= TRUE CRIME STUDIO (Hồ Sơ Kỳ Án: thẻ Dàn ý, Tên hư cấu của trang Kịch bản, spec 7.9) =================
  * Luồng: dán vụ án -> POST /api/true-crime/analyze -> hỏi tiến độ mỗi 2 giây -> dàn ý xong thì máy chủ dừng chờ
  * duyệt (status "review"): màn duyệt dàn ý (đổi loại nhịp, số cảnh, tóm tắt, chuyển sự việc giữa các nhịp, thêm/xoá
  * nhịp; PUT .../outline, POST .../outline/approve) -> hỏi tiến độ tiếp -> màn xem lại kế hoạch (bảng tên,
@@ -9,13 +9,17 @@
  * - Mỗi nút hành động bị khoá trong lúc request của nó đang chạy, nên bấm hai lần không gửi hai request.
  * - Các thao tác sửa kế hoạch (tên, lời kể) và tạo dự án chạy nối tiếp nhau (tcEnqueue), nên kế hoạch đang vẽ luôn là
  *   bản máy chủ trả về sau cùng.
- * - case_id đang theo dõi được nhớ trong localStorage: đóng modal hay tải lại trang, mở lại vẫn thấy tiến độ hoặc màn
- *   xem lại. Quên khi đã tạo dự án, khi bấm "Phân tích vụ khác", hoặc khi máy chủ không còn vụ đó.
+ * - case_id đang theo dõi được nhớ trong localStorage: sang trang khác hay tải lại trang, về trang Kịch bản vẫn thấy
+ *   tiến độ hoặc màn xem lại (tải lại trang không có ?project_id thì app tự mở trang Kịch bản). Quên khi đã tạo dự
+ *   án, khi bấm "Phân tích vụ khác", hoặc khi máy chủ không còn vụ đó.
+ * - Trang Kịch bản thay cho cửa sổ cũ (giao diện gọn, spec 5.2): TrueCrimeState.modalOpen nghĩa là trang Kịch bản
+ *   đang mở; sang trang khác thì dừng hỏi tiến độ. Hai thẻ Dàn ý, Tên hư cấu chỉ hiện khi đang theo dõi một vụ chưa
+ *   tạo dự án (tcSyncCaseTabs); khi đó thẻ Lời kể ẩn và thẻ Giọng đọc hiện hai ô giọng của vụ.
  * - Kế hoạch có tên thật (bible.entities[].real_names, một số cảnh báo): đó là dữ liệu của chính người dùng trên máy họ,
  *   chỉ hiện ở màn xem lại. create-project chỉ gửi ngôn ngữ, giọng, phong cách và engine hình.
- * - Bảng ghim trong modal vẽ từ bản sao evidence/relations của kế hoạch (chỉ nhãn, không có mô tả), không sửa kế
+ * - Bảng ghim vẽ từ bản sao evidence/relations của kế hoạch (chỉ nhãn, không có mô tả), không sửa kế
  *   hoạch và không gửi gì lên máy chủ.
- * - Nút "Tạo bản tiếng Anh" trên thanh đầu trang (dự án true-crime bản Việt): xem mục TẠO BẢN TIẾNG ANH. app.js gọi
+ * - Nút "Tạo bản tiếng Anh" ở trang Dựng và xuất bản (dự án true-crime bản Việt): xem mục TẠO BẢN TIẾNG ANH. app.js gọi
  *   refreshLanguageVersionButton(project) mỗi lần vẽ lại giao diện (renderFullUI).
  * Dùng các global của app.js: DOM, AppState, showToast, escapeHtml, switchProject, switchStep, loadProjectsList,
  * flushProjectSave.
@@ -44,20 +48,6 @@ const TC_VISUAL_LABELS = { image: 'Ảnh', video: 'Video', board: 'Bảng ghim',
 const TC_FLAG_LABELS = {
   unknown_name: 'Tên thật chưa có tên thay thế', date: 'Ngày tháng cụ thể', missing_text: 'Thiếu lời kể',
   bad_reveal: 'Bảng ghim nhắc tới mục không có'
-};
-
-// Hồ sơ mẫu: chỉ nạp chữ vào ô nhập, không tự phân tích.
-const TC_SAMPLES = {
-  sample1: `Đêm mưa bão ngày 14/10, tại căn biệt thự ven biển Cảng Tân Hải (Hải Phòng), đại gia ngành đóng tàu Chu Doãn (58 tuổi) được phát hiện tử vong tại phòng đọc sách tầng 2. Tử thi nằm gục bên bàn cờ tướng, cạnh một chén trà sen còn ấm có độc thạch tín nồng độ cao. Két sắt âm tường bị mở toang, mất tích bức tượng Phật ngọc cổ trị giá hơn 20 tỷ đồng.
-Khám nghiệm hiện trường cho thấy không có dấu vết cạy phá cửa hay trèo ban công. Các nhân vật liên quan gồm:
-1. Lữ Bách (Kế toán trưởng): Nợ cờ bạc hơn 5 tỷ đồng, bị ông Chu Doãn dọa báo công an vì biển thủ quỹ 3 ngày trước.
-2. Mai Thục (Giúp việc 12 năm): Người duy nhất được giao pha trà sen mỗi tối và biết mật mã mở cửa phòng sách, tuy nhiên có bằng chứng camera đi siêu thị từ 21h30 đến 22h15.
-3. Chu Cường (Con trai thứ): Mâu thuẫn gay gắt do bị tước quyền thừa kế trong bản di chúc mới.
-Đặc biệt, bảo vệ cổng xác nhận lúc 22h15 có một chiếc taxi mang biển kiểm soát 15A-882.19 đón một người mặc áo mưa trùm kín đầu vội vã rời cổng phụ...`,
-  sample2: `Đêm 28/08, giám đốc kiểm toán tài chính Trịnh Văn Hoàng rơi từ ban công tầng 13 tòa tháp đôi thương mại xuống đất tử vong. Toàn bộ máy chủ và máy tính cá nhân bị cài mã độc wipe sạch dữ liệu lúc 23h30.
-Trước khi tử vong 15 phút, thẻ quẹt ra vào an ninh ghi nhận kỹ sư phần mềm Lê Quốc Tuấn có mặt tại tầng 13. Tuy nhiên Tuấn xuất trình hóa đơn thanh toán quán bar ở quận 3 cùng lúc đó. Tại hiện trường, cảnh sát thu giữ mảnh giấy bị xé vội ghi dãy số bí ẩn '70-30-DELTA' và chiếc USB bị bẻ đôi giấu trong chậu cây cảnh phòng họp...`,
-  sample3: `Rạng sáng ngày 03/11, công nhân cạo mủ cao su bàng hoàng phát hiện một chiếc xe máy SH bỏ lại vệ đường ven rừng cao su xã An Lập. Cách đó 50m là áo mưa màu vàng dính bùn đỏ và chiếc bật lửa Zippo vàng khắc chữ 'V.K'.
-Nạn nhân là thương lái nông sản Vũ Khang, mất tích 2 ngày trước cùng vali tiền mặt 1,2 tỷ mang đi thu mua sầu riêng. Bác sĩ pháp y xác định nạn nhân bị siết cổ từ phía sau. Dấu vết lốp xe tải loại 1,5 tấn quay đầu gấp để lại vết phanh trượt dài trên nền đất ẩm...`
 };
 
 const TrueCrimeState = {
@@ -222,13 +212,6 @@ function tcRefreshButtons() {
   const busy = name => s.busy.has(name);
   const failed = s.progress?.status === 'failed';
 
-  const analyze = tcEl('btn-tc-analyze');
-  if (analyze) {
-    analyze.disabled = !!s.caseId || busy('analyze');
-    analyze.title = s.caseId ? 'Đang theo dõi một vụ án. Bấm "Phân tích vụ khác" để bắt đầu vụ mới.' : '';
-    tcSetBusyLabel(analyze, busy('analyze'), 'Đang gửi vụ án...');
-  }
-
   const resume = tcEl('btn-tc-resume');
   if (resume) {
     resume.classList.toggle('hidden', !failed);
@@ -289,7 +272,7 @@ function tcRenderCreateHint() {
   if (!plan && TrueCrimeState.caseId) {
     const status = TrueCrimeState.progress?.status;
     text = status === 'failed' ? 'Phân tích bị dừng: bấm "Thử lại" để chạy tiếp từ bước bị dừng.'
-      : status === 'review' ? 'Dàn ý đang chờ bạn duyệt (cột bên phải); duyệt xong máy chủ mới viết lời kể.'
+      : status === 'review' ? 'Dàn ý đang chờ bạn duyệt (thẻ Dàn ý); duyệt xong máy chủ mới viết lời kể.'
         : 'Đang phân tích; xong mới tạo được dự án.';
   } else if (plan) {
     const flagged = tcSortedScenes(plan).filter(s => (s.flags || []).length).map(s => s.order);
@@ -324,18 +307,6 @@ function tcUpdateWordCount() {
   counter.textContent = `${tcWordCount(text)} từ • ${text.length} ký tự${tooLong ? ' (quá 200.000 ký tự)' : ''}`;
   counter.classList.toggle('text-rose-300', tooLong);
   counter.classList.toggle('text-slate-400', !tooLong);
-}
-
-function tcLoadSample(key) {
-  const text = TC_SAMPLES[key];
-  const input = tcEl('tc-case-text');
-  if (!text || !input) return;
-  const current = input.value;
-  if (current.trim() && current !== text && !window.confirm('Thay nội dung đang có trong ô bằng hồ sơ mẫu?')) return;
-  input.value = text;
-  tcUpdateWordCount();
-  tcShowInputError('');
-  showToast('Đã nạp hồ sơ mẫu vào ô nhập. Bấm "Phân tích hồ sơ" khi sẵn sàng.', 'info');
 }
 
 // ================= GIỌNG ĐỌC =================
@@ -377,7 +348,7 @@ function tcLoadVoices() {
       tcFillVoiceSelect(viSelect, vi, viDefault && String(viDefault));
       tcFillVoiceSelect(enSelect, en, enDefault && String(enDefault));
     } catch (err) {
-      TrueCrimeState.voicesPromise = null;     // lần mở modal sau thử lại
+      TrueCrimeState.voicesPromise = null;     // lần mở trang Kịch bản sau thử lại
       [viSelect, enSelect].forEach(select => tcFillVoiceSelect(select, [], ''));
       showToast(`Không tải được danh sách giọng: ${tcEsc(err.message)}`, 'warning', 6000);
     }
@@ -405,7 +376,7 @@ async function tcAnalyze() {
       const res = await tcFetch(`${TC_API}/analyze`, { method: 'POST', body });
       if (!res || !res.case_id) throw new Error('Máy chủ không trả mã vụ án.');
       tcFollowCase(res.case_id);
-      showToast('Đã gửi vụ án cho máy chủ phân tích. Có thể đóng modal; mở lại sẽ thấy tiến độ.', 'info', 6000);
+      showToast('Đã gửi vụ án cho máy chủ phân tích. Có thể sang trang khác; về trang Kịch bản sẽ thấy tiến độ.', 'info', 6000);
     } catch (err) {
       tcShowInputError(err.message);
       showToast(`Không bắt đầu phân tích được: ${tcEsc(err.message)}`, 'error', 7000);
@@ -413,8 +384,9 @@ async function tcAnalyze() {
   });
 }
 
-// Lối vào chung ở Bước 1 (luồng chung truyện chữ và vụ án, 03/11/2026): chép bài, số phút, phong cách vào ô của cửa
-// sổ này rồi gửi phân tích như nút "Phân tích"; cửa sổ mở để theo dõi tiến độ, duyệt dàn ý và bảng tên.
+// Lối vào chung ở trang Ý tưởng (luồng chung truyện chữ và vụ án, 03/11/2026): chép bài, số phút, phong cách vào các
+// ô ẩn của vụ án rồi gửi phân tích; trang Kịch bản mở để theo dõi tiến độ, duyệt dàn ý và bảng tên. Gửi không được thì
+// về trang Ý tưởng, nơi có ô báo lỗi gửi bài (#tc-input-error).
 async function tcStartFromStep1({ text, minutes, style }) {
   openTrueCrimeModal();
   if (TrueCrimeState.caseId) {
@@ -429,6 +401,7 @@ async function tcStartFromStep1({ text, minutes, style }) {
   const styleSelect = tcEl('tc-visual-style');
   if (styleSelect && [...styleSelect.options].some(o => o.value === style)) styleSelect.value = style;
   await tcAnalyze();
+  if (!TrueCrimeState.caseId && typeof showPage === 'function') showPage('idea');
   return Boolean(TrueCrimeState.caseId);
 }
 window.tcStartFromStep1 = tcStartFromStep1;
@@ -477,7 +450,15 @@ function tcNewCase() {
   if (!window.confirm(message)) return;
   tcDetach();
   tcShowInputError('');
-  tcEl('tc-case-text')?.focus();
+}
+
+// Nút "Phân tích vụ khác": thôi theo dõi vụ hiện tại (hỏi trước) rồi về trang Ý tưởng, thể loại Vụ án có thật.
+function tcNewCaseFromButton() {
+  tcNewCase();
+  if (TrueCrimeState.caseId) return;
+  if (typeof window.pickGenre === 'function') window.pickGenre('case');
+  if (typeof showPage === 'function') showPage('idea');
+  tcEl('step1-script-textarea')?.focus();
 }
 
 function tcStopPolling() {
@@ -621,7 +602,28 @@ function tcRenderProgress() {
   }
   const caseLabel = tcEl('tc-progress-case');
   if (caseLabel) caseLabel.textContent = s.caseId ? `Mã vụ: ${s.caseId}` : '';
+  tcSyncCaseTabs();
+  if (typeof window.renderCaseStrip === 'function') window.renderCaseStrip({ tracking: !!s.caseId, percent: p ? percent : null });
   tcRefreshButtons();
+}
+
+// Thẻ của vụ trong trang Kịch bản: chỉ hiện khi đang theo dõi một vụ chưa tạo dự án. Khi đó thẻ "Lời kể từng cảnh"
+// (của dự án đang mở) ẩn và thẻ Giọng đọc hiện hai ô giọng của vụ thay cho ô giọng của dự án, để không có hai chỗ sửa
+// lời hay hai ô giọng cùng hiện. tcDetach() (tạo xong dự án, Phân tích vụ khác) trả lại như cũ.
+function tcSyncCaseTabs() {
+  const tracking = !!TrueCrimeState.caseId;
+  const tab = name => document.querySelector(`#script-tabs [data-tab="${name}"]`);
+  ['outline', 'names'].forEach(name => { const t = tab(name); if (t) t.hidden = !tracking; });
+  const lines = tab('lines');
+  if (lines) lines.hidden = tracking;
+  const caseVoice = tcEl('script-case-voice');
+  if (caseVoice) caseVoice.hidden = !tracking;
+  const projectVoice = tcEl('script-project-voice');
+  if (projectVoice) projectVoice.hidden = tracking;
+  const selected = document.querySelector('#script-tabs [data-tab][aria-selected="true"]');
+  if (typeof window.showScriptTab === 'function' && (!selected || selected.hidden)) {
+    window.showScriptTab(tracking ? 'outline' : 'lines');
+  }
 }
 
 // Lỗi tạm thời (mất kết nối...) trong lúc vẫn theo dõi: hiện ở ô lỗi của khối tiến độ.
@@ -1040,7 +1042,7 @@ async function tcApproveOutline() {
       tcRenderProgress();
       tcRenderReview();
       tcStartPolling();
-      showToast('Đã duyệt dàn ý. Máy chủ đang viết lời kể từng nhịp; có thể đóng modal, mở lại sẽ thấy tiến độ.', 'success', 7000);
+      showToast('Đã duyệt dàn ý. Máy chủ đang viết lời kể từng nhịp; có thể sang trang khác, về trang Kịch bản sẽ thấy tiến độ.', 'success', 7000);
     } catch (err) {
       if (caseId !== TrueCrimeState.caseId) return;
       tcOutlineRequestFailed(err, 'Không duyệt được dàn ý');
@@ -1501,11 +1503,11 @@ async function tcCreateVietnameseProject() {
     tcDetach();        // dự án đã có trên máy chủ và đã mở xong: thôi theo dõi vụ án này
     closeTrueCrimeModal();
     switchStep(2);
-    showToast('Đã tạo dự án bản Việt và chuyển sang Bảng Đạo Diễn (Bước 2).', 'success', 6000);
+    showToast('Đã tạo dự án bản Việt và chuyển sang trang Cảnh.', 'success', 6000);
   }));
 }
 
-// ================= TẠO BẢN TIẾNG ANH (nút trên thanh đầu trang) =================
+// ================= TẠO BẢN TIẾNG ANH (nút ở trang Dựng và xuất bản) =================
 // Chỉ hiện ở dự án true-crime bản Việt (metadata.case_id có giá trị và metadata.language === 'vi'). Bấm: lưu dự án,
 // gửi job tạo bản Anh (dùng lại ảnh và video, đổi lời kể và giọng), hỏi trạng thái job mỗi 2 giây rồi mở dự án mới.
 // - Mỗi dự án gốc chỉ có một job tại một thời điểm: giao diện đăng ký ngay lúc bấm (trước mọi await) và chỉ gỡ khi job
@@ -1517,7 +1519,7 @@ async function tcCreateVietnameseProject() {
 
 const TC_LANG_JOBS = new Map();     // id dự án gốc -> {jobId, timer, retrying, failures, startedAt}
 const TC_LANG_CHECKED = new Set();  // dự án đã hỏi máy chủ việc đang chạy (một lần cho mỗi lần tải trang)
-const TC_LANG_LABEL_CLASS = 'hidden 2xl:inline text-[11px]';   // như chữ của nút trong index.html
+const TC_LANG_LABEL_CLASS = '';   // chữ của nút luôn hiện (nút thường ở trang Dựng)
 
 function tcLanguageEligible(project) {
   const meta = project && project.metadata;
@@ -2106,12 +2108,12 @@ const EvidenceBoardRenderer = {
   }
 };
 
-// ================= MỞ / ĐÓNG MODAL =================
+// ================= TRANG KỊCH BẢN (thay cửa sổ cũ) =================
+// openTrueCrimeModal giữ tên cho các chỗ gọi cũ: chuyển sang trang Kịch bản, thẻ Dàn ý. Phần nạp (giọng, vụ lưu trong
+// localStorage, tiến độ, màn duyệt, hỏi tiến độ, bảng ghim) chạy mỗi lần trang Kịch bản mở (tcOnScriptPageShow), nên
+// vào trang bằng thanh bên cũng theo dõi tiếp. Trang khác mở thì closeTrueCrimeModal dừng hỏi tiến độ.
 
-function openTrueCrimeModal() {
-  const modal = tcEl('modal-true-crime');
-  if (!modal) return;
-  modal.classList.remove('hidden');
+function tcOnScriptPageShow() {
   TrueCrimeState.modalOpen = true;
   tcLoadVoices();
   if (!TrueCrimeState.caseId) {
@@ -2124,11 +2126,27 @@ function openTrueCrimeModal() {
   requestAnimationFrame(() => EvidenceBoardRenderer.render());
 }
 
+function openTrueCrimeModal() {
+  if (typeof showPage !== 'function') return;
+  if (!TrueCrimeState.caseId) {
+    const stored = tcReadCaseId();
+    if (stored) TrueCrimeState.caseId = stored;
+  }
+  showPage('script');
+  if (TrueCrimeState.caseId && typeof window.showScriptTab === 'function') window.showScriptTab('outline');
+}
+
 function closeTrueCrimeModal() {
-  tcEl('modal-true-crime')?.classList.add('hidden');
   TrueCrimeState.modalOpen = false;
   tcStopPolling();
   EvidenceBoardRenderer.hideTooltip();
+}
+
+if (typeof onPageShow === 'function') {
+  onPageShow('script', tcOnScriptPageShow);
+  ['idea', 'look', 'scenes', 'publish', 'projects', 'gallery', 'accounts'].forEach(page => {
+    onPageShow(page, closeTrueCrimeModal);
+  });
 }
 
 let tcInitialized = false;
@@ -2138,17 +2156,9 @@ function initTrueCrimeStudio() {
   tcInitialized = true;
   const on = (id, event, handler) => tcEl(id)?.addEventListener(event, handler);
 
-  on('btn-open-true-crime-modal', 'click', openTrueCrimeModal);
-  on('btn-close-true-crime-modal', 'click', closeTrueCrimeModal);
-  on('btn-cancel-true-crime-modal', 'click', closeTrueCrimeModal);
-
-  document.querySelectorAll('#modal-true-crime [data-tc-sample]').forEach(btn => {
-    btn.addEventListener('click', () => tcLoadSample(btn.dataset.tcSample));
-  });
   on('tc-case-text', 'input', tcUpdateWordCount);
-  on('btn-tc-analyze', 'click', tcAnalyze);
   on('btn-tc-resume', 'click', tcResume);
-  on('btn-tc-new-case', 'click', tcNewCase);
+  on('btn-tc-new-case', 'click', tcNewCaseFromButton);
   on('tc-outline-parts', 'input', tcOnOutlineInput);
   on('tc-outline-parts', 'change', tcOnOutlineChange);
   on('tc-outline-parts', 'click', tcOnOutlineClick);
@@ -2176,12 +2186,21 @@ function initTrueCrimeStudio() {
   const canvas = tcEl('tc-evidence-canvas');
   if (canvas) EvidenceBoardRenderer.init(canvas);
   tcUpdateWordCount();
+  // Vụ đang theo dõi (localStorage): hiện thẻ của vụ và dải báo ngay, kể cả khi trang mở đầu không phải Kịch bản;
+  // chỉ hỏi tiến độ khi trang Kịch bản mở
+  if (!TrueCrimeState.caseId) TrueCrimeState.caseId = tcReadCaseId();
   tcRenderProgress();
   tcRenderReview();
 
+  // Tải lại trang khi đang theo dõi một vụ chưa tạo dự án (vụ lưu trong localStorage) và URL không chỉ định dự án:
+  // mở trang Kịch bản để theo dõi tiếp (spec Review Focus 2). #true-crime, ?mode=, ?view=true-crime cũng mở trang này.
   const urlParams = new URLSearchParams(window.location.search);
-  if (window.location.hash === '#true-crime' || urlParams.get('mode') === 'true-crime' || urlParams.get('view') === 'true-crime') {
-    setTimeout(openTrueCrimeModal, 150);
+  const askedForCase = window.location.hash === '#true-crime' || urlParams.get('mode') === 'true-crime' ||
+    urlParams.get('view') === 'true-crime';
+  if (askedForCase || (tcReadCaseId() && !urlParams.get('project_id'))) {
+    openTrueCrimeModal();
+  } else if (typeof currentPage === 'function' && currentPage() === 'script') {
+    tcOnScriptPageShow();   // trang Kịch bản đã mở trước khi bảng ghim sẵn sàng: vẽ lại
   }
 }
 

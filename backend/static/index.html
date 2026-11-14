@@ -151,7 +151,7 @@
   <!-- Tailwind CSS build cục bộ (tools/tailwind, bản 3.4.17), đặt cuối head giống thứ tự của bản CDN cũ -->
   <link rel="stylesheet" href="/static/tailwind.css?v=2026-10-21a">
   <!-- Khung giao diện gọn (thanh bên, thanh trên, trang, ngăn kéo); nạp sau Tailwind để đè lên -->
-  <link rel="stylesheet" href="/static/workspace.css?v=1.0.0">
+  <link rel="stylesheet" href="/static/workspace.css?v=1.1.0">
 </head>
 
 <body class="ws-app">
@@ -194,14 +194,6 @@
             <i class="fa-solid fa-microphone-lines text-[9px]"></i>
             <span id="header-voice-name">🇻🇳 Nam Minh</span>
           </span>
-          <button id="btn-open-true-crime-modal" class="ws-icon-btn" title="🕵️ Hồ Sơ Kỳ Án (True Crime Studio) - Chuyển thể vụ án có thật thành truyện song ngữ Việt/Anh">
-            <span class="relative flex h-2 w-2">
-              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
-              <span class="relative inline-flex rounded-full h-2 w-2 bg-red-600"></span>
-            </span>
-            <i class="fa-solid fa-user-secret text-red-400 text-xs"></i>
-            <span class="hidden min-[1600px]:inline text-[11px]">🕵️ Hồ Sơ Kỳ Án</span>
-          </button>
           <button type="button" id="btn-muse-cloud-status" class="ws-muse-status" data-state="online" title="Trạng thái Muse Fleet. Bấm để mở trang Tài khoản và kết nối">
             <span id="header-muse-status-dot" class="relative flex h-2 w-2"><span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span></span>
             <span>Muse:</span>
@@ -224,10 +216,6 @@
             <i class="fa-solid fa-floppy-disk text-slate-500 text-xs"></i>
             <span class="text-[11px]">Lưu</span>
           </button>
-          <button id="btn-create-en-version" class="hidden ws-icon-btn" title="Tạo bản tiếng Anh: dùng lại ảnh và video, đổi sang lời kể và giọng đọc tiếng Anh">
-            <i class="fa-solid fa-language text-emerald-600 text-xs"></i>
-            <span class="hidden 2xl:inline text-[11px]">Tạo bản tiếng Anh</span>
-          </button>
           <button id="btn-produce-long-video" class="ws-icon-btn ws-icon-btn-strong">
             <i class="fa-solid fa-wand-magic-sparkles animate-pulse text-[11px]"></i>
             <span>Sản Xuất Video Dài</span>
@@ -239,6 +227,8 @@
       <div class="ws-work">
         <main id="ws-canvas" class="ws-canvas">
           <div class="ws-canvas-inner">
+            <!-- Dải "Vụ mới đang phân tích" trên Hình mẫu, Cảnh, Dựng (workspace.js; chỉ khi đang theo dõi vụ chưa tạo dự án) -->
+            <button type="button" id="ws-case-banner" class="ws-case-banner" hidden></button>
 
     <!-- ================= TRANG Ý TƯỞNG ================= -->
     <section id="page-idea" data-page="idea" class="ws-page" hidden>
@@ -268,6 +258,10 @@
           </div>
           <div class="ws-idea-count"><span id="step1-word-count">0 từ</span></div>
           <textarea id="step1-script-textarea" rows="10" class="ws-idea-textarea" placeholder="Dán nội dung truyện chữ vào đây."></textarea>
+          <div data-step1-kind="case" class="ws-case-idea hidden">
+            <p id="tc-time-estimate" class="ws-note">Phân tích chạy từng bước nhỏ, có thể mất 10–30 phút. Tiến độ, dàn ý và bảng tên hiện ở trang Kịch bản; tải lại trang vẫn theo dõi tiếp.</p>
+            <p id="tc-input-error" class="hidden ws-case-error"></p>
+          </div>
 
           <h2 class="ws-h2 ws-h2-gap">Phong cách hình</h2>
           <div id="idea-style-cards" class="ws-pick-grid ws-pick-grid-4" role="group" aria-label="Phong cách hình"></div>
@@ -375,11 +369,184 @@
         <h1 class="ws-h1">Kịch bản và giọng</h1>
         <p class="ws-lede">Sửa lời kể từng cảnh, chọn giọng đọc và thu lại giọng. Lời kể chỉ sửa ở trang này; trang Cảnh chỉ hiện lại để đối chiếu.</p>
       </div>
+      <p id="ws-case-note" class="ws-case-note" hidden></p>
       <div class="ws-tabs" role="tablist" id="script-tabs">
         <button type="button" class="ws-tab" role="tab" data-tab="outline" aria-selected="false" hidden>Dàn ý</button>
         <button type="button" class="ws-tab" role="tab" data-tab="names" aria-selected="false" hidden>Tên hư cấu</button>
         <button type="button" class="ws-tab" role="tab" data-tab="lines" aria-selected="true">Lời kể từng cảnh</button>
         <button type="button" class="ws-tab" role="tab" data-tab="voice" aria-selected="false">Giọng đọc</button>
+      </div>
+      <div id="script-tab-outline" data-tab-panel="outline" class="ws-case" hidden>
+        <!-- Hồ Sơ Kỳ Án (code: true_crime.js): tiến độ phân tích và duyệt dàn ý của vụ đang theo dõi -->
+        <div id="tc-progress" class="hidden bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-2 text-xs">
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-bold text-slate-200 flex items-center gap-1.5">
+              <i id="tc-progress-icon" class="fa-solid fa-spinner fa-spin text-amber-400"></i>
+              <span id="tc-progress-label">Đang chờ máy chủ...</span>
+            </span>
+            <span id="tc-progress-count" class="text-[11px] text-slate-400 font-mono shrink-0">0/0</span>
+          </div>
+          <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+            <div id="tc-progress-bar" class="h-full bg-red-500 rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+          <p id="tc-progress-error" class="hidden text-[11px] text-rose-200 bg-[#2d161a] border border-rose-500/50 rounded-lg px-2.5 py-1.5 leading-relaxed"></p>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span id="tc-progress-case" class="text-[10px] text-slate-500 font-mono"></span>
+            <div class="flex items-center gap-2">
+              <button type="button" id="btn-tc-resume" class="hidden px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-[11px] font-bold transition cursor-pointer disabled:opacity-50">
+                <i class="fa-solid fa-rotate-right mr-1"></i> Thử lại
+              </button>
+              <button type="button" id="btn-tc-new-case" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 text-[11px] font-semibold transition cursor-pointer">
+                Phân tích vụ khác
+              </button>
+            </div>
+          </div>
+        </div>
+        <div id="tc-outline-review" class="hidden bg-slate-950/80 border border-amber-500/50 rounded-xl overflow-hidden text-xs">
+          <div class="px-3 py-2 border-b border-slate-800 bg-slate-900/90 flex flex-wrap items-center justify-between gap-2">
+            <span class="font-bold text-white flex items-center gap-1.5">
+              <i class="fa-solid fa-list-check text-amber-400"></i>
+              <span>Duyệt dàn ý trước khi viết cảnh</span>
+            </span>
+            <span id="tc-outline-stats" class="text-[11px] text-amber-400 font-mono bg-slate-900 px-2 py-0.5 rounded border border-slate-700"></span>
+          </div>
+          <div class="p-3 space-y-2.5">
+            <div id="tc-outline-intro" class="space-y-1 text-slate-400 leading-relaxed"></div>
+            <div id="tc-outline-parts" class="space-y-2.5"></div>
+            <p id="tc-outline-error" class="hidden text-[11px] text-rose-200 bg-[#2d161a] border border-rose-500/50 rounded-lg px-2.5 py-1.5 leading-relaxed whitespace-pre-line"></p>
+            <div class="flex flex-wrap items-center justify-end gap-2">
+              <button type="button" id="btn-tc-outline-revert" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 text-[11px] font-semibold transition cursor-pointer disabled:opacity-50">
+                <i class="fa-solid fa-rotate-left mr-1"></i> Bỏ thay đổi
+              </button>
+              <button type="button" id="btn-tc-outline-save" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 text-[11px] font-bold transition cursor-pointer disabled:opacity-50">
+                <i class="fa-solid fa-floppy-disk mr-1"></i> Lưu dàn ý
+              </button>
+              <button type="button" id="btn-tc-outline-approve" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold transition cursor-pointer disabled:opacity-50">
+                <i class="fa-solid fa-check mr-1"></i> Duyệt và viết cảnh
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="script-tab-names" data-tab-panel="names" class="ws-case" hidden>
+        <!-- Bảng tên, cảnh báo, bảng ghim, lời kể từng cảnh của kế hoạch; tạo dự án bản Việt -->
+        <div id="tc-review-empty" class="bg-slate-950/60 border border-dashed border-slate-700 rounded-xl p-6 text-center text-xs text-slate-400 leading-relaxed">
+          <i class="fa-solid fa-clipboard-list text-2xl text-slate-600 mb-2 block"></i>
+          Kế hoạch chuyển thể sẽ hiện ở đây sau khi phân tích xong: bảng tên thật → tên Việt → tên Anh, cảnh báo, dàn ý và lời kể từng cảnh bằng hai thứ tiếng.
+        </div>
+        <div id="tc-review" class="hidden flex flex-col space-y-3">
+
+          <!-- Tên tập & thống kê -->
+          <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-xs space-y-1">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span id="tc-plan-title-vi" class="font-extrabold text-white text-sm"></span>
+              <span id="tc-plan-stats" class="text-[11px] text-amber-400 font-mono bg-slate-900 px-2 py-0.5 rounded border border-slate-700"></span>
+            </div>
+            <div id="tc-plan-title-en" class="text-slate-400"></div>
+          </div>
+
+          <!-- Cảnh báo -->
+          <div id="tc-warnings" class="space-y-1.5 text-xs"></div>
+
+          <!-- Bảng tên thật -> tên Việt -> tên Anh -->
+          <div class="bg-slate-950/80 border border-slate-800 rounded-xl overflow-hidden text-xs">
+            <div class="px-3 py-2 border-b border-slate-800 bg-slate-900/90 flex flex-wrap items-center justify-between gap-2">
+              <span class="font-bold text-white flex items-center gap-1.5">
+                <i class="fa-solid fa-user-shield text-emerald-400"></i>
+                <span>Bảng tên: tên thật → tên Việt → tên Anh</span>
+              </span>
+              <button type="button" id="btn-tc-save-entities" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold transition cursor-pointer disabled:opacity-50">
+                <i class="fa-solid fa-floppy-disk mr-1"></i> Lưu tên đã sửa
+              </button>
+            </div>
+            <div class="max-h-60 overflow-y-auto">
+              <table class="w-full text-left">
+                <thead class="bg-slate-900 text-[10px] uppercase text-slate-400">
+                  <tr>
+                    <th class="px-2 py-1.5 font-semibold">Loại</th>
+                    <th class="px-2 py-1.5 font-semibold">Tên thật (chỉ để đối chiếu)</th>
+                    <th class="px-2 py-1.5 font-semibold">Tên Việt</th>
+                    <th class="px-2 py-1.5 font-semibold">Tên Anh</th>
+                  </tr>
+                </thead>
+                <tbody id="tc-entity-table"></tbody>
+              </table>
+            </div>
+            <!-- Thêm tên mới (thường là tên mà phần kiểm tra bắt được trên bài gốc) -->
+            <div class="p-3 border-t border-slate-800 bg-slate-900/60 space-y-2">
+              <div class="text-[11px] font-bold text-slate-300">Thêm tên mới:</div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <select id="tc-add-kind" class="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:border-red-500">
+                  <option value="person" selected>Người</option>
+                  <option value="place">Địa danh</option>
+                  <option value="organization">Tổ chức</option>
+                  <option value="identifier">Định danh (biển số, số hiệu...)</option>
+                </select>
+                <input type="text" id="tc-add-real" maxlength="500" class="bg-slate-950/90 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:border-red-500 focus:outline-none" placeholder="Tên thật (nhiều cách viết thì ngăn bằng dấu ;)">
+                <input type="text" id="tc-add-alias-vi" maxlength="120" class="bg-slate-950/90 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:border-red-500 focus:outline-none" placeholder="Tên Việt thay thế">
+                <input type="text" id="tc-add-alias-en" maxlength="120" class="bg-slate-950/90 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:border-red-500 focus:outline-none" placeholder="Tên Anh thay thế">
+              </div>
+              <button type="button" id="btn-tc-add-entity" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 text-[11px] font-semibold transition cursor-pointer disabled:opacity-50">
+                <i class="fa-solid fa-plus mr-1"></i> Thêm tên
+              </button>
+            </div>
+          </div>
+
+          <!-- Bảng ghim (vẽ từ bản sao evidence/relations của kế hoạch) -->
+          <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-white flex items-center gap-1.5">
+                <i class="fa-solid fa-thumbtack text-red-500"></i>
+                <span>Bảng ghim điều tra</span>
+              </span>
+              <span id="tc-board-stats" class="text-[11px] text-amber-400 font-mono bg-slate-900 px-2 py-0.5 rounded border border-slate-700">0 thẻ • 0 dây</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-[11px] text-slate-400">Tích luỹ tới:</span>
+              <select id="tc-scene-scrubber" class="bg-slate-900 border border-slate-700 text-slate-200 text-[11px] rounded-lg px-2 py-1 font-mono focus:border-red-500">
+                <option value="all" selected>Toàn bộ</option>
+              </select>
+              <select id="tc-board-lang" class="bg-slate-900 border border-slate-700 text-slate-200 text-[11px] rounded-lg px-2 py-1 font-mono focus:border-red-500">
+                <option value="vi" selected>Nhãn Việt</option>
+                <option value="en">Nhãn Anh</option>
+              </select>
+            </div>
+          </div>
+          <div class="relative w-full h-[320px] sm:h-[350px] lg:h-[380px] rounded-2xl overflow-hidden border-4 border-[#3c2514] shadow-2xl bg-[#a07449] select-none flex items-center justify-center">
+            <canvas id="tc-evidence-canvas" width="1280" height="720" class="w-full h-full object-cover block cursor-default"></canvas>
+            <div id="tc-canvas-tooltip" class="absolute pointer-events-none hidden bg-slate-950/95 border border-red-500/70 text-slate-100 text-[11px] p-2.5 rounded-xl shadow-2xl max-w-xs z-30 transition-opacity duration-150">
+              <div id="tc-tooltip-title" class="font-bold text-amber-300 border-b border-slate-800 pb-1 mb-1"></div>
+              <div id="tc-tooltip-body" class="text-slate-300 text-[10px] leading-relaxed"></div>
+            </div>
+          </div>
+
+          <!-- Dàn ý -->
+          <div class="bg-slate-950/80 border border-slate-800 rounded-xl overflow-hidden text-xs">
+            <div class="px-3 py-2 border-b border-slate-800 bg-slate-900/90 font-bold text-white flex items-center gap-1.5">
+              <i class="fa-solid fa-diagram-project text-amber-400"></i>
+              <span>Dàn ý</span>
+            </div>
+            <ol id="tc-outline" class="p-3 space-y-1.5"></ol>
+          </div>
+
+          <!-- Danh sách cảnh: lời Việt và lời Anh song song, sửa trực tiếp (lưu khi rời ô) -->
+          <div class="bg-slate-950/80 border border-slate-800 rounded-xl overflow-hidden text-xs">
+            <div class="px-3 py-2 border-b border-slate-800 bg-slate-900/90 flex flex-wrap items-center justify-between gap-2">
+              <span class="font-bold text-white flex items-center gap-1.5">
+                <i class="fa-solid fa-film text-indigo-400"></i>
+                <span>Lời kể từng cảnh</span>
+              </span>
+              <span class="text-[10px] text-slate-400">Sửa trực tiếp; rời ô là lưu. Cảnh viền đỏ đang bị đánh dấu.</span>
+            </div>
+            <div id="tc-scene-review" class="p-3 space-y-2.5"></div>
+          </div>
+
+        </div>
+        <div class="ws-case-create">
+          <span class="ws-case-hint"><i id="tc-create-hint-icon" class="fa-solid fa-circle-info text-slate-500"></i>
+            <span id="tc-create-hint">Phân tích xong và không còn cảnh bị đánh dấu thì tạo được dự án bản Việt.</span></span>
+          <button type="button" id="btn-tc-create-vi" disabled class="ws-btn ws-btn-primary">Tạo dự án bản Việt</button>
+        </div>
       </div>
       <div id="script-tab-lines" data-tab-panel="lines">
         <div class="ws-actions" style="margin-top:0;margin-bottom:12px">
@@ -389,7 +556,25 @@
         <div id="script-scene-list" class="ws-card" style="padding:4px 0"></div>
       </div>
       <div id="script-tab-voice" data-tab-panel="voice" hidden>
-        <div class="ws-card" style="padding:16px;max-width:640px">
+        <!-- Vụ đang theo dõi chưa tạo dự án: hai ô giọng của vụ (đọc lúc bấm "Tạo dự án bản Việt"), thay cho ô giọng của dự án -->
+        <div id="script-case-voice" class="ws-card ws-case" style="padding:16px;max-width:640px" hidden>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div>
+              <label for="tc-voice-vi" class="block font-semibold mb-1">Giọng bản Việt</label>
+              <select id="tc-voice-vi" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:border-red-500 font-medium">
+                <option value="">Đang tải danh sách giọng...</option>
+              </select>
+            </div>
+            <div>
+              <label for="tc-voice-en" class="block font-semibold mb-1">Giọng bản Anh</label>
+              <select id="tc-voice-en" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:border-red-500 font-medium">
+                <option value="">Đang tải danh sách giọng...</option>
+              </select>
+            </div>
+          </div>
+          <p class="ws-note">Máy chủ nhớ giọng bản Anh lúc tạo bản Việt, để nút "Tạo bản tiếng Anh" ở trang Dựng dùng lại.</p>
+        </div>
+        <div id="script-project-voice" class="ws-card" style="padding:16px;max-width:640px">
           <div class="space-y-3 text-xs">
           <!-- Voice Selector with Preview Sample Button -->
           <div>
@@ -702,6 +887,7 @@
               <span id="btn-produce-label">Dựng video</span>
             </button>
         <button id="btn-render-settings" type="button" class="ws-btn">Tuỳ chỉnh dựng</button>
+        <button id="btn-create-en-version" type="button" class="hidden ws-btn" title="Tạo bản tiếng Anh: dùng lại ảnh và video, đổi sang lời kể và giọng đọc tiếng Anh"><span>Tạo bản tiếng Anh</span></button>
       </div>
     </div>
 
@@ -1291,6 +1477,36 @@
 
   <!-- Chỗ cất các ô nhập ẩn mà JS cần nhưng không trang nào hiện (các task sau dời vào) -->
   <div id="ws-hidden-inputs" hidden>
+    <!-- Ô của Hồ Sơ Kỳ Án cũ: tcStartFromStep1() chép bài, số phút, phong cách vào đây rồi gửi; lúc tạo dự án vụ án đọc phong cách và nguồn ảnh (spec 4.2, 4.5) -->
+    <textarea id="tc-case-text" rows="8" class="w-full bg-slate-950/90 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 placeholder-slate-500 focus:border-red-500 focus:ring-1 focus:ring-red-500 focus:outline-none leading-relaxed transition font-mono resize-y" placeholder="Dán toàn bộ bài viết về vụ án vào đây (tối đa 200.000 ký tự). LLM đọc từng đoạn, rồi đặt tên hư cấu cho người và địa danh riêng; bạn duyệt lại bảng tên trước khi tạo dự án."></textarea>
+    <span id="tc-case-word-count">0 từ • 0 ký tự</span>
+    <select id="tc-duration-select" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:border-red-500 font-medium">
+      <option value="8">8 phút (~35-40 cảnh)</option>
+      <option value="15">15 phút (~50-60 cảnh)</option>
+      <option value="20" selected>20 phút (~70-80 cảnh)</option>
+      <option value="30">30 phút (~100-120 cảnh)</option>
+    </select>
+    <select id="tc-visual-style" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:border-red-500">
+      <option value="neo_noir_silhouette" selected>🕵️ Neo-Noir Silhouette (Án Mạng Đêm Mưa / Phim Noir)</option>
+      <option value="horror_cartoon_2d">👻 Hoạt hình 2D rùng rợn (nhân vật đầu tròn, nền vẽ tay tối)</option>
+      <option value="manga_murata_battle">⚔️ Manga Murata Battle Action (One Punch Man / SFX)</option>
+      <option value="spartan_epic_mythology">🏺 Spartan Epic Mythology (Sử thi Hy Lạp giáp đồng sơn dầu)</option>
+      <option value="intricate_ink_crosshatch">🖋️ Intricate Ink Crosshatch (Tranh mực đan nét Graphic Novel)</option>
+      <option value="dark_fantasy">🗡️ Dark Fantasy (Thần thoại u tối Dark Souls / Elden Ring)</option>
+      <option value="manga_historical_war">🚩 Kingdom War (Chiến Quốc Vạn Quân)</option>
+      <option value="roman_legionary_epic">🏛️ Roman Legionary Epic (Quân Đoàn La Mã)</option>
+      <option value="spartan_mythic_warrior">🛡️ Spartan Mythic Warrior (Chiến Binh Sparta)</option>
+      <option value="fantasy_paladin_armor">🛡️ Fantasy Paladin (Dũng Sĩ Thánh Giáp)</option>
+      <option value="cinematic_realistic">🎬 Cinematic Realistic (Điện ảnh chân thực 35mm)</option>
+      <option value="anime">🌸 Anime & Ghibli (Hoạt hình Nhật Bản)</option>
+      <option value="cyberpunk">🌃 Cyberpunk Metropolis (Tương lai viễn tưởng)</option>
+      <option value="comic_book">💥 Western Comic Book (Truyện tranh Marvel/DC)</option>
+      <option value="3d_animation">🧸 3D Animation Pixar / Disney</option>
+    </select>
+    <select id="tc-vision-engine" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:border-red-500 font-medium">
+      <option value="meta_muse_cloud" selected>Meta Muse Cloud (mặc định)</option>
+      <option value="9router_gemini">9router: Gemini Flash Image (dự phòng)</option>
+    </select>
     <!-- Nguồn ảnh lúc tạo dự án truyện: giữ mặc định Muse (miễn phí); nguồn ảnh của dự án chọn ở trang Hình mẫu (spec 4.5) -->
     <select id="step1-engine-select">
       <option value="meta_muse_cloud" selected>Meta Muse Cloud (Free 2K)</option>
@@ -1708,347 +1924,6 @@
     </div>
   </div>
 
-  <!-- ================= MODAL: TRUE CRIME STUDIO (HỒ SƠ KỲ ÁN: CHUYỂN THỂ VỤ ÁN THẬT, SONG NGỮ VIỆT/ANH) ================= -->
-  <!-- Toàn bộ xử lý nằm trong /static/true_crime.js (không gắn onclick trong HTML: mỗi nút chỉ có một trình xử lý). -->
-  <div id="modal-true-crime" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-2 sm:p-4 hidden">
-    <div class="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-7xl max-h-[96vh] flex flex-col shadow-2xl overflow-hidden text-slate-100">
-
-      <!-- Modal Header -->
-      <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between bg-gradient-to-r from-slate-950 via-red-950/40 to-slate-950 shrink-0">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl bg-red-600/20 border border-red-500/40 flex items-center justify-center text-red-400 text-xl shadow-inner shrink-0">
-            <i class="fa-solid fa-user-secret"></i>
-          </div>
-          <div>
-            <div class="flex items-center gap-2">
-              <h3 class="text-sm sm:text-base font-extrabold text-white tracking-tight">Hồ Sơ Kỳ Án (True Crime Studio)</h3>
-              <span class="text-[10px] bg-amber-500/20 text-amber-300 font-mono font-bold px-2 py-0.5 rounded-full border border-amber-500/30">Song ngữ Việt/Anh</span>
-              <span class="text-[10px] bg-emerald-500/20 text-emerald-300 font-mono font-bold px-2 py-0.5 rounded-full border border-emerald-500/30 hidden md:inline">Đổi tên người &amp; địa danh</span>
-            </div>
-            <p class="text-xs text-slate-400 mt-0.5">Chuyển thể một vụ án có thật thành truyện: giữ diễn biến, chỉ thay tên người và địa danh riêng • Xem lại từng cảnh trước khi tạo dự án</p>
-          </div>
-        </div>
-        <div class="flex items-center gap-2">
-          <button type="button" id="btn-close-true-crime-modal" class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer" title="Đóng (phân tích vẫn chạy nền)">
-            <i class="fa-solid fa-xmark text-lg"></i>
-          </button>
-        </div>
-      </div>
-
-      <!-- Hồ sơ mẫu: chỉ nạp chữ vào ô nhập -->
-      <div class="px-5 py-2.5 bg-slate-950/60 border-b border-slate-800/80 flex flex-wrap items-center gap-2 text-xs shrink-0">
-        <span class="text-slate-400 font-bold flex items-center gap-1.5 text-[11px]">
-          <i class="fa-solid fa-folder-open text-red-400"></i> Nạp hồ sơ mẫu vào ô nhập:
-        </span>
-        <button type="button" id="btn-tc-sample-1" data-tc-sample="sample1" class="px-2.5 py-1 bg-red-950/60 hover:bg-red-900/80 text-red-200 hover:text-white rounded-lg border border-red-800/50 text-[11px] font-semibold transition cursor-pointer">
-          Biệt Thự Cảng Tân Hải
-        </button>
-        <button type="button" id="btn-tc-sample-2" data-tc-sample="sample2" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg border border-slate-700 text-[11px] font-semibold transition cursor-pointer">
-          Tầng 13 Tháp Đôi
-        </button>
-        <button type="button" id="btn-tc-sample-3" data-tc-sample="sample3" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg border border-slate-700 text-[11px] font-semibold transition cursor-pointer">
-          Đêm Mưa Ven Rừng Cao Su
-        </button>
-      </div>
-
-      <!-- Modal Body (Two-Column Layout) -->
-      <div class="flex-1 overflow-y-auto p-4 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 min-h-0">
-
-        <!-- LEFT COLUMN: nhập vụ án, cấu hình, tiến độ -->
-        <div class="lg:col-span-5 flex flex-col space-y-4">
-
-          <!-- Textarea nhập vụ án -->
-          <div class="space-y-1.5">
-            <div class="flex items-center justify-between">
-              <label for="tc-case-text" class="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                <i class="fa-solid fa-file-shield text-red-400"></i>
-                <span>Bài viết về vụ án có thật:</span>
-              </label>
-              <span id="tc-case-word-count" class="text-[11px] text-slate-400 font-mono">0 từ • 0 ký tự</span>
-            </div>
-            <textarea id="tc-case-text" rows="8" class="w-full bg-slate-950/90 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 placeholder-slate-500 focus:border-red-500 focus:ring-1 focus:ring-red-500 focus:outline-none leading-relaxed transition font-mono resize-y" placeholder="Dán toàn bộ bài viết về vụ án vào đây (tối đa 200.000 ký tự). LLM đọc từng đoạn, rồi đặt tên hư cấu cho người và địa danh riêng; bạn duyệt lại bảng tên trước khi tạo dự án."></textarea>
-            <div class="text-[10px] text-slate-400 flex items-center gap-1 font-medium">
-              <i class="fa-solid fa-shield-halved text-emerald-400"></i>
-              <span>Bài gốc chỉ lưu trên máy này. Tên thật chỉ hiện ở màn xem lại để bạn đối chiếu, không đưa vào dự án.</span>
-            </div>
-          </div>
-
-          <!-- Thời lượng & phong cách hình -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-            <div>
-              <label for="tc-duration-select" class="block font-bold text-slate-300 mb-1">
-                ⏱️ Thời lượng video:
-              </label>
-              <select id="tc-duration-select" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:border-red-500 font-medium">
-                <option value="8">8 phút (~35-40 cảnh)</option>
-                <option value="15">15 phút (~50-60 cảnh)</option>
-                <option value="20" selected>20 phút (~70-80 cảnh)</option>
-                <option value="30">30 phút (~100-120 cảnh)</option>
-              </select>
-            </div>
-            <div>
-              <label for="tc-visual-style" class="block font-bold text-slate-300 mb-1">
-                🎨 Phong cách hình:
-              </label>
-              <select id="tc-visual-style" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:border-red-500">
-                <option value="neo_noir_silhouette" selected>🕵️ Neo-Noir Silhouette (Án Mạng Đêm Mưa / Phim Noir)</option>
-                <option value="horror_cartoon_2d">👻 Hoạt hình 2D rùng rợn (nhân vật đầu tròn, nền vẽ tay tối)</option>
-                <option value="manga_murata_battle">⚔️ Manga Murata Battle Action (One Punch Man / SFX)</option>
-                <option value="spartan_epic_mythology">🏺 Spartan Epic Mythology (Sử thi Hy Lạp giáp đồng sơn dầu)</option>
-                <option value="intricate_ink_crosshatch">🖋️ Intricate Ink Crosshatch (Tranh mực đan nét Graphic Novel)</option>
-                <option value="dark_fantasy">🗡️ Dark Fantasy (Thần thoại u tối Dark Souls / Elden Ring)</option>
-                <option value="manga_historical_war">🚩 Kingdom War (Chiến Quốc Vạn Quân)</option>
-                <option value="roman_legionary_epic">🏛️ Roman Legionary Epic (Quân Đoàn La Mã)</option>
-                <option value="spartan_mythic_warrior">🛡️ Spartan Mythic Warrior (Chiến Binh Sparta)</option>
-                <option value="fantasy_paladin_armor">🛡️ Fantasy Paladin (Dũng Sĩ Thánh Giáp)</option>
-                <option value="cinematic_realistic">🎬 Cinematic Realistic (Điện ảnh chân thực 35mm)</option>
-                <option value="anime">🌸 Anime & Ghibli (Hoạt hình Nhật Bản)</option>
-                <option value="cyberpunk">🌃 Cyberpunk Metropolis (Tương lai viễn tưởng)</option>
-                <option value="comic_book">💥 Western Comic Book (Truyện tranh Marvel/DC)</option>
-                <option value="3d_animation">🧸 3D Animation Pixar / Disney</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Giọng đọc cho từng ngôn ngữ (nạp từ /api/voices) -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-            <div>
-              <label for="tc-voice-vi" class="block font-bold text-slate-300 mb-1">
-                🎙️ Giọng bản Việt:
-              </label>
-              <select id="tc-voice-vi" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:border-red-500 font-medium">
-                <option value="">Đang tải danh sách giọng...</option>
-              </select>
-            </div>
-            <div>
-              <label for="tc-voice-en" class="block font-bold text-slate-300 mb-1">
-                🎙️ Giọng bản Anh:
-              </label>
-              <select id="tc-voice-en" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:border-red-500 font-medium">
-                <option value="">Đang tải danh sách giọng...</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Engine hình -->
-          <div class="text-xs">
-            <label for="tc-vision-engine" class="block font-bold text-slate-300 mb-1">
-              ⚡ Engine tạo hình:
-            </label>
-            <select id="tc-vision-engine" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:border-red-500 font-medium">
-              <option value="meta_muse_cloud" selected>Meta Muse Cloud (mặc định)</option>
-              <option value="9router_gemini">9router: Gemini Flash Image (dự phòng)</option>
-            </select>
-          </div>
-
-          <!-- Nút phân tích + ước lượng thời gian -->
-          <div class="space-y-2">
-            <button type="button" id="btn-tc-analyze" class="w-full py-3.5 bg-gradient-to-r from-red-600 via-rose-600 to-indigo-600 hover:from-red-500 hover:to-indigo-500 text-white rounded-xl text-xs sm:text-sm font-extrabold shadow-lg shadow-red-600/30 flex items-center justify-center gap-2.5 transition cursor-pointer disabled:opacity-50">
-              <i class="fa-solid fa-magnifying-glass text-amber-300 text-base"></i>
-              <span>Phân tích hồ sơ</span>
-            </button>
-            <p id="tc-time-estimate" class="text-[11px] text-slate-400 leading-relaxed flex items-start gap-1.5">
-              <i class="fa-solid fa-hourglass-half text-amber-400 mt-0.5"></i>
-              <span>Phân tích chạy từng bước nhỏ, có thể mất 10–30 phút; bạn có thể đóng modal, mở lại sẽ thấy tiến độ.</span>
-            </p>
-            <p id="tc-input-error" class="hidden text-[11px] text-rose-200 bg-[#2d161a] border border-rose-500/50 rounded-lg px-2.5 py-1.5"></p>
-          </div>
-
-          <!-- Tiến độ phân tích -->
-          <div id="tc-progress" class="hidden bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-2 text-xs">
-            <div class="flex items-center justify-between gap-2">
-              <span class="font-bold text-slate-200 flex items-center gap-1.5">
-                <i id="tc-progress-icon" class="fa-solid fa-spinner fa-spin text-amber-400"></i>
-                <span id="tc-progress-label">Đang chờ máy chủ...</span>
-              </span>
-              <span id="tc-progress-count" class="text-[11px] text-slate-400 font-mono shrink-0">0/0</span>
-            </div>
-            <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-              <div id="tc-progress-bar" class="h-full bg-red-500 rounded-full transition-all duration-300" style="width: 0%"></div>
-            </div>
-            <p id="tc-progress-error" class="hidden text-[11px] text-rose-200 bg-[#2d161a] border border-rose-500/50 rounded-lg px-2.5 py-1.5 leading-relaxed"></p>
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <span id="tc-progress-case" class="text-[10px] text-slate-500 font-mono"></span>
-              <div class="flex items-center gap-2">
-                <button type="button" id="btn-tc-resume" class="hidden px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-[11px] font-bold transition cursor-pointer disabled:opacity-50">
-                  <i class="fa-solid fa-rotate-right mr-1"></i> Thử lại
-                </button>
-                <button type="button" id="btn-tc-new-case" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 text-[11px] font-semibold transition cursor-pointer">
-                  Phân tích vụ khác
-                </button>
-              </div>
-            </div>
-          </div>
-
-        </div>
-
-        <!-- RIGHT COLUMN: màn xem lại kế hoạch -->
-        <div class="lg:col-span-7 flex flex-col space-y-3">
-
-          <!-- Duyệt dàn ý: vụ dừng chờ duyệt sau bước lập dàn ý; true_crime.js vẽ các nhịp vào #tc-outline-parts -->
-          <div id="tc-outline-review" class="hidden bg-slate-950/80 border border-amber-500/50 rounded-xl overflow-hidden text-xs">
-            <div class="px-3 py-2 border-b border-slate-800 bg-slate-900/90 flex flex-wrap items-center justify-between gap-2">
-              <span class="font-bold text-white flex items-center gap-1.5">
-                <i class="fa-solid fa-list-check text-amber-400"></i>
-                <span>Duyệt dàn ý trước khi viết cảnh</span>
-              </span>
-              <span id="tc-outline-stats" class="text-[11px] text-amber-400 font-mono bg-slate-900 px-2 py-0.5 rounded border border-slate-700"></span>
-            </div>
-            <div class="p-3 space-y-2.5">
-              <div id="tc-outline-intro" class="space-y-1 text-slate-400 leading-relaxed"></div>
-              <div id="tc-outline-parts" class="space-y-2.5"></div>
-              <p id="tc-outline-error" class="hidden text-[11px] text-rose-200 bg-[#2d161a] border border-rose-500/50 rounded-lg px-2.5 py-1.5 leading-relaxed whitespace-pre-line"></p>
-              <div class="flex flex-wrap items-center justify-end gap-2">
-                <button type="button" id="btn-tc-outline-revert" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 text-[11px] font-semibold transition cursor-pointer disabled:opacity-50">
-                  <i class="fa-solid fa-rotate-left mr-1"></i> Bỏ thay đổi
-                </button>
-                <button type="button" id="btn-tc-outline-save" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 text-[11px] font-bold transition cursor-pointer disabled:opacity-50">
-                  <i class="fa-solid fa-floppy-disk mr-1"></i> Lưu dàn ý
-                </button>
-                <button type="button" id="btn-tc-outline-approve" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold transition cursor-pointer disabled:opacity-50">
-                  <i class="fa-solid fa-check mr-1"></i> Duyệt và viết cảnh
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div id="tc-review-empty" class="bg-slate-950/60 border border-dashed border-slate-700 rounded-xl p-6 text-center text-xs text-slate-400 leading-relaxed">
-            <i class="fa-solid fa-clipboard-list text-2xl text-slate-600 mb-2 block"></i>
-            Kế hoạch chuyển thể sẽ hiện ở đây sau khi phân tích xong: bảng tên thật → tên Việt → tên Anh, cảnh báo, dàn ý và lời kể từng cảnh bằng hai thứ tiếng.
-          </div>
-
-          <div id="tc-review" class="hidden flex flex-col space-y-3">
-
-            <!-- Tên tập & thống kê -->
-            <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-xs space-y-1">
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <span id="tc-plan-title-vi" class="font-extrabold text-white text-sm"></span>
-                <span id="tc-plan-stats" class="text-[11px] text-amber-400 font-mono bg-slate-900 px-2 py-0.5 rounded border border-slate-700"></span>
-              </div>
-              <div id="tc-plan-title-en" class="text-slate-400"></div>
-            </div>
-
-            <!-- Cảnh báo -->
-            <div id="tc-warnings" class="space-y-1.5 text-xs"></div>
-
-            <!-- Bảng tên thật -> tên Việt -> tên Anh -->
-            <div class="bg-slate-950/80 border border-slate-800 rounded-xl overflow-hidden text-xs">
-              <div class="px-3 py-2 border-b border-slate-800 bg-slate-900/90 flex flex-wrap items-center justify-between gap-2">
-                <span class="font-bold text-white flex items-center gap-1.5">
-                  <i class="fa-solid fa-user-shield text-emerald-400"></i>
-                  <span>Bảng tên: tên thật → tên Việt → tên Anh</span>
-                </span>
-                <button type="button" id="btn-tc-save-entities" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold transition cursor-pointer disabled:opacity-50">
-                  <i class="fa-solid fa-floppy-disk mr-1"></i> Lưu tên đã sửa
-                </button>
-              </div>
-              <div class="max-h-60 overflow-y-auto">
-                <table class="w-full text-left">
-                  <thead class="bg-slate-900 text-[10px] uppercase text-slate-400">
-                    <tr>
-                      <th class="px-2 py-1.5 font-semibold">Loại</th>
-                      <th class="px-2 py-1.5 font-semibold">Tên thật (chỉ để đối chiếu)</th>
-                      <th class="px-2 py-1.5 font-semibold">Tên Việt</th>
-                      <th class="px-2 py-1.5 font-semibold">Tên Anh</th>
-                    </tr>
-                  </thead>
-                  <tbody id="tc-entity-table"></tbody>
-                </table>
-              </div>
-              <!-- Thêm tên mới (thường là tên mà phần kiểm tra bắt được trên bài gốc) -->
-              <div class="p-3 border-t border-slate-800 bg-slate-900/60 space-y-2">
-                <div class="text-[11px] font-bold text-slate-300">Thêm tên mới:</div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <select id="tc-add-kind" class="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:border-red-500">
-                    <option value="person" selected>Người</option>
-                    <option value="place">Địa danh</option>
-                    <option value="organization">Tổ chức</option>
-                    <option value="identifier">Định danh (biển số, số hiệu...)</option>
-                  </select>
-                  <input type="text" id="tc-add-real" maxlength="500" class="bg-slate-950/90 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:border-red-500 focus:outline-none" placeholder="Tên thật (nhiều cách viết thì ngăn bằng dấu ;)">
-                  <input type="text" id="tc-add-alias-vi" maxlength="120" class="bg-slate-950/90 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:border-red-500 focus:outline-none" placeholder="Tên Việt thay thế">
-                  <input type="text" id="tc-add-alias-en" maxlength="120" class="bg-slate-950/90 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:border-red-500 focus:outline-none" placeholder="Tên Anh thay thế">
-                </div>
-                <button type="button" id="btn-tc-add-entity" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 text-[11px] font-semibold transition cursor-pointer disabled:opacity-50">
-                  <i class="fa-solid fa-plus mr-1"></i> Thêm tên
-                </button>
-              </div>
-            </div>
-
-            <!-- Bảng ghim (vẽ từ bản sao evidence/relations của kế hoạch) -->
-            <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
-              <div class="flex items-center gap-2">
-                <span class="font-bold text-white flex items-center gap-1.5">
-                  <i class="fa-solid fa-thumbtack text-red-500"></i>
-                  <span>Bảng ghim điều tra</span>
-                </span>
-                <span id="tc-board-stats" class="text-[11px] text-amber-400 font-mono bg-slate-900 px-2 py-0.5 rounded border border-slate-700">0 thẻ • 0 dây</span>
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="text-[11px] text-slate-400">Tích luỹ tới:</span>
-                <select id="tc-scene-scrubber" class="bg-slate-900 border border-slate-700 text-slate-200 text-[11px] rounded-lg px-2 py-1 font-mono focus:border-red-500">
-                  <option value="all" selected>Toàn bộ</option>
-                </select>
-                <select id="tc-board-lang" class="bg-slate-900 border border-slate-700 text-slate-200 text-[11px] rounded-lg px-2 py-1 font-mono focus:border-red-500">
-                  <option value="vi" selected>Nhãn Việt</option>
-                  <option value="en">Nhãn Anh</option>
-                </select>
-              </div>
-            </div>
-            <div class="relative w-full h-[320px] sm:h-[350px] lg:h-[380px] rounded-2xl overflow-hidden border-4 border-[#3c2514] shadow-2xl bg-[#a07449] select-none flex items-center justify-center">
-              <canvas id="tc-evidence-canvas" width="1280" height="720" class="w-full h-full object-cover block cursor-default"></canvas>
-              <div id="tc-canvas-tooltip" class="absolute pointer-events-none hidden bg-slate-950/95 border border-red-500/70 text-slate-100 text-[11px] p-2.5 rounded-xl shadow-2xl max-w-xs z-30 transition-opacity duration-150">
-                <div id="tc-tooltip-title" class="font-bold text-amber-300 border-b border-slate-800 pb-1 mb-1"></div>
-                <div id="tc-tooltip-body" class="text-slate-300 text-[10px] leading-relaxed"></div>
-              </div>
-            </div>
-
-            <!-- Dàn ý -->
-            <div class="bg-slate-950/80 border border-slate-800 rounded-xl overflow-hidden text-xs">
-              <div class="px-3 py-2 border-b border-slate-800 bg-slate-900/90 font-bold text-white flex items-center gap-1.5">
-                <i class="fa-solid fa-diagram-project text-amber-400"></i>
-                <span>Dàn ý</span>
-              </div>
-              <ol id="tc-outline" class="p-3 space-y-1.5"></ol>
-            </div>
-
-            <!-- Danh sách cảnh: lời Việt và lời Anh song song, sửa trực tiếp (lưu khi rời ô) -->
-            <div class="bg-slate-950/80 border border-slate-800 rounded-xl overflow-hidden text-xs">
-              <div class="px-3 py-2 border-b border-slate-800 bg-slate-900/90 flex flex-wrap items-center justify-between gap-2">
-                <span class="font-bold text-white flex items-center gap-1.5">
-                  <i class="fa-solid fa-film text-indigo-400"></i>
-                  <span>Lời kể từng cảnh</span>
-                </span>
-                <span class="text-[10px] text-slate-400">Sửa trực tiếp; rời ô là lưu. Cảnh viền đỏ đang bị đánh dấu.</span>
-              </div>
-              <div id="tc-scene-review" class="p-3 space-y-2.5"></div>
-            </div>
-
-          </div>
-        </div>
-
-      </div>
-
-      <!-- Modal Footer -->
-      <div class="px-5 py-3 bg-slate-950 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
-        <div class="flex items-center gap-2 text-slate-400">
-          <i id="tc-create-hint-icon" class="fa-solid fa-circle-info text-slate-500"></i>
-          <span id="tc-create-hint">Phân tích xong và không còn cảnh bị đánh dấu thì tạo được dự án bản Việt.</span>
-        </div>
-        <div class="flex items-center gap-2.5">
-          <button type="button" id="btn-cancel-true-crime-modal" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 transition cursor-pointer">
-            Đóng
-          </button>
-          <button type="button" id="btn-tc-create-vi" disabled class="px-5 py-2.5 bg-gradient-to-r from-red-600 via-rose-600 to-indigo-600 hover:from-red-500 hover:to-indigo-500 text-white rounded-xl text-xs font-extrabold shadow-md shadow-red-600/30 flex items-center gap-2 transition cursor-pointer disabled:opacity-50">
-            <i class="fa-solid fa-clapperboard text-amber-300"></i>
-            <span>Tạo dự án bản Việt</span>
-          </button>
-        </div>
-      </div>
-
-    </div>
-  </div>
-
   <!-- TOAST CONTAINER -->
   <div id="toast-container" class="fixed bottom-10 right-5 z-50 flex flex-col gap-2.5 max-w-sm pointer-events-none">
     <!-- Dynamic toasts -->
@@ -2056,12 +1931,12 @@
 
   <!-- Main JavaScript Logic (v2.9.1 Cache Buster: renderFullUI báo cho true_crime.js để hiện nút "Tạo bản tiếng Anh") -->
   <!-- Khung giao diện gọn: showPage(), ngăn kéo, thanh bên (nạp trước app.js) -->
-  <script src="/static/workspace.js?v=1.0.0"></script>
-  <script src="/static/app.js?v=3.0.1"></script>
+  <script src="/static/workspace.js?v=1.1.0"></script>
+  <script src="/static/app.js?v=3.0.2"></script>
   <script src="/static/script_page.js?v=1.0.0"></script>
   <script src="/static/scenes_publish_page.js?v=1.0.0"></script>
-  <script src="/static/genres.js?v=1.0.0"></script>
-  <script src="/static/true_crime.js?v=1.5.0"></script>
+  <script src="/static/genres.js?v=1.1.0"></script>
+  <script src="/static/true_crime.js?v=1.6.0"></script>
   <!-- Gói SEO YouTube ở Bước 4 (app.js gọi ytSeoLoad khi mở Bước 4) -->
   <script src="/static/youtube_seo.js?v=1.0.0"></script>
   <!-- Video cảnh cao trào ở Bước 2 (dự án vụ án): gắn nhãn/nút lên thẻ cảnh sau mỗi lần renderSceneList vẽ lại -->

@@ -217,3 +217,35 @@ def test_genres_texts_match_the_preview():
 def test_genres_sync_hidden_kind_on_load():
     js = (ROOT / "backend" / "static" / "genres.js").read_text(encoding="utf-8")
     assert "savedKind" in js and "applyStep1ContentKind()" in js
+
+
+PLACEMENT |= {"tc-progress": "script", "tc-outline-review": "script", "btn-tc-outline-approve": "script",
+              "tc-review": "script", "tc-entity-table": "script", "tc-warnings": "script",
+              "tc-evidence-canvas": "script", "btn-tc-create-vi": "script", "tc-voice-vi": "script",
+              "tc-voice-en": "script", "btn-create-en-version": "publish", "tc-input-error": "idea",
+              "tc-time-estimate": "idea", "ws-case-note": "script"}
+
+
+def test_case_inputs_kept_hidden_for_existing_code():
+    for i in ("tc-case-text", "tc-duration-select", "tc-visual-style", "tc-vision-engine", "step1-engine-select"):
+        assert inside(INDEX_HTML, i, HIDDEN_STORE), i
+
+
+def test_case_blocks_sit_in_their_script_tabs():
+    for i in ("tc-progress", "btn-tc-resume", "btn-tc-new-case", "tc-outline-review"):
+        assert inside(INDEX_HTML, i, "script-tab-outline"), i
+    for i in ("tc-review", "btn-tc-create-vi", "tc-create-hint"):
+        assert inside(INDEX_HTML, i, "script-tab-names"), i
+    for i in ("tc-voice-vi", "tc-voice-en"):
+        assert inside(INDEX_HTML, i, "script-tab-voice"), i
+    assert page_of(INDEX_HTML, "ws-case-banner") is None   # dải chung, hiện trên Hình mẫu, Cảnh, Dựng
+
+
+def test_case_tabs_follow_tracked_case():
+    js = (ROOT / "backend" / "static" / "true_crime.js").read_text(encoding="utf-8")
+    assert "showPage('script')" in js and "tcSyncCaseTabs" in js
+    # tcStartFromStep1 vẫn gửi phân tích (nút Phân tích của cửa sổ cũ đã gỡ)
+    start = js.index("async function tcStartFromStep1(")
+    assert "await tcAnalyze();" in js[start:js.index("\n}\n", start)]
+    ws = (ROOT / "backend" / "static" / "workspace.js").read_text(encoding="utf-8")
+    assert "ws-case-note" in ws and "ws-case-banner" in ws and "escapeHtml(" in ws
