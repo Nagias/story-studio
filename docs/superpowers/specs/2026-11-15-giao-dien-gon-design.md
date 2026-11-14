@@ -125,7 +125,7 @@ Gỡ khỏi giao diện là xoá phần HTML và phần gắn sự kiện của 
 
 ### 4.3 Khuôn thể loại
 
-Một nơi duy nhất khai báo thể loại: file mới `backend/static/genres.js`, mỗi thể loại một mục gồm: mã (`story`, `case`, `comic`), tên hiện, câu mô tả, có viết lại không (câu hiện cho người dùng), trang Kịch bản có thẻ Dàn ý/Tên hư cấu không, có bỏ qua trang Hình mẫu không (truyện tranh: hình đã có sẵn), hành động khi bấm nút chính (gọi đúng hàm đang có: truyện chữ `handleStep1ProcessScript()`, vụ án qua `tcStartFromStep1()`, truyện tranh `handleStep1ProcessComic()`). Thể loại "Sau này" khai báo với cờ chưa bật.
+Một nơi duy nhất khai báo thể loại: file mới `backend/static/genres.js`, mỗi thể loại một mục gồm: mã (`story`, `case`, `comic`), tên hiện, câu mô tả, có viết lại không (câu hiện cho người dùng), có bỏ qua trang Hình mẫu không (truyện tranh: hình đã có sẵn; trang Hình mẫu hiện câu báo có thể bỏ qua), hành động khi bấm nút chính (gọi đúng hàm đang có: truyện chữ `handleStep1ProcessScript()`, vụ án qua `tcStartFromStep1()`, truyện tranh `handleStep1ProcessComic()`). Thể loại "Sau này" khai báo với cờ chưa bật. Thẻ Dàn ý/Tên hư cấu của trang Kịch bản không khai báo ở đây: chúng hiện theo vụ đang theo dõi (`TrueCrimeState.caseId`).
 
 Thể loại của **dự án đang mở** suy ra từ dữ liệu có sẵn, không thêm trường mới: có `metadata.case_id` là vụ án; dự án mà cảnh mang `metadata.source == "comic_slicer"` (do `POST /api/projects/{project_id}/comic/import-scenes` gắn) là truyện tranh; còn lại là truyện chữ.
 
