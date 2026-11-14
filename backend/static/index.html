@@ -160,6 +160,10 @@
   <div class="ws-shell">
     <aside id="ws-sidebar" class="ws-sidebar" aria-label="Điều hướng">
       <div class="ws-brand"><svg class="ws-i" aria-hidden="true"><use href="#ws-i-film"/></svg>Story Studio</div>
+      <button id="btn-project-dropdown" title="Đổi dự án" class="ws-project-select" aria-label="Dự án đang mở">
+        <span id="current-project-title" class="truncate">Huyền thoại Rừng Sương Mù (Tập 1)</span>
+        <i class="fa-solid fa-chevron-down text-[9px] shrink-0 group-hover:translate-y-0.5 transition-transform text-slate-400"></i>
+      </button>
       <nav class="ws-navscroll">
         <div class="ws-micro">Làm video</div>
         <button type="button" class="ws-nav" data-go="idea"><svg class="ws-i" aria-hidden="true"><use href="#ws-i-bulb"/></svg>Ý tưởng<span class="ws-num">1</span></button>
@@ -186,10 +190,6 @@
         <label class="ws-search"><svg class="ws-i" aria-hidden="true"><use href="#ws-i-search"/></svg><input id="ws-search" type="search" placeholder="Tìm cảnh theo số hoặc chữ" aria-label="Tìm cảnh theo số hoặc chữ trong lời kể" autocomplete="off"></label>
         <div class="ws-top-right">
           <!-- Nút cũ của đầu trang, giữ id và cách gắn sự kiện; các task sau dời hoặc gỡ -->
-          <button id="btn-project-dropdown" title="Đổi dự án" class="ws-icon-btn ws-project-btn">
-            <span id="current-project-title" class="truncate">Huyền thoại Rừng Sương Mù (Tập 1)</span>
-            <i class="fa-solid fa-chevron-down text-[9px] shrink-0 group-hover:translate-y-0.5 transition-transform text-slate-400"></i>
-          </button>
           <span id="header-voice-badge" class="inline-flex items-center gap-1 text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.2 rounded-full border border-emerald-200 shrink-0" title="Giọng đọc thuyết minh">
             <i class="fa-solid fa-microphone-lines text-[9px]"></i>
             <span id="header-voice-name">🇻🇳 Nam Minh</span>
@@ -202,15 +202,11 @@
             <i class="fa-solid fa-user-secret text-red-400 text-xs"></i>
             <span class="hidden min-[1600px]:inline text-[11px]">🕵️ Hồ Sơ Kỳ Án</span>
           </button>
-          <button id="btn-muse-cloud-status" class="ws-icon-btn" title="Mở bảng điều khiển Muse Fleet (tài khoản ảnh / tài khoản video)">
-            <span id="header-muse-status-dot" class="relative flex h-2 w-2">
-              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            <i class="fa-brands fa-meta text-indigo-600 text-xs"></i>
-            <span class="hidden min-[1600px]:inline text-[11px]">Muse:</span>
-            <strong class="text-emerald-900 text-[11px]" id="header-muse-status-text">Sẵn sàng</strong>
-            <span id="header-muse-specs-badge" class="hidden min-[1880px]:inline text-[9px] bg-white px-1 py-0.5 rounded text-emerald-700 border border-emerald-200 font-mono">Fleet</span>
+          <button type="button" id="btn-muse-cloud-status" class="ws-muse-status" data-state="online" title="Trạng thái Muse Fleet. Bấm để mở trang Tài khoản và kết nối">
+            <span id="header-muse-status-dot" class="relative flex h-2 w-2"><span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span></span>
+            <span>Muse:</span>
+            <strong id="header-muse-status-text">Sẵn sàng</strong>
+            <span id="header-muse-specs-badge" data-muse-badge>Fleet</span>
           </button>
           <button id="btn-open-comic-modal" class="ws-icon-btn" title="Bóc tách khung tranh Manga / Webtoon bằng OpenCV">
             <i class="fa-solid fa-book-open text-amber-600 text-xs"></i>
@@ -1257,10 +1253,25 @@
     <section id="page-projects" data-page="projects" class="ws-page" hidden>
       <div class="ws-page-head">
         <h1 class="ws-h1">Dự án</h1>
-        <p class="ws-lede">Tạm thời mở cửa sổ quản lý dự án cũ.</p>
-        <div class="ws-actions">
-          <button type="button" class="ws-btn ws-btn-primary" onclick="openProjectModal()">Mở danh sách dự án</button>
+        <p class="ws-lede">Chọn dự án để mở, hoặc tạo dự án mới.</p>
+      </div>
+      <div class="ws-card p-4 space-y-4">
+        <!-- Create new project inline -->
+        <div class="flex items-center gap-2">
+          <input type="text" id="new-project-name-input" placeholder="Tên dự án mới (VD: Truyền thuyết Rồng Vàng...)" class="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 font-medium focus:bg-white focus:border-indigo-500 shadow-2xs">
+          <button id="btn-create-project" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 shadow-xs">
+            <i class="fa-solid fa-plus"></i> Tạo mới
+          </button>
         </div>
+
+
+        <div class="border-t border-slate-200 pt-3">
+          <label class="text-xs font-bold text-slate-700 block mb-2">Danh sách dự án đã lưu:</label>
+          <div id="project-list-items" class="space-y-2">
+            <!-- Dynamic items -->
+          </div>
+        </div>
+
       </div>
     </section>
 
@@ -1268,10 +1279,59 @@
     <section id="page-gallery" data-page="gallery" class="ws-page" hidden>
       <div class="ws-page-head">
         <h1 class="ws-h1">Thư viện Muse</h1>
-        <p class="ws-lede">Tạm thời mở cửa sổ Muse cũ (thư viện ảnh và video).</p>
-        <div class="ws-actions">
-          <button type="button" class="ws-btn ws-btn-primary" onclick="openMuseModal()">Mở thư viện Muse</button>
+        <p class="ws-lede">Ảnh và video Muse đã tạo. Bấm nút Muse trên thẻ cảnh để tạo thêm.</p>
+      </div>
+      <div class="space-y-4">
+        <!-- 2. Real-time Progress Bar & Task Tracker -->
+        <div id="muse-progress-card" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4 hidden">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-circle-notch fa-spin text-indigo-600"></i>
+              <span id="muse-progress-title" class="text-xs font-bold text-slate-800">Đang render trên Muse Fleet...</span>
+            </div>
+            <span id="muse-progress-percent" class="text-base font-extrabold text-indigo-600 font-mono">0%</span>
+          </div>
+          <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden border border-slate-200 shadow-inner">
+            <div id="muse-progress-bar-fill" class="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 h-full transition-all duration-300 w-[0%]"></div>
+          </div>
+          <!-- Scene Chips -->
+          <div id="muse-scene-chips" class="flex flex-wrap gap-1.5 pt-1">
+            <!-- Dynamically populated: e.g. Scene 1 Done, Scene 2 Done, Scene 3 Active -->
+          </div>
         </div>
+
+
+        <!-- 4. Real-time Media Preview Gallery -->
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+              <i class="fa-solid fa-photo-film text-indigo-600"></i>
+              Kết quả từ Muse Fleet
+            </h3>
+            <div class="flex items-center gap-2">
+              <span id="muse-gallery-count" class="text-[11px] font-mono bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full font-bold">0 sản phẩm</span>
+              <button type="button" id="btn-clear-all-gallery" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold transition flex items-center gap-1 cursor-pointer shadow-2xs" title="Dọn sạch toàn bộ ảnh/video tạm">
+                <i class="fa-solid fa-trash-can text-[10px]"></i>
+                <span>Dọn sạch</span>
+              </button>
+            </div>
+          </div>
+          
+          <div id="muse-attach-strip" class="ws-attach-strip" hidden>
+            <span id="muse-attach-strip-text"></span>
+            <button type="button" id="btn-muse-attach-cancel" class="ws-btn">Huỷ</button>
+          </div>
+          <div id="muse-gallery-grid" class="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+            <!-- Placeholder if empty -->
+            <div id="muse-gallery-placeholder" class="col-span-full py-10 bg-white rounded-2xl border border-dashed border-slate-300 text-center text-slate-400 space-y-2">
+              <i class="fa-solid fa-images text-3xl text-slate-300"></i>
+              <p class="text-xs">Chưa có ảnh hoặc video nào được tạo trong phiên này.</p>
+              <p class="text-[10px] text-slate-400">Bấm nút Muse 2K / Muse Video trên thẻ cảnh để bắt đầu sinh media qua Muse Fleet.</p>
+            </div>
+          </div>
+        </div>
+
+
       </div>
     </section>
 
@@ -1279,10 +1339,134 @@
     <section id="page-accounts" data-page="accounts" class="ws-page" hidden>
       <div class="ws-page-head">
         <h1 class="ws-h1">Tài khoản và kết nối</h1>
-        <p class="ws-lede">Tạm thời mở cửa sổ Muse cũ (tài khoản ảnh, tài khoản video).</p>
-        <div class="ws-actions">
-          <button type="button" class="ws-btn ws-btn-primary" onclick="openMuseModal()">Mở bảng tài khoản Muse</button>
+        <p class="ws-lede">Tài khoản Muse Fleet: ảnh chỉ chạy trên tài khoản ảnh, video chỉ chạy trên tài khoản video.
+          <span id="muse-modal-status-badge" class="ws-pill" data-state="offline"><span id="muse-modal-status-dot" class="w-1.5 h-1.5 rounded-full bg-slate-400"></span><span id="muse-modal-status-text">Đang kết nối</span></span></p>
+      </div>
+      <div class="space-y-4">
+        <!-- 1. BẢNG ĐIỀU KHIỂN CỤM TRÌNH DUYỆT MUSE FLEET (10 ACCOUNTS POOL) -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+            <div class="flex items-center gap-2.5">
+              <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shrink-0 shadow-xs">
+                <i class="fa-solid fa-layer-group"></i>
+              </div>
+              <div>
+                <h3 class="text-xs sm:text-sm font-extrabold text-slate-900">Cụm Trình Duyệt Muse Fleet </h3>
+                <p class="text-[11px] text-slate-500">Cơ chế B (Local Fleet Runner): Đa Profile Chromium tự động cách ly --user-data-dir, tự động dọn SingletonLock và kháng bot.</p>
+              </div>
+            </div>
+            <!-- Overall Fleet indicators (image_online / video_online / concurrency_limit) — updated by app.js -->
+            <div class="flex items-center gap-2 flex-wrap">
+              <span id="muse-fleet-image-indicator" class="px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[10px] sm:text-[11px] font-mono text-slate-600 font-bold flex items-center gap-1" title="Có ít nhất một tài khoản ảnh đang online">
+                <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                <i class="fa-solid fa-image text-indigo-500"></i> Ảnh: chưa rõ
+              </span>
+              <span id="muse-fleet-video-indicator" class="px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[10px] sm:text-[11px] font-mono text-slate-600 font-bold flex items-center gap-1" title="Có ít nhất một tài khoản video đang online">
+                <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                <i class="fa-solid fa-film text-purple-500"></i> Video: chưa rõ
+              </span>
+              <span id="muse-fleet-concurrency" class="px-2 py-1 bg-amber-50 border border-amber-200 rounded-lg text-[10px] sm:text-[11px] font-mono text-amber-900 font-bold">
+                ⚡ Slot: –
+              </span>
+            </div>
+          </div>
+
+          <!-- Fleet Controls & 1-Click Utilities Bar -->
+          <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-xl p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs shadow-xs border border-indigo-900/50">
+            <div class="flex items-center gap-2.5">
+              <span class="w-7 h-7 rounded-lg bg-emerald-500 text-slate-950 font-bold flex items-center justify-center text-xs shrink-0 shadow-xs">
+                <i class="fa-solid fa-play"></i>
+              </span>
+              <div>
+                <span class="font-bold text-emerald-300">Bộ Tiện Ích 1-Click Cục Bộ:</span>
+                <span class="text-slate-300 ml-1">Chạy Cụm Fleet hoặc Thiết lập Đăng nhập 10 Profile qua file .bat trực tiếp trên máy này.</span>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap shrink-0">
+              <button type="button" id="btn-copy-start-fleet-cmd" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-xs" title="Chạy start_muse_fleet.bat (Daemon)">
+                <i class="fa-solid fa-bolt"></i>
+                <span>Chạy Cụm Fleet (.bat)</span>
+              </button>
+              <button type="button" id="btn-copy-setup-accounts-cmd" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-xs" title="Chạy setup_muse_accounts.bat">
+                <i class="fa-solid fa-key"></i>
+                <span>Thiết Lập Đăng Nhập (.bat)</span>
+              </button>
+              <button type="button" id="btn-muse-refresh-accounts" class="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-slate-200 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition cursor-pointer">
+                <i class="fa-solid fa-arrows-rotate text-xs"></i>
+                <span>Làm mới Pool</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Fleet accounts (rendered by app.js: renderMuseFleetAccounts) -->
+          <div id="muse-fleet-pool-container" class="space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs text-slate-500 px-1">
+              <span class="font-bold text-slate-700 flex items-center gap-1.5">
+                <i class="fa-solid fa-users-gear text-indigo-600"></i>
+                <span>Tài khoản Muse Fleet (ảnh chỉ chạy trên tài khoản ảnh, video chỉ chạy trên tài khoản video)</span>
+              </span>
+              <span class="text-[11px] text-slate-500">
+                Đăng nhập 1 tài khoản: chạy <code class="font-mono text-indigo-700 bg-indigo-50 px-1 rounded">setup_muse_accounts.bat</code> hoặc <code class="font-mono text-indigo-700 bg-indigo-50 px-1 rounded">.venv\Scripts\python.exe backend\runners\muse_fleet_runner.py --setup &lt;account_id&gt;</code>
+              </span>
+            </div>
+
+            <div id="muse-fleet-pool-grid" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <!-- Image accounts group -->
+              <div class="bg-slate-50 rounded-xl border border-slate-200 p-3 space-y-2">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                    <i class="fa-solid fa-image text-indigo-500"></i> Tài khoản ảnh
+                  </span>
+                  <span id="muse-fleet-image-group-status" class="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">Đang tải...</span>
+                </div>
+                <div id="muse-fleet-image-list" class="space-y-2">
+                  <p class="text-[11px] text-slate-400 px-1">Đang tải danh sách tài khoản ảnh...</p>
+                </div>
+              </div>
+              <!-- Video accounts group -->
+              <div class="bg-slate-50 rounded-xl border border-slate-200 p-3 space-y-2">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                    <i class="fa-solid fa-film text-purple-500"></i> Tài khoản video
+                  </span>
+                  <span id="muse-fleet-video-group-status" class="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">Đang tải...</span>
+                </div>
+                <div id="muse-fleet-video-list" class="space-y-2">
+                  <p class="text-[11px] text-slate-400 px-1">Đang tải danh sách tài khoản video...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Architecture Note -->
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
+            <span class="flex items-center gap-1.5 text-[11px] text-slate-600">
+              <i class="fa-solid fa-shield-halved text-emerald-600"></i>
+              <span><strong>Muse Fleet:</strong> Playwright điều khiển các Chrome profile đã đăng nhập ngay trên máy này, mỗi profile 1 tài khoản Muse.</span>
+            </span>
+            <span class="text-[11px] font-mono text-slate-400">Localhost Loopback: 127.0.0.1:8000</span>
+          </div>
         </div>
+
+
+        <!-- 5. Fleet Offline Assistant (shown by app.js when Muse Fleet is offline) -->
+        <div id="muse-reconnect-assistant" class="bg-amber-50/70 border border-amber-300 rounded-2xl p-4 hidden">
+          <div class="flex items-start gap-3">
+            <div class="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center text-base shrink-0">
+              <i class="fa-solid fa-plug-circle-bolt"></i>
+            </div>
+            <div>
+              <h4 class="text-xs font-bold text-amber-900">Muse Fleet chưa có tài khoản nào online?</h4>
+              <p class="text-xs text-amber-800/90 mt-0.5 leading-relaxed">
+                Server tự khởi động Fleet Runner; nếu nó đã dừng, chạy <code class="font-mono bg-white/70 px-1 rounded">start_muse_fleet.bat</code> trên máy này.
+                Nếu tài khoản báo "chưa đăng nhập" / "cần đăng nhập lại", chạy <code class="font-mono bg-white/70 px-1 rounded">setup_muse_accounts.bat</code>
+                hoặc <code class="font-mono bg-white/70 px-1 rounded">.venv\Scripts\python.exe backend\runners\muse_fleet_runner.py --setup &lt;account_id&gt;</code>.
+              </p>
+            </div>
+          </div>
+        </div>
+
+
       </div>
     </section>
 
@@ -1609,37 +1793,6 @@
     </div>
   </div>
 
-  <!-- MODAL 4: PROJECT MANAGER -->
-  <div id="modal-project-manager" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-white border border-slate-200 rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
-      <div class="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-        <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
-          <i class="fa-solid fa-folder text-indigo-600"></i> Quản lý Dự án Storyboard
-        </h3>
-        <button id="btn-close-project-modal" class="text-slate-400 hover:text-slate-700 p-1">
-          <i class="fa-solid fa-xmark text-lg"></i>
-        </button>
-      </div>
-
-      <div class="p-5 overflow-y-auto space-y-4">
-        <!-- Create new project inline -->
-        <div class="flex items-center gap-2">
-          <input type="text" id="new-project-name-input" placeholder="Tên dự án mới (VD: Truyền thuyết Rồng Vàng...)" class="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 font-medium focus:bg-white focus:border-indigo-500 shadow-2xs">
-          <button id="btn-create-project" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 shadow-xs">
-            <i class="fa-solid fa-plus"></i> Tạo mới
-          </button>
-        </div>
-
-        <div class="border-t border-slate-200 pt-3">
-          <label class="text-xs font-bold text-slate-700 block mb-2">Danh sách dự án đã lưu:</label>
-          <div id="project-list-items" class="space-y-2 max-h-60 overflow-y-auto">
-            <!-- Dynamic items -->
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- ================= MASTER STORYBOARD SPEC MODAL (OP_CTOOL EDITION) ================= -->
   <div id="modal-master-storyboard" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
     <div class="bg-white border border-slate-200 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
@@ -1737,217 +1890,6 @@
           </button>
         </div>
       </div>
-    </div>
-  </div>
-
-  <!-- ================= MODAL: META MUSE CLOUD STUDIO DASHBOARD ================= -->
-  <div id="modal-muse-cloud" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-md p-4 hidden">
-    <div class="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-      
-      <!-- Modal Header -->
-      <div class="px-6 py-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between shrink-0 border-b border-slate-800">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500 via-indigo-600 to-purple-600 flex items-center justify-center text-white text-xl shadow-lg shadow-indigo-500/30">
-            <i class="fa-brands fa-meta"></i>
-          </div>
-          <div>
-            <div class="flex items-center gap-2">
-              <h2 class="text-base font-extrabold tracking-wide">Trạm Điều Khiển Cụm Trình Duyệt Muse Fleet</h2>
-              <span id="muse-modal-status-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
-                <span id="muse-modal-status-dot" class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span id="muse-modal-status-text">Đang kết nối</span>
-              </span>
-            </div>
-            <p class="text-xs text-slate-400 mt-0.5">Cụm Trình Duyệt Chromium Đa Profile Cục Bộ (Cơ chế B) • Hỗ trợ xoay vòng tới 10 Tài khoản • Khống chế RAM &lt; 1.5GB</p>
-          </div>
-        </div>
-        <button id="btn-close-muse-modal" class="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition">
-          <i class="fa-solid fa-xmark text-sm"></i>
-        </button>
-      </div>
-
-      <!-- Modal Body (Scrollable) -->
-      <div class="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50 min-h-0">
-
-        <!-- 1. BẢNG ĐIỀU KHIỂN CỤM TRÌNH DUYỆT MUSE FLEET (10 ACCOUNTS POOL) -->
-        <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs space-y-4">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-            <div class="flex items-center gap-2.5">
-              <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shrink-0 shadow-xs">
-                <i class="fa-solid fa-layer-group"></i>
-              </div>
-              <div>
-                <h3 class="text-xs sm:text-sm font-extrabold text-slate-900">Cụm Trình Duyệt Muse Fleet (Pool 10 Tài Khoản)</h3>
-                <p class="text-[11px] text-slate-500">Cơ chế B (Local Fleet Runner): Đa Profile Chromium tự động cách ly --user-data-dir, tự động dọn SingletonLock và kháng bot.</p>
-              </div>
-            </div>
-            <!-- Overall Fleet indicators (image_online / video_online / concurrency_limit) — updated by app.js -->
-            <div class="flex items-center gap-2 flex-wrap">
-              <span id="muse-fleet-image-indicator" class="px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[10px] sm:text-[11px] font-mono text-slate-600 font-bold flex items-center gap-1" title="Có ít nhất một tài khoản ảnh đang online">
-                <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                <i class="fa-solid fa-image text-indigo-500"></i> Ảnh: chưa rõ
-              </span>
-              <span id="muse-fleet-video-indicator" class="px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[10px] sm:text-[11px] font-mono text-slate-600 font-bold flex items-center gap-1" title="Có ít nhất một tài khoản video đang online">
-                <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                <i class="fa-solid fa-film text-purple-500"></i> Video: chưa rõ
-              </span>
-              <span id="muse-fleet-concurrency" class="px-2 py-1 bg-amber-50 border border-amber-200 rounded-lg text-[10px] sm:text-[11px] font-mono text-amber-900 font-bold">
-                ⚡ Slot: –
-              </span>
-            </div>
-          </div>
-
-          <!-- Fleet Controls & 1-Click Utilities Bar -->
-          <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-xl p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs shadow-xs border border-indigo-900/50">
-            <div class="flex items-center gap-2.5">
-              <span class="w-7 h-7 rounded-lg bg-emerald-500 text-slate-950 font-bold flex items-center justify-center text-xs shrink-0 shadow-xs">
-                <i class="fa-solid fa-play"></i>
-              </span>
-              <div>
-                <span class="font-bold text-emerald-300">Bộ Tiện Ích 1-Click Cục Bộ:</span>
-                <span class="text-slate-300 ml-1">Chạy Cụm Fleet hoặc Thiết lập Đăng nhập 10 Profile qua file .bat trực tiếp trên máy này.</span>
-              </div>
-            </div>
-            <div class="flex items-center gap-2 flex-wrap shrink-0">
-              <button type="button" id="btn-copy-start-fleet-cmd" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-xs" title="Chạy start_muse_fleet.bat (Daemon)">
-                <i class="fa-solid fa-bolt"></i>
-                <span>Chạy Cụm Fleet (.bat)</span>
-              </button>
-              <button type="button" id="btn-copy-setup-accounts-cmd" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-xs" title="Chạy setup_muse_accounts.bat">
-                <i class="fa-solid fa-key"></i>
-                <span>Thiết Lập 10 Acc (.bat)</span>
-              </button>
-              <button type="button" id="btn-muse-refresh-accounts" class="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-slate-200 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition cursor-pointer">
-                <i class="fa-solid fa-arrows-rotate text-xs"></i>
-                <span>Làm mới Pool</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- Fleet accounts (rendered by app.js: renderMuseFleetAccounts) -->
-          <div id="muse-fleet-pool-container" class="space-y-3">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs text-slate-500 px-1">
-              <span class="font-bold text-slate-700 flex items-center gap-1.5">
-                <i class="fa-solid fa-users-gear text-indigo-600"></i>
-                <span>Tài khoản Muse Fleet (ảnh chỉ chạy trên tài khoản ảnh, video chỉ chạy trên tài khoản video)</span>
-              </span>
-              <span class="text-[11px] text-slate-500">
-                Đăng nhập 1 tài khoản: chạy <code class="font-mono text-indigo-700 bg-indigo-50 px-1 rounded">setup_muse_accounts.bat</code> hoặc <code class="font-mono text-indigo-700 bg-indigo-50 px-1 rounded">.venv\Scripts\python.exe backend\runners\muse_fleet_runner.py --setup &lt;account_id&gt;</code>
-              </span>
-            </div>
-
-            <div id="muse-fleet-pool-grid" class="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <!-- Image accounts group -->
-              <div class="bg-slate-50 rounded-xl border border-slate-200 p-3 space-y-2">
-                <div class="flex items-center justify-between gap-2">
-                  <span class="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                    <i class="fa-solid fa-image text-indigo-500"></i> Tài khoản ảnh
-                  </span>
-                  <span id="muse-fleet-image-group-status" class="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">Đang tải...</span>
-                </div>
-                <div id="muse-fleet-image-list" class="space-y-2">
-                  <p class="text-[11px] text-slate-400 px-1">Đang tải danh sách tài khoản ảnh...</p>
-                </div>
-              </div>
-              <!-- Video accounts group -->
-              <div class="bg-slate-50 rounded-xl border border-slate-200 p-3 space-y-2">
-                <div class="flex items-center justify-between gap-2">
-                  <span class="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                    <i class="fa-solid fa-film text-purple-500"></i> Tài khoản video
-                  </span>
-                  <span id="muse-fleet-video-group-status" class="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">Đang tải...</span>
-                </div>
-                <div id="muse-fleet-video-list" class="space-y-2">
-                  <p class="text-[11px] text-slate-400 px-1">Đang tải danh sách tài khoản video...</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Bottom Architecture Note -->
-          <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
-            <span class="flex items-center gap-1.5 text-[11px] text-slate-600">
-              <i class="fa-solid fa-shield-halved text-emerald-600"></i>
-              <span><strong>Muse Fleet:</strong> Playwright điều khiển các Chrome profile đã đăng nhập ngay trên máy này, mỗi profile 1 tài khoản Muse.</span>
-            </span>
-            <span class="text-[11px] font-mono text-slate-400">Localhost Loopback: 127.0.0.1:8000</span>
-          </div>
-        </div>
-
-        <!-- 2. Real-time Progress Bar & Task Tracker -->
-        <div id="muse-progress-card" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4 hidden">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <i class="fa-solid fa-circle-notch fa-spin text-indigo-600"></i>
-              <span id="muse-progress-title" class="text-xs font-bold text-slate-800">Đang render trên Muse Fleet...</span>
-            </div>
-            <span id="muse-progress-percent" class="text-base font-extrabold text-indigo-600 font-mono">0%</span>
-          </div>
-          <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden border border-slate-200 shadow-inner">
-            <div id="muse-progress-bar-fill" class="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 h-full transition-all duration-300 w-[0%]"></div>
-          </div>
-          <!-- Scene Chips -->
-          <div id="muse-scene-chips" class="flex flex-wrap gap-1.5 pt-1">
-            <!-- Dynamically populated: e.g. Scene 1 Done, Scene 2 Done, Scene 3 Active -->
-          </div>
-        </div>
-
-        <!-- 4. Real-time Media Preview Gallery -->
-        <div>
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-              <i class="fa-solid fa-photo-film text-indigo-600"></i>
-              Bộ sưu tập kết quả trực tiếp từ Muse Fleet (Live Gallery)
-            </h3>
-            <div class="flex items-center gap-2">
-              <span id="muse-gallery-count" class="text-[11px] font-mono bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full font-bold">0 sản phẩm</span>
-              <button type="button" id="btn-clear-all-gallery" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold transition flex items-center gap-1 cursor-pointer shadow-2xs" title="Dọn sạch toàn bộ ảnh/video tạm">
-                <i class="fa-solid fa-trash-can text-[10px]"></i>
-                <span>Dọn sạch</span>
-              </button>
-            </div>
-          </div>
-          
-          <div id="muse-gallery-grid" class="grid grid-cols-2 md:grid-cols-4 gap-3.5">
-            <!-- Placeholder if empty -->
-            <div id="muse-gallery-placeholder" class="col-span-full py-10 bg-white rounded-2xl border border-dashed border-slate-300 text-center text-slate-400 space-y-2">
-              <i class="fa-solid fa-images text-3xl text-slate-300"></i>
-              <p class="text-xs">Chưa có ảnh hoặc video nào được tạo trong phiên này.</p>
-              <p class="text-[10px] text-slate-400">Bấm nút Muse 2K / Muse Video trên thẻ cảnh để bắt đầu sinh media qua Muse Fleet.</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- 5. Fleet Offline Assistant (shown by app.js when Muse Fleet is offline) -->
-        <div id="muse-reconnect-assistant" class="bg-amber-50/70 border border-amber-300 rounded-2xl p-4 hidden">
-          <div class="flex items-start gap-3">
-            <div class="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center text-base shrink-0">
-              <i class="fa-solid fa-plug-circle-bolt"></i>
-            </div>
-            <div>
-              <h4 class="text-xs font-bold text-amber-900">Muse Fleet chưa có tài khoản nào online?</h4>
-              <p class="text-xs text-amber-800/90 mt-0.5 leading-relaxed">
-                Server tự khởi động Fleet Runner; nếu nó đã dừng, chạy <code class="font-mono bg-white/70 px-1 rounded">start_muse_fleet.bat</code> trên máy này.
-                Nếu tài khoản báo "chưa đăng nhập" / "cần đăng nhập lại", chạy <code class="font-mono bg-white/70 px-1 rounded">setup_muse_accounts.bat</code>
-                hoặc <code class="font-mono bg-white/70 px-1 rounded">.venv\Scripts\python.exe backend\runners\muse_fleet_runner.py --setup &lt;account_id&gt;</code>.
-              </p>
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- Modal Footer -->
-      <div class="px-6 py-3.5 bg-white border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
-        <div class="flex items-center gap-2">
-          <i class="fa-solid fa-circle-info text-indigo-500"></i>
-          <span>Tác vụ chạy ngầm qua Muse Fleet (Chrome profile trên máy này): ảnh chỉ dùng tài khoản ảnh, video chỉ dùng tài khoản video.</span>
-        </div>
-        <button id="btn-close-muse-modal-footer" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition cursor-pointer">
-          Đóng
-        </button>
-      </div>
-
     </div>
   </div>
 

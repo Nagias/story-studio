@@ -128,3 +128,35 @@ def test_scenes_publish_page_script_loaded_after_app_and_shipped():
     assert h.index("/static/app.js") < h.index("/static/scenes_publish_page.js")
     src = (ROOT / "tools" / "build_release.py").read_text(encoding="utf-8")
     assert src.count("backend/static/scenes_publish_page.js") >= 2
+
+
+PLACEMENT |= {"project-list-items": "projects", "btn-create-project": "projects", "new-project-name-input": "projects",
+              "btn-project-dropdown": None,
+              "muse-fleet-pool-grid": "accounts", "muse-fleet-pool-container": "accounts",
+              "btn-muse-refresh-accounts": "accounts", "btn-copy-start-fleet-cmd": "accounts",
+              "btn-copy-setup-accounts-cmd": "accounts", "muse-modal-status-text": "accounts",
+              "muse-reconnect-assistant": "accounts",
+              "muse-gallery-grid": "gallery", "muse-gallery-count": "gallery", "btn-clear-all-gallery": "gallery",
+              "muse-progress-card": "gallery", "muse-scene-chips": "gallery", "muse-gallery-placeholder": "gallery"}
+
+
+def test_projects_gallery_accounts_pages_are_real_pages():
+    h = INDEX_HTML
+    assert inside(h, "btn-project-dropdown", "ws-sidebar") and page_of(h, "btn-project-dropdown") is None
+    assert not inside(h, "btn-project-dropdown", "ws-top-right-x")
+    assert "Tạm thời mở cửa sổ" not in h and "onclick=\"openMuseModal()\"" not in h
+    assert "openProjectModal()\"" not in h
+    # trạng thái Muse ở bên phải thanh trên, bấm mở trang Tài khoản
+    top = h[h.index('<header class="ws-top">'):h.index("</header>")]
+    assert 'id="btn-muse-cloud-status"' in top and 'id="header-muse-status-text"' in top
+
+
+def test_gallery_attach_strip_and_return_to_scenes():
+    h = INDEX_HTML
+    assert page_of(h, "muse-attach-strip") == "gallery" and page_of(h, "btn-muse-attach-cancel") == "gallery"
+    app = (ROOT / "backend" / "static" / "app.js").read_text(encoding="utf-8")
+    body = app[app.index("function openMuseModalForScene("):]
+    assert "showPage('gallery')" in body[:600] or "openMuseModal(" in body[:300]
+    att = app[app.index("async function attachMediaToScene("):]
+    att = att[:att.index("\nasync function runSceneBatch")]
+    assert "showPage('scenes')" in att and "closeMuseModal" not in att

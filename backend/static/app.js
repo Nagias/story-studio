@@ -470,8 +470,6 @@ const DOM = {
   editCharNegative: document.getElementById('edit-char-negative'),
 
   // Project Modal
-  modalProjectManager: document.getElementById('modal-project-manager'),
-  btnCloseProjectModal: document.getElementById('btn-close-project-modal'),
   newProjectNameInput: document.getElementById('new-project-name-input'),
   btnCreateProject: document.getElementById('btn-create-project'),
   projectListItems: document.getElementById('project-list-items'),
@@ -514,9 +512,6 @@ const DOM = {
   headerMuseStatusDot: document.getElementById('header-muse-status-dot'),
   headerMuseStatusText: document.getElementById('header-muse-status-text'),
   headerMuseSpecsBadge: document.getElementById('header-muse-specs-badge'),
-  modalMuseCloud: document.getElementById('modal-muse-cloud'),
-  btnCloseMuseModal: document.getElementById('btn-close-muse-modal'),
-  btnCloseMuseModalFooter: document.getElementById('btn-close-muse-modal-footer'),
   museModalStatusBadge: document.getElementById('muse-modal-status-badge'),
   museModalStatusDot: document.getElementById('muse-modal-status-dot'),
   museModalStatusText: document.getElementById('muse-modal-status-text'),
@@ -2075,7 +2070,6 @@ function bindEventListeners() {
 
   // Project Dropdown / Manager
   DOM.btnProjectDropdown?.addEventListener('click', openProjectModal);
-  DOM.btnCloseProjectModal?.addEventListener('click', closeProjectModal);
   DOM.btnCreateProject?.addEventListener('click', handleCreateNewProject);
 
   // Global Audio and Video element listeners
@@ -2563,10 +2557,29 @@ function resetSceneImageStatus(index) {
   showToast(`Đã xóa trạng thái kẹt cho Cảnh #${index + 1}`, "info");
 }
 
+// Cảnh đang được chọn ảnh/video từ Thư viện Muse (null: đang xem thư viện bình thường)
+let museAttachSceneIndex = null;
+
+function updateMuseAttachStrip() {
+  const strip = document.getElementById('muse-attach-strip');
+  const text = document.getElementById('muse-attach-strip-text');
+  if (!strip || !text) return;
+  strip.hidden = museAttachSceneIndex === null;
+  if (museAttachSceneIndex !== null) {
+    text.textContent = `Đang chọn ảnh cho cảnh ${String(museAttachSceneIndex + 1).padStart(3, '0')}. Bấm "Gắn Cảnh" trên ảnh hoặc video muốn dùng.`;
+  }
+}
+
+function clearMuseAttachMode() {
+  museAttachSceneIndex = null;
+  updateMuseAttachStrip();
+}
+
 function openMuseModalForScene(index) {
   AppState.selectedSceneIndex = index;
-  openMuseModal();
-  showToast(`Đang mở Gallery Muse cho Cảnh #${index + 1}. Bấm [📌 Gắn vào Cảnh #${index + 1}] để chọn!`, "info");
+  museAttachSceneIndex = index;
+  showPage('gallery');
+  showToast(`Đang mở Thư viện Muse cho Cảnh #${index + 1}. Bấm [📌 Gắn vào Cảnh #${index + 1}] để chọn!`, "info");
 }
 
 async function attachMediaToScene(index, mediaUrl, isVideo, outputPath = '') {
@@ -2600,7 +2613,7 @@ async function attachMediaToScene(index, mediaUrl, isVideo, outputPath = '') {
   }
   renderSceneList();
   renderPreviewPlayer();
-  closeMuseModal();
+  showPage('scenes');
 }
 
 // Chạy lần lượt từng cảnh cho các nút "làm cả dự án": khoá nút khi đang chạy (bấm lại không chạy hai lượt),
@@ -4151,19 +4164,18 @@ function handleSaveCharacter() {
 }
 
 // ================= MODAL 4: PROJECT MANAGER =================
+// Mở trang Dự án; việc nạp danh sách nằm ở móc onPageShow('projects') trong initMuseCloud()
 function openProjectModal() {
-  DOM.modalProjectManager.classList.remove('hidden');
-  renderProjectListModal();
-  // Lấy lại danh sách để số cảnh của các dự án khác là số mới nhất
-  if (AppState.serverOnline) {
-    loadProjectsList().then(() => {
-      if (!DOM.modalProjectManager.classList.contains('hidden')) renderProjectListModal();
-    }).catch(() => {});
-  }
+  showPage('projects');
 }
 
-function closeProjectModal() {
-  DOM.modalProjectManager.classList.add('hidden');
+// Mở hoặc tạo xong một dự án thì rời trang Dự án: về trang đã dùng lần trước của dự án đó, chưa có thì Cảnh hoặc Ý tưởng
+function leaveProjectsPage() {
+  const proj = AppState.currentProject;
+  const saved = typeof rememberedPage === 'function' ? rememberedPage(proj?.id) : null;
+  const target = (saved && !['projects', 'gallery', 'accounts'].includes(saved)) ? saved
+    : (proj?.scenes?.length ? 'scenes' : 'idea');
+  showPage(target);
 }
 
 function renderProjectListModal() {
@@ -4217,7 +4229,7 @@ async function handleCreateNewProject() {
   rememberLastProjectId(remote.id);
   AppState.projectsList.push({ id: remote.id, name: remote.name, scene_count: 0 });
   renderFullUI();
-  closeProjectModal();
+  leaveProjectsPage();
   DOM.newProjectNameInput.value = "";
   showToast(`Đã tạo dự án mới: "${escapeHtml(name)}"`, "success");
 }
@@ -4238,7 +4250,7 @@ async function switchProject(projectId) {
   AppState.currentProject = adoptServerProject(remote);
   rememberLastProjectId(remote.id);
   renderFullUI();
-  closeProjectModal();
+  leaveProjectsPage();
   showToast(`Đã mở dự án: ${escapeHtml(remote.name)}`, "info");
 }
 
@@ -4266,7 +4278,6 @@ function closeAllModals() {
   DOM.modalScriptImporter?.classList.add('hidden');
   DOM.modalComicSlicer?.classList.add('hidden');
   DOM.modalCharacterEditor?.classList.add('hidden');
-  DOM.modalProjectManager?.classList.add('hidden');
   document.getElementById('modal-master-storyboard')?.classList.add('hidden');
   // closeTrueCrimeModal (true_crime.js) còn dừng việc hỏi tiến độ phân tích
   if (typeof closeTrueCrimeModal === 'function') closeTrueCrimeModal();
@@ -4436,11 +4447,19 @@ function initMuseCloud() {
   if (DOM.btnMuseCloudStatus) {
     DOM.btnMuseCloudStatus.addEventListener('click', openMuseModal);
   }
-  if (DOM.btnCloseMuseModal) {
-    DOM.btnCloseMuseModal.addEventListener('click', closeMuseModal);
-  }
-  if (DOM.btnCloseMuseModalFooter) {
-    DOM.btnCloseMuseModalFooter.addEventListener('click', closeMuseModal);
+  document.getElementById('btn-muse-attach-cancel')?.addEventListener('click', () => {
+    clearMuseAttachMode();
+    if (typeof showPage === 'function') showPage('scenes');
+  });
+  // Mở trang thì nạp lại dữ liệu như cửa sổ cũ làm khi mở; rời trang Thư viện thì bỏ chế độ chọn ảnh cho cảnh
+  if (typeof onPageShow === 'function') {
+    onPageShow('gallery', () => { pollMuseBridgeStatus(); updateMuseAttachStrip(); });
+    onPageShow('accounts', () => { pollMuseBridgeStatus(); loadMuseAccountsUI(); });
+    for (const page of ['idea', 'script', 'look', 'scenes', 'publish', 'projects', 'accounts']) onPageShow(page, clearMuseAttachMode);
+    onPageShow('projects', () => {
+      renderProjectListModal();
+      if (AppState.serverOnline) loadProjectsList().then(() => { if (currentPage() === 'projects') renderProjectListModal(); }).catch(() => {});
+    });
   }
 
   const btnRefreshAcc = DOM.btnMuseRefreshAccounts;
@@ -4774,18 +4793,9 @@ async function handleMuseFleetAccountClick(e) {
   }
 }
 
+// Mở trang Tài khoản và kết nối; nạp lại trạng thái và tài khoản nằm ở móc onPageShow('accounts') trong initMuseCloud()
 function openMuseModal() {
-  if (DOM.modalMuseCloud) {
-    DOM.modalMuseCloud.classList.remove('hidden');
-    pollMuseBridgeStatus(); // Immediate refresh on open
-    loadMuseAccountsUI(); // Immediate refresh of multi-account switcher
-  }
-}
-
-function closeMuseModal() {
-  if (DOM.modalMuseCloud) {
-    DOM.modalMuseCloud.classList.add('hidden');
-  }
+  showPage('accounts');
 }
 
 // Một lần /status lỗi hoặc quá 4 s (trang bị ẩn, máy bận) chưa phải mất kết nối: giữ trạng thái cũ,
@@ -4829,18 +4839,15 @@ function updateMuseCloudUI(data) {
   // 1. Update Header Status Badge (huy hiệu chỉ hiện từ 1880px, khớp với nút trong header của index.html)
   if (DOM.btnMuseCloudStatus && DOM.headerMuseStatusDot && DOM.headerMuseStatusText && DOM.headerMuseSpecsBadge) {
     if (statusStr === 'online') {
-      DOM.btnMuseCloudStatus.className = "px-2.5 py-1.5 bg-gradient-to-r from-emerald-50 to-teal-50 hover:from-emerald-100 hover:to-teal-100 text-emerald-800 rounded-lg text-xs font-bold border border-emerald-300 transition flex items-center gap-1.5 shadow-xs group cursor-pointer";
+      DOM.btnMuseCloudStatus.dataset.state = "online";
       DOM.headerMuseStatusDot.innerHTML = `
-        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
         <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
       `;
       DOM.headerMuseStatusText.textContent = "Sẵn sàng";
-      DOM.headerMuseStatusText.className = "text-emerald-900";
       DOM.headerMuseStatusText.title = "";
-      DOM.headerMuseSpecsBadge.className = "hidden min-[1880px]:inline text-[10px] bg-white px-1.5 py-0.5 rounded text-emerald-700 border border-emerald-200 font-mono";
       DOM.headerMuseSpecsBadge.textContent = museFleetKindSummary();
     } else if (statusStr === 'busy') {
-      DOM.btnMuseCloudStatus.className = "px-2.5 py-1.5 bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 rounded-lg text-xs font-bold border border-amber-300 transition flex items-center gap-1.5 shadow-xs group cursor-pointer animate-pulse";
+      DOM.btnMuseCloudStatus.dataset.state = "busy";
       DOM.headerMuseStatusDot.innerHTML = `
         <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
       `;
@@ -4848,19 +4855,15 @@ function updateMuseCloudUI(data) {
       DOM.headerMuseStatusText.textContent = activeMsg.length > 25 ? activeMsg.substring(0, 22) + "..." : activeMsg;
       // Giới hạn bề rộng để thông báo dài không ép mất tên dự án trên màn 1280-1600px; rê chuột xem đủ câu.
       // 140px vừa đủ các câu runner gửi lâu nhất ("Muse đang tạo video..." 136px, "Gửi prompt lên Muse..." 137px).
-      DOM.headerMuseStatusText.className = "text-amber-900 truncate max-w-[140px]";
       DOM.headerMuseStatusText.title = activeMsg;
-      DOM.headerMuseSpecsBadge.className = "hidden min-[1880px]:inline text-[10px] bg-white px-1.5 py-0.5 rounded text-amber-800 border border-amber-200 font-mono";
       DOM.headerMuseSpecsBadge.textContent = museFleetKindSummary();   // chữ trạng thái bên cạnh đã nói đang render
     } else {
-      DOM.btnMuseCloudStatus.className = "px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold border border-rose-300 transition flex items-center gap-1.5 shadow-xs group cursor-pointer";
+      DOM.btnMuseCloudStatus.dataset.state = "offline";
       DOM.headerMuseStatusDot.innerHTML = `
         <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
       `;
       DOM.headerMuseStatusText.textContent = "Chưa kết nối";
-      DOM.headerMuseStatusText.className = "text-rose-700 underline decoration-rose-300";
       DOM.headerMuseStatusText.title = "";
-      DOM.headerMuseSpecsBadge.className = "hidden min-[1880px]:inline text-[10px] bg-rose-100 px-1.5 py-0.5 rounded text-rose-800 font-semibold";
       DOM.headerMuseSpecsBadge.textContent = "Bấm để xem Fleet";
     }
   }
@@ -4868,22 +4871,22 @@ function updateMuseCloudUI(data) {
   // 2. Update Modal Status Badge
   if (DOM.museModalStatusBadge && DOM.museModalStatusDot && DOM.museModalStatusText) {
     if (statusStr === 'online') {
-      DOM.museModalStatusBadge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5";
-      DOM.museModalStatusDot.className = "w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse";
+      DOM.museModalStatusBadge.dataset.state = "online";
+      DOM.museModalStatusDot.className = "w-1.5 h-1.5 rounded-full bg-emerald-500";
       DOM.museModalStatusText.textContent = "Đang kết nối (Online)";
     } else if (statusStr === 'busy') {
-      DOM.museModalStatusBadge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5";
-      DOM.museModalStatusDot.className = "w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse";
+      DOM.museModalStatusBadge.dataset.state = "busy";
+      DOM.museModalStatusDot.className = "w-1.5 h-1.5 rounded-full bg-amber-500";
       DOM.museModalStatusText.textContent = "Đang render tác vụ (Busy)";
     } else {
-      DOM.museModalStatusBadge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1.5";
-      DOM.museModalStatusDot.className = "w-1.5 h-1.5 rounded-full bg-rose-400";
+      DOM.museModalStatusBadge.dataset.state = "offline";
+      DOM.museModalStatusDot.className = "w-1.5 h-1.5 rounded-full bg-rose-500";
       DOM.museModalStatusText.textContent = "Chưa kết nối (Offline)";
     }
   }
 
-  // 3. Fleet accounts: refresh the account list when the modal is visible (accounts come with every status poll)
-  if (DOM.modalMuseCloud && !DOM.modalMuseCloud.classList.contains('hidden') && data && Array.isArray(data.accounts)) {
+  // 3. Fleet accounts: refresh the account list when the accounts page is visible (accounts come with every status poll)
+  if (typeof currentPage === 'function' && currentPage() === 'accounts' && data && Array.isArray(data.accounts)) {
     renderMuseFleetAccounts();
   }
   updateMuseFleetIndicators();
@@ -5195,7 +5198,6 @@ window.regenerateSceneVoice = regenerateSceneVoice;
 window.openScriptModal = openScriptModal;
 window.switchProject = switchProject;
 window.openMuseModal = openMuseModal;
-window.closeMuseModal = closeMuseModal;
 window.loadMuseAccountsUI = loadMuseAccountsUI;
 window.setMediaViewMode = setMediaViewMode;
 window.resetSceneImageStatus = resetSceneImageStatus;

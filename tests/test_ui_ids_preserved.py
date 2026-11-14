@@ -20,6 +20,11 @@ REMOVED: dict[str, str] = {
     "advanced-asset-accordion": "spec 4.1: nút Nâng cao không còn gì để mở",
     "asset-accordion-body": "spec 4.1: nút Nâng cao không còn gì để mở",
     "asset-accordion-chevron": "spec 4.1: nút Nâng cao không còn gì để mở",
+    "modal-project-manager": "spec 4.1: cửa sổ thành trang Dự án",
+    "modal-muse-cloud": "spec 4.1: cửa sổ tách thành trang Tài khoản và trang Thư viện Muse",
+    "btn-close-project-modal": "spec 4.1: cửa sổ thành trang, không còn nút đóng",
+    "btn-close-muse-modal": "spec 4.1: cửa sổ thành trang, không còn nút đóng",
+    "btn-close-muse-modal-footer": "spec 4.1: cửa sổ thành trang, không còn nút đóng",
     "audio-settings-card": "spec 4.1: thẻ cấu hình dựng thành #render-settings trong ngăn Tuỳ chỉnh dựng",
 }
 
