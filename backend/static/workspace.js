@@ -51,7 +51,10 @@
       console.warn('showPage: không có trang', name);
       return;
     }
+    const previous = current;
     current = name;
+    if (previous === 'look' && name !== 'look') stopLookPolling();
+    closeStylePopover();
     for (const code of Object.keys(PAGES)) {
       const page = document.getElementById(`page-${code}`);
       if (page) page.hidden = code !== name;
@@ -69,6 +72,44 @@
     for (const fn of hooks[name] || []) {
       try { fn(); } catch (err) { console.error(`Móc của trang ${name} bị lỗi:`, err); }
     }
+  }
+
+  // ---------- Trang Hình mẫu ----------
+  function stopLookPolling() {
+    for (const fn of [window.stopCharacterSheets, window.stopLocationSheets]) {
+      try { if (typeof fn === 'function') fn(); } catch (err) { console.error('Không dừng được việc hỏi tiến độ của trang Hình mẫu:', err); }
+    }
+  }
+
+  function startLookPolling() {
+    for (const fn of [window.startCharacterSheets, window.startLocationSheets]) {
+      if (typeof fn === 'function') fn();
+    }
+  }
+
+  // Tên phong cách của dự án: nhãn <option> đang chọn của #select-project-style, bỏ biểu tượng emoji đầu nhãn
+  function renderLookStyleLine() {
+    const line = document.getElementById('look-style-line');
+    const sel = document.getElementById('select-project-style');
+    if (!line) return;
+    const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
+    const label = opt ? opt.textContent.replace(/^[^\p{L}\p{N}]+/u, '').trim() : '';
+    line.textContent = label || 'Chưa có dự án';
+  }
+
+  function stylePopover() { return document.getElementById('look-style-popover'); }
+  function closeStylePopover() {
+    const pop = stylePopover();
+    if (pop) pop.hidden = true;
+  }
+
+  function initLookPage() {
+    const pop = stylePopover();
+    document.getElementById('btn-look-change-style')?.addEventListener('click', () => {
+      if (pop) pop.hidden = !pop.hidden;
+    });
+    document.getElementById('select-project-style')?.addEventListener('change', renderLookStyleLine);
+    onPageShow('look', () => { startLookPolling(); renderLookStyleLine(); });
   }
 
   function onPageShow(name, fn) {
@@ -202,6 +243,8 @@
   function initKeys() {
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape' || isTyping(document.activeElement)) return;
+      const pop = stylePopover();
+      if (pop && !pop.hidden) { pop.hidden = true; return; }
       if (drawerIsOpen()) closeDrawer();
     });
   }
@@ -210,6 +253,7 @@
     initSidebar();
     initSearch();
     initKeys();
+    initLookPage();
     document.getElementById('btn-ws-drawer-close')?.addEventListener('click', closeDrawer);
   }
 

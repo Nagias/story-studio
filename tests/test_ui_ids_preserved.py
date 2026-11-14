@@ -11,6 +11,10 @@ REMOVED: dict[str, str] = {
     "step-nav-2": "spec 4.2: thay bằng thanh bên",
     "step-nav-3": "spec 4.2: thay bằng thanh bên",
     "step-nav-4": "spec 4.2: thay bằng thanh bên",
+    "btn-character-sheets": "spec 4.2/4.1: Hình mẫu là một trang, không còn nút mở cửa sổ",
+    "btn-location-sheets": "spec 4.2/4.1: Hình mẫu là một trang, không còn nút mở cửa sổ",
+    "btn-close-character-sheets": "spec 4.2/4.1: Hình mẫu là một trang, không còn nút đóng cửa sổ",
+    "btn-close-location-sheets": "spec 4.2/4.1: Hình mẫu là một trang, không còn nút đóng cửa sổ",
 }
 
 # id do JS tự dựng lúc chạy (không có sẵn trong index.html). Task sau thêm vào đây.

@@ -156,7 +156,7 @@
       for (const eid of ids) (scenesOf[eid] = scenesOf[eid] || []).push(`#${sceneIndex[sid] || sid}`);
     }
     const needed = new Set(st.data.needed || []);
-    const chars = (st.data.characters || []).filter(c => st.showAll || needed.has(c.entity_id) || c.status !== 'draft');
+    const chars = (st.data?.characters || []).filter(c => st.showAll || needed.has(c.entity_id) || c.status !== 'draft');
     list.appendChild(sourceBar());
     const bar = node('div', 'flex items-center justify-between gap-2');
     bar.appendChild(node('p', 'text-slate-600', needed.size
@@ -179,8 +179,15 @@
     }
   }
 
-  function open() {
-    el('modal-character-sheets')?.classList.remove('hidden');
+  function showReason() {
+    const list = el('character-sheets-list');
+    if (!list) return;
+    list.replaceChildren(node('p', 'text-slate-500', 'Chưa dùng được: dự án này chưa có cảnh vẽ nào, hoặc là dự án mẫu chỉ để xem.'));
+  }
+
+  // Trang Hình mẫu đang hiện: nạp danh sách và hỏi lại khi Muse/AI còn đang làm. Không đụng class hidden (khối luôn hiện trong trang).
+  function start() {
+    if (!usable()) showReason();
     refresh();
     clearInterval(st.timer);
     st.timer = setInterval(() => {
@@ -188,24 +195,28 @@
     }, POLL_MS);
   }
 
-  function close() {
-    el('modal-character-sheets')?.classList.add('hidden');
+  function stop() {
     clearInterval(st.timer);
     st.timer = null;
   }
 
+  function onLookPage() {
+    return typeof window.currentPage === 'function' && window.currentPage() === 'look';
+  }
+
   function init() {
-    el('btn-character-sheets')?.addEventListener('click', open);
-    el('btn-close-character-sheets')?.addEventListener('click', close);
-    document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') close(); });
     let lastId = null;
-    setInterval(() => {   // nút hiện với dự án có cảnh vẽ (truyện chữ và vụ án); đổi dự án thì đóng cửa sổ
+    setInterval(() => {   // đổi dự án: bỏ dữ liệu cũ, nếu trang Hình mẫu đang mở thì nạp lại cho dự án mới
       const id = project()?.id || null;
-      el('btn-character-sheets')?.classList.toggle('hidden', !usable());
-      if (id !== lastId) { lastId = id; st.data = null; close(); }
+      if (id !== lastId) {
+        lastId = id; st.data = null; stop(); el('character-sheets-list')?.replaceChildren();
+        if (onLookPage()) start();
+      }
     }, 1000);
   }
 
+  window.startCharacterSheets = start;
+  window.stopCharacterSheets = stop;
   window.refreshCharacterSheets = refresh;
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

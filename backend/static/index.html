@@ -642,8 +642,61 @@
     <section id="page-look" data-page="look" class="ws-page" hidden>
       <div class="ws-page-head">
         <h1 class="ws-h1">Hình mẫu</h1>
-        <p class="ws-lede">Đang chuyển tính năng về đây.</p>
+        <p class="ws-lede">Khoá người và nơi chốn trước khi vẽ ảnh cảnh, để mọi cảnh vẽ đúng một người, đúng một nơi.</p>
       </div>
+
+      <!-- Phong cách và nguồn ảnh của dự án đang mở. Chọn phong cách ở trang Ý tưởng; ở đây chỉ đổi được phần đuôi gắn vào mô tả ảnh lúc vẽ -->
+      <div class="ws-card ws-look-style">
+        <div class="ws-look-style-row">
+          <span class="ws-look-label">Phong cách ảnh:</span>
+          <strong id="look-style-line">Chưa có dự án</strong>
+          <button id="btn-look-change-style" type="button" class="ws-btn ws-btn-ghost">Đổi</button>
+        </div>
+        <div class="ws-look-style-row">
+          <label class="ws-look-label" for="select-image-provider">Nguồn tạo ảnh của dự án:</label>
+          <select id="select-image-provider" class="ws-select">
+              <option value="meta_muse_cloud" selected>💎 Meta Muse Cloud (Free 2K • Muse Fleet đa tài khoản)</option>
+              <option value="9router_gemini">⚡ 9router: Gemini 3.1 Flash Image (Nét vẽ đỉnh cao, chuẩn mẫu)</option>
+              <option value="pollinations">🌐 Pollinations.ai (Miễn phí fallback)</option>
+              <option value="api">🔑 OpenAI DALL-E 3 (Yêu cầu API Key)</option>
+              <option value="mock_cinematic">🎨 Offline Mock (Thử nghiệm không mạng)</option>
+            </select>
+        </div>
+        <div id="look-style-popover" class="ws-look-popover" role="dialog" aria-label="Đổi phong cách ảnh" hidden>
+          <p class="ws-look-warning">Mô tả ảnh của các cảnh đã viết theo phong cách cũ; đổi ở đây chỉ đổi phần phong cách gắn thêm khi vẽ, và các bảng nhân vật, ảnh chuẩn bối cảnh đã duyệt sẽ phải vẽ lại.</p>
+          <select id="select-project-style" class="ws-select">
+              <option value="neo_noir_silhouette">🕵️ Neo-Noir Silhouette (Án Mạng Đêm Mưa / Phim Noir)</option>
+              <option value="horror_cartoon_2d">👻 Hoạt hình 2D rùng rợn (nhân vật đầu tròn, nền vẽ tay tối)</option>
+              <option value="manga_murata_battle">⚔️ Manga Murata Battle Action (One Punch Man / SFX)</option>
+              <option value="spartan_epic_mythology">🏺 Spartan Epic Mythology (Sử thi Hy Lạp giáp đồng sơn dầu)</option>
+              <option value="intricate_ink_crosshatch">🖋️ Intricate Ink Crosshatch (Tranh mực đan nét Graphic Novel)</option>
+              <option value="dark_fantasy">🗡️ Dark Fantasy (Thần thoại u tối Dark Souls / Elden Ring)</option>
+              <option value="manga_historical_war">🚩 Kingdom War (Chiến Quốc Vạn Quân)</option>
+              <option value="roman_legionary_epic">🏛️ Roman Legionary Epic (Quân Đoàn La Mã)</option>
+              <option value="spartan_mythic_warrior">🛡️ Spartan Mythic Warrior (Chiến Binh Sparta)</option>
+              <option value="fantasy_paladin_armor">🛡️ Fantasy Paladin (Dũng Sĩ Thánh Giáp)</option>
+              <option value="cinematic_realistic">🎬 Cinematic Realistic (Điện ảnh chân thực 35mm)</option>
+              <option value="anime">🌸 Anime & Ghibli (Hoạt hình Nhật Bản)</option>
+              <option value="cyberpunk">🌃 Cyberpunk Metropolis (Tương lai viễn tưởng)</option>
+              <option value="comic_book">💥 Western Comic Book (Truyện tranh Marvel/DC)</option>
+              <option value="3d_animation">🧸 3D Animation Pixar / Disney</option>
+            </select>
+        </div>
+      </div>
+
+      <!-- Bảng nhân vật đủ góc (code: character_sheets.js). Vẽ bảng tốn 1 lượt Muse -->
+      <section id="modal-character-sheets" class="ws-card ws-look-block">
+        <h2 class="ws-h2">Nhân vật cố định (khoá nhân vật cho mọi ảnh cảnh)</h2>
+        <p class="ws-look-intro">Làm bước này trước khi tạo ảnh cảnh. Muse vẽ bảng trên tài khoản video; vẽ lại thì ghi rõ chỗ sai, Muse sửa trong cùng chat. Bảng đã duyệt được đính kèm cho mọi ảnh cảnh có người đó, ảnh grid và clip cao trào.</p>
+        <div id="character-sheets-list" class="space-y-4 text-xs"></div>
+      </section>
+
+      <!-- Khoá bối cảnh (code: location_sheets.js). Tìm bối cảnh tốn 1 lượt LLM, vẽ ảnh chuẩn tốn 1 lượt Muse -->
+      <section id="modal-location-sheets" class="ws-card ws-look-block">
+        <h2 class="ws-h2">Bối cảnh lặp lại (khoá để các cảnh cùng nơi vẽ giống nhau)</h2>
+        <p class="ws-look-intro">Mỗi nơi xuất hiện từ 2 cảnh trở lên có một mô tả cố định và một ảnh chuẩn (cảnh trống, không người). Chỉ bối cảnh đã duyệt mới được dùng: khi tạo ảnh hay video Muse cho cảnh của nơi đó, Muse nhận đúng mô tả này (và ảnh chuẩn, trừ cảnh cận mặt / cận đồ vật).</p>
+        <div id="location-sheets-list" class="space-y-4 text-xs"></div>
+      </section>
     </section>
 
     <!-- ================= TRANG CẢNH ================= -->
@@ -676,14 +729,6 @@
             <i class="fa-solid fa-bolt text-amber-600 text-xs"></i> <span>Auto-Gen Toàn Bộ</span>
           </button>
 
-          <!-- Khoá nhân vật và video cảnh cao trào (truyện chữ và vụ án; code: character_sheets.js, climax_video.js). Vẽ bảng, tạo video tốn lượt Muse -->
-          <button id="btn-character-sheets" class="hidden text-xs px-3 py-1.5 bg-white hover:bg-indigo-50 text-purple-700 rounded-lg border border-purple-300 font-semibold shadow-xs transition flex items-center gap-1.5" title="Nhân vật cố định: làm trước khi tạo ảnh cảnh để mọi ảnh vẽ đúng người">
-            <i class="fa-solid fa-user-ninja text-xs"></i> <span>Nhân vật</span>
-          </button>
-          <!-- Khoá bối cảnh (code: location_sheets.js). Tìm bối cảnh tốn 1 lượt LLM, vẽ ảnh chuẩn tốn 1 lượt Muse -->
-          <button id="btn-location-sheets" class="hidden text-xs px-3 py-1.5 bg-white hover:bg-indigo-50 text-purple-700 rounded-lg border border-purple-300 font-semibold shadow-xs transition flex items-center gap-1.5" title="Bối cảnh lặp lại: mô tả cố định và ảnh chuẩn để các cảnh cùng nơi vẽ giống nhau">
-            <i class="fa-solid fa-map-location-dot text-xs"></i> <span>Bối cảnh</span>
-          </button>
           <button id="btn-climax-video-pick" class="hidden text-xs px-3 py-1.5 bg-white hover:bg-indigo-50 text-purple-700 rounded-lg border border-purple-300 font-semibold shadow-xs transition flex items-center gap-1.5" title="Tự chọn tối đa một nửa số cảnh có dấu hiệu cao trào (nhịp climax, nhạc căng, tiếng tim đập...)">
             <i class="fa-solid fa-wand-magic-sparkles text-xs"></i> <span>Chọn cảnh cao trào</span>
           </button>
@@ -951,51 +996,6 @@
         </button>
 
         <div id="asset-accordion-body" class="space-y-3 pt-2 border-t border-slate-100 hidden">
-          <!-- Image Engine Provider Selector -->
-          <div class="space-y-1.5">
-            <label class="text-slate-700 font-bold block text-xs flex items-center justify-between">
-              <span class="flex items-center gap-1.5">
-                <i class="fa-solid fa-microchip text-indigo-600"></i>
-                <span>Trình sinh ảnh AI (Image Engine):</span>
-              </span>
-              <span class="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-bold">Meta Muse Cloud</span>
-            </label>
-            <select id="select-image-provider" class="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-800 text-xs focus:border-indigo-500 font-medium shadow-2xs">
-              <option value="meta_muse_cloud" selected>💎 Meta Muse Cloud (Free 2K • Muse Fleet đa tài khoản)</option>
-              <option value="9router_gemini">⚡ 9router: Gemini 3.1 Flash Image (Nét vẽ đỉnh cao, chuẩn mẫu)</option>
-              <option value="pollinations">🌐 Pollinations.ai (Miễn phí fallback)</option>
-              <option value="api">🔑 OpenAI DALL-E 3 (Yêu cầu API Key)</option>
-              <option value="mock_cinematic">🎨 Offline Mock (Thử nghiệm không mạng)</option>
-            </select>
-          </div>
-
-          <!-- Style Preset Selector for Project in Step 2 -->
-          <div class="space-y-1.5">
-            <label class="text-slate-700 font-bold block text-xs flex items-center justify-between">
-              <span class="flex items-center gap-1.5">
-                <i class="fa-solid fa-palette text-indigo-600"></i>
-                <span>Phong cách hình ảnh AI (Style Preset):</span>
-              </span>
-              <span class="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-bold">8K Ultra HD</span>
-            </label>
-            <select id="select-project-style" class="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-800 text-xs focus:border-indigo-500 font-medium shadow-2xs">
-              <option value="neo_noir_silhouette">🕵️ Neo-Noir Silhouette (Án Mạng Đêm Mưa / Phim Noir)</option>
-              <option value="horror_cartoon_2d">👻 Hoạt hình 2D rùng rợn (nhân vật đầu tròn, nền vẽ tay tối)</option>
-              <option value="manga_murata_battle">⚔️ Manga Murata Battle Action (One Punch Man / SFX)</option>
-              <option value="spartan_epic_mythology">🏺 Spartan Epic Mythology (Sử thi Hy Lạp giáp đồng sơn dầu)</option>
-              <option value="intricate_ink_crosshatch">🖋️ Intricate Ink Crosshatch (Tranh mực đan nét Graphic Novel)</option>
-              <option value="dark_fantasy">🗡️ Dark Fantasy (Thần thoại u tối Dark Souls / Elden Ring)</option>
-              <option value="manga_historical_war">🚩 Kingdom War (Chiến Quốc Vạn Quân)</option>
-              <option value="roman_legionary_epic">🏛️ Roman Legionary Epic (Quân Đoàn La Mã)</option>
-              <option value="spartan_mythic_warrior">🛡️ Spartan Mythic Warrior (Chiến Binh Sparta)</option>
-              <option value="fantasy_paladin_armor">🛡️ Fantasy Paladin (Dũng Sĩ Thánh Giáp)</option>
-              <option value="cinematic_realistic">🎬 Cinematic Realistic (Điện ảnh chân thực 35mm)</option>
-              <option value="anime">🌸 Anime & Ghibli (Hoạt hình Nhật Bản)</option>
-              <option value="cyberpunk">🌃 Cyberpunk Metropolis (Tương lai viễn tưởng)</option>
-              <option value="comic_book">💥 Western Comic Book (Truyện tranh Marvel/DC)</option>
-              <option value="3d_animation">🧸 3D Animation Pixar / Disney</option>
-            </select>
-          </div>
 
           <!-- Bulk Regeneration Action Buttons -->
           <div class="grid grid-cols-1 gap-2 pt-1">
@@ -1611,41 +1611,6 @@
           <span>Tự động phân tích & tạo Storyboard</span>
         </button>
       </div>
-    </div>
-  </div>
-
-  <!-- MODAL 3: CHARACTER CONSISTENCY EDITOR -->
-  <!-- Bảng nhân vật đủ góc (dự án vụ án; code: character_sheets.js). Vẽ bảng tốn 1 lượt Muse -->
-  <div id="modal-character-sheets" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-white border border-slate-200 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-      <div class="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-        <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
-          <i class="fa-solid fa-user-ninja text-purple-600"></i>
-          Nhân vật cố định (khoá nhân vật cho mọi ảnh cảnh)
-        </h3>
-        <button id="btn-close-character-sheets" class="text-slate-400 hover:text-slate-700 p-1">
-          <i class="fa-solid fa-xmark text-lg"></i>
-        </button>
-      </div>
-      <p class="px-5 pt-3 text-xs text-slate-500">Làm bước này trước khi tạo ảnh cảnh. Muse vẽ bảng trên tài khoản video; vẽ lại thì ghi rõ chỗ sai, Muse sửa trong cùng chat. Bảng đã duyệt được đính kèm cho mọi ảnh cảnh có người đó, ảnh grid và clip cao trào.</p>
-      <div id="character-sheets-list" class="p-5 overflow-y-auto space-y-4 text-xs"></div>
-    </div>
-  </div>
-
-  <!-- Khoá bối cảnh (code: location_sheets.js). Vẽ ảnh chuẩn tốn 1 lượt Muse ảnh -->
-  <div id="modal-location-sheets" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-white border border-slate-200 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-      <div class="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-        <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
-          <i class="fa-solid fa-map-location-dot text-purple-600"></i>
-          Bối cảnh lặp lại (khoá để các cảnh cùng nơi vẽ giống nhau)
-        </h3>
-        <button id="btn-close-location-sheets" class="text-slate-400 hover:text-slate-700 p-1">
-          <i class="fa-solid fa-xmark text-lg"></i>
-        </button>
-      </div>
-      <p class="px-5 pt-3 text-xs text-slate-500">Mỗi nơi xuất hiện từ 2 cảnh trở lên có một mô tả cố định và một ảnh chuẩn (cảnh trống, không người). Chỉ bối cảnh đã duyệt mới được dùng: khi tạo ảnh hay video Muse cho cảnh của nơi đó, Muse nhận đúng mô tả này (và ảnh chuẩn, trừ cảnh cận mặt / cận đồ vật).</p>
-      <div id="location-sheets-list" class="p-5 overflow-y-auto space-y-4 text-xs"></div>
     </div>
   </div>
 

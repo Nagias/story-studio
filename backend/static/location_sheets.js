@@ -210,8 +210,15 @@
     }
   }
 
-  function open() {
-    el('modal-location-sheets')?.classList.remove('hidden');
+  function showReason() {
+    const list = el('location-sheets-list');
+    if (!list) return;
+    list.replaceChildren(node('p', 'text-slate-500', 'Chưa dùng được: dự án này chưa có từ 2 cảnh, hoặc là dự án mẫu chỉ để xem.'));
+  }
+
+  // Trang Hình mẫu đang hiện: nạp danh sách và hỏi lại khi Muse/AI còn đang làm. Không đụng class hidden (khối luôn hiện trong trang).
+  function start() {
+    if (!usable()) showReason();
     refresh();
     clearInterval(st.timer);
     st.timer = setInterval(() => {
@@ -219,24 +226,28 @@
     }, POLL_MS);
   }
 
-  function close() {
-    el('modal-location-sheets')?.classList.add('hidden');
+  function stop() {
     clearInterval(st.timer);
     st.timer = null;
   }
 
+  function onLookPage() {
+    return typeof window.currentPage === 'function' && window.currentPage() === 'look';
+  }
+
   function init() {
-    el('btn-location-sheets')?.addEventListener('click', open);
-    el('btn-close-location-sheets')?.addEventListener('click', close);
-    document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') close(); });
     let lastId = null;
-    setInterval(() => {   // nút hiện với dự án thật có từ 2 cảnh; đổi dự án thì đóng cửa sổ
+    setInterval(() => {   // đổi dự án: bỏ dữ liệu cũ, nếu trang Hình mẫu đang mở thì nạp lại cho dự án mới
       const id = project()?.id || null;
-      el('btn-location-sheets')?.classList.toggle('hidden', !usable());
-      if (id !== lastId) { lastId = id; st.data = null; close(); }
+      if (id !== lastId) {
+        lastId = id; st.data = null; stop(); el('location-sheets-list')?.replaceChildren();
+        if (onLookPage()) start();
+      }
     }, 1000);
   }
 
+  window.startLocationSheets = start;
+  window.stopLocationSheets = stop;
   window.refreshLocationSheets = refresh;
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

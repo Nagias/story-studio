@@ -150,3 +150,17 @@ body[data-ws-page="scenes"] .ws-canvas-inner { padding-top: 16px; padding-bottom
 .ws-srow-play:hover:not(:disabled) { background: #27272A; color: #fff; }
 .ws-srow-empty { padding: 20px 16px; }
 @media (max-width: 900px) { .ws-srow { grid-template-columns: 28px 1fr; } .ws-srow-tools { opacity: 1; grid-column: 2; } }
+
+/* ---------- Trang Hình mẫu ---------- */
+.ws-h2 { font-size: 15px; font-weight: 600; color: var(--ws-ink); margin: 0 0 4px; letter-spacing: -0.01em; }
+.ws-select { border: 1px solid var(--ws-line); border-radius: 8px; background: #fff; color: var(--ws-body);
+  font-family: inherit; font-size: 13px; padding: 6px 10px; max-width: 100%; }
+.ws-look-style { position: relative; padding: 14px 18px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px; }
+.ws-look-style-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; }
+.ws-look-label { color: var(--ws-mute); font-size: 13px; }
+.ws-look-popover { position: absolute; left: 18px; top: 52px; z-index: 20; width: min(460px, calc(100% - 36px)); background: #fff;
+  border: 1px solid var(--ws-line); border-radius: 12px; padding: 14px; box-shadow: 0 6px 20px rgba(9, 9, 11, .08); }
+.ws-look-warning { margin: 0 0 10px; font-size: 13px; line-height: 1.55; color: #92400E; background: #FFFBEB;
+  border: 1px solid #FDE68A; border-radius: 8px; padding: 8px 10px; }
+.ws-look-block { padding: 18px; margin-bottom: 16px; }
+.ws-look-intro { margin: 0 0 14px; font-size: 13px; color: var(--ws-mute); line-height: 1.6; }

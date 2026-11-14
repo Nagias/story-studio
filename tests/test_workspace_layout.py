@@ -84,3 +84,11 @@ def test_no_window_lookup_of_const_globals_of_app_js():
 def test_scenes_page_rerenders_cards_when_shown():
     src = (ROOT / "backend" / "static" / "script_page.js").read_text(encoding="utf-8")
     assert "onPageShow('scenes'" in src and "renderSceneList()" in src
+
+
+PLACEMENT |= {"modal-character-sheets": "look", "modal-location-sheets": "look", "select-project-style": "look",
+              "btn-look-change-style": "look", "select-image-provider": "look"}
+
+
+def test_style_popover_warns_about_old_prompts():
+    assert "Mô tả ảnh của các cảnh đã viết theo phong cách cũ" in INDEX_HTML
