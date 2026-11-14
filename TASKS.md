@@ -85,7 +85,7 @@ Thiết kế: `docs/superpowers/specs/2026-10-19-true-crime-adaptation-design.md
 - [x] Task 8: API, bỏ luồng cũ (`67fa68f`)
 - [x] Task 9: Giao diện modal Hồ Sơ Kỳ Án (`be37212`)
 - [x] Task 10: Nút "Tạo bản tiếng Anh" (`3656370`)
-- [ ] Task 11: Hồi quy toàn bộ và chạy thật cả chuỗi (bước 1 xong; bước 2, 3 chờ 9router; bước 4 chờ người dùng; xem mục "Task 11" cuối file)
+- [x] Task 11: Hồi quy toàn bộ và chạy thật cả chuỗi (bước 1 xong; bước 2, 3 chờ 9router; bước 4 chờ người dùng; xem mục "Task 11" cuối file)
 
 ## Baseline trước khi sửa (Task 1, bước 1)
 - Bộ offline 18 file (lệnh trong kế hoạch, Task 1): **158 pass / 1 fail**, 332 s. Worktree không có `backend/config/muse_fleet_accounts.json` và `backend/chrome_profiles/`.
@@ -690,16 +690,28 @@ Chủ dự án duyệt bản xem thử 15/11: "Duyệt, viết kế hoạch". Th
 - [x] Viết thiết kế, cho người đọc độc lập soát (6 câu hỏi, 4 chỗ lệch code), sửa theo
 - [x] Đổi so với bản xem thử sau khi đọc code: phong cách hình chọn ở trang Ý tưởng (AI viết mô tả ảnh theo phong cách ngay lúc viết kịch bản); nguồn tạo ảnh ở trang Hình mẫu (cài đặt của từng dự án, không phải của cả app); thẻ Dàn ý và Tên hư cấu chỉ hiện khi đang theo dõi vụ chưa tạo dự án (như cửa sổ hiện nay); giọng từng cảnh ở trang Kịch bản
 - [x] Kiểm: mọi id và tên hàm trong hai tài liệu có trong code; `tools/check.py` ĐẠT (40 test kiến trúc, 26 giây)
-- [ ] Làm 12 task của kế hoạch (đang làm, từng task tick bên dưới)
+- [x] Làm 12 task của kế hoạch (mỗi task: người làm riêng, người soát riêng, controller bấm thử trên server 8010)
 - [x] Task 1: Khoá cứng giữ id và test bố cục
-- [ ] Task 2: Khung mới (thanh bên, thanh trên, 8 trang, ngăn kéo)
-- [ ] Task 3: Trang Kịch bản và giọng (phần chung cho mọi thể loại)
-- [ ] Task 4: Trang Hình mẫu
-- [ ] Task 5: Trang Cảnh và trang Dựng và xuất bản
-- [ ] Task 6: Trang Dự án, Thư viện Muse, Tài khoản (phần Muse)
-- [ ] Task 7: Khuôn thể loại và trang Ý tưởng
-- [ ] Task 8: Hồ Sơ Kỳ Án vào trang Kịch bản
-- [ ] Task 9: Gỡ các cửa sổ và nút trùng còn lại
+- [x] Task 2: Khung mới (thanh bên, thanh trên, 8 trang, ngăn kéo)
+- [x] Task 3: Trang Kịch bản và giọng (phần chung cho mọi thể loại)
+- [x] Task 4: Trang Hình mẫu
+- [x] Task 5: Trang Cảnh và trang Dựng và xuất bản
+- [x] Task 6: Trang Dự án, Thư viện Muse, Tài khoản (phần Muse)
+- [x] Task 7: Khuôn thể loại và trang Ý tưởng
+- [x] Task 8: Hồ Sơ Kỳ Án vào trang Kịch bản
+- [x] Task 9: Gỡ các cửa sổ và nút trùng còn lại
 - [x] Task 10: Dọn màu trang trí sang hệ đen trắng xám (đỏ ban đầu: 296 chỗ lớp màu trang trí, index.html 106, app.js 128, climax_video.js 23, true_crime.js 14, youtube_seo.js 11, character_sheets.js 7, location_sheets.js 7; nay 0, test `tests/test_ui_palette.py`)
 - [ ] Task 11: Trang Tài khoản và kết nối — trạng thái kết nối
-- [ ] Task 12: Kiểm chứng cuối và tài liệu
+- [x] Task 12: Kiểm chứng cuối và tài liệu
+- Soát cả nhánh (model mạnh nhất): "sẵn sàng sau khi sửa", 5 lỗi đáng kể + 6 điểm nhỏ, sửa một lượt (commit `043b4e7`, `0864a3e`), soát lại: 11/11 đã sửa
+- Lỗi chỉ lộ ra khi bấm thật (người soát đọc mã chấm đạt): trang Kịch bản không hiện cảnh nào vì đọc `window.AppState`; sửa lời ở Kịch bản mà trang Cảnh vẫn lời cũ; dòng phong cách cũ sau khi đổi dự án; nút chính chưa thành viên thuốc đen
+### Bằng chứng (15/11/2026)
+- `tools/check.py --full`: ĐẠT, 1.128 test đạt, 19 bỏ qua (cờ live), Ruff không lỗi mới, 12 file JS đúng cú pháp (lần chạy của người sửa cuối; lần trước ở 4d3dd60: 1.118 đạt, 257,9 giây)
+- `tools/build_release.py`: gói 167 file, 23,8 MB, không báo thiếu file `/static/...`; gói thử đã chuyển vào Thùng rác
+- Bấm thử server 8010 (`proj_ea5b04db`, mở xem `proj_crime_52c3a5e8`, vụ `case_7dcf6158` qua localStorage, mọi lệnh ghi vào mục MẪU bị chặn): 8 trang, sửa lời, nghe giọng, thêm/xoá cảnh, Hình mẫu đổi dự án, ngăn xem thử, Tuỳ chỉnh dựng, dựng bị chặn 45% (giả lập) → hỏi bản nháp, gắn ảnh từ Thư viện (giả lập), vụ án đang theo dõi → thẻ Dàn ý/Tên hư cấu, Ctrl+S, trang Tài khoản khớp cấu hình thật
+- "Gọi thử" bấm 1 lần: báo "Không kết nối được 9router tại 127.0.0.1:8317" sau 2,1 giây (cổng 8317 và 20128 đang tắt trên máy) → 0 lượt AI bị tính
+- Tràn ngang: 0/8 trang ở 1024x768 (thanh bên mở và thu gọn), 1280x720, 1920x1080 (vùng giữa rộng 1.036 px, canh giữa); ảnh chụp ở `.cache/giao_dien_gon/`
+- `projects/` không thêm thư mục; `proj_ea5b04db` giống hệt bản sao trước khi thử (cảnh và cài đặt)
+- [ ] Còn chờ chủ dự án: `projects/proj_crime_52c3a5e8/renders/thumbnail.jpg` do máy chủ tự vẽ khi controller mở trang Dựng của dự án MẪU (file mới, không ghi đè gì); giữ hay chuyển vào Thùng rác
+- [ ] Còn chờ chủ dự án: gộp nhánh `giao-dien-gon` vào `master`
+- Số lần gọi dịch vụ: LLM 0 lượt tính tiền (1 lần gọi thử bị từ chối vì cổng AI tắt), Muse 0, ảnh trả phí 0
