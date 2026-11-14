@@ -1275,6 +1275,14 @@
         <p class="ws-lede">Tài khoản Muse Fleet: ảnh chỉ chạy trên tài khoản ảnh, video chỉ chạy trên tài khoản video.
           <span id="muse-modal-status-badge" class="ws-pill" data-state="offline"><span id="muse-modal-status-dot" class="w-1.5 h-1.5 rounded-full bg-slate-400"></span><span id="muse-modal-status-text">Đang kết nối</span></span></p>
       </div>
+      <div class="ws-card" style="padding:16px 20px;margin-bottom:16px">
+        <div class="ws-actions" style="margin-top:0;justify-content:space-between">
+          <h2 class="ws-h2" style="margin:0">Kết nối AI, YouTube, giọng đọc</h2>
+          <button type="button" id="btn-connections-ping" class="ws-btn" title="Gửi một câu rất ngắn tới cổng AI để thử có chạy không">Gọi thử (tốn 1 lượt AI)</button>
+        </div>
+        <div id="accounts-connections" class="ws-lede" style="max-width:none">Đang kiểm tra kết nối...</div>
+        <p id="connections-ping-result" class="ws-lede" style="max-width:none" aria-live="polite"></p>
+      </div>
       <div class="space-y-4">
         <!-- 1. BẢNG ĐIỀU KHIỂN CỤM TRÌNH DUYỆT MUSE FLEET (10 ACCOUNTS POOL) -->
         <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs space-y-4">
@@ -1482,6 +1490,8 @@
   <script src="/static/workspace.js?v=1.1.0"></script>
   <script src="/static/app.js?v=3.0.2"></script>
   <script src="/static/script_page.js?v=1.0.0"></script>
+  <!-- Trang Tài khoản và kết nối: khối trạng thái AI, YouTube, VieNeu, nút Gọi thử -->
+  <script src="/static/connections.js?v=1.0.0"></script>
   <script src="/static/scenes_publish_page.js?v=1.0.0"></script>
   <script src="/static/genres.js?v=1.1.0"></script>
   <script src="/static/true_crime.js?v=1.6.0"></script>
