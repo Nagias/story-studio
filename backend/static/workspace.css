@@ -199,8 +199,6 @@ body[data-ws-page="scenes"] .ws-canvas-inner { padding-top: 16px; padding-bottom
 .ws-scenes-more-wrap { position: relative; }
 .ws-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; width: min(300px, 80vw); background: #fff;
   border: 1px solid var(--ws-line); border-radius: 12px; padding: 12px; box-shadow: 0 6px 20px rgba(9, 9, 11, .08); }
-.ws-legacy-char { margin-bottom: 12px; padding: 8px 14px; flex-shrink: 0; }
-.ws-legacy-char > summary { cursor: pointer; font-size: 13px; color: var(--ws-mute); }
 .ws-publish-ready { margin-bottom: 20px; }
 .ws-publish-progress, .ws-publish-result { margin-bottom: 24px; }
 .ws-log-details { padding: 10px 14px; }

@@ -331,7 +331,6 @@ const DOM = {
   selectProjectStyle: document.getElementById('select-project-style'),
   selectImageProvider: document.getElementById('select-image-provider'),
   btnProduceFromBoard: document.getElementById('btn-produce-from-board'),
-  btnProduceLongVideo: document.getElementById('btn-produce-long-video'),
   btnProduceLabel: document.getElementById('btn-produce-label'),
   boardAssetReadiness: document.getElementById('board-asset-readiness'),
   readinessVoiceCount: document.getElementById('readiness-voice-count'),
@@ -368,7 +367,6 @@ const DOM = {
   inputThumbSubtext: document.getElementById('input-thumb-subtext'),
   btnGenerateCustomThumbnail: document.getElementById('btn-generate-custom-thumbnail'),
   btnCinemaDownloadThumbnail: document.getElementById('btn-cinema-download-thumbnail'),
-  btnDownloadThumbnailDirect: document.getElementById('btn-download-thumbnail-direct'),
   inputSeoTitle: document.getElementById('input-seo-title'),
   btnCopySeoTitle: document.getElementById('btn-copy-seo-title'),
   textareaSeoDesc: document.getElementById('textarea-seo-desc'),
@@ -379,8 +377,6 @@ const DOM = {
   // Header
   currentProjectTitle: document.getElementById('current-project-title'),
   btnProjectDropdown: document.getElementById('btn-project-dropdown'),
-  btnSaveProject: document.getElementById('btn-save-project'),
-  btnOpenScriptModal: document.getElementById('btn-open-script-modal'),
 
   // Left Panel Scene List
   sceneListContainer: document.getElementById('scene-list-container'),
@@ -410,15 +406,6 @@ const DOM = {
   globalPreviewAudio: document.getElementById('global-preview-audio'),
   globalBgmAudio: document.getElementById('global-bgm-audio'),
 
-  // Character Consistency Card
-  characterConsistencyCard: document.getElementById('character-consistency-card'),
-  charStatusBadge: document.getElementById('char-status-badge'),
-  charThumbElem: document.getElementById('char-thumb-elem'),
-  charIconFallback: document.getElementById('char-icon-fallback'),
-  charNameDisplay: document.getElementById('char-name-display'),
-  charPromptPreview: document.getElementById('char-prompt-preview'),
-  btnEditCharacter: document.getElementById('btn-edit-character'),
-
   // Audio Settings Card
   selectVoice: document.getElementById('select-voice'),
   btnPreviewVoiceSample: document.getElementById('btn-preview-voice-sample'),
@@ -436,61 +423,10 @@ const DOM = {
   backendStatusDot: document.getElementById('backend-status-dot'),
   backendStatusText: document.getElementById('backend-status-text'),
 
-  // Modals
-  // Script Modal
-  modalScriptImporter: document.getElementById('modal-script-importer'),
-  btnCloseScriptModal: document.getElementById('btn-close-script-modal'),
-  btnCancelScriptModal: document.getElementById('btn-cancel-script-modal'),
-  btnSubmitScriptSplit: document.getElementById('btn-submit-script-split'),
-  importScriptTextarea: document.getElementById('import-script-textarea'),
-  scriptWordCount: document.getElementById('script-word-count'),
-  splitModeSelect: document.getElementById('split-mode-select'),
-  splitStyleSelect: document.getElementById('split-style-select'),
-
-  // Character Modal
-  modalCharacterEditor: document.getElementById('modal-character-editor'),
-  btnCloseCharacterModal: document.getElementById('btn-close-character-modal'),
-  btnCancelCharModal: document.getElementById('btn-cancel-char-modal'),
-  btnSaveCharacter: document.getElementById('btn-save-character'),
-  editCharName: document.getElementById('edit-char-name'),
-  editCharPrompt: document.getElementById('edit-char-prompt'),
-  editCharStyle: document.getElementById('edit-char-style'),
-  editCharNegative: document.getElementById('edit-char-negative'),
-
   // Project Modal
   newProjectNameInput: document.getElementById('new-project-name-input'),
   btnCreateProject: document.getElementById('btn-create-project'),
   projectListItems: document.getElementById('project-list-items'),
-
-  // Comic Slicer Modal & Controls
-  btnOpenComicModal: document.getElementById('btn-open-comic-modal'),
-  modalComicSlicer: document.getElementById('modal-comic-slicer'),
-  btnCloseComicModal: document.getElementById('btn-close-comic-modal'),
-  btnCancelComicModal: document.getElementById('btn-cancel-comic-modal'),
-  comicDropzone: document.getElementById('comic-dropzone'),
-  comicFileInput: document.getElementById('comic-file-input'),
-  comicSelectedFileInfo: document.getElementById('comic-selected-file-info'),
-  comicLayoutMode: document.getElementById('comic-layout-mode'),
-  comicReadingOrderBox: document.getElementById('comic-reading-order-box'),
-  comicReadingOrder: document.getElementById('comic-reading-order'),
-  comicMinArea: document.getElementById('comic-min-area'),
-  btnSampleMangaGrid: document.getElementById('btn-sample-manga-grid'),
-  btnSampleWebtoonStrip: document.getElementById('btn-sample-webtoon-strip'),
-  btnStartSlice: document.getElementById('btn-start-slice'),
-  comicSliceLoading: document.getElementById('comic-slice-loading'),
-  comicUploadSection: document.getElementById('comic-upload-section'),
-  comicResultsSection: document.getElementById('comic-results-section'),
-  comicPanelCount: document.getElementById('comic-panel-count'),
-  comicModeBadge: document.getElementById('comic-mode-badge'),
-  tabBtnPanels: document.getElementById('tab-btn-panels'),
-  tabBtnAnnotated: document.getElementById('tab-btn-annotated'),
-  comicPanelsTabContent: document.getElementById('comic-panels-tab-content'),
-  comicAnnotatedTabContent: document.getElementById('comic-annotated-tab-content'),
-  comicAnnotatedImg: document.getElementById('comic-annotated-img'),
-  btnResetComic: document.getElementById('btn-reset-comic'),
-  comicClearExistingCb: document.getElementById('comic-clear-existing-cb'),
-  btnImportComicToStoryboard: document.getElementById('btn-import-comic-to-storyboard'),
-  importCountLabel: document.getElementById('import-count-label'),
 
   // Toast
   toastContainer: document.getElementById('toast-container'),
@@ -589,22 +525,6 @@ const API = {
       this.lastError = `Không kết nối được máy chủ: ${e.message || e}`;
     }
     return null;
-  },
-
-  async splitScript(projectId, text, options = {}) {
-    try {
-      const endpoint = projectId ? `${this.baseUrl}/projects/${projectId}/split-script` : `${this.baseUrl}/split-script`;
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, ...options })
-      });
-      if (res.ok) return await res.json();
-      return await this._errorResult(res);
-    } catch (e) {
-      console.warn("API splitScript failed", e);
-      return { success: false, detail: `Không kết nối được máy chủ: ${e.message || e}` };
-    }
   },
 
   // Lỗi trả về dạng { success: false, detail } để giao diện báo đúng lý do, không tự dựng kết quả giả
@@ -939,6 +859,12 @@ const LEGACY_PROJECT_KEY_PREFIX = 'story_studio_proj_';
 const AUTOSAVE_DELAY_MS = 1500;
 const ProjectSync = { timer: null, dirty: false, inFlight: null, lastErrorToastAt: 0 };
 
+// Chữ trạng thái lưu ở thanh trên (#ws-save-state) thay cho nút Lưu cũ
+function setSaveState(text) {
+  const el = document.getElementById('ws-save-state');
+  if (el) el.textContent = text;
+}
+
 function rememberLastProjectId(projectId) {
   try { localStorage.setItem(LAST_PROJECT_KEY, projectId); } catch { /* chế độ riêng tư / bị chặn */ }
 }
@@ -984,6 +910,7 @@ function saveStateToLocal() {
   rememberLastProjectId(project.id);
   if (project.is_demo) return; // dự án mẫu chỉ để xem, không lưu
   ProjectSync.dirty = true;
+  setSaveState('Đang lưu…');
   clearTimeout(ProjectSync.timer);
   ProjectSync.timer = setTimeout(() => { flushProjectSave({ silent: true }); }, AUTOSAVE_DELAY_MS);
 }
@@ -994,18 +921,25 @@ async function flushProjectSave({ silent = false } = {}) {
   const project = AppState.currentProject;
   if (!project || project.is_demo) return true;
   if (ProjectSync.inFlight) await ProjectSync.inFlight;
-  if (!ProjectSync.dirty) return true;
+  if (!ProjectSync.dirty) { setSaveState('Đã lưu'); return true; }
   if (!AppState.serverOnline) {
+    setSaveState('Chưa lưu (máy chủ offline)');
     if (!silent) showToast("Máy chủ đang offline: thay đổi CHƯA được lưu. Sẽ tự lưu khi máy chủ online lại.", "warning", 7000);
     return false;
   }
   ProjectSync.dirty = false;
+  setSaveState('Đang lưu…');
   ProjectSync.inFlight = API.saveProject(buildServerPayload(project));
   const saved = await ProjectSync.inFlight;
   ProjectSync.inFlight = null;
-  if (saved && saved.id) return true;
+  if (saved && saved.id) {
+    // Trong lúc chờ, người dùng có thể đã sửa tiếp: khi đó vẫn là "Đang lưu…" cho tới lần lưu sau
+    setSaveState(ProjectSync.dirty ? 'Đang lưu…' : 'Đã lưu');
+    return true;
+  }
 
   ProjectSync.dirty = true;
+  setSaveState('Lưu thất bại');
   const now = Date.now();
   if (!silent || now - ProjectSync.lastErrorToastAt > 30000) {
     ProjectSync.lastErrorToastAt = now;
@@ -1162,7 +1096,6 @@ function renderFullUI() {
   renderHeader();
   renderSceneList();
   renderPreviewPlayer();
-  renderCharacterCard();
   renderSettings();
   // Nút "Tạo bản tiếng Anh" (true_crime.js) hiện hay ẩn tuỳ dự án đang mở. Hook ở đây thay vì ở switchProject để
   // cũng đúng khi tải lại trang, tạo dự án mới hay nhập dự án.
@@ -1241,10 +1174,10 @@ function renderSceneList() {
       <div class="text-center py-16 bg-[#161824] rounded-2xl border border-dashed border-gray-800 p-8">
         <i class="fa-solid fa-film text-4xl text-gray-600 mb-3"></i>
         <h4 class="text-sm font-semibold text-gray-300">Chưa có phân cảnh nào</h4>
-        <p class="text-xs text-gray-500 mt-1 max-w-sm mx-auto">Bấm "Nhập kịch bản truyện" để AI tự động chia cảnh, hoặc bấm "Thêm cảnh mới" để bắt đầu sáng tạo.</p>
+        <p class="text-xs text-gray-500 mt-1 max-w-sm mx-auto">Quay về trang Ý tưởng để dán truyện cho AI chia cảnh, hoặc bấm "Thêm cảnh mới" để bắt đầu sáng tạo.</p>
         <div class="mt-4 flex items-center justify-center gap-2">
-          <button onclick="openScriptModal()" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-md">
-            <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Nhập kịch bản truyện
+          <button onclick="showPage('idea')" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-md">
+            <i class="fa-solid fa-arrow-left mr-1"></i> Về trang Ý tưởng
           </button>
         </div>
       </div>
@@ -1619,46 +1552,6 @@ function applyKenBurnsEffect(effect) {
   }
 }
 
-function renderCharacterCard() {
-  const project = AppState.currentProject;
-  const char = project?.character;
-  const anchor = project?.character_anchor;
-  const isTrueCrime = project?.style_preset === 'neo_noir_silhouette' || project?.id?.includes('crime');
-  const card = DOM.characterConsistencyCard || document.getElementById('character-consistency-card');
-  const statusBadge = DOM.charStatusBadge || document.getElementById('char-status-badge');
-
-  if (isTrueCrime || (!char && !anchor)) {
-    if (card) card.classList.add('hidden');
-    if (statusBadge) {
-      statusBadge.className = "text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded border border-slate-200 font-semibold";
-      statusBadge.innerHTML = '<i class="fa-solid fa-ban mr-1"></i> Tắt';
-    }
-    if (DOM.charNameDisplay) DOM.charNameDisplay.textContent = "Không áp dụng (True Crime / Tự do)";
-    if (DOM.charPromptPreview) DOM.charPromptPreview.textContent = "Không sử dụng neo nhân vật cho dự án này.";
-    if (DOM.charThumbElem) DOM.charThumbElem.classList.add('hidden');
-    if (DOM.charIconFallback) DOM.charIconFallback.classList.remove('hidden');
-    return;
-  }
-
-  // Active character for anime/fantasy
-  if (card) card.classList.remove('hidden');
-  if (statusBadge) {
-    statusBadge.className = "text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 font-bold";
-    statusBadge.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Bật';
-  }
-  if (DOM.charNameDisplay) DOM.charNameDisplay.textContent = char?.name || anchor || "Chưa đặt tên";
-  if (DOM.charPromptPreview) DOM.charPromptPreview.textContent = char?.prompt || anchor || "Chưa có mô tả đặc điểm nhân vật.";
-
-  if (char?.avatar) {
-    DOM.charThumbElem.src = char.avatar;
-    DOM.charThumbElem.classList.remove('hidden');
-    DOM.charIconFallback.classList.add('hidden');
-  } else {
-    DOM.charThumbElem.classList.add('hidden');
-    DOM.charIconFallback.classList.remove('hidden');
-  }
-}
-
 function updateAssetReadiness() {
   const project = AppState.currentProject;
   const scenes = project?.scenes || [];
@@ -1796,7 +1689,6 @@ function bindEventListeners() {
   });
 
   DOM.btnProduceFromBoard?.addEventListener('click', startProduceLongVideo);
-  DOM.btnProduceLongVideo?.addEventListener('click', startProduceLongVideo);
 
   DOM.btnRegenAllImages?.addEventListener('click', handleRegenAllImages);
   DOM.btnRegenAllVoices?.addEventListener('click', handleRegenAllVoices);
@@ -1807,79 +1699,6 @@ function bindEventListeners() {
       API.openFolder(AppState.currentProject.id);
       showToast("Đang mở thư mục video trên Windows Explorer...", "info");
     }
-  });
-
-  // Save Project
-  DOM.btnSaveProject?.addEventListener('click', handleSaveProject);
-
-  // Comic Slicer Modal Actions
-  DOM.btnOpenComicModal?.addEventListener('click', openComicModal);
-  DOM.btnCloseComicModal?.addEventListener('click', closeComicModal);
-  DOM.btnCancelComicModal?.addEventListener('click', closeComicModal);
-  DOM.btnResetComic?.addEventListener('click', resetComicModal);
-
-  // Comic Dropzone & File Input
-  DOM.comicDropzone?.addEventListener('click', () => DOM.comicFileInput?.click());
-  DOM.comicFileInput?.addEventListener('change', (e) => {
-    if (e.target.files && e.target.files[0]) {
-      handleComicFileSelect(e.target.files[0]);
-    }
-  });
-
-  DOM.comicDropzone?.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    DOM.comicDropzone?.classList.add('border-amber-500', 'bg-amber-100/50');
-  });
-  DOM.comicDropzone?.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    DOM.comicDropzone?.classList.remove('border-amber-500', 'bg-amber-100/50');
-  });
-  DOM.comicDropzone?.addEventListener('drop', (e) => {
-    e.preventDefault();
-    DOM.comicDropzone?.classList.remove('border-amber-500', 'bg-amber-100/50');
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleComicFileSelect(e.dataTransfer.files[0]);
-    }
-  });
-
-  // Comic Layout Mode Change
-  DOM.comicLayoutMode?.addEventListener('change', (e) => {
-    if (e.target.value === 'strip') {
-      DOM.comicReadingOrderBox?.classList.add('hidden');
-    } else {
-      DOM.comicReadingOrderBox?.classList.remove('hidden');
-    }
-  });
-
-  // Comic Quick Samples
-  DOM.btnSampleMangaGrid?.addEventListener('click', () => loadComicSample('grid'));
-  DOM.btnSampleWebtoonStrip?.addEventListener('click', () => loadComicSample('strip'));
-
-  // Comic Slice & Tab Actions
-  DOM.btnStartSlice?.addEventListener('click', handleStartSlice);
-  DOM.tabBtnPanels?.addEventListener('click', () => switchComicResultTab('panels'));
-  DOM.tabBtnAnnotated?.addEventListener('click', () => switchComicResultTab('annotated'));
-
-  // Import Comic to Storyboard
-  DOM.btnImportComicToStoryboard?.addEventListener('click', handleImportComicToStoryboard);
-
-  // Script Modal Actions
-  DOM.btnOpenScriptModal?.addEventListener('click', openScriptModal);
-  DOM.btnCloseScriptModal?.addEventListener('click', closeScriptModal);
-  DOM.btnCancelScriptModal?.addEventListener('click', closeScriptModal);
-  DOM.btnSubmitScriptSplit?.addEventListener('click', handleSubmitScriptSplit);
-  DOM.importScriptTextarea?.addEventListener('input', handleScriptInputCount);
-
-  // Quick Sample Stories
-  document.querySelectorAll('.btn-sample-story').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const sampleKey = btn.getAttribute('data-sample');
-      if (SAMPLE_STORIES[sampleKey] && DOM.importScriptTextarea) {
-        DOM.importScriptTextarea.value = SAMPLE_STORIES[sampleKey];
-        handleScriptInputCount();
-        showToast(`Đã nạp kịch bản mẫu: ${btn.textContent.trim()}`, "info");
-      }
-    });
   });
 
   // Scene Actions
@@ -1972,12 +1791,6 @@ function bindEventListeners() {
   DOM.btnCopySeoDesc?.addEventListener('click', () => copyToClipboard('textarea-seo-desc', 'Đã sao chép mô tả YouTube!'));
   DOM.btnCopySeoTags?.addEventListener('click', () => copyToClipboard('input-seo-tags', 'Đã sao chép thẻ từ khóa YouTube!'));
 
-  // Character Modal
-  DOM.btnEditCharacter?.addEventListener('click', openCharacterModal);
-  DOM.btnCloseCharacterModal?.addEventListener('click', closeCharacterModal);
-  DOM.btnCancelCharModal?.addEventListener('click', closeCharacterModal);
-  DOM.btnSaveCharacter?.addEventListener('click', handleSaveCharacter);
-
   // Project Dropdown / Manager
   DOM.btnProjectDropdown?.addEventListener('click', openProjectModal);
   DOM.btnCreateProject?.addEventListener('click', handleCreateNewProject);
@@ -2017,8 +1830,6 @@ function handleGlobalKeydown(e) {
   } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
     e.preventDefault();
     handleSaveProject();
-  } else if (e.key === 'Escape') {
-    closeAllModals();
   }
 }
 
@@ -3014,63 +2825,7 @@ function togglePlayerFullscreen() {
   }
 }
 
-// ================= COMIC & WEBTOON SLICER CONTROLLER =================
-function openComicModal() {
-  if (!DOM.modalComicSlicer) return;
-  DOM.modalComicSlicer.classList.remove('hidden');
-  if (!AppState.comicState.slicedPanels || AppState.comicState.slicedPanels.length === 0) {
-    resetComicModal();
-  }
-}
-
-function closeComicModal() {
-  if (!DOM.modalComicSlicer) return;
-  DOM.modalComicSlicer.classList.add('hidden');
-}
-
-function resetComicModal() {
-  AppState.comicState.selectedFile = null;
-  AppState.comicState.slicedPanels = [];
-  AppState.comicState.annotatedPreviewUrl = null;
-  AppState.comicState.isSlicing = false;
-  AppState.comicState.activeTab = 'panels';
-
-  if (DOM.comicFileInput) DOM.comicFileInput.value = '';
-  if (DOM.comicSelectedFileInfo) {
-    DOM.comicSelectedFileInfo.textContent = '';
-    DOM.comicSelectedFileInfo.classList.add('hidden');
-  }
-  if (DOM.btnStartSlice) {
-    DOM.btnStartSlice.disabled = true;
-    DOM.btnStartSlice.innerHTML = '<i class="fa-solid fa-scissors mr-1.5"></i> <span>Phân tích & Cắt khung tranh (OpenCV)</span>';
-  }
-  if (DOM.comicUploadSection) DOM.comicUploadSection.classList.remove('hidden');
-  if (DOM.comicSliceLoading) DOM.comicSliceLoading.classList.add('hidden');
-  if (DOM.comicResultsSection) DOM.comicResultsSection.classList.add('hidden');
-  if (DOM.btnResetComic) DOM.btnResetComic.classList.add('hidden');
-  if (DOM.btnImportComicToStoryboard) DOM.btnImportComicToStoryboard.disabled = true;
-  if (DOM.importCountLabel) DOM.importCountLabel.textContent = '0';
-  if (DOM.comicPanelsTabContent) DOM.comicPanelsTabContent.innerHTML = '';
-}
-
-function handleComicFileSelect(file) {
-  if (!file) return;
-  if (!file.type.startsWith('image/')) {
-    showToast("Vui lòng chọn file hình ảnh (JPG, PNG, WebP)!", "warning");
-    return;
-  }
-
-  AppState.comicState.selectedFile = file;
-  const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
-  if (DOM.comicSelectedFileInfo) {
-    DOM.comicSelectedFileInfo.textContent = `📁 ${file.name} (${sizeMb} MB)`;
-    DOM.comicSelectedFileInfo.classList.remove('hidden');
-  }
-  if (DOM.btnStartSlice) {
-    DOM.btnStartSlice.disabled = false;
-  }
-}
-
+// ================= TRUYỆN TRANH: ẢNH MẪU CỦA TRANG Ý TƯỞNG =================
 async function loadComicSample(type) {
   try {
     const sampleUrl = type === 'strip' 
@@ -3083,259 +2838,13 @@ async function loadComicSample(type) {
     const filename = type === 'strip' ? 'sample_webtoon_strip.jpg' : 'sample_manga_grid.jpg';
     const file = new File([blob], filename, { type: 'image/jpeg' });
 
-    if (type === 'strip') {
-      if (DOM.comicLayoutMode) DOM.comicLayoutMode.value = 'strip';
-      if (DOM.comicReadingOrderBox) DOM.comicReadingOrderBox.classList.add('hidden');
-    } else {
-      if (DOM.comicLayoutMode) DOM.comicLayoutMode.value = 'grid';
-      if (DOM.comicReadingOrderBox) DOM.comicReadingOrderBox.classList.remove('hidden');
-    }
-
-    handleComicFileSelect(file);
-    // Nút mẫu ở Bước 1 dùng chung hàm này: cập nhật cả ô file và nút "Cắt khung" của Bước 1
+    // Cập nhật ô chế độ và nút "Cắt khung" của trang Ý tưởng
     if (DOM.step1ComicMode) DOM.step1ComicMode.value = type === 'strip' ? 'strip' : 'grid';
     handleStep1ComicFileSelect(file);
     showToast(`Đã nạp ảnh mẫu: ${escapeHtml(filename)}`, "info");
   } catch (err) {
     console.error("loadComicSample failed", err);
     showToast("Không tìm thấy file ảnh mẫu trên máy chủ", "warning");
-  }
-}
-
-async function handleStartSlice() {
-  const file = AppState.comicState.selectedFile;
-  if (!file) {
-    showToast("Vui lòng chọn hoặc kéo thả ảnh truyện tranh trước!", "warning");
-    return;
-  }
-
-  const mode = DOM.comicLayoutMode?.value || 'grid';
-  const readingOrder = DOM.comicReadingOrder?.value || 'ltr';
-  const minAreaRatio = parseFloat(DOM.comicMinArea?.value || '0.03');
-  const projectId = AppState.currentProject?.id || null;
-
-  if (DOM.comicUploadSection) DOM.comicUploadSection.classList.add('hidden');
-  if (DOM.comicSliceLoading) DOM.comicSliceLoading.classList.remove('hidden');
-  if (DOM.btnStartSlice) DOM.btnStartSlice.disabled = true;
-
-  try {
-    const result = await API.sliceComic(file, mode, readingOrder, minAreaRatio, projectId);
-    if (!result || !result.success) {
-      throw new Error(result?.error || "Không thể cắt khung tranh từ ảnh này");
-    }
-
-    AppState.comicState.slicedPanels = result.panels || [];
-    AppState.comicState.annotatedPreviewUrl = result.annotated_preview_url || null;
-
-    // Display Results
-    if (DOM.comicSliceLoading) DOM.comicSliceLoading.classList.add('hidden');
-    if (DOM.comicResultsSection) DOM.comicResultsSection.classList.remove('hidden');
-    if (DOM.btnResetComic) DOM.btnResetComic.classList.remove('hidden');
-
-    if (DOM.comicPanelCount) DOM.comicPanelCount.textContent = result.total_panels;
-    if (DOM.comicModeBadge) {
-      const modeText = result.mode === 'strip' ? 'Webtoon Strip (Cuộn dọc)' : `Manga Grid (${result.reading_order.toUpperCase()})`;
-      DOM.comicModeBadge.textContent = `${modeText} • ${result.source_dimensions?.width}x${result.source_dimensions?.height}px`;
-    }
-
-    // Set annotated image
-    if (DOM.comicAnnotatedImg && result.annotated_preview_url) {
-      DOM.comicAnnotatedImg.src = result.annotated_preview_url;
-    }
-
-    // Render panel cards
-    renderComicPanelCards(result.panels);
-
-    // Switch to panels tab initially
-    switchComicResultTab('panels');
-
-    showToast(`Bóc tách thành công ${result.total_panels} khung tranh!`, "success");
-  } catch (err) {
-    console.error("handleStartSlice error", err);
-    if (DOM.comicSliceLoading) DOM.comicSliceLoading.classList.add('hidden');
-    if (DOM.comicUploadSection) DOM.comicUploadSection.classList.remove('hidden');
-    if (DOM.btnStartSlice) DOM.btnStartSlice.disabled = false;
-    showToast(`Lỗi cắt ảnh: ${escapeHtml(err.message || err)}`, "error");
-  }
-}
-
-function renderComicPanelCards(panels) {
-  const container = DOM.comicPanelsTabContent;
-  if (!container) return;
-
-  if (!panels || panels.length === 0) {
-    container.innerHTML = `<div class="col-span-full py-8 text-center text-slate-400">Không tìm thấy khung tranh nào phù hợp.</div>`;
-    return;
-  }
-
-  container.innerHTML = panels.map((p, idx) => {
-    const isSelected = p.selected !== false;
-    const isWide = p.is_wide || (p.aspect_ratio > 1.5);
-    const motion = p.camera_motion || (isWide ? 'pan_right' : 'zoom_in');
-
-    const motionBadgeColor = isWide
-      ? 'bg-blue-50 text-blue-700 border-blue-200'
-      : 'bg-purple-50 text-purple-700 border-purple-200';
-
-    return `
-      <div class="comic-panel-card bg-white border border-slate-200 rounded-xl p-3 shadow-xs hover:border-amber-400 hover:shadow-md transition flex flex-col gap-2.5 relative group" data-panel-index="${idx}">
-        <!-- Top bar: Checkbox + Panel # + Aspect Ratio badge -->
-        <div class="flex items-center justify-between">
-          <label class="flex items-center gap-1.5 cursor-pointer select-none">
-            <input type="checkbox" class="comic-panel-cb rounded text-amber-600 focus:ring-amber-500" data-idx="${idx}" ${isSelected ? 'checked' : ''}>
-            <span class="font-bold text-slate-800 text-xs">Cảnh #${p.index}</span>
-          </label>
-          <span class="text-[10px] font-mono px-2 py-0.5 rounded-full border ${motionBadgeColor} font-semibold">
-            AR: ${p.aspect_ratio} (${isWide ? 'Rộng' : 'Dọc/Vuông'})
-          </span>
-        </div>
-
-        <!-- Thumbnail Image with Hover Zoom -->
-        <div class="w-full aspect-video bg-slate-900 rounded-lg overflow-hidden relative border border-slate-200 flex items-center justify-center">
-          <img src="${p.image_url}" alt="Panel ${p.index}" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300">
-          <span class="absolute bottom-1 right-1 text-[9px] bg-black/70 text-white font-mono px-1.5 py-0.5 rounded backdrop-blur-xs">
-            ${p.width}x${p.height}
-          </span>
-        </div>
-
-        <!-- Camera Motion Selector -->
-        <div>
-          <label class="text-[11px] text-slate-500 font-semibold block mb-0.5">Góc quay Ken Burns:</label>
-          <select class="comic-panel-motion-select w-full bg-slate-50 border border-slate-300 rounded-lg p-1.5 text-xs text-slate-800 font-medium focus:border-amber-500" data-idx="${idx}">
-            <option value="pan_right" ${motion === 'pan_right' ? 'selected' : ''}>Pan Phải (Khung ngang)</option>
-            <option value="pan_left" ${motion === 'pan_left' ? 'selected' : ''}>Pan Trái (Khung ngang)</option>
-            <option value="zoom_in" ${motion === 'zoom_in' ? 'selected' : ''}>Zoom In (Cận cảnh / Kịch tính)</option>
-            <option value="zoom_out" ${motion === 'zoom_out' ? 'selected' : ''}>Zoom Out (Bao quát)</option>
-            <option value="static" ${motion === 'static' ? 'selected' : ''}>Tĩnh (Static)</option>
-          </select>
-        </div>
-
-        <!-- Caption / Prompt input -->
-        <div>
-          <input type="text" class="comic-panel-caption-input w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-xs text-slate-800 focus:bg-white focus:border-amber-500" placeholder="Lời thoại hoặc mô tả cảnh #${p.index}..." value="${p.custom_text || ''}" data-idx="${idx}">
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  updateImportButtonCount();
-
-  // Attach card event listeners
-  container.querySelectorAll('.comic-panel-cb').forEach(cb => {
-    cb.addEventListener('change', (e) => {
-      const idx = parseInt(e.target.getAttribute('data-idx'));
-      if (AppState.comicState.slicedPanels[idx]) {
-        AppState.comicState.slicedPanels[idx].selected = e.target.checked;
-      }
-      updateImportButtonCount();
-    });
-  });
-
-  container.querySelectorAll('.comic-panel-motion-select').forEach(sel => {
-    sel.addEventListener('change', (e) => {
-      const idx = parseInt(e.target.getAttribute('data-idx'));
-      if (AppState.comicState.slicedPanels[idx]) {
-        AppState.comicState.slicedPanels[idx].camera_motion = e.target.value;
-      }
-    });
-  });
-
-  container.querySelectorAll('.comic-panel-caption-input').forEach(inp => {
-    inp.addEventListener('input', (e) => {
-      const idx = parseInt(e.target.getAttribute('data-idx'));
-      if (AppState.comicState.slicedPanels[idx]) {
-        AppState.comicState.slicedPanels[idx].custom_text = e.target.value;
-      }
-    });
-  });
-}
-
-function updateImportButtonCount() {
-  const panels = AppState.comicState.slicedPanels || [];
-  const selectedCount = panels.filter(p => p.selected !== false).length;
-  if (DOM.importCountLabel) DOM.importCountLabel.textContent = selectedCount;
-  if (DOM.btnImportComicToStoryboard) {
-    DOM.btnImportComicToStoryboard.disabled = selectedCount === 0;
-  }
-}
-
-function switchComicResultTab(tabName) {
-  AppState.comicState.activeTab = tabName;
-  if (tabName === 'panels') {
-    DOM.comicPanelsTabContent?.classList.remove('hidden');
-    DOM.comicAnnotatedTabContent?.classList.add('hidden');
-    DOM.tabBtnPanels?.classList.add('bg-white', 'text-amber-800', 'font-bold', 'border-amber-300', 'shadow-2xs');
-    DOM.tabBtnPanels?.classList.remove('text-slate-600');
-    DOM.tabBtnAnnotated?.classList.remove('bg-white', 'text-amber-800', 'font-bold', 'border-amber-300', 'shadow-2xs');
-    DOM.tabBtnAnnotated?.classList.add('text-slate-600');
-  } else {
-    DOM.comicPanelsTabContent?.classList.add('hidden');
-    DOM.comicAnnotatedTabContent?.classList.remove('hidden');
-    DOM.tabBtnAnnotated?.classList.add('bg-white', 'text-amber-800', 'font-bold', 'border-amber-300', 'shadow-2xs');
-    DOM.tabBtnAnnotated?.classList.remove('text-slate-600');
-    DOM.tabBtnPanels?.classList.remove('bg-white', 'text-amber-800', 'font-bold', 'border-amber-300', 'shadow-2xs');
-    DOM.tabBtnPanels?.classList.add('text-slate-600');
-  }
-}
-
-async function handleImportComicToStoryboard() {
-  const panels = AppState.comicState.slicedPanels || [];
-  const selectedPanels = panels.filter(p => p.selected !== false);
-
-  if (selectedPanels.length === 0) {
-    showToast("Vui lòng chọn ít nhất một khung tranh để nhập!", "warning");
-    return;
-  }
-
-  const project = AppState.currentProject;
-  if (!project) {
-    showToast("Chưa có dự án nào được chọn!", "error");
-    return;
-  }
-
-  const clearExisting = DOM.comicClearExistingCb?.checked || false;
-  const existing = project.scenes?.length || 0;
-  if (clearExisting && existing > 0 && !confirm(`Xóa ${existing} cảnh hiện có của dự án "${project.name}" rồi thay bằng ${selectedPanels.length} khung tranh?`)) return;
-
-  DOM.btnImportComicToStoryboard.disabled = true;
-  DOM.btnImportComicToStoryboard.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Đang nhập vào Storyboard...';
-
-  try {
-    // Server sẽ ghi các cảnh mới vào bản trên server: lưu chỉnh sửa hiện tại trước
-    if (!(await flushProjectSave())) throw new Error("Chưa lưu được dự án lên máy chủ");
-    const res = await API.importComicPanels(project.id, selectedPanels, clearExisting, "Khung tranh");
-    if (!res || !res.success) {
-      throw new Error(res?.detail || "Nhập phân cảnh thất bại");
-    }
-
-    if (res.project) {
-      AppState.currentProject = adoptServerProject(res.project);
-      rememberLastProjectId(res.project.id);
-    }
-
-    // Refresh UI
-    renderSceneList();
-    if (AppState.currentProject.scenes.length > 0) {
-      selectScene(clearExisting ? 0 : AppState.currentProject.scenes.length - selectedPanels.length);
-    }
-
-    closeComicModal();
-    switchStep(2); // mở Bảng Đạo Diễn để thấy ngay các cảnh vừa nhập
-    if (res.failed_panels > 0) {
-      showToast(`Đã đưa ${res.imported_scenes_count} phân cảnh vào Storyboard, nhưng ${res.failed_panels} khung không chép được ảnh (đánh dấu "Lỗi ảnh").`, "warning", 8000);
-    } else {
-      showToast(`Đã đưa ${res.imported_scenes_count} phân cảnh truyện tranh vào Storyboard! Bạn có thể lồng tiếng và render video ngay.`, "success", 4500);
-    }
-  } catch (err) {
-    console.error("handleImportComicToStoryboard error", err);
-    showToast(`Lỗi nhập phân cảnh: ${escapeHtml(err.message || err)}`, "error");
-  } finally {
-    if (DOM.btnImportComicToStoryboard) {
-      DOM.btnImportComicToStoryboard.disabled = false;
-      DOM.btnImportComicToStoryboard.innerHTML = '<i class="fa-solid fa-layer-group mr-1.5"></i> <span>Nhập vào Storyboard (<span id="import-count-label">' + selectedPanels.length + '</span> cảnh)</span>';
-      // Ô đếm vừa được tạo lại: trỏ DOM vào ô mới, nếu không số khung đã chọn sẽ không cập nhật nữa
-      DOM.importCountLabel = document.getElementById('import-count-label');
-    }
   }
 }
 
@@ -3385,9 +2894,6 @@ async function loadCinemaYouTubePackage() {
   }
   if (DOM.btnCinemaDownloadThumbnail) {
     DOM.btnCinemaDownloadThumbnail.href = `/api/projects/${project.id}/thumbnail`;
-  }
-  if (DOM.btnDownloadThumbnailDirect) {
-    DOM.btnDownloadThumbnailDirect.href = `/api/projects/${project.id}/thumbnail`;
   }
 
   // Gói SEO YouTube: xử lý trong /static/youtube_seo.js
@@ -3908,109 +3414,6 @@ function listenToProduceProgress(renderId) {
   }
 }
 
-// ================= MODAL 1: SCRIPT IMPORTER =================
-function openScriptModal() {
-  DOM.modalScriptImporter.classList.remove('hidden');
-  DOM.importScriptTextarea.focus();
-}
-
-function closeScriptModal() {
-  DOM.modalScriptImporter.classList.add('hidden');
-}
-
-function handleScriptInputCount() {
-  const text = DOM.importScriptTextarea.value.trim();
-  const words = text ? text.split(/\s+/).length : 0;
-  const sentences = text ? (text.match(/[^.!?]+[.!?]+/g) || [text]).length : 0;
-  DOM.scriptWordCount.textContent = `${words} từ • ${sentences} câu`;
-}
-
-async function handleSubmitScriptSplit() {
-  const text = DOM.importScriptTextarea.value.trim();
-  if (!text) {
-    showToast("Vui lòng dán nội dung câu chuyện trước!", "warning");
-    return;
-  }
-
-  const mode = DOM.splitModeSelect.value;
-  const style = DOM.splitStyleSelect.value;
-  const project = AppState.currentProject;
-
-  DOM.btnSubmitScriptSplit.disabled = true;
-  DOM.btnSubmitScriptSplit.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Đang phân tích kịch bản...';
-
-  // Server tách kịch bản và THÊM các cảnh mới vào dự án; giao diện lấy lại đúng bản dự án server trả về
-  let result;
-  if (!AppState.serverOnline) {
-    result = { success: false, detail: 'Máy chủ đang offline.' };
-  } else if (project.is_demo) {
-    result = { success: false, detail: 'đây là dự án mẫu, hãy tạo dự án mới trước.' };
-  } else if (!(await flushProjectSave())) {
-    result = { success: false, detail: 'chưa lưu được dự án hiện tại lên máy chủ.' };
-  } else {
-    result = await API.splitScript(project.id, text, { mode, style, pacing: mode, style_preset: style });
-  }
-
-  if (result?.success && result.project && Array.isArray(result.project.scenes)) {
-    const firstNewIndex = Math.max(0, result.project.scenes.length - (result.added_scenes || 0));
-    AppState.currentProject = adoptServerProject(result.project);
-    AppState.selectedSceneIndex = firstNewIndex;
-    rememberLastProjectId(result.project.id);
-    renderFullUI();
-    closeScriptModal();
-    showToast(`Đã thêm ${result.added_scenes || 0} phân cảnh (tổng ${result.total_scenes || result.project.scenes.length}).`, "success");
-  } else {
-    showToast(`Không thể phân tích kịch bản: ${escapeHtml(String(result?.detail || 'máy chủ không phản hồi'))}`, "error", 7000);
-  }
-
-  DOM.btnSubmitScriptSplit.disabled = false;
-  DOM.btnSubmitScriptSplit.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> <span>Tự động phân tích & tạo Storyboard</span>';
-}
-
-// ================= MODAL 3: CHARACTER CONSISTENCY =================
-function openCharacterModal() {
-  const char = AppState.currentProject?.character;
-  if (char) {
-    DOM.editCharName.value = char.name || "";
-    DOM.editCharPrompt.value = char.prompt || "";
-    // Giá trị cũ không còn hợp lệ (realistic, 3d_disney, manhwa) -> theo phong cách dự án
-    DOM.editCharStyle.value = characterStyleOverride(char);
-    if (DOM.editCharStyle.value !== characterStyleOverride(char)) DOM.editCharStyle.value = "";
-    DOM.editCharNegative.value = char.negative || "";
-  } else {
-    // character_anchor là mô tả ngoại hình, không phải tên
-    DOM.editCharName.value = "";
-    DOM.editCharPrompt.value = AppState.currentProject?.character_anchor || "";
-    DOM.editCharStyle.value = "";
-    DOM.editCharNegative.value = "";
-  }
-  DOM.modalCharacterEditor.classList.remove('hidden');
-}
-
-function closeCharacterModal() {
-  DOM.modalCharacterEditor.classList.add('hidden');
-}
-
-function handleSaveCharacter() {
-  const project = AppState.currentProject;
-  if (!project) return;
-
-  project.character = {
-    name: DOM.editCharName.value.trim(),
-    prompt: DOM.editCharPrompt.value.trim(),
-    style: DOM.editCharStyle.value,
-    negative: DOM.editCharNegative.value.trim(),
-    avatar: project.character?.avatar || ""
-  };
-  // Mô tả ngoại hình trong hộp này chính là character_anchor máy chủ ghép vào mọi ảnh
-  project.character_anchor = project.character.prompt;
-
-  saveStateToLocal();
-  renderCharacterCard();
-  closeCharacterModal();
-  showToast("Đã lưu cấu hình Khóa nhân vật đồng bộ!", "success");
-}
-
 // ================= MODAL 4: PROJECT MANAGER =================
 // Mở trang Dự án; việc nạp danh sách nằm ở móc onPageShow('projects') trong initMuseCloud()
 function openProjectModal() {
@@ -4121,169 +3524,6 @@ async function handleSaveProject() {
     showToast("Đã lưu dự án lên máy chủ thành công!", "success");
   }
 }
-
-function closeAllModals() {
-  DOM.modalScriptImporter?.classList.add('hidden');
-  DOM.modalComicSlicer?.classList.add('hidden');
-  DOM.modalCharacterEditor?.classList.add('hidden');
-  document.getElementById('modal-master-storyboard')?.classList.add('hidden');
-  // Hồ Sơ Kỳ Án không còn là cửa sổ (nằm trong trang Kịch bản): Esc không dừng việc hỏi tiến độ của vụ
-}
-
-// ================= OP_CTOOL MASTER STORYBOARD SPEC HANDLER =================
-let cachedMasterStoryboard = null;
-
-function initMasterStoryboardSpec() {
-  const btnOpen = document.getElementById('btn-open-master-storyboard-modal');
-  const modal = document.getElementById('modal-master-storyboard');
-  const btnClose = document.getElementById('btn-close-master-sb-modal');
-  const btnCancel = document.getElementById('btn-cancel-master-sb-modal');
-  const btnSampleDet = document.getElementById('btn-msb-sample-detective');
-  const btnSampleSciFi = document.getElementById('btn-msb-sample-scifi');
-  const btnDeconstruct = document.getElementById('btn-run-master-sb-deconstruct');
-  const btnApply = document.getElementById('btn-apply-master-sb-to-project');
-  const textarea = document.getElementById('master-sb-script-text');
-
-  if (!modal) return;
-
-  btnOpen?.addEventListener('click', () => {
-    modal.classList.remove('hidden');
-    if (textarea && !textarea.value) {
-      textarea.value = "Cơn mưa rào trút xuống màn đêm tĩnh mịch, xóa nhòa mọi dấu vết trên con đường dẫn vào căn biệt thự bỏ hoang.\nNam đẩy nhẹ cánh cổng sắt rỉ sét. Một tiếng kẽo kẹt xé toạc không gian... nhưng bên trong phòng khách, một đốm sáng đỏ kỳ dị vẫn đang nhấp nháy.\nTừng bước chân trĩu nặng trên sỏi ướt, hơi thở anh ngưng trệ khi nhìn thấy vệt máu loang trên thảm nhung.";
-    }
-  });
-
-  const closeModal = () => modal.classList.add('hidden');
-  btnClose?.addEventListener('click', closeModal);
-  btnCancel?.addEventListener('click', closeModal);
-
-  btnSampleDet?.addEventListener('click', () => {
-    if (textarea) {
-      textarea.value = "Cơn mưa rào trút xuống màn đêm tĩnh mịch, xóa nhòa mọi dấu vết trên con đường dẫn vào căn biệt thự bỏ hoang.\nNam đẩy nhẹ cánh cổng sắt rỉ sét. Một tiếng kẽo kẹt xé toạc không gian... nhưng bên trong phòng khách, một đốm sáng đỏ kỳ dị vẫn đang nhấp nháy.\nTừng bước chân trĩu nặng trên sỏi ướt, hơi thở anh ngưng trệ khi nhìn thấy vệt máu loang trên thảm nhung.";
-    }
-  });
-
-  btnSampleSciFi?.addEventListener('click', () => {
-    if (textarea) {
-      textarea.value = "Giữa khoảng không vô tận của vũ trụ, trạm không gian Aethelgard trôi dạt trong im lặng tuyệt đối.\nTín hiệu cầu cứu phát ra từ ba mươi năm trước bất ngờ kích hoạt trở lại trên màn hình radar.\nHệ thống dưỡng khí đang cạn kiệt, và một bóng đen khổng lồ đang từ từ bao trùm khoang điều khiển.";
-    }
-  });
-
-  btnDeconstruct?.addEventListener('click', async () => {
-    const text = textarea?.value?.trim();
-    if (!text) {
-      showToast("Vui lòng nhập kịch bản cần phân rã!", "warning");
-      return;
-    }
-
-    const styleDna = document.getElementById('master-sb-style-dna')?.value || "Dark moody cinematic neo-noir, 35mm film grain";
-    const gridMode = document.getElementById('master-sb-grid-mode')?.value === "true";
-
-    btnDeconstruct.disabled = true;
-    btnDeconstruct.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>Đang phân tích LLM...</span>';
-
-    try {
-      const resp = await fetch('/api/storyboard/deconstruct', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          script_text: text,
-          art_style: styleDna,
-          tone_and_mood: "tense_suspense",
-          batch_9_grid: gridMode,
-          provider: "auto",
-        }),
-      });
-
-      if (!resp.ok) throw new Error("Lỗi gọi API phân rã kịch bản");
-      const sb = await resp.json();
-      cachedMasterStoryboard = sb;
-
-      // Render preview
-      const previewCont = document.getElementById('master-sb-preview-container');
-      const cardsCont = document.getElementById('master-sb-preview-cards');
-      const countLabel = document.getElementById('master-sb-scene-count');
-      const titleLabel = document.getElementById('master-sb-preview-title');
-
-      if (previewCont && cardsCont) {
-        previewCont.classList.remove('hidden');
-        if (titleLabel) titleLabel.textContent = sb.project_metadata?.title || "Master Storyboard";
-        if (countLabel) countLabel.textContent = `${sb.scenes?.length || 0} cảnh`;
-
-        // Nội dung do LLM viết: luôn escape trước khi đưa vào HTML
-        const esc = v => escapeHtml(String(v ?? ''));
-        cardsCont.innerHTML = (sb.scenes || []).map(sc => `
-          <div class="p-2.5 bg-white rounded-lg border border-slate-200 space-y-1">
-            <div class="flex items-center justify-between text-[11px] font-bold">
-              <span class="text-purple-700">Cảnh ${esc(sc.scene_id)} • ${esc(sc.visual?.shot_type || 'Medium Shot')}</span>
-              <span class="text-amber-700 font-mono bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                ${sc.visual?.generation_mode === '9_grid_composite' ? '⚡ 9-Grid' : 'Single'} • ⏱️ ${esc(sc.estimated_duration_sec)}s (Nghỉ ${esc(sc.audio?.pause_after_sec)}s)
-              </span>
-            </div>
-            <div class="text-slate-800 font-medium">"${esc(sc.audio?.voiceover_text)}"</div>
-            <div class="text-[11px] text-slate-500 flex flex-wrap gap-2 pt-1 border-t border-slate-100">
-              <span>🔊 SFX: <b>${esc((sc.sound_design?.sfx_cue || []).join(', ') || 'none')}</b></span>
-              <span>🎵 BGM: <b>${esc(sc.sound_design?.bgm_energy || 'ambient')}</b></span>
-              <span>✨ Từ khóa: <b class="text-amber-600">${esc((sc.subtitles?.kinetic_highlight_words || []).join(', '))}</b></span>
-            </div>
-          </div>
-        `).join('');
-      }
-
-      btnApply?.classList.remove('hidden');
-      showToast("Phân rã Master Storyboard thành công!", "success");
-    } catch (err) {
-      console.error(err);
-      showToast("Lỗi phân rã kịch bản: " + escapeHtml(err.message), "error");
-    } finally {
-      btnDeconstruct.disabled = false;
-      btnDeconstruct.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> <span>Phân rã Master Storyboard</span>';
-    }
-  });
-
-  btnApply?.addEventListener('click', async () => {
-    if (!cachedMasterStoryboard) return;
-
-    btnApply.disabled = true;
-    btnApply.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>Đang nạp vào dự án...</span>';
-
-    try {
-      // Không gửi project_id: máy chủ ghi đè TOÀN BỘ dự án có id đó. Storyboard luôn được nạp thành dự án mới.
-      if (!(await flushProjectSave())) throw new Error("chưa lưu được dự án đang mở lên máy chủ");
-      const resp = await fetch('/api/storyboard/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storyboard: cachedMasterStoryboard,
-          title: cachedMasterStoryboard.project_metadata?.title,
-        }),
-      });
-
-      if (!resp.ok) throw new Error("Lỗi nạp storyboard vào dự án");
-      const resData = await resp.json();
-
-      closeModal();
-      showToast(`Đã tạo dự án mới "${escapeHtml(String(resData.title || ''))}" với ${resData.scenes_count} phân cảnh!`, "success");
-
-      // Reload project
-      if (resData.project_id) {
-        await switchProject(resData.project_id);
-        switchStep(2);
-      }
-    } catch (err) {
-      console.error(err);
-      showToast("Lỗi nạp storyboard: " + escapeHtml(err.message), "error");
-    } finally {
-      btnApply.disabled = false;
-      btnApply.innerHTML = '<i class="fa-solid fa-check"></i> <span>Nạp vào Dự Án & Bắt đầu Dựng</span>';
-    }
-  });
-}
-
-// Call on startup
-document.addEventListener('DOMContentLoaded', () => {
-  initMasterStoryboardSpec();
-});
 
 // ================= META MUSE CLOUD STUDIO ENGINE =================
 function initMuseCloud() {
@@ -5022,8 +4262,6 @@ function escapeHtml(text) {
 window.switchStep = switchStep;
 window.startProduceLongVideo = startProduceLongVideo;
 window.updateSceneTextLive = updateSceneTextLive;
-window.openComicModal = openComicModal;
-window.closeComicModal = closeComicModal;
 window.selectScene = selectScene;
 window.updateSceneKenBurns = updateSceneKenBurns;
 window.moveScene = moveScene;
@@ -5041,7 +4279,6 @@ window.playSceneVoice = playSceneVoice;
 window.togglePlayVoiceSample = togglePlayVoiceSample;
 window.seekSceneAudio = seekSceneAudio;
 window.regenerateSceneVoice = regenerateSceneVoice;
-window.openScriptModal = openScriptModal;
 window.switchProject = switchProject;
 window.openMuseModal = openMuseModal;
 window.loadMuseAccountsUI = loadMuseAccountsUI;

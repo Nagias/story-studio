@@ -56,3 +56,48 @@ REMOVED |= {"modal-true-crime": "spec 4.2: Hồ Sơ Kỳ Án vào trang Kịch b
             "btn-open-true-crime-modal": "như trên", "btn-close-true-crime-modal": "như trên",
             "btn-cancel-true-crime-modal": "như trên", "btn-tc-analyze": "spec 4.2: trùng nút chính trang Ý tưởng",
             "btn-tc-sample-1": "spec 4.2: nút mẫu gỡ hẳn", "btn-tc-sample-2": "như trên", "btn-tc-sample-3": "như trên"}
+
+
+REMOVED |= {i: 'spec 4.2: cửa sổ cắt truyện tranh, trùng thể loại Truyện tranh ở trang Ý tưởng' for i in (
+    "modal-comic-slicer", "btn-close-comic-modal", "comic-upload-section", "comic-dropzone",
+    "comic-file-input", "comic-selected-file-info", "comic-layout-mode", "comic-reading-order-box",
+    "comic-reading-order", "comic-min-area", "btn-sample-manga-grid", "btn-sample-webtoon-strip",
+    "btn-start-slice", "comic-slice-loading", "comic-results-section", "comic-panel-count",
+    "comic-mode-badge", "tab-btn-panels", "tab-btn-annotated", "comic-panels-tab-content",
+    "comic-annotated-tab-content", "comic-annotated-img", "btn-reset-comic", "comic-clear-existing-cb",
+    "btn-cancel-comic-modal", "btn-import-comic-to-storyboard", "import-count-label")}
+REMOVED |= {i: 'spec 4.2: cửa sổ Kịch bản AI, chủ dự án chốt không bê nguyên văn' for i in (
+    "modal-script-importer", "btn-close-script-modal", "script-word-count", "import-script-textarea",
+    "split-mode-select", "split-style-select", "btn-cancel-script-modal", "btn-submit-script-split")}
+REMOVED |= {i: 'spec 4.2: nhân vật chính kiểu cũ, cửa sổ sửa nhân vật; bảng nhân vật ở trang Hình mẫu thay thế' for i in (
+    "modal-character-editor", "btn-close-character-modal", "edit-char-name", "edit-char-prompt",
+    "edit-char-style", "edit-char-negative", "btn-cancel-char-modal", "btn-save-character")}
+REMOVED |= {i: 'spec 4.2: cửa sổ 9-Grid Spec, lối tạo dự án thứ ba ngoài luồng đã chốt' for i in (
+    "modal-master-storyboard", "btn-close-master-sb-modal", "btn-msb-sample-detective",
+    "btn-msb-sample-scifi", "master-sb-script-text", "master-sb-style-dna", "master-sb-grid-mode",
+    "master-sb-preview-container", "master-sb-preview-title", "master-sb-scene-count",
+    "master-sb-preview-cards", "btn-cancel-master-sb-modal", "btn-run-master-sb-deconstruct",
+    "btn-apply-master-sb-to-project")}
+REMOVED |= {i: 'spec 4.2: thẻ Khoá nhân vật kiểu cũ, bảng nhân vật ở trang Hình mẫu thay thế' for i in (
+    "character-consistency-card", "char-status-badge", "char-consistency-desc", "char-info-box",
+    "char-thumb-elem", "char-icon-fallback", "char-name-display", "char-prompt-preview", "btn-edit-character")}
+REMOVED |= {
+    "btn-open-comic-modal": "spec 4.2: nút mở cửa sổ cắt truyện tranh",
+    "btn-open-master-storyboard-modal": "spec 4.2: nút mở cửa sổ 9-Grid Spec",
+    "btn-open-script-modal": "spec 4.2: nút mở cửa sổ Kịch bản AI",
+    "btn-save-project": "spec 4.2: app tự lưu sau 1,5 giây, chữ Đã lưu ở thanh trên, Ctrl+S vẫn chạy",
+    "btn-produce-long-video": "spec 4.2: trùng #btn-produce-from-board ở trang Dựng và xuất bản",
+    "btn-download-thumbnail-direct": "spec 4.2: giữ #btn-cinema-download-thumbnail vì nằm cùng hàng các nút tải khác của thành phẩm",
+}
+
+
+def test_removed_modal_code_is_gone_and_shared_comic_helpers_stay():
+    """Hàm của bốn cửa sổ đã gỡ không còn trong app.js; hàm dùng chung với trang Ý tưởng phải còn."""
+    js = (Path(__file__).resolve().parent.parent / "backend" / "static" / "app.js").read_text(encoding="utf-8")
+    for dead in ("openComicModal", "handleStartSlice", "handleImportComicToStoryboard", "openScriptModal",
+                 "handleSubmitScriptSplit", "openCharacterModal", "handleSaveCharacter", "renderCharacterCard",
+                 "initMasterStoryboardSpec", "closeAllModals"):
+        assert dead not in js, f"{dead} đã gỡ nhưng còn trong app.js"
+    for alive in ("loadComicSample", "handleStep1ProcessComic", "handleSaveProject", "setSaveState"):
+        assert alive in js, f"{alive} bị xoá nhầm"
+    assert "showPage('idea')" in js  # nút "Về trang Ý tưởng" của danh sách cảnh rỗng
