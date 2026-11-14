@@ -1079,7 +1079,8 @@ async function initApp() {
   // Trang mở đầu: trang đã dùng lần trước của dự án này (workspace.js, localStorage ws_page_<project_id>);
   // đọc trước khi switchStep() ghi đè; chưa có thì như cũ (có cảnh: trang Cảnh, chưa có: trang Ý tưởng)
   const savedPage = rememberedPage(AppState.currentProject?.id);
-  if (savedPage) {
+  // Dự án, Thư viện Muse, Tài khoản không phải trang làm việc: tải lại luôn mở trang làm việc (móc của chúng cũng chưa đăng ký lúc này)
+  if (savedPage && !['projects', 'gallery', 'accounts'].includes(savedPage)) {
     showPage(savedPage);
   } else if (AppState.currentProject && AppState.currentProject.scenes && AppState.currentProject.scenes.length > 0) {
     switchStep(2);
@@ -4493,7 +4494,7 @@ function initMuseCloud() {
       const cmd = "setup_muse_accounts.bat";
       const ok = await copyTextToClipboard(cmd);
       showToast(ok
-        ? "Đã sao chép lệnh: 'setup_muse_accounts.bat'! Chạy file này để đăng nhập lần đầu cho 10 tài khoản."
+        ? "Đã sao chép lệnh: 'setup_muse_accounts.bat'! Chạy file này để đăng nhập lần đầu cho các tài khoản."
         : "Chưa chép được vào bộ nhớ tạm. Hãy chạy file setup_muse_accounts.bat trong thư mục story-studio.", ok ? "success" : "warning", 5000);
     });
   }

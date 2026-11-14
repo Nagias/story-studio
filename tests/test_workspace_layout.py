@@ -160,3 +160,10 @@ def test_gallery_attach_strip_and_return_to_scenes():
     att = app[app.index("async function attachMediaToScene("):]
     att = att[:att.index("\nasync function runSceneBatch")]
     assert "showPage('scenes')" in att and "closeMuseModal" not in att
+
+
+def test_startup_restore_skips_projects_gallery_accounts():
+    app = (ROOT / "backend" / "static" / "app.js").read_text(encoding="utf-8")
+    i = app.index("const savedPage = rememberedPage(")
+    assert "['projects', 'gallery', 'accounts'].includes(savedPage)" in app[i:i + 600]
+    assert "10 tài khoản" not in app
