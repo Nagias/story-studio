@@ -262,6 +262,7 @@
   window.openDrawer = openDrawer;
   window.closeDrawer = closeDrawer;
   window.currentPage = currentPage;
+  window.renderLookStyleLine = renderLookStyleLine;
   window.rememberedPage = rememberedPage;
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

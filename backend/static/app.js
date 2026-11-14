@@ -1738,6 +1738,7 @@ function renderSettings() {
 
   if (DOM.selectProjectStyle && project) {
     DOM.selectProjectStyle.value = project.style_preset || "cinematic_realistic";
+    if (typeof window.renderLookStyleLine === "function") window.renderLookStyleLine(); // đặt .value không bắn sự kiện change nên dòng phong cách ở trang Hình mẫu phải vẽ lại tay
   }
 
   updateAssetReadiness();
