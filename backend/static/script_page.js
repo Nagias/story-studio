@@ -23,7 +23,7 @@
   }
 
   function buildRow(scene, idx, total) {
-    const state = window.AppState || {};
+    const state = (typeof AppState !== 'undefined' ? AppState : null) || {};
     const isSelected = idx === state.selectedSceneIndex;
     const playing = isSelected && state.isPlaying;
     const generating = scene.status_voice === 'generating';
@@ -75,7 +75,7 @@
   }
 
   function updateSummary() {
-    const project = window.AppState && window.AppState.currentProject;
+    const project = typeof AppState !== 'undefined' && AppState ? AppState.currentProject : null;
     const count = document.getElementById('script-scene-count');
     const dur = document.getElementById('script-total-duration');
     if (count) count.textContent = String(project && project.scenes ? project.scenes.length : 0);
@@ -85,7 +85,7 @@
   function renderScriptList() {
     const box = document.getElementById('script-scene-list');
     if (!box) return;
-    const project = window.AppState && window.AppState.currentProject;
+    const project = typeof AppState !== 'undefined' && AppState ? AppState.currentProject : null;
     const scenes = (project && project.scenes) || [];
     box.replaceChildren();
     updateSummary();

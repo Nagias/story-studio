@@ -72,3 +72,10 @@ def test_script_page_loaded_after_app_and_shipped():
     assert h.index("/static/app.js") < h.index("/static/script_page.js")
     src = (ROOT / "tools" / "build_release.py").read_text(encoding="utf-8")
     assert src.count("backend/static/script_page.js") >= 2
+
+
+def test_no_window_lookup_of_const_globals_of_app_js():
+    """AppState và DOM là `const` ở app.js, không phải thuộc tính của window: window.AppState luôn là undefined."""
+    bad = [p.name for p in (ROOT / "backend" / "static").glob("*.js") if p.name != "app.js"
+           and any(s in p.read_text(encoding="utf-8") for s in ("window.AppState", "window.DOM"))]
+    assert not bad, f"dùng window.AppState/window.DOM (luôn undefined): {bad}"
