@@ -39,3 +39,36 @@ def test_workspace_assets_loaded_in_order():
 def test_release_ships_workspace_files():
     src = (ROOT / "tools" / "build_release.py").read_text(encoding="utf-8")
     assert src.count("backend/static/workspace.css") >= 1 and src.count("backend/static/workspace.js") >= 2
+
+
+PLACEMENT |= {"btn-add-scene": "script", "select-voice": "script", "btn-preview-voice-sample": "script",
+              "btn-regen-all-voices": "script", "script-scene-list": "script"}
+
+
+def test_scene_text_is_edited_in_one_place():
+    app = (ROOT / "backend" / "static" / "app.js").read_text(encoding="utf-8")
+    start = app.index("function renderSceneList(")
+    body = app[start:app.index("\nfunction ", start + 10)]
+    page = (ROOT / "backend" / "static" / "script_page.js").read_text(encoding="utf-8")
+    for fn in ("updateSceneText(", "updateSceneTextLive(", "moveScene(", "duplicateScene(", "deleteScene(",
+               "playSceneVoice(", "seekSceneAudio(", "regenerateSceneVoice("):
+        assert fn not in body and fn in page, fn
+
+
+def test_script_page_has_tabs_and_blocks():
+    from tests.ui_html import inside
+    for i in ("script-tab-lines", "script-tab-voice", "script-scene-list"):
+        assert page_of(INDEX_HTML, i) == "script", i
+    assert inside(INDEX_HTML, "btn-add-scene", "script-tab-lines")
+    assert inside(INDEX_HTML, "script-scene-list", "script-tab-lines")
+    assert inside(INDEX_HTML, "select-voice", "script-tab-voice")
+    assert inside(INDEX_HTML, "btn-regen-all-voices", "script-tab-voice")
+    for t in ("outline", "names", "lines", "voice"):
+        assert f'data-tab="{t}"' in INDEX_HTML
+
+
+def test_script_page_loaded_after_app_and_shipped():
+    h = INDEX_HTML
+    assert h.index("/static/app.js") < h.index("/static/script_page.js")
+    src = (ROOT / "tools" / "build_release.py").read_text(encoding="utf-8")
+    assert src.count("backend/static/script_page.js") >= 2

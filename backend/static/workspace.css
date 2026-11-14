@@ -125,3 +125,28 @@ body[data-ws-page="scenes"] .ws-canvas-inner { padding-top: 16px; padding-bottom
   .ws-canvas-inner { padding: 24px 16px 64px; }
 }
 @media (prefers-reduced-motion: reduce) { .ws-sidebar, .ws-drawer { transition: none; } }
+
+/* ---------- Trang Kịch bản: một dòng lời kể mỗi cảnh ---------- */
+.ws-srow { display: grid; grid-template-columns: 32px 1fr auto auto; gap: 12px; align-items: start; padding: 10px 16px;
+  border-bottom: 1px solid var(--ws-line); }
+.ws-srow:last-child { border-bottom: 0; }
+.ws-srow-selected { background: var(--ws-soft); }
+.ws-srow-num { font-size: 12px; color: var(--ws-micro); font-variant-numeric: tabular-nums; padding-top: 8px; text-align: right; }
+.ws-srow-text { width: 100%; resize: vertical; min-height: 44px; border: 1px solid transparent; border-radius: 8px; background: transparent;
+  font: inherit; font-size: 14px; line-height: 1.6; color: var(--ws-body); padding: 6px 8px; }
+.ws-srow-text:hover { border-color: var(--ws-line); }
+.ws-srow-text:focus { border-color: var(--ws-ink); background: #fff; outline: none; }
+.ws-srow-side { display: flex; align-items: center; gap: 8px; padding-top: 6px; }
+.ws-srow-dur { font-size: 12px; color: var(--ws-mute); font-variant-numeric: tabular-nums; min-width: 38px; text-align: right; }
+.ws-srow-seek { width: 96px; height: 6px; border-radius: 9999px; background: #E4E4E7; overflow: hidden; cursor: pointer; }
+.ws-srow-seek-fill { height: 100%; width: 0; background: var(--ws-ink); transition: width .1s; }
+.ws-srow-tools { display: flex; gap: 2px; padding-top: 4px; opacity: 0; transition: opacity .12s; }
+.ws-srow:hover .ws-srow-tools, .ws-srow:focus-within .ws-srow-tools { opacity: 1; }
+.ws-srow-btn { border: 0; background: transparent; color: var(--ws-nav); width: 28px; height: 28px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+.ws-srow-btn:hover:not(:disabled) { background: #E4E4E7; color: var(--ws-ink); }
+.ws-srow-btn:disabled { opacity: .35; cursor: default; }
+.ws-srow-danger:hover:not(:disabled) { color: #B91C1C; }
+.ws-srow-play { background: var(--ws-ink); color: #fff; border-radius: 9999px; }
+.ws-srow-play:hover:not(:disabled) { background: #27272A; color: #fff; }
+.ws-srow-empty { padding: 20px 16px; }
+@media (max-width: 900px) { .ws-srow { grid-template-columns: 28px 1fr; } .ws-srow-tools { opacity: 1; grid-column: 2; } }

@@ -1271,6 +1271,7 @@ function renderSceneList() {
         </div>
       </div>
     `;
+    if (window.renderScriptList) window.renderScriptList();
     return;
   }
 
@@ -1337,22 +1338,6 @@ function renderSceneList() {
               </select>
             </div>
 
-            <!-- Move Up -->
-            <button onclick="moveScene(${idx}, -1)" title="Di chuyển lên" class="text-slate-400 hover:text-slate-800 p-1 rounded hover:bg-slate-100 ${idx === 0 ? 'opacity-30 cursor-not-allowed' : ''}">
-              <i class="fa-solid fa-arrow-up text-xs"></i>
-            </button>
-            <!-- Move Down -->
-            <button onclick="moveScene(${idx}, 1)" title="Di chuyển xuống" class="text-slate-400 hover:text-slate-800 p-1 rounded hover:bg-slate-100 ${idx === scenes.length - 1 ? 'opacity-30 cursor-not-allowed' : ''}">
-              <i class="fa-solid fa-arrow-down text-xs"></i>
-            </button>
-            <!-- Duplicate Scene -->
-            <button onclick="duplicateScene(${idx})" title="Nhân bản cảnh" class="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-slate-100">
-              <i class="fa-solid fa-copy text-xs"></i>
-            </button>
-            <!-- Delete Scene -->
-            <button onclick="deleteScene(${idx})" title="Xóa cảnh này" class="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-slate-100">
-              <i class="fa-solid fa-trash-can text-xs"></i>
-            </button>
           </div>
         </div>
 
@@ -1434,18 +1419,13 @@ function renderSceneList() {
           <!-- Script & Voice Column (8 cols) -->
           <div class="col-span-12 sm:col-span-8 flex flex-col justify-between space-y-2">
             
-            <!-- Voiceover Textarea -->
+            <!-- Lời kể: chỉ đọc, sửa ở trang Kịch bản và giọng -->
             <div>
               <div class="flex items-center justify-between text-[11px] text-slate-500 mb-1">
-                <label class="font-bold uppercase tracking-wider text-slate-700">Lời thuyết minh (Voiceover):</label>
+                <span class="font-bold uppercase tracking-wider text-slate-700">Lời kể</span>
                 <span class="text-[10px] text-slate-400 font-mono">${(scene.text || '').length} ký tự</span>
               </div>
-              <textarea 
-                oninput="updateSceneTextLive(${idx}, this.value)"
-                onchange="updateSceneText(${idx}, this.value)" 
-                class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs text-slate-800 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none resize-none h-16 leading-relaxed transition shadow-2xs font-normal"
-                placeholder="Nhập lời đọc thuyết minh cho phân cảnh này..."
-              >${escapeHtml(scene.text || '')}</textarea>
+              <p class="scene-narration-readonly text-xs text-slate-700 leading-relaxed" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin:0">${escapeHtml(scene.text || '') || '(Chưa có lời kể)'}</p>
             </div>
 
             <!-- Dual Prompt Switcher: Image Prompt vs Video Motion Prompt -->
@@ -1499,31 +1479,9 @@ function renderSceneList() {
               </div>
             </div>
 
-            <!-- Mini Audio Player & Controls -->
-            <div class="flex items-center justify-between pt-2 border-t border-slate-100 flex-wrap gap-2">
-              <div class="flex items-center gap-2">
-                <button 
-                  onclick="playSceneVoice(${idx})" 
-                  class="w-7 h-7 rounded-full ${isSelected && AppState.isPlaying ? 'bg-indigo-600 text-white animate-pulse' : 'bg-indigo-600 hover:bg-indigo-700 text-white'} flex items-center justify-center text-xs transition shadow-xs"
-                  title="Nghe thử voice đọc"
-                >
-                  <i class="fa-solid ${isSelected && AppState.isPlaying ? 'fa-pause' : 'fa-play'} ml-0.5"></i>
-                </button>
-                <div class="w-24 sm:w-36 h-1.5 bg-slate-200 rounded-full overflow-hidden cursor-pointer" onclick="seekSceneAudio(${idx}, event)">
-                  <div id="scene-progress-${idx}" class="h-full bg-indigo-600 w-0 transition-all duration-100"></div>
-                </div>
-                <span class="text-[10px] font-mono text-slate-500 font-medium">${durStr}</span>
-              </div>
-
+            <!-- Nút Muse của cảnh (nghe, tua, thu lại giọng nằm ở trang Kịch bản và giọng) -->
+            <div class="flex items-center justify-end pt-2 border-t border-slate-100 flex-wrap gap-2">
               <div class="flex items-center gap-1.5 flex-wrap">
-                <button 
-                  onclick="regenerateSceneVoice(${idx})" 
-                  class="text-[10px] text-indigo-700 hover:text-indigo-900 font-bold flex items-center gap-1 transition px-2 py-1 rounded-lg bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 cursor-pointer"
-                  title="Tạo lại file âm thanh Edge-TTS"
-                >
-                  <i class="fa-solid fa-rotate-right ${isGenVoice ? 'fa-spin' : ''}"></i>
-                  <span>Voice</span>
-                </button>
                 <button 
                   onclick="generateSceneWithMuse(${idx}, 'image')" 
                   class="text-[10px] text-blue-700 hover:text-blue-900 font-bold flex items-center gap-1 transition px-2 py-1 rounded-lg bg-blue-50 border border-blue-200 hover:bg-blue-100 cursor-pointer shadow-2xs"
@@ -1550,6 +1508,7 @@ function renderSceneList() {
       </div>
     `;
   }).join('');
+  if (window.renderScriptList) window.renderScriptList();
 }
 
 function renderPreviewPlayer() {
