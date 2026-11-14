@@ -201,3 +201,19 @@ def test_genres_loaded_between_app_and_true_crime_and_shipped():
 def test_genres_js_has_no_raw_text_in_html():
     js = (ROOT / "backend" / "static" / "genres.js").read_text(encoding="utf-8")
     assert "escapeHtml" in js and "window.projectGenre" in js and "window.renderGenreCards" in js
+
+
+def test_genres_texts_match_the_preview():
+    import re
+    js = (ROOT / "backend" / "static" / "genres.js").read_text(encoding="utf-8")
+    preview = (ROOT / "docs" / "superpowers" / "specs" / "2026-11-15-giao-dien-gon-ban-xem-thu.html").read_text(encoding="utf-8")
+    for name in ("Truyện chữ", "Vụ án có thật", "Truyện tranh"):
+        assert f"name: '{name}'" in js and f'name: "{name}"' in preview, name
+    for key in ("desc", "rewrite"):
+        for text in re.findall(rf'{key}: "([^"]+)"', preview.split("const GENRES")[1].split("};")[0]):
+            assert text in js, text
+
+
+def test_genres_sync_hidden_kind_on_load():
+    js = (ROOT / "backend" / "static" / "genres.js").read_text(encoding="utf-8")
+    assert "savedKind" in js and "applyStep1ContentKind()" in js

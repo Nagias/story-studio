@@ -6,7 +6,9 @@
   'use strict';
 
   const el = (id) => document.getElementById(id);
-  const esc = (text) => (typeof escapeHtml === 'function' ? escapeHtml(text) : String(text));
+  const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  const esc = (text) => (typeof escapeHtml === 'function' ? escapeHtml(text)
+    : String(text).replace(/[&<>"']/g, (c) => ESC_MAP[c]));
 
   const SOON_DESC = 'Chưa làm. Khi cần chỉ thêm một khuôn.';
 
@@ -102,8 +104,13 @@
   }
 
   function init() {
+    // Trình duyệt có thể khôi phục giá trị ô ẩn sau khi tải lại: thẻ phải theo giá trị đó, không theo mặc định
+    const savedKind = el('step1-content-kind');
+    const restored = savedKind && GENRES.find((g) => g.contentKind === savedKind.value);
+    if (restored) current = restored;
     renderGenreCards();
     renderStyleCards();
+    if (typeof applyStep1ContentKind === 'function') applyStep1ContentKind();
 
     el('idea-genre-cards')?.addEventListener('click', (event) => {
       const btn = event.target.closest('[data-genre]');
