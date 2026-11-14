@@ -282,7 +282,7 @@ function tcRenderCreateHint() {
       if (flagged.length) where.push(`cảnh ${flagged.slice(0, 8).join(', ')}${flagged.length > 8 ? '...' : ''}`);
       if (planFlags) where.push('tên tập hoặc nhãn bảng ghim');
       text = `Còn mục bị đánh dấu (${where.join('; ')}): sửa lời kể hoặc thêm tên rồi mới tạo được dự án.`;
-      iconClass = 'fa-solid fa-triangle-exclamation text-rose-400';
+      iconClass = 'fa-solid fa-triangle-exclamation text-red-400';
     } else {
       text = `Sẵn sàng tạo dự án bản Việt (${(plan.scenes || []).length} cảnh).`;
       iconClass = 'fa-solid fa-circle-check text-emerald-400';
@@ -305,7 +305,7 @@ function tcUpdateWordCount() {
   if (!counter) return;
   const tooLong = text.length > TC_MAX_SOURCE_CHARS;
   counter.textContent = `${tcWordCount(text)} từ • ${text.length} ký tự${tooLong ? ' (quá 200.000 ký tự)' : ''}`;
-  counter.classList.toggle('text-rose-300', tooLong);
+  counter.classList.toggle('text-red-300', tooLong);
   counter.classList.toggle('text-slate-400', !tooLong);
 }
 
@@ -589,7 +589,7 @@ function tcRenderProgress() {
   }
   const icon = tcEl('tc-progress-icon');
   if (icon) {
-    icon.className = status === 'failed' ? 'fa-solid fa-triangle-exclamation text-rose-400'
+    icon.className = status === 'failed' ? 'fa-solid fa-triangle-exclamation text-red-400'
       : status === 'done' ? 'fa-solid fa-circle-check text-emerald-400'
         : status === 'review' ? 'fa-solid fa-list-check text-amber-400'
           : 'fa-solid fa-spinner fa-spin text-amber-400';
@@ -759,7 +759,7 @@ function tcRenderOutlineReview() {
           ? '<span class="text-[10px] px-1.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30" title="Nhịp mở đầu chỉ gợi trước sự việc này; nhịp sau mới kể đầy đủ">gợi trước</span>'
           : hookCopy
             ? '<span class="text-[10px] px-1.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700" title="Nhịp mở đầu đã gợi trước sự việc này">đã gợi ở mở đầu</span>'
-            : '<span class="text-[10px] px-1.5 rounded-full bg-[#2d161a] text-rose-200 border border-rose-500/50">nằm ở nhiều nhịp</span>';
+            : '<span class="text-[10px] px-1.5 rounded-full bg-[#2d161a] text-red-200 border border-red-500/50">nằm ở nhiều nhịp</span>';
       }
       const moveOptions = parts.map((other, j) =>
         `<option value="${j}"${j === i ? ' selected' : ''}>${j === i ? tcEsc(tcPartLabel(other, j)) : `→ ${tcEsc(tcPartLabel(other, j))}`}</option>`
@@ -789,13 +789,13 @@ function tcRenderOutlineReview() {
             class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 text-[10px] font-semibold transition cursor-pointer">
             <i class="fa-solid fa-plus mr-1"></i>Chèn nhịp sau</button>
           ${part.event_ids.length ? '' : `<button type="button" data-tc-remove-part="${i}" title="Xoá nhịp không có sự việc nào"
-            class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-rose-300 rounded-lg border border-slate-700 text-[10px] font-semibold transition cursor-pointer">
+            class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-red-300 rounded-lg border border-slate-700 text-[10px] font-semibold transition cursor-pointer">
             <i class="fa-solid fa-trash mr-1"></i>Xoá nhịp</button>`}
         </div>
         <textarea data-tc-part-summary="${i}" rows="2" maxlength="1000" aria-label="Tóm tắt nhịp ${i + 1}"
           placeholder="Nhịp này kể gì (1–2 câu, dùng tên hư cấu)"
           class="w-full bg-slate-950/90 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:border-red-500 focus:outline-none leading-relaxed resize-y">${tcEsc(part.summary_vi)}</textarea>
-        <ul class="space-y-1.5">${rows || '<li class="text-rose-300">Nhịp chưa có sự việc nào: chuyển sự việc vào, hoặc xoá nhịp.</li>'}</ul>
+        <ul class="space-y-1.5">${rows || '<li class="text-red-300">Nhịp chưa có sự việc nào: chuyển sự việc vào, hoặc xoá nhịp.</li>'}</ul>
       </div>`;
   }).join('') + tcDroppedSection(parts, events);
   tcUpdateOutlineStatus();
@@ -843,7 +843,7 @@ function tcUpdateOutlineStatus() {
     const problems = part.event_ids.length ? [] : ['chưa có sự việc'];
     if (!(part.scene_count >= minPart && part.scene_count <= maxPart)) problems.push(`số cảnh phải từ ${minPart} đến ${maxPart}`);
     hint.textContent = [part.event_ids.length ? `${part.event_ids.length} sự việc` : '', ...problems].filter(Boolean).join(' • ');
-    hint.className = `text-[10px] ${problems.length ? 'text-rose-300' : 'text-slate-500'}`;
+    hint.className = `text-[10px] ${problems.length ? 'text-red-300' : 'text-slate-500'}`;
   });
   const stats = tcEl('tc-outline-stats');
   if (stats) {
@@ -854,7 +854,7 @@ function tcUpdateOutlineStatus() {
     const range = limits.min ? (hasMax ? `cần ${limits.min}–${limits.max}` : `cần từ ${limits.min}`) : `tối đa ${limits.max}`;
     const outside = total < limits.min || (hasMax && total > limits.max);
     stats.textContent = `${parts.length} nhịp • ${total} cảnh (${range}) • +1 cảnh miễn trừ${s.outlineDirty ? ' • chưa lưu' : ''}`;
-    stats.classList.toggle('text-rose-300', outside);
+    stats.classList.toggle('text-red-300', outside);
     stats.classList.toggle('text-amber-400', !outside);
   }
   tcRefreshButtons();
@@ -1118,13 +1118,13 @@ function tcRenderWarnings(plan) {
   const box = tcEl('tc-warnings');
   if (!box) return;
   const styles = {
-    block: 'bg-[#2d161a] border border-rose-500/50 text-rose-200',
+    block: 'bg-[#2d161a] border border-red-500/50 text-red-200',
     warn: 'bg-[#2c2214] border border-amber-500/50 text-amber-200',
     info: 'bg-slate-900 border border-slate-700 text-slate-300',
     ok: 'bg-[#14261e] border border-emerald-500/50 text-emerald-200'
   };
   const icons = {
-    block: 'fa-solid fa-ban text-rose-400',
+    block: 'fa-solid fa-ban text-red-400',
     warn: 'fa-solid fa-triangle-exclamation text-amber-400',
     info: 'fa-solid fa-circle-info text-slate-400',
     ok: 'fa-solid fa-circle-check text-emerald-400'
@@ -1331,7 +1331,7 @@ function tcBuildSceneCard(scene, partsById) {
       </div>
       <span data-role="status" class="text-[10px] text-slate-500"></span>
     </div>
-    <div data-role="flags" class="hidden text-[11px] text-rose-200 space-y-0.5"></div>
+    <div data-role="flags" class="hidden text-[11px] text-red-200 space-y-0.5"></div>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
       <label class="block space-y-1">
         <span class="text-[10px] uppercase font-semibold text-slate-400">Lời Việt • <span data-role="count-vi"></span></span>
@@ -1417,7 +1417,7 @@ function tcSetSceneStatus(order, text, tone) {
   const status = TrueCrimeState.sceneEls.get(order)?.status;
   if (!status) return;
   status.textContent = text;
-  status.className = 'text-[10px] ' + (tone === 'error' ? 'text-rose-300' : tone === 'ok' ? 'text-emerald-400' : 'text-slate-500');
+  status.className = 'text-[10px] ' + (tone === 'error' ? 'text-red-300' : tone === 'ok' ? 'text-emerald-400' : 'text-slate-500');
 }
 
 function tcSaveScene(order, lang, textarea) {

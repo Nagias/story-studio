@@ -809,21 +809,21 @@ function showToast(message, type = 'info', duration = 3500) {
   if (!container) return;
 
   const toast = document.createElement('div');
-  toast.className = 'pointer-events-auto transform transition-all duration-300 translate-y-2 opacity-0 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl text-xs font-medium border max-w-sm';
+  toast.className = 'pointer-events-auto transform transition-all duration-300 translate-y-2 opacity-0 flex items-center gap-3 px-4 py-3 rounded-xl shadow-sm text-xs font-medium border max-w-sm';
 
   let iconHtml = '';
   if (type === 'success') {
     toast.classList.add('bg-[#14261e]', 'border-emerald-500/50', 'text-emerald-200');
     iconHtml = '<i class="fa-solid fa-circle-check text-emerald-400 text-sm"></i>';
   } else if (type === 'error') {
-    toast.classList.add('bg-[#2d161a]', 'border-rose-500/50', 'text-rose-200');
-    iconHtml = '<i class="fa-solid fa-circle-exclamation text-rose-400 text-sm"></i>';
+    toast.classList.add('bg-[#2d161a]', 'border-red-500/50', 'text-red-200');
+    iconHtml = '<i class="fa-solid fa-circle-exclamation text-red-400 text-sm"></i>';
   } else if (type === 'warning') {
     toast.classList.add('bg-[#2c2214]', 'border-amber-500/50', 'text-amber-200');
     iconHtml = '<i class="fa-solid fa-triangle-exclamation text-amber-400 text-sm"></i>';
   } else {
-    toast.classList.add('bg-[#1a2035]', 'border-indigo-500/50', 'text-indigo-200');
-    iconHtml = '<i class="fa-solid fa-circle-info text-indigo-400 text-sm"></i>';
+    toast.classList.add('bg-[#1a2035]', 'border-slate-700/50', 'text-slate-300');
+    iconHtml = '<i class="fa-solid fa-circle-info text-slate-400 text-sm"></i>';
   }
 
   toast.innerHTML = `
@@ -1176,7 +1176,7 @@ function renderSceneList() {
         <h4 class="text-sm font-semibold text-gray-300">Chưa có phân cảnh nào</h4>
         <p class="text-xs text-gray-500 mt-1 max-w-sm mx-auto">Quay về trang Ý tưởng để dán truyện cho AI chia cảnh, hoặc bấm "Thêm cảnh mới" để bắt đầu sáng tạo.</p>
         <div class="mt-4 flex items-center justify-center gap-2">
-          <button onclick="showPage('idea')" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-md">
+          <button onclick="showPage('idea')" class="px-3.5 py-2 bg-slate-900 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold shadow-md">
             <i class="fa-solid fa-arrow-left mr-1"></i> Về trang Ý tưởng
           </button>
         </div>
@@ -1203,28 +1203,28 @@ function renderSceneList() {
 
     let statusBadgeHtml = '';
     if (isGenImage || isGenVoice || isGenVideo) {
-      statusBadgeHtml = `<span class="text-[11px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200 animate-pulse font-semibold flex items-center gap-1"><i class="fa-solid fa-spinner fa-spin"></i> Đang sinh AI... <button type="button" onclick="resetSceneImageStatus(${idx})" class="text-[9px] underline ml-1 text-indigo-900 cursor-pointer">Bỏ qua</button></span>`;
+      statusBadgeHtml = `<span class="text-[11px] bg-slate-50 text-slate-700 px-2 py-0.5 rounded border border-slate-200 animate-pulse font-semibold flex items-center gap-1"><i class="fa-solid fa-spinner fa-spin"></i> Đang sinh AI... <button type="button" onclick="resetSceneImageStatus(${idx})" class="text-[9px] underline ml-1 text-slate-900 cursor-pointer">Bỏ qua</button></span>`;
     } else if (hasVideo && hasVoice) {
       statusBadgeHtml = `<span class="text-[11px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 font-semibold flex items-center gap-1"><i class="fa-solid fa-circle-play text-emerald-600"></i> Đủ Voice & Video (10s)</span>`;
     } else if (sceneHasRealVisual(scene) && hasVoice) {
       statusBadgeHtml = `<span class="text-[11px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 font-semibold"><i class="fa-solid fa-check mr-1"></i> Đủ Voice & Ảnh</span>`;
     } else if (hasVideo && !hasVoice) {
-      statusBadgeHtml = `<span class="text-[11px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded border border-purple-200 font-semibold"><i class="fa-solid fa-film mr-1"></i> Có Video (Chưa voice)</span>`;
+      statusBadgeHtml = `<span class="text-[11px] bg-slate-50 text-slate-700 px-2 py-0.5 rounded border border-slate-200 font-semibold"><i class="fa-solid fa-film mr-1"></i> Có Video (Chưa voice)</span>`;
     } else if (!sceneHasRealVisual(scene) && hasVoice) {
       statusBadgeHtml = `<span class="text-[11px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200 font-semibold"><i class="fa-solid fa-image mr-1"></i> Chưa có Ảnh/Video</span>`;
     } else if (hasImage && !hasVoice) {
-      statusBadgeHtml = `<span class="text-[11px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded border border-purple-200 font-semibold"><i class="fa-solid fa-microphone mr-1"></i> Chưa có Voice</span>`;
+      statusBadgeHtml = `<span class="text-[11px] bg-slate-50 text-slate-700 px-2 py-0.5 rounded border border-slate-200 font-semibold"><i class="fa-solid fa-microphone mr-1"></i> Chưa có Voice</span>`;
     } else {
       statusBadgeHtml = `<span class="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">Cảnh mới</span>`;
     }
 
     return `
-      <div id="scene-card-${scene.id}" data-index="${idx}" class="scene-card group transition-all duration-200 rounded-xl p-3.5 border ${isSelected ? 'bg-indigo-50/70 border-indigo-500 shadow-md ring-2 ring-indigo-500/20' : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs'}">
+      <div id="scene-card-${scene.id}" data-index="${idx}" class="scene-card group transition-all duration-200 rounded-xl p-3.5 border ${isSelected ? 'bg-slate-50/70 border-slate-700 shadow-md ring-2 ring-slate-700/20' : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs'}">
         
         <!-- Card Top Bar -->
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2">
-            <span class="cursor-pointer font-bold text-[11px] px-2.5 py-0.5 rounded ${isSelected ? 'bg-indigo-600 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}" onclick="selectScene(${idx})">
+            <span class="cursor-pointer font-bold text-[11px] px-2.5 py-0.5 rounded ${isSelected ? 'bg-slate-900 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}" onclick="selectScene(${idx})">
               Cảnh #${idx + 1}
             </span>
             <span class="text-xs text-slate-500 font-mono"><i class="fa-regular fa-clock mr-1"></i> ${durStr}</span>
@@ -1235,7 +1235,7 @@ function renderSceneList() {
           <div class="flex items-center gap-1.5">
             <!-- Ken Burns / Motion FX Selector -->
             <div class="relative">
-              <select onchange="updateSceneKenBurns(${idx}, this.value)" class="text-xs bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg px-2 py-1 border border-slate-300 focus:outline-none focus:border-indigo-500 cursor-pointer font-medium shadow-2xs">
+              <select onchange="updateSceneKenBurns(${idx}, this.value)" class="text-xs bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg px-2 py-1 border border-slate-300 focus:outline-none focus:border-slate-700 cursor-pointer font-medium shadow-2xs">
                 <option value="zoom_in" ${(scene.ken_burns === 'zoom_in' || scene.camera_motion === 'zoom_in' || !scene.camera_motion) ? 'selected' : ''}>🔍 Zoom In Chậm</option>
                 <option value="zoom_out" ${(scene.ken_burns === 'zoom_out' || scene.camera_motion === 'zoom_out') ? 'selected' : ''}>🔎 Zoom Out</option>
                 <option value="action_camera_shake" ${(scene.camera_motion === 'action_camera_shake' || scene.ken_burns === 'action_camera_shake') ? 'selected' : ''}>💥 Camera Rung Chấn</option>
@@ -1259,11 +1259,11 @@ function renderSceneList() {
           <div class="col-span-12 sm:col-span-4 relative rounded-xl overflow-hidden border border-slate-300 aspect-video bg-slate-900 flex items-center justify-center group/img shadow-2xs">
             ${hasVideo ? `
               <div class="absolute top-1.5 left-1.5 z-20 flex items-center bg-black/80 backdrop-blur-md p-0.5 rounded-lg border border-white/20 shadow-xs">
-                <button type="button" onclick="setMediaViewMode(${idx}, 'image')" class="px-2 py-0.5 rounded text-[9px] font-bold ${!isShowingVideo ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-300 hover:text-white'} transition cursor-pointer flex items-center gap-1" title="Chuyển sang xem Ảnh 2K">
+                <button type="button" onclick="setMediaViewMode(${idx}, 'image')" class="px-2 py-0.5 rounded text-[9px] font-bold ${!isShowingVideo ? 'bg-slate-900 text-white shadow-2xs' : 'text-slate-300 hover:text-white'} transition cursor-pointer flex items-center gap-1" title="Chuyển sang xem Ảnh 2K">
                   <i class="fa-solid fa-image"></i>
                   <span>Ảnh</span>
                 </button>
-                <button type="button" onclick="setMediaViewMode(${idx}, 'video')" class="px-2 py-0.5 rounded text-[9px] font-bold ${isShowingVideo ? 'bg-purple-600 text-white shadow-2xs' : 'text-slate-300 hover:text-white'} transition cursor-pointer flex items-center gap-1" title="Chuyển sang xem Video chuyển động">
+                <button type="button" onclick="setMediaViewMode(${idx}, 'video')" class="px-2 py-0.5 rounded text-[9px] font-bold ${isShowingVideo ? 'bg-slate-900 text-white shadow-2xs' : 'text-slate-300 hover:text-white'} transition cursor-pointer flex items-center gap-1" title="Chuyển sang xem Video chuyển động">
                   <i class="fa-solid fa-film"></i>
                   <span>Video</span>
                 </button>
@@ -1283,14 +1283,14 @@ function renderSceneList() {
 
             ${isGenImage && !isShowingVideo ? `
               <div class="absolute inset-0 bg-white/85 backdrop-blur-xs flex flex-col items-center justify-center p-2 text-center z-10">
-                <i class="fa-solid fa-spinner fa-spin text-xl text-indigo-600 mb-1"></i>
-                <span class="text-[10px] text-indigo-900 font-bold mb-1">Đang sinh ảnh AI...</span>
+                <i class="fa-solid fa-spinner fa-spin text-xl text-slate-700 mb-1"></i>
+                <span class="text-[10px] text-slate-900 font-bold mb-1">Đang sinh ảnh AI...</span>
                 <button type="button" onclick="resetSceneImageStatus(${idx})" class="text-[9px] px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded cursor-pointer">Bỏ qua</button>
               </div>
             ` : (isGenVideo && isShowingVideo ? `
               <div class="absolute inset-0 bg-white/85 backdrop-blur-xs flex flex-col items-center justify-center p-2 text-center z-10">
-                <i class="fa-solid fa-spinner fa-spin text-xl text-purple-600 mb-1"></i>
-                <span class="text-[10px] text-purple-900 font-bold mb-1">Đang sinh video AI...</span>
+                <i class="fa-solid fa-spinner fa-spin text-xl text-slate-700 mb-1"></i>
+                <span class="text-[10px] text-slate-900 font-bold mb-1">Đang sinh video AI...</span>
               </div>
             ` : '')}
 
@@ -1301,13 +1301,13 @@ function renderSceneList() {
             
             <!-- Hover Action Buttons Overlay -->
             <div class="absolute inset-0 bg-slate-950/60 opacity-0 group-hover/img:opacity-100 flex items-center justify-center gap-1.5 transition duration-200 z-10">
-              <button onclick="regenerateSceneImage(${idx})" title="Gen lại ảnh AI" class="p-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
+              <button onclick="regenerateSceneImage(${idx})" title="Gen lại ảnh AI" class="p-1.5 bg-slate-900 hover:bg-slate-700 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
                 <i class="fa-solid fa-arrows-rotate"></i>
               </button>
-              <button onclick="generateSceneWithMuse(${idx}, 'image')" title="Tạo ảnh 2K bằng Muse Fleet (tài khoản ảnh)" class="p-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
+              <button onclick="generateSceneWithMuse(${idx}, 'image')" title="Tạo ảnh 2K bằng Muse Fleet (tài khoản ảnh)" class="p-1.5 bg-slate-900 hover:bg-slate-700 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
                 <i class="fa-brands fa-meta"></i>
               </button>
-              <button onclick="generateSceneWithMuse(${idx}, 'video')" title="Tạo video Muse dài theo lời thoại: lời dài thì nhiều video nối nhau (báo số video trước khi chạy)" class="p-1.5 bg-purple-600 hover:bg-purple-500 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
+              <button onclick="generateSceneWithMuse(${idx}, 'video')" title="Tạo video Muse dài theo lời thoại: lời dài thì nhiều video nối nhau (báo số video trước khi chạy)" class="p-1.5 bg-slate-900 hover:bg-slate-700 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
                 <i class="fa-solid fa-film"></i>
               </button>
               <button onclick="openMuseModalForScene(${idx})" title="Chọn video/ảnh từ Gallery Muse" class="p-1.5 bg-amber-600 hover:bg-amber-500 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
@@ -1317,7 +1317,7 @@ function renderSceneList() {
                 <i class="fa-solid fa-upload"></i>
                 <input type="file" accept="image/*" class="hidden" onchange="uploadCustomSceneImage(${idx}, this)">
               </label>
-              <label title="Tải video MP4 riêng từ máy" class="p-1.5 bg-purple-700 hover:bg-purple-600 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110 cursor-pointer">
+              <label title="Tải video MP4 riêng từ máy" class="p-1.5 bg-slate-800 hover:bg-slate-900 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110 cursor-pointer">
                 <i class="fa-solid fa-file-video"></i>
                 <input type="file" accept="video/*" class="hidden" onchange="uploadCustomSceneVideo(${idx}, this)">
               </label>
@@ -1347,24 +1347,24 @@ function renderSceneList() {
                     type="button" 
                     onclick="switchScenePromptTab(${idx}, 'image')" 
                     id="btn-tab-img-${idx}" 
-                    class="px-2.5 py-1 rounded-md text-[10px] font-extrabold ${(!scene.active_prompt_tab || scene.active_prompt_tab === 'image') ? 'bg-white text-indigo-700 shadow-2xs border border-indigo-200' : 'text-slate-500 hover:text-slate-800'} transition cursor-pointer flex items-center gap-1.5"
+                    class="px-2.5 py-1 rounded-md text-[10px] font-extrabold ${(!scene.active_prompt_tab || scene.active_prompt_tab === 'image') ? 'bg-white text-slate-700 shadow-2xs border border-slate-200' : 'text-slate-500 hover:text-slate-800'} transition cursor-pointer flex items-center gap-1.5"
                     title="Chỉnh sửa mô tả hình ảnh tĩnh (Visual Prompt)"
                   >
-                    <i class="fa-solid fa-image text-indigo-500 text-[10px]"></i>
+                    <i class="fa-solid fa-image text-slate-500 text-[10px]"></i>
                     <span>Prompt Ảnh (2K)</span>
                   </button>
                   <button 
                     type="button" 
                     onclick="switchScenePromptTab(${idx}, 'video')" 
                     id="btn-tab-vid-${idx}" 
-                    class="px-2.5 py-1 rounded-md text-[10px] font-extrabold ${scene.active_prompt_tab === 'video' ? 'bg-white text-purple-700 shadow-2xs border border-purple-200' : 'text-slate-500 hover:text-slate-800'} transition cursor-pointer flex items-center gap-1.5"
+                    class="px-2.5 py-1 rounded-md text-[10px] font-extrabold ${scene.active_prompt_tab === 'video' ? 'bg-white text-slate-700 shadow-2xs border border-slate-200' : 'text-slate-500 hover:text-slate-800'} transition cursor-pointer flex items-center gap-1.5"
                     title="Chỉnh sửa chuyển động nhân vật & góc quay (Video Motion Prompt)"
                   >
-                    <i class="fa-solid fa-film text-purple-500 text-[10px]"></i>
+                    <i class="fa-solid fa-film text-slate-500 text-[10px]"></i>
                     <span>Prompt Video (Chuyển động)</span>
                   </button>
                 </div>
-                <span class="text-[9px] font-mono ${scene.active_prompt_tab === 'video' ? 'text-purple-600 font-bold' : 'text-slate-400'}" id="prompt-spec-${idx}">
+                <span class="text-[9px] font-mono ${scene.active_prompt_tab === 'video' ? 'text-slate-700 font-bold' : 'text-slate-400'}" id="prompt-spec-${idx}">
                   ${scene.active_prompt_tab === 'video' ? '🎬 5s Motion • Nhân vật & Máy quay' : '8K • Cinema Masterpiece'}
                 </span>
               </div>
@@ -1374,7 +1374,7 @@ function renderSceneList() {
                 <textarea 
                   oninput="updateSceneVisualPromptLive(${idx}, this.value)"
                   onchange="updateSceneVisualPrompt(${idx}, this.value)" 
-                  class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-[11px] text-slate-700 focus:bg-white focus:border-indigo-500 focus:outline-none font-mono transition shadow-2xs resize-none h-14 leading-relaxed"
+                  class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-[11px] text-slate-700 focus:bg-white focus:border-slate-700 focus:outline-none font-mono transition shadow-2xs resize-none h-14 leading-relaxed"
                   placeholder="Mô tả bối cảnh hình ảnh AI 2K/8K (Image Prompt)..."
                 >${escapeHtml(scene.visual_prompt || scene.image_prompt || '')}</textarea>
               </div>
@@ -1384,7 +1384,7 @@ function renderSceneList() {
                 <textarea 
                   oninput="updateSceneVideoPromptLive(${idx}, this.value)"
                   onchange="updateSceneVideoPrompt(${idx}, this.value)" 
-                  class="w-full bg-purple-50/40 border border-purple-200 rounded-lg p-2 text-[11px] text-purple-900 focus:bg-white focus:border-purple-500 focus:outline-none font-mono transition shadow-2xs resize-none h-14 leading-relaxed"
+                  class="w-full bg-slate-50/40 border border-slate-200 rounded-lg p-2 text-[11px] text-slate-900 focus:bg-white focus:border-slate-700 focus:outline-none font-mono transition shadow-2xs resize-none h-14 leading-relaxed"
                   placeholder="Mô tả hành động nhân vật & chuyển động máy quay (ví dụ: thám tử bước đi chậm rãi trong mưa, áo khoác bay theo gió, đèn xe cảnh sát nhấp nháy, camera tracking theo bước chân)..."
                 >${escapeHtml(scene.video_prompt || '')}</textarea>
               </div>
@@ -1395,18 +1395,18 @@ function renderSceneList() {
               <div class="flex items-center gap-1.5 flex-wrap">
                 <button 
                   onclick="generateSceneWithMuse(${idx}, 'image')" 
-                  class="text-[10px] text-blue-700 hover:text-blue-900 font-bold flex items-center gap-1 transition px-2 py-1 rounded-lg bg-blue-50 border border-blue-200 hover:bg-blue-100 cursor-pointer shadow-2xs"
+                  class="text-[10px] text-slate-700 hover:text-slate-900 font-bold flex items-center gap-1 transition px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 hover:bg-slate-100 cursor-pointer shadow-2xs"
                   title="Tạo ảnh 2K riêng cảnh này bằng Muse Fleet (tài khoản ảnh)"
                 >
-                  <i class="fa-brands fa-meta text-xs text-blue-600"></i>
+                  <i class="fa-brands fa-meta text-xs text-slate-700"></i>
                   <span>Muse 2K</span>
                 </button>
                 <button 
                   onclick="generateSceneWithMuse(${idx}, 'video')" 
-                  class="text-[10px] text-purple-700 hover:text-purple-900 font-bold flex items-center gap-1 transition px-2 py-1 rounded-lg bg-purple-50 border border-purple-200 hover:bg-purple-100 cursor-pointer shadow-2xs"
+                  class="text-[10px] text-slate-700 hover:text-slate-900 font-bold flex items-center gap-1 transition px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 hover:bg-slate-100 cursor-pointer shadow-2xs"
                   title="Tạo video Muse dài theo lời thoại: lời dài thì nhiều video nối nhau (báo số video trước khi chạy)"
                 >
-                  <i class="fa-solid fa-film text-xs text-purple-600"></i>
+                  <i class="fa-solid fa-film text-xs text-slate-700"></i>
                   <span>Muse Video</span>
                 </button>
               </div>
@@ -1444,7 +1444,7 @@ function renderPreviewPlayer() {
     }
     DOM.previewImageElem.classList.add('hidden');
     DOM.previewImagePlaceholder.classList.add('hidden');
-    DOM.previewKbBadge.innerHTML = `<i class="fa-solid fa-film text-purple-400 mr-1"></i> Video Motion`;
+    DOM.previewKbBadge.innerHTML = `<i class="fa-solid fa-film text-slate-400 mr-1"></i> Video Motion`;
   } else if (hasImage) {
     if (DOM.previewVideoElem) {
       DOM.previewVideoElem.pause();
@@ -2029,7 +2029,7 @@ function switchScenePromptTab(index, tab) {
       tabImgBtn.className = "px-2.5 py-1 rounded-md text-[10px] font-bold text-slate-500 hover:text-slate-800 transition cursor-pointer flex items-center gap-1.5";
     }
     if (tabVidBtn) {
-      tabVidBtn.className = "px-2.5 py-1 rounded-md text-[10px] font-extrabold bg-white text-purple-700 shadow-2xs border border-purple-200 transition cursor-pointer flex items-center gap-1.5";
+      tabVidBtn.className = "px-2.5 py-1 rounded-md text-[10px] font-extrabold bg-white text-slate-700 shadow-2xs border border-slate-200 transition cursor-pointer flex items-center gap-1.5";
     }
     if (containerImg) containerImg.classList.add('hidden');
     if (containerVid) {
@@ -2041,11 +2041,11 @@ function switchScenePromptTab(index, tab) {
     }
     if (specBadge) {
       specBadge.textContent = "🎬 5s Motion • Nhân vật & Máy quay";
-      specBadge.className = "text-[9px] font-mono text-purple-600 font-bold";
+      specBadge.className = "text-[9px] font-mono text-slate-700 font-bold";
     }
   } else {
     if (tabImgBtn) {
-      tabImgBtn.className = "px-2.5 py-1 rounded-md text-[10px] font-extrabold bg-white text-indigo-700 shadow-2xs border border-indigo-200 transition cursor-pointer flex items-center gap-1.5";
+      tabImgBtn.className = "px-2.5 py-1 rounded-md text-[10px] font-extrabold bg-white text-slate-700 shadow-2xs border border-slate-200 transition cursor-pointer flex items-center gap-1.5";
     }
     if (tabVidBtn) {
       tabVidBtn.className = "px-2.5 py-1 rounded-md text-[10px] font-bold text-slate-500 hover:text-slate-800 transition cursor-pointer flex items-center gap-1.5";
@@ -2541,11 +2541,11 @@ function updatePlayButtonIcon() {
 
   if (AppState.isPlaying) {
     icon.className = "fa-solid fa-pause text-xl";
-    btn.className = "absolute w-14 h-14 rounded-full bg-indigo-600/75 hover:bg-indigo-600 text-white flex items-center justify-center text-xl shadow-2xl transition-all duration-300 opacity-0 hover:opacity-100 cursor-pointer z-20";
+    btn.className = "absolute w-14 h-14 rounded-full bg-slate-900/75 hover:bg-slate-900 text-white flex items-center justify-center text-xl shadow-sm transition-all duration-300 opacity-0 hover:opacity-100 cursor-pointer z-20";
     btn.title = "Tạm dừng";
   } else {
     icon.className = "fa-solid fa-play ml-0.5 text-xl";
-    btn.className = "absolute w-14 h-14 rounded-full bg-indigo-600/90 hover:bg-indigo-600 text-white flex items-center justify-center text-xl shadow-2xl transition-all duration-300 opacity-90 hover:opacity-100 transform hover:scale-110 active:scale-95 cursor-pointer z-20";
+    btn.className = "absolute w-14 h-14 rounded-full bg-slate-900/90 hover:bg-slate-900 text-white flex items-center justify-center text-xl shadow-sm transition-all duration-300 opacity-90 hover:opacity-100 transform hover:scale-110 active:scale-95 cursor-pointer z-20";
     btn.title = "Phát Cảnh này";
   }
 }
@@ -2673,11 +2673,11 @@ let isVoiceSamplePlaying = false;
 
 function resetVoiceSampleButtonState() {
   isVoiceSamplePlaying = false;
-  if (DOM.iconPreviewVoice) DOM.iconPreviewVoice.className = "fa-solid fa-volume-high text-indigo-600 text-xs";
+  if (DOM.iconPreviewVoice) DOM.iconPreviewVoice.className = "fa-solid fa-volume-high text-slate-700 text-xs";
   if (DOM.textPreviewVoice) DOM.textPreviewVoice.textContent = "Nghe thử";
   if (DOM.btnPreviewVoiceSample) {
-    DOM.btnPreviewVoiceSample.classList.remove("bg-indigo-600", "text-white");
-    DOM.btnPreviewVoiceSample.classList.add("bg-indigo-50", "text-indigo-700");
+    DOM.btnPreviewVoiceSample.classList.remove("bg-slate-900", "text-white");
+    DOM.btnPreviewVoiceSample.classList.add("bg-slate-50", "text-slate-700");
   }
 }
 
@@ -2714,8 +2714,8 @@ async function togglePlayVoiceSample() {
     if (DOM.iconPreviewVoice) DOM.iconPreviewVoice.className = "fa-solid fa-pause text-xs";
     if (DOM.textPreviewVoice) DOM.textPreviewVoice.textContent = "Tạm dừng";
     if (DOM.btnPreviewVoiceSample) {
-      DOM.btnPreviewVoiceSample.classList.remove("bg-indigo-50", "text-indigo-700");
-      DOM.btnPreviewVoiceSample.classList.add("bg-indigo-600", "text-white");
+      DOM.btnPreviewVoiceSample.classList.remove("bg-slate-50", "text-slate-700");
+      DOM.btnPreviewVoiceSample.classList.add("bg-slate-900", "text-white");
     }
   } catch (err) {
     console.error("Play voice sample failed", err);
@@ -3180,8 +3180,8 @@ function updateProducerStageUI(stepNum, progressPercent, statusMsg, logs = []) {
         icon.innerHTML = '<i class="fa-solid fa-check text-[10px]"></i>';
       } else if (s === stepNum) {
         // Active phase
-        box.className = "p-3 rounded-2xl border-2 border-indigo-500 bg-indigo-50/70 transition shadow-md font-bold text-indigo-950 ring-2 ring-indigo-500/20";
-        icon.className = "w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center mx-auto mb-1.5 text-xs font-bold animate-pulse";
+        box.className = "p-3 rounded-2xl border-2 border-slate-700 bg-slate-50/70 transition shadow-md font-bold text-slate-950 ring-2 ring-slate-700/20";
+        icon.className = "w-7 h-7 rounded-full bg-slate-900 text-white flex items-center justify-center mx-auto mb-1.5 text-xs font-bold animate-pulse";
         icon.textContent = s;
       } else {
         // Pending phase
@@ -3194,7 +3194,7 @@ function updateProducerStageUI(stepNum, progressPercent, statusMsg, logs = []) {
 
   // Update status text and progress bar
   if (DOM.producerStatusText) {
-    DOM.producerStatusText.innerHTML = `<i class="fa-solid ${progressPercent >= 100 ? 'fa-circle-check text-emerald-600' : 'fa-spinner fa-spin text-indigo-600'} mr-1.5"></i> <span>${statusMsg}</span>`;
+    DOM.producerStatusText.innerHTML = `<i class="fa-solid ${progressPercent >= 100 ? 'fa-circle-check text-emerald-600' : 'fa-spinner fa-spin text-slate-700'} mr-1.5"></i> <span>${statusMsg}</span>`;
   }
   if (DOM.producerPercentText) {
     DOM.producerPercentText.textContent = `${progressPercent}%`;
@@ -3371,7 +3371,7 @@ function listenToProduceProgress(renderId) {
       showToast(`❌ LỖI SẢN XUẤT: ${escapeHtml(errMsg)}`, "error", 6000);
       if (DOM.producerStatusText) {
         DOM.producerStatusText.textContent = `Thất bại: ${errMsg}`;
-        DOM.producerStatusText.className = "text-xs font-bold text-rose-600 truncate";
+        DOM.producerStatusText.className = "text-xs font-bold text-red-600 truncate";
       }
       return;
     }
@@ -3437,17 +3437,17 @@ function renderProjectListModal() {
   container.innerHTML = projects.map(p => {
     const isCurrent = AppState.currentProject && AppState.currentProject.id === p.id;
     return `
-      <div class="flex items-center justify-between p-3 rounded-xl border ${isCurrent ? 'bg-indigo-50 border-indigo-300' : 'bg-slate-50 border-slate-200 hover:border-slate-300'} transition">
+      <div class="flex items-center justify-between p-3 rounded-xl border ${isCurrent ? 'bg-slate-50 border-slate-300' : 'bg-slate-50 border-slate-200 hover:border-slate-300'} transition">
         <div>
           <div class="text-xs font-bold text-slate-800 flex items-center gap-2">
             <span>${escapeHtml(p.name)}</span>
-            ${isCurrent ? '<span class="text-[10px] bg-indigo-600 text-white px-1.5 py-0.5 rounded font-semibold">Đang mở</span>' : ''}
+            ${isCurrent ? '<span class="text-[10px] bg-slate-900 text-white px-1.5 py-0.5 rounded font-semibold">Đang mở</span>' : ''}
           </div>
           <div class="text-[10px] text-slate-500 mt-0.5">${isCurrent ? (AppState.currentProject.scenes?.length || 0) : (p.scenes_count ?? p.scene_count ?? 0)} phân cảnh • 1080p</div>
         </div>
         <div class="flex items-center gap-1.5">
           ${!isCurrent ? `
-            <button onclick="switchProject('${p.id}')" class="px-2.5 py-1 bg-white hover:bg-indigo-50 border border-slate-300 text-xs font-semibold text-slate-700 hover:text-indigo-600 rounded-lg transition shadow-2xs">
+            <button onclick="switchProject('${p.id}')" class="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 text-xs font-semibold text-slate-700 hover:text-slate-700 rounded-lg transition shadow-2xs">
               Mở
             </button>
           ` : ''}
@@ -3710,16 +3710,16 @@ function museFleetStatusBadge(acc) {
     case 'online':
       return make('text-emerald-700 bg-emerald-50 border-emerald-200', 'bg-emerald-500 animate-pulse', 'online');
     case 'ready':
-      return make('text-teal-700 bg-teal-50 border-teal-200', 'bg-teal-500', 'sẵn sàng');
+      return make('text-slate-700 bg-slate-50 border-slate-200', 'bg-slate-700', 'sẵn sàng');
     case 'busy':
-      return make('text-indigo-700 bg-indigo-50 border-indigo-200', 'bg-indigo-500 animate-pulse', 'đang chạy');
+      return make('text-slate-700 bg-slate-50 border-slate-200', 'bg-slate-700 animate-pulse', 'đang chạy');
     case 'cooldown':
       return make('text-amber-700 bg-amber-50 border-amber-200', 'bg-amber-400', 'nghỉ (cooldown)', until ? `Nghỉ tới ${until}` : '');
     case 'blocked':
-      return make('text-rose-700 bg-rose-50 border-rose-200', 'bg-rose-500', 'bị khóa',
+      return make('text-red-700 bg-red-50 border-red-200', 'bg-red-500', 'bị khóa',
         [acc.block_reason, until ? `tới ${until}` : ''].filter(Boolean).join(' • ') || 'Tài khoản đang bị khóa');
     case 'needs_login':
-      return make('text-rose-700 bg-rose-50 border-rose-200', 'bg-rose-500', 'cần đăng nhập lại', 'Phiên đăng nhập đã hết hạn: chạy lại lệnh --setup cho tài khoản này');
+      return make('text-red-700 bg-red-50 border-red-200', 'bg-red-500', 'cần đăng nhập lại', 'Phiên đăng nhập đã hết hạn: chạy lại lệnh --setup cho tài khoản này');
     default:
       return make('text-slate-500 bg-slate-100 border-slate-200', 'bg-slate-400', 'offline');
   }
@@ -3734,10 +3734,10 @@ function renderMuseFleetAccountRow(acc, kind, activeId) {
     : '';
   const rowTitle = acc.last_error ? ` title="Lỗi gần nhất: ${escapeHtml(String(acc.last_error))}"` : '';
   const setBtnCls = isActive
-    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 cursor-default'
-    : (acc.has_profile ? 'bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer' : 'bg-slate-200 text-slate-500 cursor-pointer');
+    ? 'bg-slate-50 text-slate-700 border border-slate-200 cursor-default'
+    : (acc.has_profile ? 'bg-slate-900 hover:bg-slate-700 text-white cursor-pointer' : 'bg-slate-200 text-slate-500 cursor-pointer');
   return `
-    <div class="p-2.5 bg-white rounded-lg border ${isActive ? 'border-indigo-400 ring-2 ring-indigo-50' : 'border-slate-200'} flex items-center justify-between gap-2"${rowTitle}>
+    <div class="p-2.5 bg-white rounded-lg border ${isActive ? 'border-slate-300 ring-2 ring-slate-100' : 'border-slate-200'} flex items-center justify-between gap-2"${rowTitle}>
       <div class="min-w-0">
         <div class="flex items-center gap-1.5 flex-wrap">
           <span class="text-xs font-bold text-slate-900 truncate">${escapeHtml(String(acc.label || aid))}</span>
@@ -3765,10 +3765,10 @@ function updateMuseFleetIndicators() {
   const paint = (el, kind, label) => {
     if (!el) return;
     const v = museKindOnline(kind);
-    const icon = kind === 'video' ? 'fa-film text-purple-500' : 'fa-image text-indigo-500';
+    const icon = kind === 'video' ? 'fa-film text-slate-500' : 'fa-image text-slate-500';
     const tone = v === true
       ? ['bg-emerald-50 border-emerald-200 text-emerald-800', 'bg-emerald-500 animate-pulse', 'online']
-      : (v === false ? ['bg-rose-50 border-rose-200 text-rose-700', 'bg-rose-500', 'offline'] : ['bg-slate-50 border-slate-200 text-slate-600', 'bg-slate-400', 'chưa rõ']);
+      : (v === false ? ['bg-red-50 border-red-200 text-red-700', 'bg-red-500', 'offline'] : ['bg-slate-50 border-slate-200 text-slate-600', 'bg-slate-400', 'chưa rõ']);
     el.className = `px-2.5 py-1 border rounded-lg text-[10px] sm:text-[11px] font-mono font-bold flex items-center gap-1 ${tone[0]}`;
     el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full ${tone[1]}"></span><i class="fa-solid ${icon}"></i> ${label}: ${tone[2]}`;
   };
@@ -3823,7 +3823,7 @@ async function loadMuseAccountsUI() {
     return;
   }
   if (!cachedMuseAccounts.length) {
-    const msg = '<p class="text-[11px] text-rose-500 px-1">Không tải được danh sách tài khoản (server không phản hồi).</p>';
+    const msg = '<p class="text-[11px] text-red-500 px-1">Không tải được danh sách tài khoản (server không phản hồi).</p>';
     if (DOM.museFleetImageList) DOM.museFleetImageList.innerHTML = msg;
     if (DOM.museFleetVideoList) DOM.museFleetVideoList.innerHTML = msg;
     museFleetState.lastRenderKey = '';
@@ -3946,7 +3946,7 @@ function updateMuseCloudUI(data) {
     } else {
       DOM.btnMuseCloudStatus.dataset.state = "offline";
       DOM.headerMuseStatusDot.innerHTML = `
-        <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+        <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
       `;
       DOM.headerMuseStatusText.textContent = "Chưa kết nối";
       DOM.headerMuseStatusText.title = "";
@@ -3966,7 +3966,7 @@ function updateMuseCloudUI(data) {
       DOM.museModalStatusText.textContent = "Đang render tác vụ (Busy)";
     } else {
       DOM.museModalStatusBadge.dataset.state = "offline";
-      DOM.museModalStatusDot.className = "w-1.5 h-1.5 rounded-full bg-rose-500";
+      DOM.museModalStatusDot.className = "w-1.5 h-1.5 rounded-full bg-red-500";
       DOM.museModalStatusText.textContent = "Chưa kết nối (Offline)";
     }
   }
@@ -4056,11 +4056,11 @@ function renderMuseGalleryItems(items) {
               <i class="fa-solid fa-thumbtack text-[10px]"></i>
               <span>Gắn Cảnh #${AppState.selectedSceneIndex + 1}</span>
             </button>
-            <a href="${escapeHtml(downloadUrl)}" download="${escapeHtml(sceneId)}${isVideo ? '.mp4' : '.jpg'}" class="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs" title="Tải file về máy tính">
+            <a href="${escapeHtml(downloadUrl)}" download="${escapeHtml(sceneId)}${isVideo ? '.mp4' : '.jpg'}" class="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs" title="Tải file về máy tính">
               <i class="fa-solid fa-download"></i>
               <span class="hidden sm:inline">Tải</span>
             </a>
-            <button type="button" class="btn-delete-gallery-item px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer" data-task-id="${escapeHtml(taskId)}" title="Xóa tệp media này">
+            <button type="button" class="btn-delete-gallery-item px-2 py-1 bg-red-50 hover:bg-red-50 text-red-600 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer" data-task-id="${escapeHtml(taskId)}" title="Xóa tệp media này">
               <i class="fa-solid fa-trash-can"></i>
             </button>
           </div>

@@ -700,6 +700,6 @@ Chủ dự án duyệt bản xem thử 15/11: "Duyệt, viết kế hoạch". Th
 - [ ] Task 7: Khuôn thể loại và trang Ý tưởng
 - [ ] Task 8: Hồ Sơ Kỳ Án vào trang Kịch bản
 - [ ] Task 9: Gỡ các cửa sổ và nút trùng còn lại
-- [ ] Task 10: Dọn màu trang trí sang hệ đen trắng xám
+- [x] Task 10: Dọn màu trang trí sang hệ đen trắng xám (đỏ ban đầu: 296 chỗ lớp màu trang trí, index.html 106, app.js 128, climax_video.js 23, true_crime.js 14, youtube_seo.js 11, character_sheets.js 7, location_sheets.js 7; nay 0, test `tests/test_ui_palette.py`)
 - [ ] Task 11: Trang Tài khoản và kết nối — trạng thái kết nối
 - [ ] Task 12: Kiểm chứng cuối và tài liệu

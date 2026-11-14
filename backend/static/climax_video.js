@@ -10,12 +10,12 @@
   const cx = { polling: null, running: false, lastSignature: '', cast: null, share: null };
 
   const LABEL = {
-    selected: ['🎬 Sẽ làm video', 'bg-purple-50 text-purple-700 border-purple-200'],
-    grid: ['🎬 Muse vẽ ảnh 9-grid…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
-    clips: ['🎬 Muse đang làm video (nhiều bước, 10–75 phút)…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
-    checking: ['🎬 Đang kiểm video của Muse…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
+    selected: ['🎬 Sẽ làm video', 'bg-slate-50 text-slate-700 border-slate-200'],
+    grid: ['🎬 Muse vẽ ảnh 9-grid…', 'bg-slate-50 text-slate-700 border-slate-200 animate-pulse'],
+    clips: ['🎬 Muse đang làm video (nhiều bước, 10–75 phút)…', 'bg-slate-50 text-slate-700 border-slate-200 animate-pulse'],
+    checking: ['🎬 Đang kiểm video của Muse…', 'bg-slate-50 text-slate-700 border-slate-200 animate-pulse'],
     grid_review: ['🎬 Chờ duyệt grid', 'bg-amber-50 text-amber-700 border-amber-200'],
-    grid_approved: ['🎬 Grid đã duyệt, chờ làm clip', 'bg-purple-50 text-purple-700 border-purple-200'],
+    grid_approved: ['🎬 Grid đã duyệt, chờ làm clip', 'bg-slate-50 text-slate-700 border-slate-200'],
     ready: ['🎬 Đã có video cao trào', 'bg-emerald-50 text-emerald-700 border-emerald-200'],
     failed: ['🎬 Video lỗi, giữ ảnh', 'bg-red-50 text-red-700 border-red-200'],
   };
@@ -124,7 +124,7 @@
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = `climax-video-toggle text-[10px] px-2 py-0.5 rounded border font-semibold transition ${on
-      ? 'bg-purple-600 text-white border-purple-300' : 'bg-white text-purple-700 border-purple-300'}`;
+      ? 'bg-slate-900 text-white border-slate-300' : 'bg-white text-slate-700 border-slate-300'}`;
     btn.textContent = on ? '🎬 Bỏ video' : '🎬 Làm video';
     btn.title = on
       ? 'Bỏ cảnh này khỏi danh sách làm video cao trào (cảnh đã có video thì về lại ảnh, clip vẫn giữ trên đĩa)'
@@ -190,7 +190,7 @@
   // Dòng dưới thanh trên của thẻ cảnh đang làm video: nhân vật của cảnh, ảnh grid chờ duyệt
   function panelFor(scene) {
     const state = climaxState(scene);
-    const box = node('div', 'climax-video-panel mb-3 p-2 rounded-lg border border-purple-200 bg-purple-50 space-y-2 text-[11px]');
+    const box = node('div', 'climax-video-panel mb-3 p-2 rounded-lg border border-slate-200 bg-slate-50 space-y-2 text-[11px]');
     const chars = Object.fromEntries((cx.cast?.characters || []).map(c => [c.entity_id, c]));
     const ids = (cx.cast?.scene_cast || {})[scene.id] || [];
     const row = node('div', 'flex items-center gap-1 flex-wrap');
@@ -264,7 +264,7 @@
       wrap.appendChild(det);
     }
     if (state.grid_approved || state.landscape || state.crowd) {
-      const b = smallButton('↻ Làm lại cảnh này', 'bg-white text-purple-700 border-purple-300', () => redo(scene.id));
+      const b = smallButton('↻ Làm lại cảnh này', 'bg-white text-slate-700 border-slate-300', () => redo(scene.id));
       b.dataset.climaxRedo = scene.id;
       wrap.appendChild(b);
     }

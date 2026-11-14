@@ -369,7 +369,7 @@
           <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
             <div id="tc-progress-bar" class="h-full bg-red-500 rounded-full transition-all duration-300" style="width: 0%"></div>
           </div>
-          <p id="tc-progress-error" class="hidden text-[11px] text-rose-200 bg-[#2d161a] border border-rose-500/50 rounded-lg px-2.5 py-1.5 leading-relaxed"></p>
+          <p id="tc-progress-error" class="hidden text-[11px] text-red-200 bg-[#2d161a] border border-red-500/50 rounded-lg px-2.5 py-1.5 leading-relaxed"></p>
           <div class="flex flex-wrap items-center justify-between gap-2">
             <span id="tc-progress-case" class="text-[10px] text-slate-500 font-mono"></span>
             <div class="flex items-center gap-2">
@@ -393,7 +393,7 @@
           <div class="p-3 space-y-2.5">
             <div id="tc-outline-intro" class="space-y-1 text-slate-400 leading-relaxed"></div>
             <div id="tc-outline-parts" class="space-y-2.5"></div>
-            <p id="tc-outline-error" class="hidden text-[11px] text-rose-200 bg-[#2d161a] border border-rose-500/50 rounded-lg px-2.5 py-1.5 leading-relaxed whitespace-pre-line"></p>
+            <p id="tc-outline-error" class="hidden text-[11px] text-red-200 bg-[#2d161a] border border-red-500/50 rounded-lg px-2.5 py-1.5 leading-relaxed whitespace-pre-line"></p>
             <div class="flex flex-wrap items-center justify-end gap-2">
               <button type="button" id="btn-tc-outline-revert" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 text-[11px] font-semibold transition cursor-pointer disabled:opacity-50">
                 <i class="fa-solid fa-rotate-left mr-1"></i> Bỏ thay đổi
@@ -492,9 +492,9 @@
               </select>
             </div>
           </div>
-          <div class="relative w-full h-[320px] sm:h-[350px] lg:h-[380px] rounded-2xl overflow-hidden border-4 border-[#3c2514] shadow-2xl bg-[#a07449] select-none flex items-center justify-center">
+          <div class="relative w-full h-[320px] sm:h-[350px] lg:h-[380px] rounded-2xl overflow-hidden border-4 border-[#3c2514] shadow-sm bg-[#a07449] select-none flex items-center justify-center">
             <canvas id="tc-evidence-canvas" width="1280" height="720" class="w-full h-full object-cover block cursor-default"></canvas>
-            <div id="tc-canvas-tooltip" class="absolute pointer-events-none hidden bg-slate-950/95 border border-red-500/70 text-slate-100 text-[11px] p-2.5 rounded-xl shadow-2xl max-w-xs z-30 transition-opacity duration-150">
+            <div id="tc-canvas-tooltip" class="absolute pointer-events-none hidden bg-slate-950/95 border border-red-500/70 text-slate-100 text-[11px] p-2.5 rounded-xl shadow-sm max-w-xs z-30 transition-opacity duration-150">
               <div id="tc-tooltip-title" class="font-bold text-amber-300 border-b border-slate-800 pb-1 mb-1"></div>
               <div id="tc-tooltip-body" class="text-slate-300 text-[10px] leading-relaxed"></div>
             </div>
@@ -513,7 +513,7 @@
           <div class="bg-slate-950/80 border border-slate-800 rounded-xl overflow-hidden text-xs">
             <div class="px-3 py-2 border-b border-slate-800 bg-slate-900/90 flex flex-wrap items-center justify-between gap-2">
               <span class="font-bold text-white flex items-center gap-1.5">
-                <i class="fa-solid fa-film text-indigo-400"></i>
+                <i class="fa-solid fa-film text-slate-400"></i>
                 <span>Lời kể từng cảnh</span>
               </span>
               <span class="text-[10px] text-slate-400">Sửa trực tiếp; rời ô là lưu. Cảnh viền đỏ đang bị đánh dấu.</span>
@@ -563,7 +563,7 @@
               <span class="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-bold">Studio Master</span>
             </label>
             <div class="flex items-center gap-2">
-              <select id="select-voice" class="flex-1 min-w-0 bg-white border border-slate-300 rounded-xl p-2.5 text-slate-800 text-xs focus:border-indigo-500 focus:outline-none transition shadow-2xs font-medium">
+              <select id="select-voice" class="flex-1 min-w-0 bg-white border border-slate-300 rounded-xl p-2.5 text-slate-800 text-xs focus:border-slate-700 focus:outline-none transition shadow-2xs font-medium">
                 <optgroup label="🇻🇳 Tiếng Việt (Edge-TTS Neural Chuẩn & VieNeu AI)">
                   <option value="vi-VN-NamMinhNeural" selected>🇻🇳 Nam Minh (Nam - Hào hùng, Trầm ấm chuẩn) ★</option>
                   <option value="vi-VN-HoaiMyNeural">🇻🇳 Hoài My (Nữ - Truyền cảm, Nhẹ nhàng chuẩn) ★</option>
@@ -587,8 +587,8 @@
                   <option value="en-US-JennyNeural">🇺🇸 Jenny (Nữ - US Storyteller)</option>
                 </optgroup>
               </select>
-              <button id="btn-preview-voice-sample" type="button" class="px-3 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl border border-indigo-200 text-xs font-bold flex items-center gap-1.5 transition shadow-2xs shrink-0 cursor-pointer" title="Nghe thử giọng đọc mẫu AI">
-                <i class="fa-solid fa-volume-high text-indigo-600 text-xs" id="icon-preview-voice"></i>
+              <button id="btn-preview-voice-sample" type="button" class="px-3 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl border border-slate-200 text-xs font-bold flex items-center gap-1.5 transition shadow-2xs shrink-0 cursor-pointer" title="Nghe thử giọng đọc mẫu AI">
+                <i class="fa-solid fa-volume-high text-slate-700 text-xs" id="icon-preview-voice"></i>
                 <span id="text-preview-voice">Nghe thử</span>
               </button>
             </div>
@@ -678,10 +678,10 @@
       <div class="ws-scenes-bar">
         <div class="flex items-center gap-2.5">
           <span class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5 whitespace-nowrap">
-            <i class="fa-solid fa-layer-group text-indigo-600"></i>
+            <i class="fa-solid fa-layer-group text-slate-700"></i>
             Phân cảnh (<span id="scene-count-badge">0</span> scenes)
           </span>
-          <span id="total-duration-badge" class="text-[11px] bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full font-mono border border-indigo-200 font-semibold">
+          <span id="total-duration-badge" class="text-[11px] bg-slate-50 text-slate-700 px-2.5 py-0.5 rounded-full font-mono border border-slate-200 font-semibold">
             00:00s tổng
           </span>
           <span id="project-voice-badge" class="text-[11px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-mono border border-emerald-200 font-semibold hidden sm:inline">
@@ -716,7 +716,7 @@
       <div id="scene-list-container" class="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-50 min-h-0 overscroll-contain">
         <!-- Rendered dynamically by app.js -->
         <div class="text-center py-16 text-slate-500 text-sm">
-          <i class="fa-solid fa-spinner fa-spin text-3xl mb-3 text-indigo-600"></i>
+          <i class="fa-solid fa-spinner fa-spin text-3xl mb-3 text-slate-700"></i>
           <p class="font-medium">Đang tải danh sách phân cảnh...</p>
         </div>
       </div>
@@ -729,10 +729,10 @@
     <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm shrink-0">
       <div class="flex items-center justify-between mb-2.5">
         <h2 class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
-          <i class="fa-solid fa-desktop text-indigo-600"></i> Live Studio Player
+          <i class="fa-solid fa-desktop text-slate-700"></i> Live Studio Player
         </h2>
         <div class="flex items-center gap-2">
-          <span id="player-active-scene-badge" class="text-[11px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-mono border border-indigo-200 font-bold">
+          <span id="player-active-scene-badge" class="text-[11px] bg-slate-50 text-slate-700 px-2 py-0.5 rounded font-mono border border-slate-200 font-bold">
             Cảnh #1
           </span>
           <span class="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono font-medium">1080p</span>
@@ -754,7 +754,7 @@
         </div>
 
         <!-- Subtitle Bar (Burn-in Simulation) -->
-        <div id="preview-subtitle-overlay" class="absolute bottom-3 left-3 right-3 px-3 py-1.5 bg-black/85 backdrop-blur-md rounded-lg text-center border border-yellow-500/30 shadow-2xl transition-all z-10 pointer-events-none">
+        <div id="preview-subtitle-overlay" class="absolute bottom-3 left-3 right-3 px-3 py-1.5 bg-black/85 backdrop-blur-md rounded-lg text-center border border-yellow-500/30 shadow-sm transition-all z-10 pointer-events-none">
           <span id="preview-subtitle-text" class="text-xs text-yellow-300 font-semibold tracking-wide drop-shadow-md line-clamp-2">
             (Chưa có kịch bản thoại)
           </span>
@@ -762,19 +762,19 @@
 
         <!-- Ken Burns / Video Motion Indicator Badge -->
         <div class="absolute top-2.5 left-2.5 bg-black/75 backdrop-blur px-2 py-0.5 rounded text-[10px] text-slate-200 border border-slate-700 flex items-center gap-1 font-medium z-10 pointer-events-none">
-          <i class="fa-solid fa-video text-indigo-400 text-[10px]"></i>
+          <i class="fa-solid fa-video text-slate-400 text-[10px]"></i>
           <span id="preview-kb-badge">Zoom In</span>
         </div>
 
         <!-- Big Center Play Button Overlay -->
-        <button type="button" id="btn-preview-play-toggle" class="absolute w-14 h-14 rounded-full bg-indigo-600/90 hover:bg-indigo-600 text-white flex items-center justify-center text-xl shadow-2xl shadow-indigo-600/50 transition-all duration-200 transform hover:scale-110 active:scale-95 cursor-pointer z-20" title="Phát / Tạm dừng Cảnh này">
+        <button type="button" id="btn-preview-play-toggle" class="absolute w-14 h-14 rounded-full bg-slate-900/90 hover:bg-slate-900 text-white flex items-center justify-center text-xl shadow-sm transition-all duration-200 transform hover:scale-110 active:scale-95 cursor-pointer z-20" title="Phát / Tạm dừng Cảnh này">
           <i id="preview-play-icon" class="fa-solid fa-play ml-0.5"></i>
         </button>
       </div>
 
       <!-- Interactive Studio Timeline Bar -->
       <div id="preview-timeline-container" onclick="seekStudioPlayback(event)" class="w-full bg-slate-200 h-1.5 cursor-pointer relative group/timeline rounded-full overflow-hidden mt-2.5 shadow-inner" title="Click để tua thời gian phát">
-        <div id="preview-timeline-bar" class="h-full bg-indigo-600 w-0 transition-all duration-75 relative"></div>
+        <div id="preview-timeline-bar" class="h-full bg-slate-900 w-0 transition-all duration-75 relative"></div>
       </div>
 
       <!-- Player Controls Bar -->
@@ -786,7 +786,7 @@
           <button id="btn-next-scene" title="Cảnh tiếp" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition shadow-2xs">
             <i class="fa-solid fa-forward-step text-xs"></i>
           </button>
-          <button id="btn-play-all-story" class="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[11px] font-bold transition flex items-center gap-1 shadow-2xs">
+          <button id="btn-play-all-story" class="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-bold transition flex items-center gap-1 shadow-2xs">
             <i class="fa-solid fa-play text-[9px]"></i> Phát toàn bộ truyện
           </button>
         </div>
@@ -796,7 +796,7 @@
           <span class="flex items-center gap-1 text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200" title="Giọng đọc thuyết minh (Voiceover Master)">
             <i class="fa-solid fa-microphone text-[9px]"></i> Voice 100%
           </span>
-          <span class="flex items-center gap-1 text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200" title="Âm thanh môi trường gốc từ video (Ambient FX)">
+          <span class="flex items-center gap-1 text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200" title="Âm thanh môi trường gốc từ video (Ambient FX)">
             <i class="fa-solid fa-volume-low text-[9px]"></i> Ambient Video 25%
           </span>
           <span class="flex items-center gap-1 text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200" title="Nhạc nền BGM tự động giảm khi có giọng đọc">
@@ -862,7 +862,7 @@
       <div>
         <label class="text-slate-600 block mb-1 font-semibold">Nhạc nền lồng tiếng (BGM):</label>
         <div class="flex items-center gap-2">
-          <select id="select-bgm" class="flex-1 bg-white border border-slate-300 rounded-xl p-2.5 text-slate-800 text-xs focus:border-indigo-500 focus:outline-none transition shadow-2xs font-medium">
+          <select id="select-bgm" class="flex-1 bg-white border border-slate-300 rounded-xl p-2.5 text-slate-800 text-xs focus:border-slate-700 focus:outline-none transition shadow-2xs font-medium">
             <option value="cinematic_adventure" selected>🎵 Cinematic Adventure (Phiêu lưu kịch tính)</option>
             <option value="ambient_peaceful">🎵 Ambient Peaceful (Thanh bình, êm đềm)</option>
             <option value="mysterious_dark">🎵 Mysterious Dark (U tối, rùng rợn)</option>
@@ -879,7 +879,7 @@
       <div class="pt-2 space-y-2 border-t border-slate-100">
         <label class="flex items-center justify-between cursor-pointer">
           <span class="text-slate-700 text-xs font-medium flex items-center gap-1.5">
-            <i class="fa-solid fa-volume-low text-indigo-600"></i>
+            <i class="fa-solid fa-volume-low text-slate-700"></i>
             Audio Ducking (Giảm 70% nhạc nền khi có lời đọc)
           </span>
           <input type="checkbox" id="toggle-audio-ducking" checked class="w-4 h-4 accent-indigo-600 rounded cursor-pointer">
@@ -898,9 +898,9 @@
       <div class="pt-2 border-t border-slate-100 space-y-1">
         <label class="text-slate-600 block font-semibold flex items-center justify-between">
           <span>Hiệu ứng chuyển cảnh (Scene Transition):</span>
-          <span class="text-[10px] text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded font-bold border border-indigo-200">Cinematic</span>
+          <span class="text-[10px] text-slate-700 bg-slate-50 px-1.5 py-0.2 rounded font-bold border border-slate-200">Cinematic</span>
         </label>
-        <select id="select-transition" class="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-800 text-xs focus:border-indigo-500 font-medium shadow-2xs">
+        <select id="select-transition" class="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-800 text-xs focus:border-slate-700 font-medium shadow-2xs">
           <option value="dip_to_black" selected>🎬 Mờ đen điện ảnh (Dip to Black - Khuyên dùng)</option>
           <option value="crossfade">🔀 Chồng mờ mượt mà (Smooth Crossfade)</option>
           <option value="cut">✂️ Cắt trực tiếp (Hard Cut - Tốc độ cao)</option>
@@ -914,7 +914,7 @@
           <span>Kiểu phụ đề động (Subtitle Style):</span>
           <span class="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded font-bold border border-amber-200">Word-by-word</span>
         </label>
-        <select id="select-subtitle-style" class="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-800 text-xs focus:border-indigo-500 font-medium shadow-2xs">
+        <select id="select-subtitle-style" class="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-800 text-xs focus:border-slate-700 font-medium shadow-2xs">
           <option value="kinetic_pop" selected>🌟 Nhảy chữ Kinetic (Active Word Pop - Chuẩn Shorts/Vox)</option>
           <option value="karaoke_sweep">🎤 Karaoke mượt mà (Smooth Sweep)</option>
           <option value="classic">📝 Cổ điển chân phương (Classic Bottom)</option>
@@ -929,8 +929,8 @@
         <!-- 5 Phase Indicator Cards -->
         <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-center text-xs">
           <!-- Phase 1 -->
-          <div id="producer-step-1" class="p-3 rounded-2xl border border-indigo-200 bg-white transition shadow-2xs font-semibold">
-            <div id="producer-step-icon-1" class="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center mx-auto mb-1.5 text-xs font-bold">1</div>
+          <div id="producer-step-1" class="p-3 rounded-2xl border border-slate-200 bg-white transition shadow-2xs font-semibold">
+            <div id="producer-step-icon-1" class="w-7 h-7 rounded-full bg-slate-900 text-white flex items-center justify-center mx-auto mb-1.5 text-xs font-bold">1</div>
             <div class="font-bold text-xs text-slate-800">Khóa Kịch Bản</div>
             <div class="text-[10px] text-slate-400 font-mono mt-0.5">15% • Character</div>
           </div>
@@ -964,19 +964,19 @@
         <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
           <div class="flex items-center justify-between">
             <span id="producer-status-text" class="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <i class="fa-solid fa-spinner fa-spin text-indigo-600"></i>
+              <i class="fa-solid fa-spinner fa-spin text-slate-700"></i>
               <span>Đang phân tích kịch bản & khóa nhân vật...</span>
             </span>
-            <span id="producer-percent-text" class="text-xl font-extrabold text-indigo-600 font-mono">15%</span>
+            <span id="producer-percent-text" class="text-xl font-extrabold text-slate-700 font-mono">15%</span>
           </div>
           <div class="w-full h-4 bg-slate-100 rounded-full overflow-hidden border border-slate-200 shadow-inner">
-            <div id="producer-progress-bar" class="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-rose-500 transition-all duration-300 w-[15%]"></div>
+            <div id="producer-progress-bar" class="h-full bg-slate-900 transition-all duration-300 w-[15%]"></div>
           </div>
         </div>
 
         <details id="publish-log-details" class="ws-card ws-log-details">
           <summary>Nhật ký dựng</summary>
-          <div class="bg-slate-950 rounded-2xl border border-slate-800 p-4 shadow-xl">
+          <div class="bg-slate-950 rounded-2xl border border-slate-800 p-4 shadow-sm">
           <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800 text-slate-400 text-xs font-mono">
             <span class="flex items-center gap-2">
               <i class="fa-solid fa-terminal text-emerald-400"></i>
@@ -1013,27 +1013,27 @@
         </div>
 
         <!-- Video Player Cinema Frame -->
-        <div class="bg-black rounded-2xl overflow-hidden border border-slate-800 shadow-2xl aspect-video flex items-center justify-center relative group">
+        <div class="bg-black rounded-2xl overflow-hidden border border-slate-800 shadow-sm aspect-video flex items-center justify-center relative group">
           <video id="cinema-video-player" controls class="w-full h-full object-contain"></video>
         </div>
 
         <!-- Technical Specs & Export Buttons -->
         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
           <!-- Download Video -->
-          <a id="btn-cinema-download-video" href="#" download="story_video.mp4" class="p-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition">
+          <a id="btn-cinema-download-video" href="#" download="story_video.mp4" class="p-3 bg-slate-900 hover:bg-slate-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition">
             <i class="fa-solid fa-download text-sm"></i>
             <span>Tải Video (1080p)</span>
           </a>
 
           <!-- Download ASS (Kinetic Karaoke) -->
-          <a id="btn-cinema-download-ass" href="#" download="kinetic_subtitles.ass" class="p-3 bg-white hover:bg-slate-50 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold shadow-2xs flex items-center justify-center gap-2 transition">
-            <i class="fa-solid fa-wand-magic-sparkles text-sm text-purple-600"></i>
+          <a id="btn-cinema-download-ass" href="#" download="kinetic_subtitles.ass" class="p-3 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold shadow-2xs flex items-center justify-center gap-2 transition">
+            <i class="fa-solid fa-wand-magic-sparkles text-sm text-slate-700"></i>
             <span>Tải Phụ Đề (.ASS)</span>
           </a>
 
           <!-- Download SRT -->
-          <a id="btn-cinema-download-srt" href="#" download="subtitles.srt" class="p-3 bg-white hover:bg-slate-50 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold shadow-2xs flex items-center justify-center gap-2 transition">
-            <i class="fa-solid fa-closed-captioning text-sm text-indigo-600"></i>
+          <a id="btn-cinema-download-srt" href="#" download="subtitles.srt" class="p-3 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold shadow-2xs flex items-center justify-center gap-2 transition">
+            <i class="fa-solid fa-closed-captioning text-sm text-slate-700"></i>
             <span>Tải Phụ Đề (.SRT)</span>
           </a>
 
@@ -1077,7 +1077,7 @@
                 <input type="text" id="input-thumb-subtext" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-slate-900 focus:bg-white focus:border-red-500 focus:outline-none transition" placeholder="Không dùng emoji (font không vẽ được)">
               </div>
               <div class="flex items-center gap-2 pt-1">
-                <button id="btn-generate-custom-thumbnail" class="px-3.5 py-2 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer">
+                <button id="btn-generate-custom-thumbnail" class="px-3.5 py-2 bg-slate-900 hover:bg-slate-700 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer">
                   <i class="fa-solid fa-wand-magic-sparkles"></i>
                   <span>Tạo lại Thumbnail</span>
                 </button>
@@ -1093,8 +1093,8 @@
           <div class="space-y-2 pt-3 border-t border-slate-100 text-xs">
             <label class="font-bold text-slate-700 block">1. Tìm từ khoá từ dữ liệu tìm kiếm thật</label>
             <div class="flex items-center gap-2">
-              <input type="text" id="yt-seo-seed" maxlength="200" class="flex-1 bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs text-slate-900 focus:bg-white focus:border-indigo-500 focus:outline-none transition" placeholder="Từ khoá gốc: tên truyện, chủ đề, kiểu nội dung...">
-              <button id="btn-yt-seo-research" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer">
+              <input type="text" id="yt-seo-seed" maxlength="200" class="flex-1 bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs text-slate-900 focus:bg-white focus:border-slate-700 focus:outline-none transition" placeholder="Từ khoá gốc: tên truyện, chủ đề, kiểu nội dung...">
+              <button id="btn-yt-seo-research" class="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer">
                 <i class="fa-solid fa-magnifying-glass"></i>
                 <span>Tìm từ khoá</span>
               </button>
@@ -1103,7 +1103,7 @@
               <label class="flex items-center gap-1.5"><input type="checkbox" id="yt-seo-src-suggest" class="accent-indigo-600" checked> Gợi ý của ô tìm kiếm YouTube</label>
               <label id="yt-seo-src-api-label" class="flex items-center gap-1.5"><input type="checkbox" id="yt-seo-src-api" class="accent-indigo-600"> Video đứng đầu tìm kiếm (YouTube Data API)</label>
             </div>
-            <textarea id="yt-seo-manual" rows="2" maxlength="3000" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs text-slate-800 focus:bg-white focus:border-indigo-500 focus:outline-none transition" placeholder="Dán từ khoá tay (mỗi dòng một từ khoá hoặc ngăn bằng dấu phẩy), ví dụ lấy từ tab Nghiên cứu của YouTube Studio"></textarea>
+            <textarea id="yt-seo-manual" rows="2" maxlength="3000" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs text-slate-800 focus:bg-white focus:border-slate-700 focus:outline-none transition" placeholder="Dán từ khoá tay (mỗi dòng một từ khoá hoặc ngăn bằng dấu phẩy), ví dụ lấy từ tab Nghiên cứu của YouTube Studio"></textarea>
             <div id="yt-seo-research-errors" class="hidden bg-amber-50 border border-amber-200 text-amber-700 rounded-lg p-2"></div>
             <div id="yt-seo-candidates" class="bg-slate-50 border border-slate-200 rounded-lg p-2 overflow-y-auto" style="max-height: 14rem;"></div>
             <div id="yt-seo-top-videos"></div>
@@ -1128,45 +1128,45 @@
             <div>
               <div class="flex items-center justify-between mb-1">
                 <label class="font-bold text-slate-700">Tiêu đề (tối đa 100 ký tự):</label>
-                <button id="btn-copy-seo-title" class="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer">
+                <button id="btn-copy-seo-title" class="text-[11px] text-slate-700 hover:text-slate-800 font-bold flex items-center gap-1 cursor-pointer">
                   <i class="fa-regular fa-copy"></i> Sao chép tiêu đề
                 </button>
               </div>
-              <input type="text" id="input-seo-title" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-medium text-slate-900 focus:bg-white focus:border-indigo-500 focus:outline-none transition">
+              <input type="text" id="input-seo-title" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-medium text-slate-900 focus:bg-white focus:border-slate-700 focus:outline-none transition">
             </div>
 
             <!-- Description -->
             <div>
               <div class="flex items-center justify-between mb-1">
                 <label class="font-bold text-slate-700">Mô tả (kèm mục lục chương theo thời gian video đã dựng):</label>
-                <button id="btn-copy-seo-desc" class="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer">
+                <button id="btn-copy-seo-desc" class="text-[11px] text-slate-700 hover:text-slate-800 font-bold flex items-center gap-1 cursor-pointer">
                   <i class="fa-regular fa-copy"></i> Sao chép mô tả
                 </button>
               </div>
-              <textarea id="textarea-seo-desc" rows="8" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 font-mono focus:bg-white focus:border-indigo-500 focus:outline-none transition leading-relaxed"></textarea>
+              <textarea id="textarea-seo-desc" rows="8" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 font-mono focus:bg-white focus:border-slate-700 focus:outline-none transition leading-relaxed"></textarea>
             </div>
 
             <!-- Tags -->
             <div>
               <div class="flex items-center justify-between mb-1">
                 <label class="font-bold text-slate-700">Tags (ngăn bằng dấu phẩy, tối đa 500 ký tự):</label>
-                <button id="btn-copy-seo-tags" class="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer">
+                <button id="btn-copy-seo-tags" class="text-[11px] text-slate-700 hover:text-slate-800 font-bold flex items-center gap-1 cursor-pointer">
                   <i class="fa-regular fa-copy"></i> Sao chép Tags
                 </button>
               </div>
-              <input type="text" id="input-seo-tags" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono text-slate-700 focus:bg-white focus:border-indigo-500 focus:outline-none transition">
+              <input type="text" id="input-seo-tags" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono text-slate-700 focus:bg-white focus:border-slate-700 focus:outline-none transition">
             </div>
 
             <!-- Hashtags -->
             <div>
               <label class="font-bold text-slate-700 block mb-1">Hashtag (ngăn bằng dấu cách; nằm ở dòng cuối mô tả):</label>
-              <input type="text" id="yt-seo-hashtags" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono text-slate-700 focus:bg-white focus:border-indigo-500 focus:outline-none transition">
+              <input type="text" id="yt-seo-hashtags" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono text-slate-700 focus:bg-white focus:border-slate-700 focus:outline-none transition">
             </div>
 
             <div id="yt-seo-checks" class="rounded-lg border p-2"></div>
             <div id="yt-seo-reminder" class="hidden bg-amber-50 border border-amber-200 text-amber-700 rounded-lg p-2"></div>
             <div class="flex items-center gap-2">
-              <button id="btn-yt-seo-save" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer">
+              <button id="btn-yt-seo-save" class="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer">
                 <i class="fa-solid fa-check-double"></i>
                 <span>Lưu và kiểm lại</span>
               </button>
@@ -1191,8 +1191,8 @@
       <div class="ws-card p-4 space-y-4">
         <!-- Create new project inline -->
         <div class="flex items-center gap-2">
-          <input type="text" id="new-project-name-input" placeholder="Tên dự án mới (VD: Truyền thuyết Rồng Vàng...)" class="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 font-medium focus:bg-white focus:border-indigo-500 shadow-2xs">
-          <button id="btn-create-project" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 shadow-xs">
+          <input type="text" id="new-project-name-input" placeholder="Tên dự án mới (VD: Truyền thuyết Rồng Vàng...)" class="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 font-medium focus:bg-white focus:border-slate-700 shadow-2xs">
+          <button id="btn-create-project" class="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 shadow-xs">
             <i class="fa-solid fa-plus"></i> Tạo mới
           </button>
         </div>
@@ -1219,13 +1219,13 @@
         <div id="muse-progress-card" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4 hidden">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
-              <i class="fa-solid fa-circle-notch fa-spin text-indigo-600"></i>
+              <i class="fa-solid fa-circle-notch fa-spin text-slate-700"></i>
               <span id="muse-progress-title" class="text-xs font-bold text-slate-800">Đang render trên Muse Fleet...</span>
             </div>
-            <span id="muse-progress-percent" class="text-base font-extrabold text-indigo-600 font-mono">0%</span>
+            <span id="muse-progress-percent" class="text-base font-extrabold text-slate-700 font-mono">0%</span>
           </div>
           <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden border border-slate-200 shadow-inner">
-            <div id="muse-progress-bar-fill" class="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 h-full transition-all duration-300 w-[0%]"></div>
+            <div id="muse-progress-bar-fill" class="bg-slate-900 h-full transition-all duration-300 w-[0%]"></div>
           </div>
           <!-- Scene Chips -->
           <div id="muse-scene-chips" class="flex flex-wrap gap-1.5 pt-1">
@@ -1238,12 +1238,12 @@
         <div>
           <div class="flex items-center justify-between mb-3">
             <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-              <i class="fa-solid fa-photo-film text-indigo-600"></i>
+              <i class="fa-solid fa-photo-film text-slate-700"></i>
               Kết quả từ Muse Fleet
             </h3>
             <div class="flex items-center gap-2">
               <span id="muse-gallery-count" class="text-[11px] font-mono bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full font-bold">0 sản phẩm</span>
-              <button type="button" id="btn-clear-all-gallery" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold transition flex items-center gap-1 cursor-pointer shadow-2xs" title="Dọn sạch toàn bộ ảnh/video tạm">
+              <button type="button" id="btn-clear-all-gallery" class="px-2.5 py-1 bg-red-50 hover:bg-red-50 text-red-700 border border-red-200 rounded-lg text-xs font-semibold transition flex items-center gap-1 cursor-pointer shadow-2xs" title="Dọn sạch toàn bộ ảnh/video tạm">
                 <i class="fa-solid fa-trash-can text-[10px]"></i>
                 <span>Dọn sạch</span>
               </button>
@@ -1280,7 +1280,7 @@
         <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs space-y-4">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
             <div class="flex items-center gap-2.5">
-              <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shrink-0 shadow-xs">
+              <div class="w-9 h-9 rounded-xl bg-slate-900 flex items-center justify-center text-white shrink-0 shadow-xs">
                 <i class="fa-solid fa-layer-group"></i>
               </div>
               <div>
@@ -1292,11 +1292,11 @@
             <div class="flex items-center gap-2 flex-wrap">
               <span id="muse-fleet-image-indicator" class="px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[10px] sm:text-[11px] font-mono text-slate-600 font-bold flex items-center gap-1" title="Có ít nhất một tài khoản ảnh đang online">
                 <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                <i class="fa-solid fa-image text-indigo-500"></i> Ảnh: chưa rõ
+                <i class="fa-solid fa-image text-slate-500"></i> Ảnh: chưa rõ
               </span>
               <span id="muse-fleet-video-indicator" class="px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[10px] sm:text-[11px] font-mono text-slate-600 font-bold flex items-center gap-1" title="Có ít nhất một tài khoản video đang online">
                 <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                <i class="fa-solid fa-film text-purple-500"></i> Video: chưa rõ
+                <i class="fa-solid fa-film text-slate-500"></i> Video: chưa rõ
               </span>
               <span id="muse-fleet-concurrency" class="px-2 py-1 bg-amber-50 border border-amber-200 rounded-lg text-[10px] sm:text-[11px] font-mono text-amber-900 font-bold">
                 ⚡ Slot: –
@@ -1305,7 +1305,7 @@
           </div>
 
           <!-- Fleet Controls & 1-Click Utilities Bar -->
-          <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-xl p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs shadow-xs border border-indigo-900/50">
+          <div class="bg-slate-900 text-white rounded-xl p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs shadow-xs border border-slate-800/50">
             <div class="flex items-center gap-2.5">
               <span class="w-7 h-7 rounded-lg bg-emerald-500 text-slate-950 font-bold flex items-center justify-center text-xs shrink-0 shadow-xs">
                 <i class="fa-solid fa-play"></i>
@@ -1320,7 +1320,7 @@
                 <i class="fa-solid fa-bolt"></i>
                 <span>Chạy Cụm Fleet (.bat)</span>
               </button>
-              <button type="button" id="btn-copy-setup-accounts-cmd" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-xs" title="Chạy setup_muse_accounts.bat">
+              <button type="button" id="btn-copy-setup-accounts-cmd" class="px-2.5 py-1 bg-slate-900 hover:bg-slate-700 text-white rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-xs" title="Chạy setup_muse_accounts.bat">
                 <i class="fa-solid fa-key"></i>
                 <span>Thiết Lập Đăng Nhập (.bat)</span>
               </button>
@@ -1335,11 +1335,11 @@
           <div id="muse-fleet-pool-container" class="space-y-3">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs text-slate-500 px-1">
               <span class="font-bold text-slate-700 flex items-center gap-1.5">
-                <i class="fa-solid fa-users-gear text-indigo-600"></i>
+                <i class="fa-solid fa-users-gear text-slate-700"></i>
                 <span>Tài khoản Muse Fleet (ảnh chỉ chạy trên tài khoản ảnh, video chỉ chạy trên tài khoản video)</span>
               </span>
               <span class="text-[11px] text-slate-500">
-                Đăng nhập 1 tài khoản: chạy <code class="font-mono text-indigo-700 bg-indigo-50 px-1 rounded">setup_muse_accounts.bat</code> hoặc <code class="font-mono text-indigo-700 bg-indigo-50 px-1 rounded">.venv\Scripts\python.exe backend\runners\muse_fleet_runner.py --setup &lt;account_id&gt;</code>
+                Đăng nhập 1 tài khoản: chạy <code class="font-mono text-slate-700 bg-slate-50 px-1 rounded">setup_muse_accounts.bat</code> hoặc <code class="font-mono text-slate-700 bg-slate-50 px-1 rounded">.venv\Scripts\python.exe backend\runners\muse_fleet_runner.py --setup &lt;account_id&gt;</code>
               </span>
             </div>
 
@@ -1348,7 +1348,7 @@
               <div class="bg-slate-50 rounded-xl border border-slate-200 p-3 space-y-2">
                 <div class="flex items-center justify-between gap-2">
                   <span class="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                    <i class="fa-solid fa-image text-indigo-500"></i> Tài khoản ảnh
+                    <i class="fa-solid fa-image text-slate-500"></i> Tài khoản ảnh
                   </span>
                   <span id="muse-fleet-image-group-status" class="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">Đang tải...</span>
                 </div>
@@ -1360,7 +1360,7 @@
               <div class="bg-slate-50 rounded-xl border border-slate-200 p-3 space-y-2">
                 <div class="flex items-center justify-between gap-2">
                   <span class="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                    <i class="fa-solid fa-film text-purple-500"></i> Tài khoản video
+                    <i class="fa-solid fa-film text-slate-500"></i> Tài khoản video
                   </span>
                   <span id="muse-fleet-video-group-status" class="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">Đang tải...</span>
                 </div>

@@ -12,7 +12,7 @@
 
   const STATUS = {
     draft: ['Chưa có ảnh chuẩn', 'bg-slate-100 text-slate-600 border-slate-200'],
-    drawing: ['Muse đang vẽ…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
+    drawing: ['Muse đang vẽ…', 'bg-slate-50 text-slate-700 border-slate-200 animate-pulse'],
     review: ['Chờ duyệt', 'bg-amber-50 text-amber-700 border-amber-200'],
     approved: ['Đã duyệt — đang khoá', 'bg-emerald-50 text-emerald-700 border-emerald-200'],
     failed: ['Vẽ lỗi', 'bg-red-50 text-red-700 border-red-200'],
@@ -119,7 +119,7 @@
     actions.appendChild(button('Lưu', 'bg-white text-slate-700 border-slate-300', () =>
       act(() => call('PUT', `/${lid}`, { name_vi: name.value, design_en: design.value, scene_ids: parseScenes(sceneInput.value) }),
         'Đã lưu bối cảnh'), drawing));
-    actions.appendChild(button(loc.versions ? 'Vẽ ảnh chuẩn mới' : 'Vẽ ảnh chuẩn (Muse)', 'bg-purple-600 text-white border-purple-300', () =>
+    actions.appendChild(button(loc.versions ? 'Vẽ ảnh chuẩn mới' : 'Vẽ ảnh chuẩn (Muse)', 'bg-slate-900 text-white border-slate-300', () =>
       act(() => call('POST', `/${lid}/draw`), 'Đã gửi Muse vẽ ảnh chuẩn (1 lượt Muse ảnh)'), drawing));
     actions.appendChild(button('Duyệt', 'bg-emerald-50 text-emerald-700 border-emerald-200', () =>
       act(() => call('POST', `/${lid}/approve`), 'Đã duyệt: ảnh cảnh của nơi này sẽ dùng mô tả và ảnh chuẩn'),
@@ -188,7 +188,7 @@
         ? `${d.locations.length} bối cảnh lặp lại, ${approved} đã duyệt (đang khoá ảnh cảnh).`
         : `Chưa có bối cảnh nào. Bấm "Tìm bối cảnh lặp lại" (AI đọc ${d.eligible_scenes} cảnh, 1 lượt LLM).`)));
     const analyze = button(d.locations.length ? 'Tìm lại bối cảnh (LLM)' : 'Tìm bối cảnh lặp lại (LLM)',
-      'bg-indigo-600 text-white border-indigo-300', () => {
+      'bg-slate-900 text-white border-slate-300', () => {
         if (d.locations.length && !window.confirm('Tìm lại sẽ thay các bối cảnh AI tìm trước đó còn ở dạng nháp. Bối cảnh tự thêm và bối cảnh đã có ảnh chuẩn được giữ. Tiếp tục? (1 lượt LLM)')) return;
         act(() => call('POST', '/analyze'), 'Đã gửi AI tìm bối cảnh');
       }, d.analyzing || d.eligible_scenes < d.min_scenes);

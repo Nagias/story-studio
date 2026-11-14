@@ -13,7 +13,7 @@
 
   const STATUS = {
     draft: ['Chưa có bảng', 'bg-slate-100 text-slate-600 border-slate-200'],
-    drawing: ['Muse đang vẽ…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
+    drawing: ['Muse đang vẽ…', 'bg-slate-50 text-slate-700 border-slate-200 animate-pulse'],
     review: ['Chờ duyệt', 'bg-amber-50 text-amber-700 border-amber-200'],
     approved: ['Đã duyệt', 'bg-emerald-50 text-emerald-700 border-emerald-200'],
     failed: ['Vẽ lỗi', 'bg-red-50 text-red-700 border-red-200'],
@@ -92,7 +92,7 @@
     const eid = encodeURIComponent(c.entity_id);
     actions.appendChild(button('Lưu thiết kế', 'bg-white text-slate-700 border-slate-300', () =>
       act(() => call('PUT', `/${eid}`, { design_en: design.value }), 'Đã lưu thiết kế'), drawing));
-    actions.appendChild(button(c.versions ? 'Vẽ bảng mới' : 'Vẽ bảng (Muse)', 'bg-purple-600 text-white border-purple-300', () =>
+    actions.appendChild(button(c.versions ? 'Vẽ bảng mới' : 'Vẽ bảng (Muse)', 'bg-slate-900 text-white border-slate-300', () =>
       act(() => call('POST', `/${eid}/draw`), 'Đã gửi Muse vẽ bảng'), drawing));
     actions.appendChild(button('Duyệt', 'bg-emerald-50 text-emerald-700 border-emerald-200', () =>
       act(() => call('POST', `/${eid}/approve`), 'Đã duyệt bảng'), drawing || !c.sheet_url || c.status === 'approved'));
@@ -139,7 +139,7 @@
         : 'Chưa tìm nhân vật cho truyện này.'));
     if (d.analysis_error) info.appendChild(node('p', 'text-[11px] text-red-700', `Lần tìm trước lỗi: ${d.analysis_error}`));
     bar.appendChild(info);
-    bar.appendChild(button(d.analyzed_at ? 'AI tìm lại nhân vật' : 'AI tìm nhân vật', 'bg-indigo-600 text-white border-indigo-300',
+    bar.appendChild(button(d.analyzed_at ? 'AI tìm lại nhân vật' : 'AI tìm nhân vật', 'bg-slate-900 text-white border-slate-300',
       () => act(() => call('POST', '/analyze'), 'Đã gửi AI tìm nhân vật'), Boolean(d.analyzing)));
     bar.lastChild.id = 'btn-character-analyze';
     return bar;

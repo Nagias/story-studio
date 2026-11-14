@@ -237,8 +237,8 @@ body[data-ws-page="scenes"] .ws-canvas-inner { padding-top: 16px; padding-bottom
    Khối và mẫu HTML do true_crime.js vẽ còn lớp Tailwind tông tối của cửa sổ cũ; trong .ws-case đổi về tông sáng của
    vùng làm việc. Bảng ghim (gỗ, bần) và chú thích của nó giữ nguyên màu. */
 .ws-case { color: var(--ws-body); }
-.ws-case [class*="bg-slate-9"], .ws-case [class*="bg-slate-8"], .ws-case [class*="bg-slate-7"] { background: #fff; }
-.ws-case [class*="bg-slate-900"], .ws-case thead[class*="bg-slate-9"] { background: var(--ws-soft); }
+.ws-case [class~="bg-slate-700"], .ws-case [class^="bg-slate-700/"], .ws-case [class*=" bg-slate-700/"], .ws-case [class~="bg-slate-800"], .ws-case [class^="bg-slate-800/"], .ws-case [class*=" bg-slate-800/"], .ws-case [class~="bg-slate-900"], .ws-case [class^="bg-slate-900/"], .ws-case [class*=" bg-slate-900/"], .ws-case [class~="bg-slate-950"], .ws-case [class^="bg-slate-950/"], .ws-case [class*=" bg-slate-950/"] { background: #fff; }
+.ws-case [class~="bg-slate-900"], .ws-case [class^="bg-slate-900/"], .ws-case [class*=" bg-slate-900/"], .ws-case [class~="bg-slate-950"], .ws-case [class^="bg-slate-950/"], .ws-case [class*=" bg-slate-950/"], .ws-case thead[class~="bg-slate-900"] { background: var(--ws-soft); }
 .ws-case [class*="border-slate-"] { border-color: var(--ws-line); }
 .ws-case .text-white, .ws-case .text-slate-100, .ws-case .text-slate-200 { color: var(--ws-ink); }
 .ws-case .text-slate-300 { color: var(--ws-body); }
@@ -252,6 +252,7 @@ body[data-ws-page="scenes"] .ws-canvas-inner { padding-top: 16px; padding-bottom
 .ws-case [class*="bg-[#14261e]"] { background: #ECFDF5; border-color: #A7F3D0; }
 .ws-case input, .ws-case select, .ws-case textarea { color: var(--ws-body); }
 .ws-case [class*="hover:bg-slate-"]:hover { background: var(--ws-soft); }
+.ws-case .text-red-400, .ws-case .text-red-200 { color: #B91C1C; }
 .ws-case .bg-emerald-600, .ws-case .bg-amber-600 { color: #fff; }
 .ws-case .h-2.rounded-full.bg-slate-800 { background: #E4E4E7; }   /* rãnh thanh tiến độ */
 .ws-case #tc-canvas-tooltip { background: rgba(2, 6, 23, .95); color: #F1F5F9; }
@@ -271,3 +272,18 @@ body[data-ws-page="scenes"] .ws-canvas-inner { padding-top: 16px; padding-bottom
 .ws-case-error { margin: 6px 0 0; font-size: 13px; color: #B91C1C; background: #FEF2F2; border: 1px solid #FECACA;
   border-radius: 8px; padding: 6px 10px; }
 .ws-case-error.hidden, .ws-case-idea.hidden { display: none; }
+
+/* ---------- Màu kẽm/đỏ còn thiếu trong tailwind.css (bản dựng đã lọc, không dựng lại) ----------
+   Thay cho các lớp màu trang trí cũ (tím, xanh dương, hồng); chỉ gồm lớp mà HTML và JS đang dùng. */
+.bg-slate-50\/40 { background-color: rgba(248, 250, 252, .4); }
+.bg-slate-50\/70 { background-color: rgba(248, 250, 252, .7); }
+.bg-slate-900\/75 { background-color: rgba(15, 23, 42, .75); }
+.border-red-500\/50 { border-color: rgba(239, 68, 68, .5); }
+.border-slate-700\/50 { border-color: rgba(51, 65, 85, .5); }
+.border-slate-800\/50 { border-color: rgba(30, 41, 59, .5); }
+.ring-slate-100 { --tw-ring-color: #f1f5f9; }
+.ring-slate-700 { --tw-ring-color: #334155; }
+.ring-slate-700\/20 { --tw-ring-color: rgba(51, 65, 85, .2); }
+.focus\:border-slate-700:focus { border-color: #334155; }
+.focus\:ring-red-500:focus { --tw-ring-color: #ef4444; }
+.hover\:bg-slate-900:hover { background-color: #0f172a; }
