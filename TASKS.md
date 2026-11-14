@@ -684,3 +684,10 @@ Plan chủ dự án duyệt: `C:\Users\pc\.claude\plans\gi-l-p-plan-c-c-efferves
 - Kiểm tra đầy đủ (14/11, 643 giây): ĐẠT, 1.078 test đạt, 0 lỗi
 - Còn lại, chờ chủ dự án: (1) Trịnh Đức Toàn (xưởng sắt): bảng nhân vật đã duyệt vẽ đầu màu da, có tai, nếp nhăn; Muse bám theo nên cảnh 009, 035 (và ảnh cảnh 035) mặt nhăn chi tiết; sửa tận gốc phải vẽ lại bảng nhân vật rồi vẽ lại các cảnh có ông. (2) Cảnh 063 xưởng sắt còn clip đứng hình (không tính vào tỉ lệ). (3) Lỗi nhẹ còn lại theo bảng rà soát (vd chữ "HANDPRINT" cảnh 058, viên cảnh sát mặt màu be cảnh 020 Khang Cúc Hoa)
 - Chủ dự án 15/11/2026 chọn "Giữ như hiện tại" cho bảng nhân vật Trịnh Đức Toàn: không vẽ lại bảng, cảnh 009 và 035 vụ xưởng sắt giữ như đã dựng
+
+# TASKS — giao diện gọn 5 bước kiểu ElevenLabs (15/11/2026, nhánh `giao-dien-gon`)
+Chủ dự án duyệt bản xem thử 15/11: "Duyệt, viết kế hoạch". Thiết kế: `docs/superpowers/specs/2026-11-15-giao-dien-gon-design.md`; kế hoạch: `docs/superpowers/plans/2026-11-15-giao-dien-gon.md`; bản xem thử: `docs/superpowers/specs/2026-11-15-giao-dien-gon-ban-xem-thu.html`.
+- [x] Viết thiết kế, cho người đọc độc lập soát (6 câu hỏi, 4 chỗ lệch code), sửa theo
+- [x] Đổi so với bản xem thử sau khi đọc code: phong cách hình chọn ở trang Ý tưởng (AI viết mô tả ảnh theo phong cách ngay lúc viết kịch bản); nguồn tạo ảnh ở trang Hình mẫu (cài đặt của từng dự án, không phải của cả app); thẻ Dàn ý và Tên hư cấu chỉ hiện khi đang theo dõi vụ chưa tạo dự án (như cửa sổ hiện nay); giọng từng cảnh ở trang Kịch bản
+- [x] Kiểm: mọi id và tên hàm trong hai tài liệu có trong code; `tools/check.py` ĐẠT (40 test kiến trúc, 26 giây)
+- [ ] Làm 12 task của kế hoạch (chưa bắt đầu, chờ chủ dự án chọn cách làm)
