@@ -33,6 +33,8 @@ REQUIRED_FILES = [
     "backend/security.py",
     "backend/requirements.txt",
     "backend/static/index.html",
+    "backend/static/workspace.js",  # khung giao diện gọn: showPage(), ngăn kéo, thanh bên (index.html nạp trước app.js)
+    "backend/static/workspace.css",  # giao diện của khung đó (index.html nạp sau tailwind.css)
     "backend/static/app.js",
     "backend/static/true_crime.js",  # modal Hồ Sơ Kỳ Án (index.html nạp sau app.js)
     "backend/static/youtube_seo.js",  # gói SEO YouTube ở Bước 4 (index.html nạp sau true_crime.js)
@@ -188,7 +190,8 @@ def verify_zip(zip_path: Path) -> list[str]:
             if f"{TOP}/{f}" not in names:
                 problems.append(f"thiếu file {f}")
         # Mọi file /static/... mà giao diện gọi cố định phải có trong gói (tránh gửi bản thiếu CSS/ảnh)
-        for ui_file in ("backend/static/index.html", "backend/static/app.js", "backend/static/true_crime.js",
+        for ui_file in ("backend/static/index.html", "backend/static/workspace.js", "backend/static/app.js",
+                        "backend/static/true_crime.js",
                         "backend/static/youtube_seo.js", "backend/static/climax_video.js",
                         "backend/static/character_sheets.js", "backend/static/location_sheets.js",
                         "backend/static/scene_muse_video.js"):

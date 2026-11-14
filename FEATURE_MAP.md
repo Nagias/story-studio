@@ -38,17 +38,20 @@ Dữ liệu mẫu có sẵn (không xoá, không sửa khi thử):
 | Mở thẳng một dự án | `?project_id=<id>` (`initApp()`) |
 | Mở thẳng cửa sổ Muse | `#muse`, `?mode=muse` hoặc `?view=muse` |
 | Mở thẳng Hồ Sơ Kỳ Án | `#true-crime`, `?mode=true-crime` hoặc `?view=true-crime` (`initTrueCrimeStudio()`) |
-| Phím tắt (`handleGlobalKeydown()`) | `Space` phát/dừng cảnh đang chọn; `Ctrl+S` lưu dự án; `Esc` đóng mọi cửa sổ (đang gõ trong ô nhập thì chỉ thoát ô); `Enter` trong `#step1-char-ref-url` nạp URL ảnh tham chiếu |
+| Điều hướng (khung giao diện gọn, `backend/static/workspace.js`) | 8 trang `#page-idea`, `#page-script`, `#page-look`, `#page-scenes`, `#page-publish`, `#page-projects`, `#page-gallery`, `#page-accounts`; mỗi lúc hiện đúng một trang (`showPage()`, nút thanh bên có `aria-current="page"`, tên trang ở `#ws-crumb`, cuộn `#ws-canvas` về đầu). Trang đang mở được nhớ theo dự án (localStorage `ws_page_<project_id>`, `rememberedPage()`), mở lại app thì `initApp()` mở lại trang đó. Hàm cũ `switchStep()` vẫn dùng được: bước 1 là trang Ý tưởng, bước 2 là trang Cảnh, bước 3 và 4 là trang Dựng và xuất bản. Vào trang Dựng và xuất bản thì chạy `loadCinemaYouTubePackage()` (móc `onPageShow()`). Ngăn kéo bên phải `#ws-drawer`: `openDrawer()` dời một khối có sẵn vào `#ws-drawer-body`, `closeDrawer()` (hoặc `#btn-ws-drawer-close`) trả khối về chỗ cũ |
+| Phím tắt (`handleGlobalKeydown()`) | `Space` phát/dừng cảnh đang chọn; `Ctrl+S` lưu dự án; `Esc` đóng ngăn kéo và mọi cửa sổ (đang gõ trong ô nhập thì chỉ thoát ô); `Enter` trong `#step1-char-ref-url` nạp URL ảnh tham chiếu; `Enter` trong ô tìm `#ws-search` (số cảnh hoặc chữ trong lời kể) mở trang Cảnh và chọn cảnh đó |
 | Tự lưu | mọi sửa đổi gọi `saveStateToLocal()` (tên gây hiểu nhầm: thực chất hẹn `PUT /api/projects/{project_id}` sau 1,5 giây qua `ProjectSync`) |
 
 ## 2. Màn hình và tính năng
 
-### 2.1 Thanh trên cùng
+### 2.1 Thanh bên và thanh trên cùng
+
+Thanh bên `#ws-sidebar` thay thanh bước cũ: 8 nút trang theo thứ tự Ý tưởng, Kịch bản và giọng, Hình mẫu, Cảnh, Dựng và xuất bản, Dự án, Thư viện Muse, Tài khoản và kết nối (ghim đáy, kèm trạng thái máy chủ `#backend-status-dot`, `#backend-status-text`). Nút `#btn-ws-toggle-sidebar` thu/mở thanh bên (nhớ ở localStorage `ws_sidebar_collapsed`; màn hẹp dưới 860px tự thu). Trang Kịch bản và giọng, Hình mẫu đang chờ chuyển tính năng về; trang Dự án, Thư viện Muse, Tài khoản và kết nối tạm có nút mở cửa sổ cũ (`openProjectModal()`, `openMuseModal()`). Các nút cũ của đầu trang (bảng dưới) tạm nằm bên phải thanh trên, giữ id và cách gắn sự kiện; `#ws-save-state` ghi "Tự lưu".
 
 | Tính năng | Thao tác | Code giao diện | API → code server | Tốn |
 |---|---|---|---|---|
 | Quản lý dự án (mở danh sách, tạo, chuyển) | `#btn-project-dropdown` → cửa sổ `#modal-project-manager`; tạo: `#new-project-name-input` + `#btn-create-project`; chọn: dòng trong danh sách | `openProjectModal()`, `handleCreateNewProject()`, `switchProject()` | `GET /api/projects`, `POST /api/projects`, `GET /api/projects/{project_id}` → `project_service.py`. Dự án có `projects/<proj_id>/project.json` hỏng vẫn hiện trong danh sách với tên "⚠ Không đọc được: …"; mở nó thì API trả 409 kèm lý do, file được giữ nguyên | — |
-| Chuyển bước 1–4 | `#step-nav-1` … `#step-nav-4` | `switchStep()` | Bước 4: `GET /api/projects/{project_id}/youtube-seo` | — |
+| Chuyển trang | nút `.ws-nav` trên thanh bên `#ws-sidebar` (mã trang ở `data-go`) | `showPage()`; chỗ gọi cũ dùng `switchStep()` | trang Dựng và xuất bản: `GET /api/projects/{project_id}/youtube-seo` | — |
 | Hồ Sơ Kỳ Án | `#btn-open-true-crime-modal` | `openTrueCrimeModal()` | xem 2.6.7 | — |
 | Trạng thái + cửa sổ Muse | `#btn-muse-cloud-status` (chữ trạng thái `#header-muse-status-text`, hỏi 5 s/lần) | `openMuseModal()` | `GET /api/muse-bridge/status` | — |
 | Cắt truyện tranh | `#btn-open-comic-modal` | `openComicModal()` | xem 2.6.2 | — |

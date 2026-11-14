@@ -1085,8 +1085,12 @@ async function initApp() {
     DOM.step1EngineSelect.value = "meta_muse_cloud";
   }
 
-  // Set initial step view
-  if (AppState.currentProject && AppState.currentProject.scenes && AppState.currentProject.scenes.length > 0) {
+  // Trang mở đầu: trang đã dùng lần trước của dự án này (workspace.js, localStorage ws_page_<project_id>);
+  // đọc trước khi switchStep() ghi đè; chưa có thì như cũ (có cảnh: trang Cảnh, chưa có: trang Ý tưởng)
+  const savedPage = rememberedPage(AppState.currentProject?.id);
+  if (savedPage) {
+    showPage(savedPage);
+  } else if (AppState.currentProject && AppState.currentProject.scenes && AppState.currentProject.scenes.length > 0) {
     switchStep(2);
   } else {
     switchStep(1);
@@ -3482,50 +3486,17 @@ async function handleImportComicToStoryboard() {
   }
 }
 
-// ================= 4-STEP STEPPER CONTROLLER (MoneyPrinterTurbo Architecture) =================
+// ================= ĐIỀU HƯỚNG: BƯỚC CŨ 1–4 → TRANG (workspace.js) =================
+// Giữ tên cho mọi chỗ gọi cũ; ẩn hiện theo trang, không còn đổi lớp từng khối bước.
+const STEP_TO_PAGE = { 1: 'idea', 2: 'scenes', 3: 'publish', 4: 'publish' };
+
 function switchStep(stepNumber) {
   AppState.currentStep = stepNumber;
-
-  // 1. Update navigation button styles
-  for (let i = 1; i <= 4; i++) {
-    const btn = document.getElementById(`step-nav-${i}`);
-    const view = document.getElementById(`step-view-${i}`);
-
-    if (btn) {
-      const badge = btn.querySelector('.step-badge');
-      if (i === stepNumber) {
-        btn.classList.add('bg-white', 'text-indigo-700', 'font-bold', 'shadow-xs');
-        btn.classList.remove('text-slate-600');
-        if (badge) {
-          badge.classList.add('bg-indigo-600', 'text-white');
-          badge.classList.remove('bg-slate-200', 'text-slate-700');
-        }
-      } else {
-        btn.classList.remove('bg-white', 'text-indigo-700', 'font-bold', 'shadow-xs');
-        btn.classList.add('text-slate-600');
-        if (badge) {
-          badge.classList.remove('bg-indigo-600', 'text-white');
-          badge.classList.add('bg-slate-200', 'text-slate-700');
-        }
-      }
-    }
-
-    if (view) {
-      if (i === stepNumber) {
-        view.classList.remove('hidden');
-      } else {
-        view.classList.add('hidden');
-      }
-    }
-  }
-
-  const currentView = document.getElementById(`step-view-${stepNumber}`);
-  if (currentView) currentView.scrollTop = 0;
-
-  if (stepNumber === 4) {
-    loadCinemaYouTubePackage();
-  }
+  showPage(STEP_TO_PAGE[stepNumber]);
 }
+
+// Vào trang Dựng và xuất bản thì nạp video thành phẩm và gói YouTube (trước đây switchStep(4) gọi thẳng)
+onPageShow('publish', loadCinemaYouTubePackage);
 
 async function loadCinemaYouTubePackage() {
   const project = AppState.currentProject;

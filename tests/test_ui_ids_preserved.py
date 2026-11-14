@@ -6,7 +6,12 @@ from tests.ui_html import INDEX_HTML, ids_in, js_fixed_ids
 BASELINE = Path(__file__).resolve().parent / "data" / "ui_ids_truoc_giao_dien_gon.txt"
 
 # id đã duyệt gỡ -> lý do. Task sau thêm vào đây.
-REMOVED: dict[str, str] = {}
+REMOVED: dict[str, str] = {
+    "step-nav-1": "spec 4.2: thay bằng thanh bên",
+    "step-nav-2": "spec 4.2: thay bằng thanh bên",
+    "step-nav-3": "spec 4.2: thay bằng thanh bên",
+    "step-nav-4": "spec 4.2: thay bằng thanh bên",
+}
 
 # id do JS tự dựng lúc chạy (không có sẵn trong index.html). Task sau thêm vào đây.
 JS_BUILT_IDS: set[str] = set()

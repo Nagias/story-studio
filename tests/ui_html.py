@@ -4,8 +4,10 @@ Bộ đọc HTML nhỏ cho test giao diện (chỉ dùng thư viện chuẩn).
 - ids_in: mọi id trong trang.
 - ancestors / page_of / inside: tìm thẻ cha của một id (gần nhất trước).
 - js_fixed_ids: id mà các file JS trong backend/static gọi bằng chuỗi cố định.
+- NAV_ORDER: mã trang (data-go) của các nút thanh bên (class ws-nav), theo thứ tự xuất hiện.
 """
 import re
+from functools import lru_cache
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -22,9 +24,12 @@ class _Tree(HTMLParser):
         self.stack: list[tuple[str, dict[str, str]]] = []
         self.chains: dict[str, list[dict[str, str]]] = {}
         self.ids: set[str] = set()
+        self.navs: list[str] = []
 
     def handle_starttag(self, tag, attrs):
         attr = {k: (v or "") for k, v in attrs}
+        if "ws-nav" in attr.get("class", "").split() and "data-go" in attr:
+            self.navs.append(attr["data-go"])
         element_id = attr.get("id")
         if element_id:
             self.ids.add(element_id)
@@ -48,7 +53,9 @@ class _Tree(HTMLParser):
                 return
 
 
+@lru_cache(maxsize=8)
 def _parse(html: str) -> _Tree:
+    """Kết quả dùng chung giữa các lần gọi cùng một trang: hàm bên ngoài chỉ trả bản sao, không sửa cây."""
     tree = _Tree()
     tree.feed(html)
     tree.close()
@@ -56,7 +63,11 @@ def _parse(html: str) -> _Tree:
 
 
 def ids_in(html: str) -> set[str]:
-    return _parse(html).ids
+    return set(_parse(html).ids)
+
+
+def NAV_ORDER(html: str) -> list[str]:  # noqa: N802 (tên đặt theo kế hoạch giao diện gọn, Task 2)
+    return list(_parse(html).navs)
 
 
 def ancestors(html: str, element_id: str) -> list[dict[str, str]]:
