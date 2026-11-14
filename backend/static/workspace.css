@@ -243,6 +243,7 @@ body[data-ws-page="scenes"] .ws-canvas-inner { padding-top: 16px; padding-bottom
 .ws-case .text-white, .ws-case .text-slate-100, .ws-case .text-slate-200 { color: var(--ws-ink); }
 .ws-case .text-slate-300 { color: var(--ws-body); }
 .ws-case .text-slate-400, .ws-case .text-slate-500 { color: var(--ws-mute); }
+.ws-case .ws-btn-primary { background: var(--ws-ink); color: #FFFFFF; }
 .ws-case .text-amber-400, .ws-case .text-amber-300, .ws-case [class*="text-amber-300/"] { color: #B45309; }
 .ws-case .text-amber-200 { color: #92400E; }
 .ws-case .text-emerald-400, .ws-case .text-emerald-300, .ws-case .text-emerald-200 { color: #047857; }

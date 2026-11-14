@@ -401,7 +401,7 @@
               <button type="button" id="btn-tc-outline-save" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 text-[11px] font-bold transition cursor-pointer disabled:opacity-50">
                 <i class="fa-solid fa-floppy-disk mr-1"></i> Lưu dàn ý
               </button>
-              <button type="button" id="btn-tc-outline-approve" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold transition cursor-pointer disabled:opacity-50">
+              <button type="button" id="btn-tc-outline-approve" class="ws-btn ws-btn-primary disabled:opacity-50">
                 <i class="fa-solid fa-check mr-1"></i> Duyệt và viết cảnh
               </button>
             </div>
@@ -1020,7 +1020,7 @@
         <!-- Technical Specs & Export Buttons -->
         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
           <!-- Download Video -->
-          <a id="btn-cinema-download-video" href="#" download="story_video.mp4" class="p-3 bg-slate-900 hover:bg-slate-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition">
+          <a id="btn-cinema-download-video" href="#" download="story_video.mp4" class="ws-btn ws-btn-primary">
             <i class="fa-solid fa-download text-sm"></i>
             <span>Tải Video (1080p)</span>
           </a>
@@ -1077,7 +1077,7 @@
                 <input type="text" id="input-thumb-subtext" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-slate-900 focus:bg-white focus:border-red-500 focus:outline-none transition" placeholder="Không dùng emoji (font không vẽ được)">
               </div>
               <div class="flex items-center gap-2 pt-1">
-                <button id="btn-generate-custom-thumbnail" class="px-3.5 py-2 bg-slate-900 hover:bg-slate-700 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer">
+                <button id="btn-generate-custom-thumbnail" class="ws-btn ws-btn-primary">
                   <i class="fa-solid fa-wand-magic-sparkles"></i>
                   <span>Tạo lại Thumbnail</span>
                 </button>
@@ -1094,7 +1094,7 @@
             <label class="font-bold text-slate-700 block">1. Tìm từ khoá từ dữ liệu tìm kiếm thật</label>
             <div class="flex items-center gap-2">
               <input type="text" id="yt-seo-seed" maxlength="200" class="flex-1 bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs text-slate-900 focus:bg-white focus:border-slate-700 focus:outline-none transition" placeholder="Từ khoá gốc: tên truyện, chủ đề, kiểu nội dung...">
-              <button id="btn-yt-seo-research" class="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer">
+              <button id="btn-yt-seo-research" class="ws-btn ws-btn-primary">
                 <i class="fa-solid fa-magnifying-glass"></i>
                 <span>Tìm từ khoá</span>
               </button>
@@ -1114,7 +1114,7 @@
             <label class="font-bold text-slate-700 block">2. Từ khoá đã chọn (từ khoá đầu tiên là từ khoá chính)</label>
             <p class="text-[11px] text-slate-500">Chỉ chọn từ khoá đúng nội dung video. Không chọn từ khoá có tên kênh hay người kể khác: YouTube coi tiêu đề, tags gây hiểu nhầm là vi phạm chính sách.</p>
             <div id="yt-seo-selected" class="flex flex-wrap gap-2"></div>
-            <button id="btn-yt-seo-generate" class="px-3.5 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer">
+            <button id="btn-yt-seo-generate" class="ws-btn ws-btn-primary">
               <i class="fa-solid fa-pen-nib"></i>
               <span>Tạo gói SEO</span>
             </button>
@@ -1166,7 +1166,7 @@
             <div id="yt-seo-checks" class="rounded-lg border p-2"></div>
             <div id="yt-seo-reminder" class="hidden bg-amber-50 border border-amber-200 text-amber-700 rounded-lg p-2"></div>
             <div class="flex items-center gap-2">
-              <button id="btn-yt-seo-save" class="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer">
+              <button id="btn-yt-seo-save" class="ws-btn ws-btn-primary">
                 <i class="fa-solid fa-check-double"></i>
                 <span>Lưu và kiểm lại</span>
               </button>
@@ -1192,7 +1192,7 @@
         <!-- Create new project inline -->
         <div class="flex items-center gap-2">
           <input type="text" id="new-project-name-input" placeholder="Tên dự án mới (VD: Truyền thuyết Rồng Vàng...)" class="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 font-medium focus:bg-white focus:border-slate-700 shadow-2xs">
-          <button id="btn-create-project" class="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 shadow-xs">
+          <button id="btn-create-project" class="ws-btn ws-btn-primary shrink-0">
             <i class="fa-solid fa-plus"></i> Tạo mới
           </button>
         </div>
@@ -1320,11 +1320,11 @@
                 <i class="fa-solid fa-bolt"></i>
                 <span>Chạy Cụm Fleet (.bat)</span>
               </button>
-              <button type="button" id="btn-copy-setup-accounts-cmd" class="px-2.5 py-1 bg-slate-900 hover:bg-slate-700 text-white rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-xs" title="Chạy setup_muse_accounts.bat">
+              <button type="button" id="btn-copy-setup-accounts-cmd" class="ws-btn" title="Chạy setup_muse_accounts.bat">
                 <i class="fa-solid fa-key"></i>
                 <span>Thiết Lập Đăng Nhập (.bat)</span>
               </button>
-              <button type="button" id="btn-muse-refresh-accounts" class="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-slate-200 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition cursor-pointer">
+              <button type="button" id="btn-muse-refresh-accounts" class="ws-btn">
                 <i class="fa-solid fa-arrows-rotate text-xs"></i>
                 <span>Làm mới Pool</span>
               </button>

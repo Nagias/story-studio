@@ -45,7 +45,7 @@
   }
 
   function button(label, cls, onClick, disabled = false) {
-    const b = node('button', `text-xs px-3 py-1.5 rounded-lg border font-semibold transition ${cls}`, label);
+    const b = node('button', `ws-btn text-xs ${cls}`, label);
     b.type = 'button';
     b.disabled = disabled;
     if (disabled) b.classList.add('opacity-30', 'cursor-not-allowed');
@@ -119,7 +119,7 @@
     actions.appendChild(button('Lưu', 'bg-white text-slate-700 border-slate-300', () =>
       act(() => call('PUT', `/${lid}`, { name_vi: name.value, design_en: design.value, scene_ids: parseScenes(sceneInput.value) }),
         'Đã lưu bối cảnh'), drawing));
-    actions.appendChild(button(loc.versions ? 'Vẽ ảnh chuẩn mới' : 'Vẽ ảnh chuẩn (Muse)', 'bg-slate-900 text-white border-slate-300', () =>
+    actions.appendChild(button(loc.versions ? 'Vẽ ảnh chuẩn mới' : 'Vẽ ảnh chuẩn (Muse)', 'ws-btn-primary', () =>
       act(() => call('POST', `/${lid}/draw`), 'Đã gửi Muse vẽ ảnh chuẩn (1 lượt Muse ảnh)'), drawing));
     actions.appendChild(button('Duyệt', 'bg-emerald-50 text-emerald-700 border-emerald-200', () =>
       act(() => call('POST', `/${lid}/approve`), 'Đã duyệt: ảnh cảnh của nơi này sẽ dùng mô tả và ảnh chuẩn'),
@@ -188,7 +188,7 @@
         ? `${d.locations.length} bối cảnh lặp lại, ${approved} đã duyệt (đang khoá ảnh cảnh).`
         : `Chưa có bối cảnh nào. Bấm "Tìm bối cảnh lặp lại" (AI đọc ${d.eligible_scenes} cảnh, 1 lượt LLM).`)));
     const analyze = button(d.locations.length ? 'Tìm lại bối cảnh (LLM)' : 'Tìm bối cảnh lặp lại (LLM)',
-      'bg-slate-900 text-white border-slate-300', () => {
+      'ws-btn-primary', () => {
         if (d.locations.length && !window.confirm('Tìm lại sẽ thay các bối cảnh AI tìm trước đó còn ở dạng nháp. Bối cảnh tự thêm và bối cảnh đã có ảnh chuẩn được giữ. Tiếp tục? (1 lượt LLM)')) return;
         act(() => call('POST', '/analyze'), 'Đã gửi AI tìm bối cảnh');
       }, d.analyzing || d.eligible_scenes < d.min_scenes);

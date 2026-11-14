@@ -47,7 +47,7 @@
   }
 
   function button(label, cls, onClick, disabled = false) {
-    const b = node('button', `text-xs px-3 py-1.5 rounded-lg border font-semibold transition ${cls}`, label);
+    const b = node('button', `ws-btn text-xs ${cls}`, label);
     b.type = 'button';
     b.disabled = disabled;
     if (disabled) b.classList.add('opacity-30', 'cursor-not-allowed');
@@ -92,7 +92,7 @@
     const eid = encodeURIComponent(c.entity_id);
     actions.appendChild(button('Lưu thiết kế', 'bg-white text-slate-700 border-slate-300', () =>
       act(() => call('PUT', `/${eid}`, { design_en: design.value }), 'Đã lưu thiết kế'), drawing));
-    actions.appendChild(button(c.versions ? 'Vẽ bảng mới' : 'Vẽ bảng (Muse)', 'bg-slate-900 text-white border-slate-300', () =>
+    actions.appendChild(button(c.versions ? 'Vẽ bảng mới' : 'Vẽ bảng (Muse)', 'ws-btn-primary', () =>
       act(() => call('POST', `/${eid}/draw`), 'Đã gửi Muse vẽ bảng'), drawing));
     actions.appendChild(button('Duyệt', 'bg-emerald-50 text-emerald-700 border-emerald-200', () =>
       act(() => call('POST', `/${eid}/approve`), 'Đã duyệt bảng'), drawing || !c.sheet_url || c.status === 'approved'));
@@ -139,7 +139,7 @@
         : 'Chưa tìm nhân vật cho truyện này.'));
     if (d.analysis_error) info.appendChild(node('p', 'text-[11px] text-red-700', `Lần tìm trước lỗi: ${d.analysis_error}`));
     bar.appendChild(info);
-    bar.appendChild(button(d.analyzed_at ? 'AI tìm lại nhân vật' : 'AI tìm nhân vật', 'bg-slate-900 text-white border-slate-300',
+    bar.appendChild(button(d.analyzed_at ? 'AI tìm lại nhân vật' : 'AI tìm nhân vật', 'ws-btn-primary',
       () => act(() => call('POST', '/analyze'), 'Đã gửi AI tìm nhân vật'), Boolean(d.analyzing)));
     bar.lastChild.id = 'btn-character-analyze';
     return bar;

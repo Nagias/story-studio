@@ -1176,7 +1176,7 @@ function renderSceneList() {
         <h4 class="text-sm font-semibold text-gray-300">Chưa có phân cảnh nào</h4>
         <p class="text-xs text-gray-500 mt-1 max-w-sm mx-auto">Quay về trang Ý tưởng để dán truyện cho AI chia cảnh, hoặc bấm "Thêm cảnh mới" để bắt đầu sáng tạo.</p>
         <div class="mt-4 flex items-center justify-center gap-2">
-          <button onclick="showPage('idea')" class="px-3.5 py-2 bg-slate-900 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold shadow-md">
+          <button onclick="showPage('idea')" class="ws-btn ws-btn-primary">
             <i class="fa-solid fa-arrow-left mr-1"></i> Về trang Ý tưởng
           </button>
         </div>
