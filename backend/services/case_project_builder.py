@@ -35,6 +35,7 @@ from services.case_adaptation_checks import (
     has_blocking_flags,
 )
 from services.case_adaptation_steps import rewrite_english
+from services.case_jobs import JobCancelled
 from services.investigation_board_engine import (  # NODE_TYPE_LABELS_EN: bảng nhãn tiếng Anh, định nghĩa ở engine
     CANVAS_HEIGHT,
     CANVAS_WIDTH,
@@ -544,13 +545,19 @@ def _guard_rewritten(plan: CaseAdaptationPlan, rewritten: dict[int, str]) -> dic
 
 
 def _materialize_language_version(source: Project, plan: CaseAdaptationPlan, language: Lang, voice: str,
-                                  source_language: str, texts: dict[str, str]) -> Project:
+                                  source_language: str, texts: dict[str, str], should_stop=None) -> Project:
     """Phần nặng của create_language_version (chép file, vẽ bảng ghim, lưu): chạy trong luồng riêng.
-    `texts`: scene.id -> lời kể mới."""
+    `texts`: scene.id -> lời kể mới. `should_stop`: hàm không tham số, True thì ném JobCancelled (phần dọn bên dưới
+    xoá dự án mới dở dang; dự án gốc không bị đụng)."""
+    def check_stop() -> None:
+        if should_stop is not None and should_stop():
+            raise JobCancelled()
+
     old_id = source.id
     old_dir = project_service._get_project_dir(old_id)
     new_id, new_dir = _claim_project_dir()
     try:
+        check_stop()
         _copy_media(old_dir, new_dir)
         new = source.model_copy(deep=True)
         new.id = new_id
@@ -571,6 +578,7 @@ def _materialize_language_version(source: Project, plan: CaseAdaptationPlan, lan
                         "sibling_project_ids": [old_id], "voices": voices}
 
         for scene in new.scenes:
+            check_stop()
             old_text = scene.text
             kind = scene.metadata.get("visual_kind")
             new_text = texts[scene.id]
@@ -589,6 +597,7 @@ def _materialize_language_version(source: Project, plan: CaseAdaptationPlan, lan
                 _draw_text_image(plan, scene, kind, plan_order if isinstance(plan_order, int) else scene.order,
                                  language, new_id, new_dir)
 
+        check_stop()
         project_service.save_project(new)
         # Liên kết hai chiều. Đọc lại dự án gốc: lúc LLM viết lại, giao diện có thể đã tự lưu chỉnh sửa khác.
         latest = project_service.get_project(old_id) or source
@@ -604,9 +613,15 @@ def _materialize_language_version(source: Project, plan: CaseAdaptationPlan, lan
 
 
 async def create_language_version(project_id: str, language: Lang, voice: Optional[str] = None, *,
-                                  llm=None) -> tuple[Project, list[int]]:
+                                  llm=None, should_stop=None) -> tuple[Project, list[int]]:
     """Chép dự án sang `language`: dùng lại ảnh và clip Muse, đổi lời kể, giọng và các ảnh có chữ.
-    Trả (dự án mới, danh sách order các cảnh đã được viết lại lời). Hỏng ở bất kỳ bước nào thì không để lại dự án mới."""
+    Trả (dự án mới, danh sách order các cảnh đã được viết lại lời). Hỏng ở bất kỳ bước nào thì không để lại dự án mới.
+    `should_stop`: hàm không tham số; True thì ném JobCancelled ở các điểm kiểm (trước và sau lượt LLM, đầu mỗi cảnh).
+    Lượt LLM đang chạy không ngắt giữa chừng được."""
+    def check_stop() -> None:
+        if should_stop is not None and should_stop():
+            raise JobCancelled()
+
     if language not in LANGS:
         raise LanguageVersionError("Ngôn ngữ phải là 'vi' hoặc 'en'.")
     try:
@@ -654,12 +669,15 @@ async def create_language_version(project_id: str, language: Lang, voice: Option
             f"Cảnh {orders} đã được sửa hoặc thêm sau khi tạo dự án, nhưng chỉ viết lại tự động được sang tiếng Anh. "
             "Hãy sửa lời của các cảnh này bằng tay hoặc đưa chúng về lời gốc rồi thử lại.")
 
+    check_stop()
     rewritten = (await rewrite_english(plan.bible, [(s.order, s.text) for s in to_rewrite], llm=llm,
                                        target_minutes=plan.target_minutes, total_scenes=len(plan.scenes))
                  if to_rewrite else {})
+    check_stop()
     rewritten = _guard_rewritten(plan, rewritten)
     for scene in to_rewrite:
         texts[scene.id] = rewritten[scene.order]
 
-    new = await asyncio.to_thread(_materialize_language_version, source, plan, language, voice, source_language, texts)
+    new = await asyncio.to_thread(_materialize_language_version, source, plan, language, voice, source_language, texts,
+                                 should_stop)
     return new, [s.order for s in to_rewrite]

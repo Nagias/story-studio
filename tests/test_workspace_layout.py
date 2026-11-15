@@ -225,7 +225,7 @@ def test_genres_sync_hidden_kind_on_load():
 PLACEMENT |= {"tc-progress": "script", "tc-outline-review": "script", "btn-tc-outline-approve": "script",
               "tc-review": "script", "tc-entity-table": "script", "tc-warnings": "script",
               "tc-evidence-canvas": "script", "btn-tc-create-vi": "script", "tc-voice-vi": "script",
-              "tc-voice-en": "script", "btn-create-en-version": "publish", "tc-input-error": "idea",
+              "tc-voice-en": "script", "btn-create-en-version": "publish", "btn-cancel-en-version": "publish", "tc-input-error": "idea",
               "tc-time-estimate": "idea", "ws-case-note": "script"}
 
 

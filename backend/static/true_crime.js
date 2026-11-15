@@ -1527,7 +1527,7 @@ function tcLanguageEligible(project) {
 }
 
 function tcNewLanguageJob(jobId = null) {
-  return { jobId, timer: null, retrying: false, failures: 0, startedAt: Date.now() };
+  return { jobId, timer: null, retrying: false, failures: 0, startedAt: Date.now(), cancelling: false };
 }
 
 function refreshLanguageVersionButton(project) {
@@ -1542,6 +1542,13 @@ function refreshLanguageVersionButton(project) {
     : 'Tạo bản tiếng Anh: dùng lại ảnh và video, đổi sang lời kể và giọng đọc tiếng Anh';
   tcSetBusyLabel(btn, !!job, job && job.retrying ? 'Mất kết nối, thử lại...' : 'Đang tạo bản Anh...',
     TC_LANG_LABEL_CLASS);
+  const cancelBtn = tcEl('btn-cancel-en-version');
+  if (cancelBtn) {
+    cancelBtn.classList.toggle('hidden', !(job && job.jobId));
+    cancelBtn.disabled = !!(job && job.cancelling);
+    const label = cancelBtn.querySelector('span');
+    if (label) label.textContent = job && job.cancelling ? 'Đang huỷ... (chờ bước AI hiện tại xong)' : 'Huỷ';
+  }
   if (eligible && !job && !TC_LANG_CHECKED.has(project.id)) tcResumeLanguageJob(project.id);
 }
 
@@ -1605,6 +1612,27 @@ async function tcCreateEnglishVersion() {
   }
 }
 
+// Huỷ việc tạo bản Anh. Lượt AI đang chạy không ngắt giữa chừng được: máy chủ dừng ngay sau lượt đó, nên nút chuyển
+// sang "Đang huỷ" và chờ lần hỏi tiến độ báo `cancelled`.
+async function tcCancelEnglishVersion() {
+  const project = AppState.currentProject;
+  if (!project) return;
+  const sourceId = project.id;
+  const job = TC_LANG_JOBS.get(sourceId);
+  if (!job || !job.jobId || job.cancelling) return;
+  if (!window.confirm('Huỷ việc tạo bản tiếng Anh? Bản dở dang sẽ bị xoá, dự án tiếng Việt giữ nguyên. '
+    + 'Nếu bước AI đang chạy thì phải chờ bước đó xong mới dừng.')) return;
+  job.cancelling = true;
+  refreshLanguageVersionButton(AppState.currentProject);
+  try {
+    await tcFetch(`${TC_API}/jobs/${encodeURIComponent(job.jobId)}/cancel`, { method: 'POST' });
+  } catch (err) {
+    job.cancelling = false;
+    refreshLanguageVersionButton(AppState.currentProject);
+    showToast(`Không huỷ được: ${tcEsc(err.message)}`, 'error', 8000);
+  }
+}
+
 function tcScheduleLanguagePoll(sourceId, job, delay) {
   if (job.timer) clearTimeout(job.timer);
   job.timer = setTimeout(() => tcPollLanguageJob(sourceId, job), delay);
@@ -1656,6 +1684,9 @@ async function tcPollLanguageJob(sourceId, job) {
   const status = data && data.status;
   if (status === 'queued' || status === 'running') {
     tcScheduleLanguagePoll(sourceId, job, TC_POLL_MS);
+  } else if (status === 'cancelled') {
+    tcEndLanguageJob(sourceId, job);
+    showToast('Đã huỷ tạo bản tiếng Anh', 'info', 6000);
   } else if (status === 'failed') {
     tcEndLanguageJob(sourceId, job);
     const reason = String(data.error || '').trim() || 'Máy chủ không nêu lý do.';
@@ -2170,6 +2201,7 @@ function initTrueCrimeStudio() {
   on('btn-tc-add-entity', 'click', tcAddEntity);
   on('btn-tc-create-vi', 'click', tcCreateVietnameseProject);
   on('btn-create-en-version', 'click', tcCreateEnglishVersion);
+  on('btn-cancel-en-version', 'click', tcCancelEnglishVersion);
   on('tc-warnings', 'click', (e) => {
     const target = e.target.closest('[data-tc-goto]');
     if (target) tcGotoScene(target.dataset.tcGoto);

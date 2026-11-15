@@ -4,8 +4,9 @@ Job trong bộ nhớ cho việc ngắn: tạo bản ngôn ngữ khác của mộ
 Phân tích vụ án thì không dùng cái này: nó chạy qua hàng việc lưu trên đĩa (case_worker) để tắt server giữa chừng vẫn
 chạy tiếp được. Job ở đây chỉ nằm trong RAM (kiểu `active_renders`): tắt server lúc đang chạy thì người dùng bấm lại.
 
-Một job là dict {job_id, kind, key, status, result, error, created_at, updated_at}; status là running, done hoặc
-failed. `key` (có thể None) nói job làm việc gì, vd. "proj_x:en": start_job không tạo job thứ hai cùng kind và key khi
+Một job là dict {job_id, kind, key, status, result, error, created_at, updated_at}; status là running, done, failed hoặc
+cancelled (người dùng huỷ; việc đang chạy thì chỉ dừng ở điểm kiểm tiếp theo, trong lúc đó status vẫn là running và
+`cancel_requested` = true). `key` (có thể None) nói job làm việc gì, vd. "proj_x:en": start_job không tạo job thứ hai cùng kind và key khi
 job trước còn chạy, nên bấm lại hay tải lại trang giữa chừng không sinh việc trùng.
 Giữ tối đa MAX_JOBS job: quá thì bỏ job đã xong (done/failed) cũ nhất trước, không bao giờ bỏ job đang chạy.
 """
@@ -17,8 +18,12 @@ from datetime import datetime, timezone
 from typing import Optional
 
 MAX_JOBS = 200
-STATUSES = ("running", "done", "failed")
+STATUSES = ("running", "done", "failed", "cancelled")
 _IMMUTABLE = ("kind", "key", "created_at")      # job_id là tham số vị trí nên không thể nằm trong **fields
+
+class JobCancelled(Exception):
+    """Ném khi việc nhận ra người dùng đã yêu cầu huỷ; nơi chạy job bắt lại và đặt job thành `cancelled`."""
+
 
 _lock = threading.Lock()
 _jobs: "OrderedDict[str, dict]" = OrderedDict()
@@ -43,7 +48,7 @@ def _create(kind: str, key: Optional[str]) -> str:
         job_id = f"job_{uuid.uuid4().hex[:8]}"
     now = _now()
     _jobs[job_id] = {"job_id": job_id, "kind": kind, "key": key, "status": "running", "result": None, "error": "",
-                     "created_at": now, "updated_at": now}
+                     "cancel_requested": False, "created_at": now, "updated_at": now}
     _evict()
     return job_id
 
@@ -94,3 +99,22 @@ def get_job(job_id: str) -> Optional[dict]:
     with _lock:
         job = _jobs.get(job_id)
         return copy.deepcopy(job) if job is not None else None
+
+
+def request_cancel(job_id: str) -> Optional[str]:
+    """Đặt cờ huỷ cho job đang chạy. Trả trạng thái job lúc gọi ("running" nghĩa là cờ đã đặt), hoặc None nếu không
+    có job. Job đã kết thúc thì không đổi gì."""
+    with _lock:
+        job = _jobs.get(job_id)
+        if job is None:
+            return None
+        if job["status"] == "running":
+            job["cancel_requested"] = True
+            job["updated_at"] = _now()
+        return job["status"]
+
+
+def is_cancel_requested(job_id: str) -> bool:
+    with _lock:
+        job = _jobs.get(job_id)
+        return bool(job and job.get("cancel_requested"))

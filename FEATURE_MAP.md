@@ -56,6 +56,7 @@ Thanh bên `#ws-sidebar` thay thanh bước cũ: 8 nút trang theo thứ tự Ý
 | Kết nối AI, YouTube, VieNeu ở trang Tài khoản | `#accounts-connections`, `#btn-connections-ping` | xem 2.6.6 | `GET /api/connections/status`, `POST /api/connections/llm-ping` | **LLM** khi bấm Gọi thử (1 lượt) |
 | Lưu | tự lưu sau 1,5 giây (`saveStateToLocal()`); `Ctrl+S` lưu ngay | `handleSaveProject()` | `PUT /api/projects/{project_id}` → `update_project_detail()` | — |
 | Tạo bản tiếng Anh (trang Dựng và xuất bản, cạnh `#btn-render-settings`; chỉ hiện với dự án true-crime bản Việt: `metadata.case_id` và `language == 'vi'`) | `#btn-create-en-version` | `tcCreateEnglishVersion()`, `refreshLanguageVersionButton()` | `POST /api/projects/{project_id}/create-language-version`, theo dõi `GET /api/true-crime/jobs/{job_id}`; tải lại trang thì hỏi `GET /api/projects/{project_id}/language-version-job` → `language_versions.py`, `case_jobs.py` | **LLM** |
+| Huỷ tạo bản tiếng Anh (hiện cạnh nút tạo khi đang chạy; bước AI đang chạy thì phải chờ xong mới dừng, bản dở dang tự xoá, dự án Việt giữ nguyên) | `#btn-cancel-en-version` | `tcCancelEnglishVersion()` | `POST /api/true-crime/jobs/{job_id}/cancel` (202, 404, 409) → `true_crime.py`, `case_jobs.py` (`request_cancel`, `JobCancelled`), `case_project_builder.py` | không tốn thêm |
 
 ### 2.2 Trang Ý tưởng (`#page-idea`, khung `#step-view-1`)
 
