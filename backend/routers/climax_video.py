@@ -132,7 +132,7 @@ async def _ai_pick_job(project_id: str) -> None:
     try:
         result = await climax_ai_pick.ai_pick(project_id)
 
-        def write() -> dict:
+        def write() -> tuple[list[str], dict]:
             # Đọc lại ngay trước khi ghi: lượt AI có thể dài vài phút
             project = project_service.get_project(project_id)
             if project is None:
