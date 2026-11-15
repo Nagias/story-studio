@@ -29,14 +29,20 @@
       canAnalyze: (d) => d.eligible_scenes >= d.min_scenes,
     },
   };
-  const st = { characters: { timer: null, busy: false, lastKey: '' }, locations: { timer: null, busy: false, lastKey: '' } };
+  // run: lượt bấm đang chạy ở trình duyệt {pid} (đang chờ AI tìm, đang hỏi xác nhận); timer: hỏi tiến độ
+  const st = { characters: { timer: null, busy: false, lastKey: '', run: null },
+               locations: { timer: null, busy: false, lastKey: '', run: null } };
 
   const project = () => (typeof AppState !== 'undefined' ? AppState.currentProject : null);
+  const currentId = () => project()?.id || null;
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-  async function call(kind, method, path) {
-    const p = project();
-    const res = await fetch(`/api/projects/${encodeURIComponent(p.id)}/${KINDS[kind].path}${path}`, { method });
+  // Người dùng đổi dự án giữa lúc một lượt bấm còn chờ: bỏ lượt đó, không chạy gì cho dự án mới
+  class ProjectChanged extends Error {}
+
+  // pid: id dự án chốt lúc bấm (không lấy dự án đang mở lúc gọi)
+  async function call(kind, pid, method, path) {
+    const res = await fetch(`/api/projects/${encodeURIComponent(pid)}/${KINDS[kind].path}${path}`, { method });
     let data = null;
     try { data = await res.json(); } catch { /* thân không phải JSON */ }
     if (!res.ok) throw new Error(typeof data?.detail === 'string' ? data.detail : `Máy chủ trả lỗi HTTP ${res.status}`);
@@ -72,17 +78,28 @@
     if (typeof fn === 'function') fn();
   }
 
+  function stopPolling(kind) {
+    clearInterval(st[kind].timer);
+    st[kind].timer = null;
+  }
+
   const usable = () => { const p = project(); return Boolean(p && !p.is_demo); };
 
+  function guard(pid) {
+    if (currentId() !== pid) throw new ProjectChanged();
+  }
+
   // AI tìm nhân vật / bối cảnh rồi chờ xong (chạy nền ở máy chủ, hỏi lại 2 giây một lần)
-  async function analyzeAndWait(kind) {
+  async function analyzeAndWait(kind, pid) {
     const k = KINDS[kind];
     say(kind, `AI đang đọc kịch bản để tìm ${k.what}…`);
-    await call(kind, 'POST', '/analyze');
+    await call(kind, pid, 'POST', '/analyze');
     const end = Date.now() + ANALYZE_MAX_MS;
     while (Date.now() < end) {
       await sleep(ANALYZE_POLL_MS);
-      const d = await call(kind, 'GET', '');
+      guard(pid);
+      const d = await call(kind, pid, 'GET', '');
+      guard(pid);
       if (!d.analyzing) {
         if (d.analysis_error) throw new Error(`AI tìm ${k.what} lỗi: ${d.analysis_error}`);
         return d;
@@ -95,17 +112,29 @@
     if (!usable() || st[kind].busy) return;
     const k = KINDS[kind];
     const u = ui(kind);
+    const pid = currentId();
+    const run = { pid };
+    st[kind].run = run;
     setBusy(kind, true);
-    let started = false;
+    let polling = false;
     try {
-      let d = await call(kind, 'GET', '');
+      let d = await call(kind, pid, 'GET', '');
+      guard(pid);
       const items = () => d[k.listKey] || [];
       const wantFind = items().length === 0 || Boolean(u.refind?.checked);
+      let searched = false;
       if (wantFind && k.canAnalyze(d)) {
-        d = await analyzeAndWait(kind);
+        d = await analyzeAndWait(kind, pid);
+        searched = true;
         if (u.refind) u.refind.checked = false;
         refreshList(kind);
-      } else if (!items().length) {
+      }
+      if (!items().length) {
+        if (searched) {
+          throw new Error(kind === 'locations'
+            ? 'AI đọc kịch bản xong nhưng không tìm thấy nơi nào lặp lại từ 2 cảnh trở lên'
+            : 'AI đọc kịch bản xong nhưng không tìm thấy nhân vật nào');
+        }
         throw new Error(kind === 'locations'
           ? `Dự án cần ít nhất ${d.min_scenes} cảnh có hình vẽ mới tìm được bối cảnh lặp lại`
           : 'Dự án chưa có nhân vật nào');
@@ -115,19 +144,32 @@
         say(kind, `Không còn ${k.unit} nào cần vẽ (${items().length} ${k.what}).`);
         return;
       }
-      if (!window.confirm(`Sẽ vẽ ${n} ${k.unit}, ${k.each} 1 lượt Muse (tổng ${n} lượt). Muse vẽ lần lượt từng cái. Tiếp tục?`)) {
+      const ok = window.confirm(`Sẽ vẽ ${n} ${k.unit}, ${k.each} 1 lượt Muse (tổng ${n} lượt). Muse vẽ lần lượt từng cái. Tiếp tục?`);
+      guard(pid);   // hộp xác nhận chờ người dùng: dự án có thể đã đổi trong lúc đó
+      if (!ok) {
         say(kind, '');
         return;
       }
-      const s = await call(kind, 'POST', '/draw-all');
-      started = true;
+      const s = await call(kind, pid, 'POST', '/draw-all');
+      guard(pid);
+      polling = true;
+      poll(kind, pid);
       showStatus(kind, s);
-      poll(kind);
     } catch (err) {
-      say(kind, '');
-      showToast(`Vẽ tất cả ${k.what}: ${escapeHtml(err.message)}`, 'error', 8000);
+      polling = false;   // lỗi ở bất kỳ bước nào (kể cả sau khi đã gửi draw-all): thôi hỏi, mở khoá nút
+      stopPolling(kind);
+      if (!(err instanceof ProjectChanged)) {
+        say(kind, '');
+        showToast(`Vẽ tất cả ${k.what}: ${escapeHtml(err.message)}`, 'error', 8000);
+      }
     } finally {
-      if (!started) setBusy(kind, false);
+      if (st[kind].run === run) st[kind].run = null;
+      if (currentId() !== pid) {
+        sync(kind);   // lượt cũ bỏ dở: bật lại nút theo đúng dự án đang mở
+      } else if (!polling) {
+        setBusy(kind, false);
+        ui(kind).stop?.classList.add('hidden');
+      }
     }
   }
 
@@ -141,7 +183,7 @@
         : `Đang vẽ ${n}/${s.total}: ${s.current || '…'}`);
     } else if (s.total) {
       const failed = (s.failed || []).map(f => `${f.name || f.entity_id} (${f.error})`);
-      say(kind, `Đã vẽ ${s.drawn.length}/${s.total}${s.stopped ? ', đã dừng theo yêu cầu' : ''}`
+      say(kind, `Đã vẽ ${(s.drawn || []).length}/${s.total}${s.stopped ? ', đã dừng theo yêu cầu' : ''}`
         + `${failed.length ? `; lỗi ${failed.length}: ${failed.join('; ')}` : ''}.`);
     }
     if (u.stop) {
@@ -151,32 +193,39 @@
     setBusy(kind, Boolean(s.running));
   }
 
-  function poll(kind) {
-    clearInterval(st[kind].timer);
+  // Hỏi tiến độ lượt vẽ tất cả của đúng dự án pid; đổi dự án thì thôi hỏi (sync() theo dõi dự án mới)
+  function poll(kind, pid) {
+    stopPolling(kind);
     st[kind].lastKey = '';
     const tick = async () => {
-      if (!usable()) return;
+      if (currentId() !== pid) { stopPolling(kind); return; }
       let s;
       try {
-        s = await call(kind, 'GET', '/draw-all/status');
+        s = await call(kind, pid, 'GET', '/draw-all/status');
       } catch (err) {
         console.warn('look batch', err);
         return;
       }
-      showStatus(kind, s);
-      const key = `${s.done}|${s.current_id}|${s.running}`;
-      if (key !== st[kind].lastKey) {   // sang cái mới hay xong một cái: vẽ lại danh sách bằng hàm sẵn có
-        st[kind].lastKey = key;
-        refreshList(kind);
-      }
-      if (!s.running) {
-        clearInterval(st[kind].timer);
-        st[kind].timer = null;
-        if (s.total) {
-          const bad = (s.failed || []).length;
-          showToast(escapeHtml(`Vẽ tất cả ${KINDS[kind].what}: xong ${s.drawn.length}/${s.total}${bad ? `, lỗi ${bad}` : ''}`),
-            bad ? 'error' : 'success', 6000);
+      if (currentId() !== pid) { stopPolling(kind); return; }
+      try {
+        showStatus(kind, s);
+        const key = `${s.done}|${s.current_id}|${s.running}`;
+        if (key !== st[kind].lastKey) {   // sang cái mới hay xong một cái: vẽ lại danh sách bằng hàm sẵn có
+          st[kind].lastKey = key;
+          refreshList(kind);
         }
+        if (!s.running) {
+          stopPolling(kind);
+          if (s.total) {
+            const bad = (s.failed || []).length;
+            showToast(escapeHtml(`Vẽ tất cả ${KINDS[kind].what}: xong ${(s.drawn || []).length}/${s.total}${bad ? `, lỗi ${bad}` : ''}`),
+              bad ? 'error' : 'success', 6000);
+          }
+        }
+      } catch (err) {   // lỗi khi vẽ giao diện: không để nút khoá mãi
+        console.error('look batch', err);
+        stopPolling(kind);
+        setBusy(kind, false);
       }
     };
     st[kind].timer = setInterval(tick, POLL_MS);
@@ -184,8 +233,11 @@
   }
 
   async function stopRun(kind) {
+    const pid = currentId();
+    if (!pid) return;
     try {
-      showStatus(kind, await call(kind, 'POST', '/draw-all/stop'));
+      const s = await call(kind, pid, 'POST', '/draw-all/stop');
+      if (currentId() === pid) showStatus(kind, s);
     } catch (err) {
       showToast(`Dừng: ${escapeHtml(err.message)}`, 'error', 6000);
     }
@@ -194,36 +246,48 @@
   async function approveAll(kind) {
     if (!usable() || st[kind].busy) return;
     const k = KINDS[kind];
+    const pid = currentId();
     try {
-      const d = await call(kind, 'GET', '');
+      const d = await call(kind, pid, 'GET', '');
+      guard(pid);
       const n = (d[k.listKey] || []).filter(x => x.status === 'review' && !x.drawing).length;
       if (!n) {
         showToast(escapeHtml(`Không có ${k.unit} nào đang chờ duyệt`), 'info', 4000);
         return;
       }
-      if (!window.confirm(`Duyệt ${n} ${k.unit} đang chờ duyệt? Bảng bị ghi chỗ sai hoặc chưa vẽ thì không duyệt.`)) return;
-      const r = await call(kind, 'POST', '/approve-all');
-      showToast(escapeHtml(`Đã duyệt ${r.approved} ${k.unit}`), 'success', 4000);
+      const ok = window.confirm(`Duyệt ${n} ${k.unit} đang chờ duyệt? Bảng bị ghi chỗ sai hoặc chưa vẽ thì không duyệt.`);
+      guard(pid);
+      if (!ok) return;
+      const r = await call(kind, pid, 'POST', '/approve-all');
+      const failed = r.failed || [];
+      const extra = failed.length ? `, ${failed.length} không duyệt được: ${failed.map(f => f.error).join('; ')}` : '';
+      showToast(escapeHtml(`Đã duyệt ${r.approved} ${k.unit}${extra}`), failed.length ? 'error' : 'success',
+        failed.length ? 8000 : 4000);
     } catch (err) {
+      if (err instanceof ProjectChanged) return;
       showToast(`Duyệt tất cả ${k.what}: ${escapeHtml(err.message)}`, 'error', 7000);
     }
-    refreshList(kind);
+    if (currentId() === pid) refreshList(kind);
   }
 
   // Mở trang Hình mẫu / đổi dự án: ẩn ô "tìm lại" khi không tìm được (vụ án lấy từ bảng tên), tiếp tục theo dõi lượt
-  // vẽ tất cả đang chạy ở máy chủ (lượt chạy sống qua lần tải lại trang)
+  // vẽ tất cả đang chạy ở máy chủ (lượt chạy sống qua lần tải lại trang). Lượt bấm của dự án khác còn đang chờ thì giữ
+  // nút khoá: lượt đó tự bỏ ở lần chờ kế tiếp rồi gọi lại sync().
   async function sync(kind) {
-    clearInterval(st[kind].timer);
-    st[kind].timer = null;
+    stopPolling(kind);
     say(kind, '');
-    setBusy(kind, false);
     ui(kind).stop?.classList.add('hidden');
-    if (!usable()) return;
+    const pid = currentId();
+    const pending = st[kind].run;
+    setBusy(kind, Boolean(pending));
+    if (pending || !usable()) return;
     try {
-      const d = await call(kind, 'GET', '');
+      const d = await call(kind, pid, 'GET', '');
+      if (currentId() !== pid) return;
       ui(kind).refindWrap?.classList.toggle('hidden', !KINDS[kind].canAnalyze(d));
-      const s = await call(kind, 'GET', '/draw-all/status');
-      if (s.running) poll(kind);
+      const s = await call(kind, pid, 'GET', '/draw-all/status');
+      if (currentId() !== pid || st[kind].run) return;
+      if (s.running) poll(kind, pid);
     } catch (err) {
       console.warn('look batch', err);
     }
@@ -242,11 +306,11 @@
     }
     let last = null;
     setInterval(() => {   // vào trang Hình mẫu hoặc đổi dự án: đồng bộ lại hai khối
-      const key = onLookPage() ? (project()?.id || '') : null;
+      const key = onLookPage() ? (currentId() || '') : null;
       if (key !== last) {
         last = key;
         if (key !== null) Object.keys(KINDS).forEach(sync);
-        else Object.keys(KINDS).forEach(kind => { clearInterval(st[kind].timer); st[kind].timer = null; });
+        else Object.keys(KINDS).forEach(stopPolling);
       }
     }, 1000);
   }

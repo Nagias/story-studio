@@ -432,12 +432,30 @@ def batch_targets(cast: ProjectCast) -> list[CharacterSheet]:
     return [s for s in cast.characters.values() if s.status in BATCH_DRAW_STATUSES]
 
 
-def approve_all(project_id: str) -> list[str]:
-    """Duyệt mọi bảng đã vẽ đang chờ duyệt ("review"); bảng bị ghi chỗ sai hay chưa có bảng thì không. Trả id đã duyệt."""
-    cast = load_cast(project_id)
-    ids = [s.entity_id for s in cast.characters.values()
-           if s.status == "review" and s.sheet_path and Path(s.sheet_path).is_file()]
-    return [approve_sheet(project_id, e).entity_id for e in ids]
+def review_ids(cast: ProjectCast) -> list[str]:
+    return [s.entity_id for s in cast.characters.values()
+            if s.status == "review" and s.sheet_path and Path(s.sheet_path).is_file()]
+
+
+def approve_all(project_id: str) -> tuple[list[str], list[dict]]:
+    """Duyệt mọi bảng đã vẽ đang chờ duyệt ("review"); bảng bị ghi chỗ sai hay chưa có bảng thì không. Trạng thái kiểm
+    lại trong khoá ngay lúc duyệt (người dùng ghi chỗ sai giữa chừng thì không duyệt). Một người lỗi không chặn người
+    khác: trả (id đã duyệt, [{entity_id, error}])."""
+    approved, failed = [], []
+    for eid in review_ids(load_cast(project_id)):
+        done = []
+
+        def change(s: CharacterSheet) -> None:
+            if s.status == "review" and s.sheet_path and Path(s.sheet_path).is_file():
+                s.status, s.error = "approved", None
+                done.append(s.entity_id)
+        try:
+            _update(project_id, eid, change)
+        except CastError as e:   # người đã bị bỏ khỏi danh sách giữa chừng
+            failed.append({"entity_id": eid, "error": str(e)})
+            continue
+        approved.extend(done)
+    return approved, failed
 
 
 def mark_draw_crashed(project_id: str, entity_id: str, message: str) -> None:

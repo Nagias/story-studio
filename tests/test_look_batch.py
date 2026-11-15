@@ -133,12 +133,39 @@ def test_character_approve_all_only_approves_drawn_sheets(client, monkeypatch):
         asyncio.run(cs.draw_sheet(CPID, eid, CharMuse(), None))
     cs.reject_sheet(CPID, "person_2", "tóc góc sau sai")   # có bảng nhưng bị ghi chỗ sai: không duyệt
     r = client.post(f"{base}/approve-all")
-    assert r.status_code == 200 and r.json() == {"approved": 1, "entity_ids": ["person_1"]}
+    assert r.status_code == 200 and r.json() == {"approved": 1, "entity_ids": ["person_1"], "failed": []}
     chars = cs.load_cast(CPID).characters
     assert chars["person_1"].status == "approved"
     assert chars["person_2"].status == "draft" and chars["person_15"].status == "draft"
     assert client.post(f"{base}/approve-all").json()["approved"] == 0
     assert client.post("/api/projects/proj_khong_co/characters/approve-all").status_code == 404
+
+
+def test_approve_all_rechecks_status_at_approval_and_reports_partial(isolated_projects_dir, monkeypatch):
+    """Danh sách chụp lúc đầu đã cũ (người dùng ghi chỗ sai, người bị bỏ giữa chừng): bảng không còn "review" thì không
+    duyệt, người không còn thì ghi lỗi, các người khác vẫn được duyệt (không 400 sau khi đã duyệt vài người)."""
+    make_case_project()
+    for eid in ("person_1", "person_2"):
+        asyncio.run(cs.draw_sheet(CPID, eid, CharMuse(), None))
+    cs.reject_sheet(CPID, "person_2", "tóc góc sau sai")   # vẫn còn file bảng, nhưng về "draft"
+    monkeypatch.setattr(cs, "review_ids", lambda cast: ["person_2", "person_99", "person_1"])
+    approved, failed = cs.approve_all(CPID)
+    assert approved == ["person_1"] and [f["entity_id"] for f in failed] == ["person_99"]
+    chars = cs.load_cast(CPID).characters
+    assert chars["person_1"].status == "approved" and chars["person_2"].status == "draft"
+
+
+def test_location_approve_all_rechecks_status(isolated_projects_dir, monkeypatch):
+    make_loc_project()
+    asyncio.run(ls.analyze_locations(LPID, llm=FakeLLM(GOOD)))
+    ids = list(ls.load_locations(LPID).locations)
+    for i in ids:
+        asyncio.run(ls.draw_plate(LPID, i, LocMuse()))
+    ls.reject_plate(LPID, ids[0], "thiếu cửa sổ")
+    monkeypatch.setattr(ls, "review_ids", lambda data: [ids[0], "loc_khong_co", ids[1]])
+    approved, failed = ls.approve_all(LPID)
+    assert approved == [ids[1]] and [f["entity_id"] for f in failed] == ["loc_khong_co"]
+    assert ls.load_locations(LPID).locations[ids[0]].status == "draft"
 
 
 # ------------------------------------------------------------------------------------------------ bối cảnh
@@ -163,7 +190,7 @@ def test_location_draw_all_then_approve_all(client, monkeypatch):
     st = _wait_done(client, base)
     assert st["done"] == 2 and [f["entity_id"] for f in st["failed"]] == [ids[0]] and st["drawn"] == [ids[1]]
     r = client.post(f"{base}/approve-all").json()
-    assert r == {"approved": 1, "location_ids": [ids[1]]}
+    assert r == {"approved": 1, "location_ids": [ids[1]], "failed": []}
     data = ls.load_locations(LPID).locations
     assert data[ids[0]].status == "failed" and data[ids[1]].status == "approved"
 

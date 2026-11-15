@@ -495,12 +495,29 @@ def batch_targets(data: ProjectLocations) -> list[LocationSheet]:
     return [v for v in data.locations.values() if v.status in BATCH_DRAW_STATUSES]
 
 
-def approve_all(project_id: str) -> list[str]:
-    """Duyệt mọi ảnh chuẩn đã vẽ đang chờ duyệt ("review"). Trả id đã duyệt."""
-    data = load_locations(project_id)
-    ids = [v.location_id for v in data.locations.values()
-           if v.status == "review" and v.plate_path and Path(v.plate_path).is_file()]
-    return [approve_plate(project_id, i).location_id for i in ids]
+def review_ids(data: ProjectLocations) -> list[str]:
+    return [v.location_id for v in data.locations.values()
+            if v.status == "review" and v.plate_path and Path(v.plate_path).is_file()]
+
+
+def approve_all(project_id: str) -> tuple[list[str], list[dict]]:
+    """Duyệt mọi ảnh chuẩn đã vẽ đang chờ duyệt ("review"); trạng thái kiểm lại trong khoá lúc duyệt. Một nơi lỗi không
+    chặn nơi khác: trả (id đã duyệt, [{entity_id, error}])."""
+    approved, failed = [], []
+    for lid in review_ids(load_locations(project_id)):
+        done = []
+
+        def change(s: LocationSheet) -> None:
+            if s.status == "review" and s.plate_path and Path(s.plate_path).is_file():
+                s.status, s.error = "approved", None
+                done.append(s.location_id)
+        try:
+            _update(project_id, lid, change)
+        except LookupError as e:   # bối cảnh đã bị bỏ hay tìm lại giữa chừng
+            failed.append({"entity_id": lid, "error": str(e)})
+            continue
+        approved.extend(done)
+    return approved, failed
 
 
 # --------------------------------------------------------------------------------- dùng khi tạo ảnh / video cảnh

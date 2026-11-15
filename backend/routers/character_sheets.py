@@ -263,5 +263,5 @@ async def draw_all_stop(project_id: str):
 
 @router.post("/projects/{project_id}/characters/approve-all")
 async def approve_all(project_id: str):
-    ids = await _call(cs.approve_all, project_id)
-    return {"approved": len(ids), "entity_ids": ids}
+    ids, failed = await _call(cs.approve_all, project_id)
+    return {"approved": len(ids), "entity_ids": ids, "failed": failed}
