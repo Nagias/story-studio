@@ -1601,6 +1601,7 @@ async function tcCreateEnglishVersion() {
     if (!started || !started.job_id) throw new Error('Máy chủ không trả mã việc tạo bản tiếng Anh.');
     job.jobId = started.job_id;
     job.startedAt = Date.now();
+    refreshLanguageVersionButton(AppState.currentProject);   // có mã việc rồi mới hiện được nút Huỷ
     showToast(started.already_running
       ? 'Bản tiếng Anh của dự án này đang được tạo sẵn: tiếp tục theo dõi việc đó, xong sẽ tự mở dự án mới.'
       : 'Đã bắt đầu tạo bản tiếng Anh. Nếu phải viết lại lời thì có thể mất vài phút; xong sẽ tự mở dự án mới.',
