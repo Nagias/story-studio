@@ -125,8 +125,10 @@
     const body = node('div', 'ws-op-pop-body');
     const notes = [];
     if (plan.images_climax) notes.push(`Gồm cả ${plan.images_climax} ảnh cho cảnh cao trào chưa có ảnh.`);
-    if (plan.climax_videos) {
-      notes.push('Cảnh cao trào: Muse vẽ lưới 9 khung, app tự duyệt rồi làm clip ngay (mỗi cảnh 10–75 phút).');
+    if (plan.climax_videos && plan.grid_turns) {
+      notes.push(`Cảnh cao trào có nhân vật cố định: Muse vẽ lưới 9 khung (${plan.grid_turns} lượt), app tự duyệt rồi làm clip ngay (mỗi cảnh 10–75 phút).`);
+    } else if (plan.climax_videos) {
+      notes.push('Cảnh cao trào không có nhân vật cố định: Muse làm clip thẳng từ ảnh cảnh, không vẽ lưới (mỗi cảnh 10–75 phút).');
     }
     const pending = plan.grids_pending_review || [];
     if (pending.length) {
