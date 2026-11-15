@@ -6,18 +6,17 @@
 - GET  /api/projects/{project_id}/one-pass/status   tiến độ: giai đoạn, cảnh đang làm, đã xong/tổng, lỗi, bỏ qua
 - POST /api/projects/{project_id}/one-pass/stop     dừng sau bước đang làm
 
-Ảnh một cảnh: gọi đúng route tạo ảnh cảnh của nút trên thẻ (`routers/api.generate_scene_image`: khoá nhân vật và khoá
-bối cảnh qua services/scene_locks.py), nguồn Muse; đường đó tự rơi sang 9router khi Muse lỗi thì giữ nguyên nhưng lý do
-ghi vào kết quả (`fallbacks`). Video một cảnh cao trào: `climax_video.run_scene_climax_video(auto_approve_grid=True)`
-với đúng hàm gọi Muse của luồng cao trào (`routers/climax_video.muse_call_starting_runner`).
+Ảnh một cảnh: `one_pass_visuals.draw_scene_image()`, đúng việc "Muse 2K" của nút trên thẻ và của khối xem trước prompt
+(khoá hình services/scene_locks.py), chỉ Muse, không rơi sang nguồn ảnh trả phí. Video một cảnh cao trào:
+`climax_video.run_scene_climax_video(auto_approve_grid=True)`. Cả hai gọi Muse bằng đúng hàm của luồng cao trào
+(`routers/climax_video.muse_call_starting_runner`: bật Fleet Runner nếu chưa chạy rồi đưa vào hàng việc và chờ).
 """
 import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from models.schemas import ImageGenRequest, Project
-from routers import api as api_router
+from models.schemas import Project
 from routers import climax_video as climax_router
 from security import validate_path_ids
 from services import climax_video, one_pass_visuals, project_service
@@ -25,9 +24,6 @@ from services import climax_video, one_pass_visuals, project_service
 logger = logging.getLogger("story_studio.one_pass_router")
 
 router = APIRouter(prefix="/api", tags=["One-pass visuals"], dependencies=[Depends(validate_path_ids)])
-
-IMAGE_PROVIDER = "meta_muse_cloud"   # dùng Muse (CLAUDE.md đường cấm 4: không tự chọn nguồn ảnh trả phí)
-
 
 async def _load(project_id: str) -> Project:
     try:
@@ -48,17 +44,6 @@ def _refuse_while_climax_busy(project_id: str) -> None:
     if project_id in climax_router._starting:
         raise HTTPException(status_code=409, detail="Dự án đang bắt đầu một lượt chọn cảnh hoặc tạo video, chờ chút "
                                                     "rồi bấm lại")
-
-
-async def draw_scene_image(project_id: str, scene_id: str) -> dict:
-    """Vẽ ảnh một cảnh bằng đúng route của nút trên thẻ; trả {"error", "provider", "fallback_reason"}."""
-    try:
-        res = await api_router.generate_scene_image(project_id, scene_id, ImageGenRequest(provider=IMAGE_PROVIDER))
-    except HTTPException as e:
-        return {"error": str(e.detail)}
-    if res.get("is_placeholder"):   # ảnh tạm offline không phải ảnh AI: không tính là xong
-        return {"error": "Chỉ tạo được ảnh tạm offline (không phải ảnh AI)", "provider": res.get("provider")}
-    return {"error": None, "provider": res.get("provider"), "fallback_reason": res.get("fallback_reason")}
 
 
 async def run_climax_scene(project_id: str, scene_id: str) -> dict:
@@ -86,8 +71,6 @@ async def one_pass_run(project_id: str):
         raise HTTPException(status_code=409, detail=str(e)) from None
     try:
         project = await _load(project_id)
-        if getattr(project, "is_demo", False):
-            raise HTTPException(status_code=400, detail="Dự án mẫu chỉ để xem, không tạo hình được")
         data = await asyncio.to_thread(one_pass_visuals.plan, project)
         if not data["images"] and not data["climax_videos"]:
             raise HTTPException(status_code=400, detail="Không còn ảnh hay video cao trào nào làm được"
@@ -95,7 +78,8 @@ async def one_pass_run(project_id: str):
                                                            if data["missing"] else ""))
 
         async def draw(scene_id: str) -> dict:
-            return await draw_scene_image(project_id, scene_id)
+            return await one_pass_visuals.draw_scene_image(project_id, scene_id,
+                                                           climax_router.muse_call_starting_runner)
 
         async def climax(scene_id: str) -> dict:
             return await run_climax_scene(project_id, scene_id)

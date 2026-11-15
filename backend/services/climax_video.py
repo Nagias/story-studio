@@ -491,7 +491,9 @@ def _scene_seconds(scene: Scene) -> float:
     raise ClimaxVideoError("Cảnh chưa có giọng đọc nên chưa biết lời kể dài bao lâu: thu giọng cảnh này trước")
 
 
-def _scene_image(scene: Scene, project_id: str) -> Path:
+def find_scene_image(scene: Scene, project_id: str) -> Optional[Path]:
+    """File ảnh của cảnh trong thư mục dự án (image_path hoặc images/<scene_id>.jpg), None nếu chưa có. Nút "Tạo hình
+    cho cả dự án" (services/one_pass_visuals.py) dùng để biết cảnh nào thiếu ảnh."""
     candidates = []
     if scene.image_path:
         candidates.append(_studio_path(scene.image_path))
@@ -499,7 +501,14 @@ def _scene_image(scene: Scene, project_id: str) -> Path:
     for cand in candidates:
         if cand.is_file() and is_within(cand, PROJECTS_DIR, STATIC_DIR):
             return cand.resolve()
-    raise ClimaxVideoError("Cảnh chưa có ảnh (trong thư mục dự án) để làm tham chiếu cho ảnh 9-grid")
+    return None
+
+
+def _scene_image(scene: Scene, project_id: str) -> Path:
+    found = find_scene_image(scene, project_id)
+    if found is None:
+        raise ClimaxVideoError("Cảnh chưa có ảnh (trong thư mục dự án) để làm tham chiếu cho ảnh 9-grid")
+    return found
 
 
 def _result_file(result: Any, kind: str) -> Path:

@@ -42,8 +42,9 @@ def base_image_prompt(project: Project, scene: Scene) -> str:
     return text
 
 
-def image_preview(project: Project, scene: Scene) -> dict:
-    """Chuỗi cuối cùng Muse nhận cho ảnh 2K của cảnh, ảnh đính kèm (tên file, vai), khoá đã áp."""
+def image_task(project: Project, scene: Scene) -> tuple[dict, dict]:
+    """(việc ảnh Muse 2K của cảnh trước khi vào Fleet Runner, khoá đã áp) — đúng như nút "Muse 2K" gửi qua
+    `routers/muse_bridge.create_task`. Nút "Tạo hình cho cả dự án" (services/one_pass_visuals.py) gửi đúng việc này."""
     prompt = base_image_prompt(project, scene)
     style = project.style_preset or JS_DEFAULT_STYLE
     params = {"resolution": "2K", "aspect_ratio": "16:9", "style_preset": style, "duration_sec": 5, "fps": 25,
@@ -54,6 +55,13 @@ def image_preview(project: Project, scene: Scene) -> dict:
     except ValueError as e:   # file danh sách hỏng: báo rõ như đường thật (409 ở create_task)
         raise PromptPreviewError(f"Không đọc được khoá hình của cảnh: {e}") from e
     scene_locks.apply_to_image_task(task, locks["location"], locks["characters"])
+    return task, locks
+
+
+def image_preview(project: Project, scene: Scene) -> dict:
+    """Chuỗi cuối cùng Muse nhận cho ảnh 2K của cảnh, ảnh đính kèm (tên file, vai), khoá đã áp."""
+    task, locks = image_task(project, scene)
+    style = task["parameters"]["style_preset"]
     attachments = task_attachments(task)
     roles = (task.get("parameters") or {}).get("attachment_roles") or []
     return {

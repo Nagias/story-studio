@@ -11,22 +11,29 @@ khung vẽ xong thì tự duyệt và làm clip luôn (`climax_video.run_scene_c
   trào đủ điều kiện: lưới, tự duyệt, clip. Cảnh lỗi ghi vào `failed` kèm lý do rồi đi tiếp; cảnh thiếu điều kiện ghi vào
   `skipped`; nghỉ `PACE_SEC` giữa hai lượt Muse (như services/look_batch.py); "Dừng" dừng sau bước đang làm.
 
-Việc vẽ một ảnh và làm video một cảnh do router truyền vào (`draw_image`, `run_climax`): router dùng đúng route tạo ảnh
-cảnh của nút trên thẻ (qua khoá hình `services/scene_locks.py`, CLAUDE.md đường cấm 16) và đúng hàm Muse của luồng cao
-trào. Module này không import routers/ và không tự ghi project.json.
+Ảnh một cảnh (`draw_scene_image()`): đúng việc "Muse 2K" mà nút trên thẻ gửi và khối "Prompt đầy đủ gửi Muse" hiện
+(`scene_prompt_preview.image_task()`: `muse_image_task.image_task_fields` + khoá hình `services/scene_locks.py`, CLAUDE.md
+đường cấm 16; phong cách dự án, không có thì `JS_DEFAULT_STYLE`), đưa vào hàng việc Muse và chờ xong như các đường Muse
+phía máy chủ khác (`muse_call` do router truyền vào). Đường này chỉ có Muse, không rơi sang nguồn ảnh trả phí (đường cấm 4).
+Không còn tài khoản Muse ảnh thì dừng pha ảnh, ghi lý do cho các cảnh còn lại. Video một cảnh cao trào do router truyền
+vào (`run_climax`). Module này không import routers/.
+
+Ghi dự án: kết quả ảnh do muse_bridge.complete_task gắn vào cảnh; nếu chưa gắn được thì `_attach_image()` gắn qua
+`project_service.save_project()`. `plan()` không gọi Muse nhưng có thể ghi ảnh ghép bảng nhân vật `board_<hash>.jpg`
+(bộ nhớ đệm của `cast_board()`, như services/scene_prompt_preview.py) và gọi ffprobe đo giọng đọc.
 """
 import asyncio
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional
 
-from config import PROJECTS_DIR, STATIC_DIR
+from config import PROJECTS_DIR
 from models.schemas import Project, Scene
 from security import is_within
 from services import character_sheets as cs
 from services import climax_video as cv
-from services import project_service
+from services import project_service, scene_prompt_preview
 
 logger = logging.getLogger("story_studio.one_pass_visuals")
 
@@ -36,9 +43,11 @@ PACE_SEC = 15   # nghỉ giữa hai lượt Muse, như look_batch.PACE_SEC (test
 PAGE_SCRIPT = ("script", "Kịch bản và giọng")
 PAGE_LOOK = ("look", "Hình mẫu")
 
-# Kết quả vẽ một ảnh: {"error": None | lời báo lỗi, "provider": ..., "fallback_reason": ... (đường ảnh tự rơi sang
-# nguồn khác thì ghi lý do, không giấu: CLAUDE.md đường cấm 4)}
-DrawImage = Callable[[str], Awaitable[dict]]
+# Lỗi cho biết không còn tài khoản Muse ảnh: các ảnh sau chắc chắn lỗi, dừng pha ảnh (như STOP_RUN_WORDS của cao trào)
+IMAGE_STOP_WORDS = ("Không có tài khoản Muse ảnh nào",)
+
+DrawImage = Callable[[str], Awaitable[dict]]   # vẽ ảnh một cảnh: {"error": None | lời báo lỗi}
+MuseCall = Callable[[dict], Awaitable[Any]]
 RunClimax = Callable[[str], Awaitable[dict]]   # trạng thái climax_video của cảnh sau lượt chạy
 
 
@@ -51,16 +60,9 @@ def scene_label(project: Project, scene: Scene) -> str:
     return f"Cảnh {index}" if index else scene.id
 
 
-def _studio_path(value: str) -> Path:
-    p = Path(value)
-    return p if p.is_absolute() else PROJECTS_DIR.parent / p
-
-
 def has_image(project_id: str, scene: Scene) -> bool:
-    """Cảnh đã có file ảnh trong thư mục dự án (cùng chỗ tìm như climax_video: image_path hoặc images/<scene_id>.jpg)."""
-    candidates = [_studio_path(scene.image_path)] if scene.image_path else []
-    candidates.append(project_service.get_scene_media_paths(project_id, scene.id)["image"])
-    return any(c.is_file() and is_within(c, PROJECTS_DIR, STATIC_DIR) for c in candidates)
+    """Cảnh đã có file ảnh trong thư mục dự án (đúng chỗ tìm của video cao trào)."""
+    return cv.find_scene_image(scene, project_id) is not None
 
 
 def _climax_check(project: Project, scene: Scene, kind: str) -> tuple[Optional[dict], int]:
@@ -100,6 +102,7 @@ def plan(project: Project) -> dict:
     need_image = [s for s in eligible if not has_image(project.id, s)]
     runnable: list[dict] = []
     missing: list[dict] = []
+    pending_review: list[dict] = []
     grid_turns = 0
     for s in climax:
         problem, grids = _climax_check(project, s, kinds.get(s.id, "cast"))
@@ -107,6 +110,9 @@ def plan(project: Project) -> dict:
             missing.append(problem)
             continue
         grid_turns += grids
+        state = cv.scene_state(s)
+        if state.get("status") == cv.GRID_REVIEW and state.get("grid_paths"):
+            pending_review.append({"scene_id": s.id, "label": scene_label(project, s)})
         runnable.append({"scene_id": s.id, "label": scene_label(project, s), "grid_turns": grids,
                          "needs_image": s.id in {x.id for x in need_image}})
     images_normal = [s.id for s in need_image if s.id not in climax_ids]
@@ -121,7 +127,25 @@ def plan(project: Project) -> dict:
         # ảnh: 1 lượt / cảnh; cao trào: lưới (trừ phong cảnh, đám đông, lưới đã có) + 1 việc agent-video
         "muse_turns": len(need_image) + grid_turns + len(runnable),
         "missing": missing,
+        "missing_groups": group_missing(project, missing),
+        # lưới đang chờ chủ dự án duyệt: lượt này tự duyệt rồi làm clip luôn (giao diện nêu tên trước khi chạy)
+        "grids_pending_review": pending_review,
     }
+
+
+def group_missing(project: Project, missing: list[dict]) -> list[dict]:
+    """Gộp các cảnh thiếu điều kiện theo đúng lý do (vd "Chưa có bảng nhân vật được duyệt: A" — 8 cảnh), theo thứ tự
+    gặp đầu tiên; `numbers` là số thứ tự cảnh như trên thẻ."""
+    order = {s.id: i for i, s in enumerate(project.scenes, 1)}
+    groups: dict[tuple[str, str], dict] = {}
+    for m in missing:
+        g = groups.setdefault((m["reason"], m["page"]), {"reason": m["reason"], "page": m["page"],
+                                                         "page_label": m["page_label"], "scene_ids": [],
+                                                         "numbers": []})
+        g["scene_ids"].append(m["scene_id"])
+        if m["scene_id"] in order:
+            g["numbers"].append(order[m["scene_id"]])
+    return list(groups.values())
 
 
 # --------------------------------------------------------------------------------------------------- lượt chạy nền
@@ -138,7 +162,6 @@ class OnePassJob:
     videos_done: list[str] = field(default_factory=list)
     failed: list[dict] = field(default_factory=list)      # {scene_id, label, step "image"|"climax", error}
     skipped: list[dict] = field(default_factory=list)     # {scene_id, label, step, reason}
-    fallbacks: list[dict] = field(default_factory=list)   # {scene_id, label, provider, reason}
     stop_requested: bool = False
     stopped: bool = False
     task: Optional[asyncio.Task] = None
@@ -152,7 +175,7 @@ class OnePassJob:
                 "current": self.current, "current_id": self.current_id, "images_total": self.images_total,
                 "climax_total": self.climax_total, "images_done": list(self.images_done),
                 "videos_done": list(self.videos_done), "failed": list(self.failed), "skipped": list(self.skipped),
-                "fallbacks": list(self.fallbacks), "stop_requested": self.stop_requested, "stopped": self.stopped}
+                "stop_requested": self.stop_requested, "stopped": self.stopped}
 
 
 _jobs: dict[str, OnePassJob] = {}
@@ -208,10 +231,57 @@ def _scene(project: Project, scene_id: str) -> Optional[Scene]:
     return next((s for s in project.scenes if s.id == scene_id), None)
 
 
+def _attach_image(project_id: str, scene_id: str, path: Path) -> None:
+    """Gắn ảnh Muse vừa về vào cảnh nếu muse_bridge.complete_task chưa gắn (nó bỏ qua lỗi ghi, chỉ ghi log)."""
+    project = _reload(project_id)
+    scene = _scene(project, scene_id)
+    if scene is None:
+        raise LookupError(f"Cảnh {scene_id} không còn trong dự án")
+    if scene.image_path and Path(scene.image_path).resolve() == path.resolve() and scene.status_image == "ready":
+        return
+    scene.image_path = str(path)
+    scene.image_url = f"/api/projects/{project_id}/media/images/{path.name}"
+    scene.status_image = "ready"
+    scene.metadata = dict(scene.metadata or {})
+    scene.metadata.pop("image_error", None)
+    project_service.save_project(project)
+
+
+def build_image_task(project_id: str, scene_id: str) -> dict:
+    """Việc ảnh "Muse 2K" của cảnh (đúng `scene_prompt_preview.image_task`), gắn dự án/cảnh và chỗ lưu."""
+    project = _reload(project_id)
+    scene = _scene(project, scene_id)
+    if scene is None:
+        raise LookupError(f"Cảnh {scene_id} không còn trong dự án")
+    task, _locks = scene_prompt_preview.image_task(project, scene)
+    task.update(project_id=project_id, scene_id=scene_id,
+                output_path=str(project_service.get_scene_media_paths(project_id, scene_id)["image"]))
+    return task
+
+
+async def draw_scene_image(project_id: str, scene_id: str, muse_call: MuseCall) -> dict:
+    """Vẽ ảnh một cảnh bằng việc "Muse 2K" của thẻ, chờ Muse xong. Trả {"error": None} hoặc {"error": lời báo lỗi};
+    không bao giờ báo xong khi không có file ảnh."""
+    try:
+        task = await asyncio.to_thread(build_image_task, project_id, scene_id)
+    except scene_prompt_preview.PromptPreviewError as e:
+        return {"error": str(e)}
+    try:
+        result = await muse_call(task)
+    except (RuntimeError, TimeoutError, OSError, ValueError) as e:
+        return {"error": f"Muse không vẽ được ảnh: {e}"}
+    path = result.get("output_path") if isinstance(result, dict) else None
+    out = Path(str(path)) if path else None
+    if out is None or not out.is_file() or not is_within(out, PROJECTS_DIR / project_id):
+        return {"error": "Muse báo xong nhưng không có file ảnh trong thư mục dự án"}
+    await asyncio.to_thread(_attach_image, project_id, scene_id, out)
+    return {"error": None}
+
+
 async def _image_phase(job: OnePassJob, project_id: str, items: list[tuple[str, str]], draw_image: DrawImage) -> bool:
     """Vẽ lần lượt ảnh còn thiếu. Trả True nếu đã dừng theo yêu cầu."""
     used_muse = False
-    for scene_id, label in items:
+    for k, (scene_id, label) in enumerate(items):
         if (used_muse or job.stop_requested) and await _pace(job, used_muse):
             return True
         used_muse = False
@@ -235,13 +305,16 @@ async def _image_phase(job: OnePassJob, project_id: str, items: list[tuple[str, 
             result, error = {}, f"Lỗi ngoài dự kiến: {type(e).__name__}: {e}"
         finally:
             job.done += 1
-        if error:
-            job.failed.append({"scene_id": scene_id, "label": label, "step": "image", "error": str(error)})
+        if not error:
+            job.images_done.append(scene_id)
             continue
-        job.images_done.append(scene_id)
-        if result.get("fallback_reason"):
-            job.fallbacks.append({"scene_id": scene_id, "label": label, "provider": result.get("provider"),
-                                  "reason": str(result["fallback_reason"])})
+        job.failed.append({"scene_id": scene_id, "label": label, "step": "image", "error": str(error)})
+        if any(w in str(error) for w in IMAGE_STOP_WORDS):   # không còn tài khoản ảnh: không thử các ảnh sau
+            for sid, lab in items[k + 1:]:
+                job.skipped.append({"scene_id": sid, "label": lab, "step": "image",
+                                    "reason": f"Dừng tạo ảnh vì không có tài khoản Muse ảnh: {error}"})
+                job.done += 1
+            break
     return job.stop_requested and job.stopped
 
 
