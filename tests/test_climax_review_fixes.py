@@ -113,7 +113,7 @@ def test_pick_keeps_failed_scene_with_approved_grid(client):  # noqa: F811
     asyncio.run(cv.run_scene_climax_video(pid, sid, muse_call=FakeMuse(pid, sid, clip_plan=lambda n: "error")))
     state = _scene_now(pid, sid).metadata["climax_video"]
     assert state["status"] == "failed" and state["grid_approved"] is True
-    assert client.post(f"/api/projects/{pid}/climax-video/pick").status_code == 200
+    assert client.post(f"/api/projects/{pid}/climax-video/pick?mode=score").status_code == 200
     after = _scene_now(pid, sid).metadata["climax_video"]
     assert after["grid_approved"] is True and after["grid_paths"] == state["grid_paths"]
 

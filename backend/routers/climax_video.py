@@ -1,6 +1,9 @@
 """API video cho cảnh cao trào (dự án vụ án). Xử lý ở services/climax_video.py.
 
-- POST /api/projects/{project_id}/climax-video/pick                 tự chọn cảnh có người đủ CLIMAX_RATIO thời lượng video
+- POST /api/projects/{project_id}/climax-video/pick?mode=ai|score   chọn cảnh đủ CLIMAX_RATIO thời lượng video: "ai" (mặc
+                                                                     định, chạy nền, services/climax_ai_pick.py) hoặc
+                                                                     "score" (chấm theo nhãn kịch bản, trả ngay)
+- GET  /api/projects/{project_id}/climax-video/pick-status          lượt AI chọn cảnh gần nhất (idle/running/done/failed)
 - PUT  /api/projects/{project_id}/climax-video/scenes/{scene_id}   bật/tắt một cảnh
 - POST /api/projects/{project_id}/climax-video/run                  chạy nền các cảnh đã chọn (tốn lượt Muse)
 - GET  /api/projects/{project_id}/climax-video/status               tiến độ từng cảnh
@@ -28,7 +31,8 @@ from routers.muse_bridge import (enqueue_and_wait_muse_task, ensure_local_fleet_
                                  usable_online_accounts)
 from runners import single_instance
 from security import is_within, validate_path_ids
-from services import climax_video, project_service
+from services import climax_ai_pick, climax_video, project_service
+from services.case_adaptation_steps import StepFailed
 
 logger = logging.getLogger("story_studio.climax_video_router")
 
@@ -42,6 +46,10 @@ KEEP_ON_PICK = ("ready", "grid_review", "grid_approved")   # "Chọn cảnh cao 
 WORKING = ("grid", "clips", "checking")
 # Một lượt chạy nền cho mỗi dự án (giữ tham chiếu để task không bị dọn giữa chừng)
 _running: dict[str, asyncio.Task] = {}
+# Lượt AI chọn cảnh (chạy nền, như "Tìm nhân vật" ở routers/character_sheets.py) và kết quả lượt gần nhất của từng dự án
+PICK_MODES = ("ai", "score")
+_picking: dict[str, asyncio.Task] = {}
+_pick_status: dict[str, dict] = {}
 
 
 class SceneToggle(BaseModel):
@@ -55,6 +63,16 @@ class GridFeedback(BaseModel):
 def _is_running(project_id: str) -> bool:
     task = _running.get(project_id)
     return task is not None and not task.done()
+
+
+def _is_picking(project_id: str) -> bool:
+    task = _picking.get(project_id)
+    return task is not None and not task.done()
+
+
+def _refuse_while_picking(project_id: str, what: str) -> None:
+    if _is_picking(project_id):
+        raise HTTPException(status_code=409, detail=f"AI đang chọn cảnh cao trào cho dự án này, chờ xong rồi {what}")
 
 
 def _state(scene) -> dict:
@@ -80,23 +98,81 @@ def _set_state(scene, state) -> None:
         scene.metadata["climax_video"] = state
 
 
-@router.post("/projects/{project_id}/climax-video/pick")
-async def pick_scenes(project_id: str):
-    """Đánh dấu "selected" cho cảnh chọn được; bỏ dấu "selected" cũ của cảnh khác; không đụng cảnh đã "ready"."""
-    if _is_running(project_id):
-        raise HTTPException(status_code=409, detail="Đang tạo video cao trào cho dự án này, chờ xong rồi chọn lại")
-    project = await _load(project_id)
-    chosen = await asyncio.to_thread(climax_video.pick_climax_scenes, project)
+def _apply_pick(project: Project, chosen: list[str], state_for) -> None:
+    """Đánh dấu "selected" (state_for(scene_id)) cho cảnh chọn được; bỏ dấu "selected" cũ của cảnh khác; không đụng
+    cảnh đã có công (KEEP_ON_PICK, hoặc grid đã duyệt kể cả khi làm clip lỗi)."""
+    wanted = set(chosen)
     for scene in project.scenes:
         status = _state(scene).get("status")
         if status in KEEP_ON_PICK or _state(scene).get("grid_approved"):
-            continue   # đã có công (grid đã duyệt, kể cả khi làm clip lỗi): không xoá
-        if scene.id in chosen:
-            _set_state(scene, {"status": "selected"})
+            continue
+        if scene.id in wanted and climax_video.is_eligible(scene):
+            _set_state(scene, state_for(scene.id))
         elif status == "selected":
             _set_state(scene, None)
+
+
+async def _ai_pick_job(project_id: str) -> None:
+    """Lượt AI chọn cảnh chạy nền. AI lỗi hẳn thì ghi "failed" kèm lý do và không ghi gì vào dự án (không tự quay về
+    cách chấm theo nhãn: CLAUDE.md đường cấm 3, 4)."""
+    try:
+        result = await climax_ai_pick.ai_pick(project_id)
+
+        def write() -> dict:
+            # Đọc lại ngay trước khi ghi: lượt AI có thể dài vài phút
+            project = project_service.get_project(project_id)
+            if project is None:
+                raise climax_ai_pick.ClimaxPickError(f"Không còn dự án {project_id}")
+            reasons, scores = result["reasons"], result["scores"]
+            _apply_pick(project, result["chosen"], lambda sid: {
+                "status": "selected", "picked_by": "ai", "reason": reasons.get(sid, ""), "ai_score": scores.get(sid)})
+            project_service.save_project(project)
+            return climax_video.coverage(project, result["chosen"])
+
+        cov = await asyncio.to_thread(write)
+        _pick_status[project_id] = {"state": "done", "mode": "ai", "scene_ids": result["chosen"], "coverage": cov,
+                                    "scored": len(result["scores"])}
+    except StepFailed as e:
+        _pick_status[project_id] = {"state": "failed", "mode": "ai", "error": e.user_message}
+    except climax_ai_pick.ClimaxPickError as e:
+        _pick_status[project_id] = {"state": "failed", "mode": "ai", "error": str(e)}
+    except Exception as e:   # lỗi ngoài dự kiến: ghi log và báo lên giao diện, không im lặng
+        logger.exception(f"AI chọn cảnh cao trào {project_id}: lỗi ngoài dự kiến")
+        _pick_status[project_id] = {"state": "failed", "mode": "ai",
+                                    "error": f"Lỗi ngoài dự kiến: {type(e).__name__}: {e}"}
+
+
+@router.post("/projects/{project_id}/climax-video/pick")
+async def pick_scenes(project_id: str, mode: str = "ai"):
+    """mode "ai" (mặc định): AI chấm từng cảnh rồi chọn, chạy nền; theo dõi ở pick-status. mode "score": chấm theo nhãn
+    kịch bản (nhịp, nhạc, tiếng động), trả ngay danh sách. Cả hai không đụng cảnh đã có công (KEEP_ON_PICK)."""
+    if mode not in PICK_MODES:
+        raise HTTPException(status_code=400, detail=f"mode phải là một trong: {', '.join(PICK_MODES)}")
+    if _is_running(project_id):
+        raise HTTPException(status_code=409, detail="Đang tạo video cao trào cho dự án này, chờ xong rồi chọn lại")
+    _refuse_while_picking(project_id, "chọn lại")
+    project = await _load(project_id)
+    if mode == "ai":
+        if not any(climax_video.is_eligible(s) for s in project.scenes):
+            raise HTTPException(status_code=400, detail="Dự án chưa có cảnh vẽ nào làm video được")
+        _pick_status[project_id] = {"state": "running", "mode": "ai"}
+        _picking[project_id] = asyncio.create_task(_ai_pick_job(project_id))
+        return {"picking": True, "mode": "ai"}
+    chosen = await asyncio.to_thread(climax_video.pick_climax_scenes, project)
+    _apply_pick(project, chosen, lambda sid: {"status": "selected", "picked_by": "score"})
     await asyncio.to_thread(project_service.save_project, project)
-    return {"scene_ids": chosen, "limit": len(chosen), "coverage": climax_video.coverage(project, chosen)}
+    cov = climax_video.coverage(project, chosen)
+    _pick_status[project_id] = {"state": "done", "mode": "score", "scene_ids": chosen, "coverage": cov}
+    return {"scene_ids": chosen, "limit": len(chosen), "coverage": cov, "mode": "score"}
+
+
+@router.get("/projects/{project_id}/climax-video/pick-status")
+async def pick_status(project_id: str):
+    await _load(project_id)
+    status = dict(_pick_status.get(project_id) or {"state": "idle"})
+    if status.get("state") == "running" and not _is_picking(project_id):   # task mất (không nên có): báo, không treo
+        status = {"state": "failed", "mode": "ai", "error": "Lượt AI chọn cảnh bị ngắt giữa chừng, bấm chọn lại"}
+    return status
 
 
 @router.put("/projects/{project_id}/climax-video/scenes/{scene_id}")
@@ -104,6 +180,7 @@ async def toggle_scene(project_id: str, scene_id: str, req: SceneToggle):
     """Bật (đánh dấu "selected") hoặc tắt một cảnh. Tắt cảnh đã có video: về lại ảnh, clip vẫn giữ trên đĩa."""
     if _is_running(project_id):
         raise HTTPException(status_code=409, detail="Đang tạo video cao trào cho dự án này, chờ xong rồi sửa")
+    _refuse_while_picking(project_id, "sửa")
     project = await _load(project_id)
     scene = next((s for s in project.scenes if s.id == scene_id), None)
     if scene is None:
@@ -115,7 +192,7 @@ async def toggle_scene(project_id: str, scene_id: str, req: SceneToggle):
     if req.enabled:
         # 50% là mức sàn thời lượng (CLAUDE.md mục 1.2 câu 24), không phải mức trần: bật thêm cảnh luôn được
         if status not in ("selected", *KEEP_ON_PICK) and not _state(scene).get("grid_approved"):
-            _set_state(scene, {"status": "selected"})
+            _set_state(scene, {"status": "selected", "picked_by": "manual"})
     else:
         if status == "ready" and scene.media_view_mode == "video":
             scene.media_view_mode = "image"
@@ -220,11 +297,12 @@ async def run_scenes(project_id: str):
     sách đưa vào hàng. Tốn lượt Muse."""
     if _is_running(project_id):
         raise HTTPException(status_code=409, detail="Đang tạo video cao trào cho dự án này")
+    _refuse_while_picking(project_id, "tạo video")
     project = await _load(project_id)
     queued = [s.id for s in project.scenes
               if climax_video.is_eligible(s) and _state(s).get("status") in RUNNABLE + WORKING]
     if not queued:
-        raise HTTPException(status_code=400, detail="Chưa có cảnh nào được chọn: bấm \"Chọn cảnh cao trào\" hoặc bật "
+        raise HTTPException(status_code=400, detail="Chưa có cảnh nào được chọn: bấm \"AI chọn cảnh cao trào\" hoặc bật "
                                                     "từng cảnh trước")
     _running[project_id] = asyncio.create_task(_run_all(project_id, queued))
     return {"queued": queued}
@@ -296,11 +374,13 @@ async def climax_status(project_id: str):
             scenes.append({"scene_id": scene.id, "status": state["status"], "error": state.get("error"),
                            **{k: state[k] for k in ("clips", "grids", "grid", "done", "attempts", "grid_version",
                                                     "muse_report", "media_count", "warnings", "scene_image_updated",
-                                                    "backup_image", "video_seconds", "motion_score")
+                                                    "backup_image", "video_seconds", "motion_score", "picked_by",
+                                                    "reason", "ai_score")
                               if k in state},
                            "grid_count": len(state.get("grid_paths") or [])})
     return {
         "running": _is_running(project_id),
+        "picking": _is_picking(project_id),
         "limit": await asyncio.to_thread(climax_video.climax_limit, project),
         "eligible": sum(1 for s in project.scenes if climax_video.is_eligible(s)),
         "scenes": scenes,

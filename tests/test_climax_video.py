@@ -473,7 +473,7 @@ def test_api_pick_toggle_and_ids(client):
     pid = project.id
     base = f"/api/projects/{pid}/climax-video"
     # tổng 64 giây -> cần >= 32: 002 (2 điểm), 004 (2 điểm, 4 giây), 006 (1 điểm), 003 (0 điểm) = 40 giây
-    r = client.post(f"{base}/pick")
+    r = client.post(f"{base}/pick?mode=score")
     assert r.status_code == 200 and r.json()["scene_ids"] == ["scene_002", "scene_003", "scene_004", "scene_006"]
     assert r.json()["limit"] == 4
     assert _statuses(pid) == {"scene_001": None, "scene_002": "selected", "scene_003": "selected",
@@ -495,7 +495,7 @@ def test_api_pick_toggle_and_ids(client):
             s.metadata["climax_video"] = {"status": "ready", "clips": 1, "grids": 1, "attempts": 1}
     project_service.save_project(p)
     cs.set_scene_cast(pid, "scene_003", [])
-    r = client.post(f"{base}/pick")
+    r = client.post(f"{base}/pick?mode=score")
     assert r.json()["scene_ids"] == ["scene_002", "scene_003", "scene_004", "scene_006"]
     assert _statuses(pid)["scene_004"] == "ready" and _statuses(pid)["scene_003"] == "selected"
     assert _statuses(pid)["scene_002"] == "selected"
@@ -507,7 +507,7 @@ def test_api_pick_toggle_and_ids(client):
         if s.id == "scene_006":
             s.duration = 40.0
     project_service.save_project(p)
-    r = client.post(f"{base}/pick")
+    r = client.post(f"{base}/pick?mode=score")
     assert "scene_003" not in r.json()["scene_ids"] and _statuses(pid)["scene_003"] is None
 
     st = client.get(f"{base}/status").json()
@@ -515,7 +515,7 @@ def test_api_pick_toggle_and_ids(client):
     assert {s["scene_id"]: s["status"] for s in st["scenes"]} == {"scene_002": "selected", "scene_004": "ready",
                                                                   "scene_006": "selected"}
 
-    assert client.post("/api/projects/proj_khong_co/climax-video/pick").status_code == 404
+    assert client.post("/api/projects/proj_khong_co/climax-video/pick?mode=score").status_code == 404
     assert client.get("/api/projects/proj_khong_co/climax-video/status").status_code == 404
     assert client.post("/api/projects/bad.id/climax-video/pick").status_code in (400, 404)
     assert client.put(f"{base}/scenes/bad%20id", json={"enabled": True}).status_code == 400
@@ -541,7 +541,7 @@ def test_api_run_in_background_and_409_while_running(client, monkeypatch):
     r = client.post(f"{base}/run")
     assert r.status_code == 200 and r.json() == {"queued": ["scene_004"]}
     assert client.post(f"{base}/run").status_code == 409
-    assert client.post(f"{base}/pick").status_code == 409
+    assert client.post(f"{base}/pick?mode=score").status_code == 409
     assert client.get(f"{base}/status").json()["running"] is True
 
     gate["open"] = True
@@ -551,7 +551,7 @@ def test_api_run_in_background_and_409_while_running(client, monkeypatch):
     assert client.get(f"{base}/scenes/scene_004/grid?i=1").status_code == 200
     assert client.get(f"{base}/scenes/scene_004/grid?i=2").status_code == 404
     assert client.post(f"{base}/scenes/scene_004/grid/reject", json={"feedback": ""}).status_code == 400
-    assert client.post(f"{base}/pick").json()["scene_ids"]                      # chọn lại không xoá grid đang chờ duyệt
+    assert client.post(f"{base}/pick?mode=score").json()["scene_ids"]                      # chọn lại không xoá grid đang chờ duyệt
     assert _statuses(pid)["scene_004"] == "grid_review"
     assert client.post(f"{base}/scenes/scene_004/grid/approve").json()["status"] == "grid_approved"
     for sid, st_ in _statuses(pid).items():                                    # bỏ cảnh khác vừa được chọn lại

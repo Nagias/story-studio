@@ -327,3 +327,37 @@ body[data-ws-page="scenes"] .ws-canvas-inner { padding-top: 16px; padding-bottom
   font-size: 10.5px; line-height: 1.5; color: var(--ws-body); background: var(--ws-soft); border-radius: 6px; padding: 6px 8px;
   max-height: 200px; overflow-y: auto; margin: 0; }
 .ws-mp-copy { padding: 2px 10px; font-size: 11px; gap: 4px; }
+/* Video cao trào trên trang Cảnh (climax_video.js): dải tổng kết + bộ lọc, công tắc "Làm video", thẻ được chọn */
+.ws-cx-summary { flex: none; border-bottom: 1px solid var(--ws-line); background: #fff; padding: 8px 16px; font-size: 13px;
+  color: var(--ws-body); display: flex; flex-direction: column; gap: 6px; }
+.ws-cx-summary[hidden] { display: none; }
+.ws-cx-sum-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ws-cx-sum-line b { color: var(--ws-ink); font-weight: 600; }
+.ws-cx-sum-low { color: #b45309; font-weight: 500; }
+.ws-cx-sum-note { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ws-nav); }
+.ws-cx-sum-error { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; color: #b91c1c;
+  border: 1px solid #fecaca; background: #fef2f2; border-radius: 8px; padding: 6px 10px; }
+.ws-cx-filter { display: inline-flex; border: 1px solid var(--ws-line); border-radius: 9999px; padding: 2px; gap: 2px; }
+.ws-cx-filter-btn { border: 0; background: transparent; border-radius: 9999px; padding: 3px 12px; font: inherit;
+  font-size: 12.5px; font-weight: 500; color: var(--ws-nav); cursor: pointer; }
+.ws-cx-filter-btn[aria-pressed="true"] { background: var(--ws-ink); color: #fff; }
+#scene-list-container.ws-cx-filter-video .scene-card:not(.ws-cx-on) { display: none; }
+#scene-list-container.ws-cx-filter-image .scene-card.ws-cx-on { display: none; }
+.scene-card.ws-cx-on { border: 2px solid var(--ws-ink) !important; }
+.ws-cx-tag { background: var(--ws-ink); color: #fff; border-radius: 4px; padding: 1px 8px; font-size: 12.5px; font-weight: 600;
+  letter-spacing: .02em; }
+.ws-cx-why { font-size: 12.5px; color: var(--ws-nav); margin: -6px 0 10px; line-height: 1.45; }
+.ws-cx-switch { position: relative; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--ws-ink);
+  cursor: pointer; user-select: none; white-space: nowrap; }
+.ws-cx-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.ws-cx-track { width: 30px; height: 17px; border-radius: 9999px; background: #d4d4d8; position: relative; flex: none;
+  transition: background .15s ease; }
+.ws-cx-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 9999px;
+  background: #fff; transition: transform .15s ease; }
+.ws-cx-switch input:checked + .ws-cx-track { background: var(--ws-ink); }
+.ws-cx-switch input:checked + .ws-cx-track::after { transform: translateX(13px); }
+.ws-cx-switch input:focus-visible + .ws-cx-track { outline: 2px solid var(--ws-ink); outline-offset: 2px; }
+.ws-cx-switch input:disabled + .ws-cx-track { opacity: .4; }
+.ws-cx-spinner { width: 13px; height: 13px; border: 2px solid var(--ws-line); border-top-color: var(--ws-ink); border-radius: 9999px;
+  display: inline-block; flex: none; animation: ws-cx-spin .8s linear infinite; }
+@keyframes ws-cx-spin { to { transform: rotate(360deg); } }
