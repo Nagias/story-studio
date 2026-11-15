@@ -701,7 +701,7 @@ Chủ dự án duyệt bản xem thử 15/11: "Duyệt, viết kế hoạch". Th
 - [x] Task 8: Hồ Sơ Kỳ Án vào trang Kịch bản
 - [x] Task 9: Gỡ các cửa sổ và nút trùng còn lại
 - [x] Task 10: Dọn màu trang trí sang hệ đen trắng xám (đỏ ban đầu: 296 chỗ lớp màu trang trí, index.html 106, app.js 128, climax_video.js 23, true_crime.js 14, youtube_seo.js 11, character_sheets.js 7, location_sheets.js 7; nay 0, test `tests/test_ui_palette.py`)
-- [ ] Task 11: Trang Tài khoản và kết nối — trạng thái kết nối
+- [x] Task 11: Trang Tài khoản và kết nối — trạng thái kết nối
 - [x] Task 12: Kiểm chứng cuối và tài liệu
 - Soát cả nhánh (model mạnh nhất): "sẵn sàng sau khi sửa", 5 lỗi đáng kể + 6 điểm nhỏ, sửa một lượt (commit `043b4e7`, `0864a3e`), soát lại: 11/11 đã sửa
 - Lỗi chỉ lộ ra khi bấm thật (người soát đọc mã chấm đạt): trang Kịch bản không hiện cảnh nào vì đọc `window.AppState`; sửa lời ở Kịch bản mà trang Cảnh vẫn lời cũ; dòng phong cách cũ sau khi đổi dự án; nút chính chưa thành viên thuốc đen
@@ -715,3 +715,21 @@ Chủ dự án duyệt bản xem thử 15/11: "Duyệt, viết kế hoạch". Th
 - [ ] Còn chờ chủ dự án: `projects/proj_crime_52c3a5e8/renders/thumbnail.jpg` do máy chủ tự vẽ khi controller mở trang Dựng của dự án MẪU (file mới, không ghi đè gì); giữ hay chuyển vào Thùng rác
 - [ ] Còn chờ chủ dự án: gộp nhánh `giao-dien-gon` vào `master`
 - Số lần gọi dịch vụ: LLM 0 lượt tính tiền (1 lần gọi thử bị từ chối vì cổng AI tắt), Muse 0, ảnh trả phí 0
+
+# TASKS — sửa thao tác sau khi chủ dự án xem thử giao diện gọn (15/11/2026, nhánh `giao-dien-gon`)
+Chủ dự án xem giao diện mới, góp ý 9 điểm (chọn cảnh cao trào không thấy gì, prompt video giống prompt ảnh, video 5/10 giây, không xem lớn được ảnh/video, làm lại một cảnh lấy prompt ở đâu, không huỷ được bản tiếng Anh, nhân vật phải AI tự tìm và vẽ, tạo một lần ăn ngay, nút dự án thừa và lưới dự án có ảnh). Quyết định 15/11: lưới 9 khung tự chạy tiếp không chờ duyệt; chọn cảnh cao trào bằng Gemini, "không cần tiết kiệm token". Kế hoạch: `C:\Users\pc\.claude\plans\wobbly-brewing-aurora.md`.
+- [x] A1 Bỏ nút dự án ở thanh bên; trang Dự án thành lưới thẻ có ảnh bìa (`cover_url`, chỉ đọc, không gọi đường tự tạo thumbnail)
+- [x] A2 Bấm ảnh/video trên thẻ cảnh để xem lớn (`media_viewer.js`); bảng nhân vật, ảnh bối cảnh cũng vậy
+- [x] A3 Thẻ cảnh hiện prompt thật gửi Muse (ảnh 2K; video theo lời thoại: số video và số giây; bản giao việc cao trào, lý do khi sẽ bị chặn); gỡ ô prompt video không được gửi đi; bỏ chữ "(10s)" ghi cứng
+- [x] A4 Gemini chọn cảnh cao trào theo nhóm 14 cảnh có kiểm, lý do trên thẻ; dải tổng kết "Làm video: N/M cảnh · X% thời lượng", bộ lọc Tất cả/Làm video/Ảnh, công tắc Làm video trên mọi thẻ
+- [x] A5 Nút Huỷ khi tạo bản tiếng Anh (dừng sau bước AI đang chạy, dọn dự án dở, không đụng bản Việt)
+- [x] A6 "AI tìm và vẽ tất cả" nhân vật và bối cảnh, "Duyệt tất cả", tiến độ và Dừng; báo trước số lượt Muse
+- [x] B "Tạo hình cho cả dự án": cảnh thường ra ảnh, cảnh cao trào ra lưới → tự duyệt → clip; báo trước số ảnh, số video, số lượt Muse, cảnh thiếu điều kiện gom theo nguyên nhân; ảnh đi đúng việc "Muse 2K" của thẻ (không rơi sang ảnh trả phí)
+- Mỗi việc: người làm riêng, người soát riêng (A3, A4, A6, B có lỗi quan trọng, đã sửa và bấm thử lại), controller bấm thử trên 8010
+- Lỗi chỉ lộ khi bấm thử (người làm báo đạt): nút Huỷ bản tiếng Anh không hiện trong lúc chạy (sửa `efdfd29`); ô xác nhận "Tạo hình cho cả dự án" cao 1.380 px, nút Chạy nằm ngoài màn hình 720 px, và 7 giây chờ không báo gì (sửa `dfb85c5`)
+### Bằng chứng (15/11/2026)
+- Gemini chọn cảnh cao trào chạy thật 1 lần trên `proj_ea5b04db`: 1 lượt AI, dưới 1 phút, 5 cảnh có điểm và lý do tiếng Việt, chọn 3 cảnh (67,7% thời lượng); đã tắt lại 3 cảnh qua công tắc của app, project.json giống bản sao
+- Bấm thử 8010 (`proj_ea5b04db`, `proj_crime_thucaotrao`): lưới 11 dự án; xem lớn ảnh/video, Esc/nền/× đóng; prompt đầy đủ và kế hoạch video trên thẻ; 2 khối video cho cảnh cao trào, lý do chặn đúng; dải tổng kết 40/78 cảnh 51%, lọc 40/38; Huỷ bản tiếng Anh (máy chủ giả lập): hiện Huỷ, "Đang huỷ…", trả nút; vẽ tất cả nhân vật: xác nhận "16 lượt" đúng 16 bảng nháp, tiến độ, Dừng (máy chủ giả lập); kế hoạch "Tạo hình cho cả dự án": 11 video, khoảng 22 lượt Muse, 27 cảnh thiếu bảng nhân vật duyệt; ô xác nhận vừa 1280x720 và 1024x640
+- Không file dự án nào bị ghi thêm trong các lần bấm thử (so `find projects -newer`)
+- [ ] Chưa chạy thật với Muse: "Tạo hình cho cả dự án" và "vẽ tất cả" (tốn lượt Muse, cần tài khoản video đăng nhập) — chờ chủ dự án đồng ý
+- Số lần gọi dịch vụ: LLM 1 lượt (Gemini chọn cảnh), Muse 0, ảnh trả phí 0
