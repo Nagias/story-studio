@@ -31,7 +31,7 @@ from routers.muse_bridge import (enqueue_and_wait_muse_task, ensure_local_fleet_
                                  usable_online_accounts)
 from runners import single_instance
 from security import is_within, validate_path_ids
-from services import climax_ai_pick, climax_video, project_service
+from services import climax_ai_pick, climax_video, one_pass_visuals, project_service
 from services.case_adaptation_steps import StepFailed
 
 logger = logging.getLogger("story_studio.climax_video_router")
@@ -76,7 +76,15 @@ def _is_picking(project_id: str) -> bool:
 _starting: set[str] = set()
 
 
+def _refuse_while_one_pass(project_id: str, what: str) -> None:
+    """Nút "Tạo hình cho cả dự án" (routers/one_pass_visuals.py) đang chạy cho dự án này: không chọn, sửa hay chạy chen."""
+    if one_pass_visuals.is_running(project_id):
+        raise HTTPException(status_code=409, detail=f"Đang chạy \"Tạo hình cho cả dự án\" cho dự án này, chờ xong "
+                                                    f"hoặc bấm Dừng rồi {what}")
+
+
 def _refuse_while_picking(project_id: str, what: str) -> None:
+    _refuse_while_one_pass(project_id, what)
     if _is_picking(project_id):
         raise HTTPException(status_code=409, detail=f"AI đang chọn cảnh cao trào cho dự án này, chờ xong rồi {what}")
     if project_id in _starting:
@@ -365,6 +373,7 @@ async def _grid_action(fn, *args) -> dict:
 async def approve_grid(project_id: str, scene_id: str):
     if _is_running(project_id):
         raise HTTPException(status_code=409, detail="Đang tạo video cao trào cho dự án này, chờ xong rồi duyệt")
+    _refuse_while_one_pass(project_id, "duyệt")
     state = await _grid_action(climax_video.approve_grid, project_id, scene_id)
     return {"scene_id": scene_id, "status": state.get("status")}
 
@@ -373,6 +382,7 @@ async def approve_grid(project_id: str, scene_id: str):
 async def reject_grid(project_id: str, scene_id: str, body: GridFeedback):
     if _is_running(project_id):
         raise HTTPException(status_code=409, detail="Đang tạo video cao trào cho dự án này, chờ xong rồi sửa")
+    _refuse_while_one_pass(project_id, "sửa")
     state = await _grid_action(climax_video.reject_grid, project_id, scene_id, body.feedback)
     return {"scene_id": scene_id, "status": state.get("status")}
 
@@ -383,6 +393,7 @@ async def redo_scene(project_id: str, scene_id: str):
     mỗi lần tốn tới 6 video + 4 ảnh Muse."""
     if _is_running(project_id):
         raise HTTPException(status_code=409, detail="Đang tạo video cao trào cho dự án này, chờ xong rồi làm lại")
+    _refuse_while_one_pass(project_id, "làm lại")
     state = await _grid_action(climax_video.redo_scene, project_id, scene_id)
     return {"scene_id": scene_id, "status": state.get("status")}
 
@@ -398,12 +409,13 @@ async def climax_status(project_id: str):
                            **{k: state[k] for k in ("clips", "grids", "grid", "done", "attempts", "grid_version",
                                                     "muse_report", "media_count", "warnings", "scene_image_updated",
                                                     "backup_image", "video_seconds", "motion_score", "picked_by",
-                                                    "reason", "ai_score")
+                                                    "reason", "ai_score", "grid_approved_by")
                               if k in state},
                            "grid_count": len(state.get("grid_paths") or [])})
     return {
         "running": _is_running(project_id),
         "picking": _is_picking(project_id),
+        "one_pass_running": one_pass_visuals.is_running(project_id),
         "limit": await asyncio.to_thread(climax_video.climax_limit, project),
         "eligible": sum(1 for s in project.scenes if climax_video.is_eligible(s)),
         "scenes": scenes,

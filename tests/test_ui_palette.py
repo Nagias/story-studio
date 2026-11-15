@@ -18,7 +18,7 @@ def test_no_decorative_colors_left():
 
 PRIMARY_IDS = [
     "btn-cinema-download-video", "btn-generate-custom-thumbnail", "btn-yt-seo-research", "btn-yt-seo-generate",
-    "btn-yt-seo-save", "btn-produce-from-board", "btn-auto-gen-all", "btn-climax-video-run",
+    "btn-yt-seo-save", "btn-produce-from-board", "btn-one-pass-run", "btn-climax-video-run",
     "btn-tc-outline-approve", "btn-tc-create-vi", "btn-create-project", "btn-step1-process-script",
     "btn-step1-process-comic",
 ]

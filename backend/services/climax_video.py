@@ -604,6 +604,9 @@ async def _muse(muse_call: MuseCall, thread: SceneThread, task: dict) -> dict:
     return result
 
 
+scene_seconds = _scene_seconds   # tên công khai: kế hoạch "Tạo hình cho cả dự án" (services/one_pass_visuals.py)
+
+
 def prepare_scene(scene: Scene, project_id: str) -> tuple[float, Path]:
     """(số giây lời kể, ảnh cảnh) mà mọi lượt cao trào cần; thiếu thì ClimaxVideoError (chưa gọi Muse). Bản xem trước
     prompt trên thẻ cảnh (services/scene_prompt_preview.py) gọi đúng hàm này."""
@@ -726,7 +729,15 @@ def approve_grid(project_id: str, scene_id: str) -> dict:
     state = _scene_state(scene)
     if state.get("status") != GRID_REVIEW or not state.get("grid_paths"):
         raise ClimaxVideoError("Cảnh không có ảnh grid đang chờ duyệt")
-    return _merge_climax(project_id, scene_id, {"status": GRID_APPROVED, "grid_approved": True, "error": None})
+    return _merge_climax(project_id, scene_id, {"status": GRID_APPROVED, "grid_approved": True,
+                                                "grid_approved_by": "manual", "error": None})
+
+
+def _auto_approve_grid(project_id: str, scene_id: str) -> dict:
+    """Tự duyệt grid vừa vẽ (nút "Tạo hình cho cả dự án", chủ dự án 15/11/2026: vẽ lưới xong thì làm clip luôn, không
+    dừng chờ duyệt); ghi rõ `grid_approved_by: "auto"` để phân biệt với grid chủ dự án tự duyệt."""
+    return _merge_climax(project_id, scene_id, {"status": GRID_APPROVED, "grid_approved": True,
+                                                "grid_approved_by": "auto", "error": None})
 
 
 def reject_grid(project_id: str, scene_id: str, feedback: str) -> dict:
@@ -739,7 +750,7 @@ def reject_grid(project_id: str, scene_id: str, feedback: str) -> dict:
     state = _scene_state(scene)
     if not state.get("grid_paths") or state.get("status") not in (GRID_REVIEW, GRID_APPROVED, "failed"):
         raise ClimaxVideoError("Cảnh chưa có ảnh grid để vẽ lại (hoặc đang chạy)")
-    return _merge_climax(project_id, scene_id, {"status": "selected", "grid_approved": None,
+    return _merge_climax(project_id, scene_id, {"status": "selected", "grid_approved": None, "grid_approved_by": None,
                                                 "grid_feedback": list(state.get("grid_feedback") or []) + [fb]})
 
 
@@ -846,8 +857,11 @@ def redo_scene(project_id: str, scene_id: str) -> dict:
 
 
 async def run_scene_climax_video(project_id: str, scene_id: str, muse_call: MuseCall,
-                                 account: Optional[str] = None) -> dict:
+                                 account: Optional[str] = None, auto_approve_grid: bool = False) -> dict:
     """Bước tiếp theo của một cảnh: grid đã duyệt thì làm clip, không thì vẽ grid (rồi dừng chờ duyệt).
+
+    `auto_approve_grid` (nút "Tạo hình cho cả dự án"): grid vẽ xong (hoặc đang chờ duyệt từ lượt trước) thì tự duyệt
+    (`grid_approved_by: "auto"`) rồi làm clip ngay trong cùng lượt, cùng side chat. Không bật cờ: như cũ.
 
     Id sai, dự án/cảnh không có: LookupError/ValueError (chưa gọi Muse). Muse lỗi hay clip không đạt: ghi
     {"status": "failed", "error": ...} vào cảnh, giữ ảnh, trả trạng thái đó. Lỗi ngoài dự kiến: ghi "failed" rồi ném tiếp.
@@ -856,6 +870,9 @@ async def run_scene_climax_video(project_id: str, scene_id: str, muse_call: Muse
     state = _scene_state(scene)
     if state.get("grid_approved"):
         return await run_scene_clips(project_id, scene_id, muse_call, account)
+    if auto_approve_grid and state.get("status") == GRID_REVIEW and state.get("grid_paths"):
+        await asyncio.to_thread(_auto_approve_grid, project_id, scene_id)
+        return await run_scene_clips(project_id, scene_id, muse_call, account)
     # Xếp loại lại mỗi lần (không tin cờ đã lưu: cờ "landscape" cũ gắn cả cho cảnh có người không tên)
     kind = await asyncio.to_thread(scene_people_kind, project, scene)
     if kind != "cast":
@@ -863,4 +880,9 @@ async def run_scene_climax_video(project_id: str, scene_id: str, muse_call: Muse
                                 {"landscape": kind == "none", "crowd": kind == "unnamed"})
         return await run_scene_clips(project_id, scene_id, muse_call, account)
     await asyncio.to_thread(_merge_climax, project_id, scene_id, {"landscape": None, "crowd": None})
-    return await run_scene_grid(project_id, scene_id, muse_call, account)
+    state = await run_scene_grid(project_id, scene_id, muse_call, account)
+    if not auto_approve_grid or state.get("status") != GRID_REVIEW:
+        return state
+    await asyncio.to_thread(_auto_approve_grid, project_id, scene_id)
+    await _pace()
+    return await run_scene_clips(project_id, scene_id, muse_call, account)

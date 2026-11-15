@@ -362,3 +362,17 @@ body[data-ws-page="scenes"] .ws-canvas-inner { padding-top: 16px; padding-bottom
   display: inline-block; flex: none; animation: ws-cx-spin .8s linear infinite; }
 @keyframes ws-cx-spin { to { transform: rotate(360deg); } }
 .ws-btn.ws-cx-busy { opacity: .6; cursor: wait; }
+
+/* ---------- Trang Cảnh: "Tạo hình cho cả dự án" (one_pass.js) ---------- */
+.ws-op-strip { flex: none; border-bottom: 1px solid var(--ws-line); background: #fff; padding: 6px 16px; font-size: 12.5px; }
+.ws-op-hint { color: var(--ws-mute); margin: 0; }
+.ws-op-progress { display: flex; align-items: center; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+.ws-op-progress[hidden] { display: none; }
+.ws-op-bar { width: 160px; height: 6px; border-radius: 9999px; background: #e4e4e7; overflow: hidden; flex: none; }
+.ws-op-fill { height: 100%; width: 0; background: var(--ws-ink); transition: width .3s; }
+.ws-op-text { color: var(--ws-body); flex: 1; min-width: 200px; }
+.ws-op-pop { width: min(400px, 90vw); }
+.ws-op-pop-title { font-weight: 600; color: var(--ws-ink); margin: 0 0 6px; font-size: 13.5px; }
+.ws-op-pop-warn { color: #b45309; font-weight: 500; font-size: 12.5px; margin: 8px 0 4px; }
+.ws-op-missing { margin: 0 0 6px 16px; padding: 0; list-style: disc; font-size: 12.5px; color: var(--ws-body); }
+.ws-op-pop-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
