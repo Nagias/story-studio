@@ -41,6 +41,17 @@ def test_release_ships_workspace_files():
     assert src.count("backend/static/workspace.css") >= 1 and src.count("backend/static/workspace.js") >= 2
 
 
+def test_release_ships_every_static_file_index_loads():
+    """Mọi file .js/.css trong /static mà index.html nạp phải nằm trong REQUIRED_FILES của gói bán
+    (15/11/2026 ba file mới scene_prompts.js, look_batch.js, one_pass.js suýt bị bỏ khỏi gói)."""
+    import re
+    src = (ROOT / "tools" / "build_release.py").read_text(encoding="utf-8")
+    required = src[src.index("REQUIRED_FILES = ["):src.index("]", src.index("REQUIRED_FILES = ["))]
+    loaded = set(re.findall(r'/static/([\w.-]+\.(?:js|css))', INDEX_HTML))
+    missing = sorted(f for f in loaded if f'"backend/static/{f}"' not in required)
+    assert not missing, missing
+
+
 PLACEMENT |= {"btn-add-scene": "script", "select-voice": "script", "btn-preview-voice-sample": "script",
               "btn-regen-all-voices": "script", "script-scene-list": "script"}
 

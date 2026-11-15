@@ -47,6 +47,9 @@ REQUIRED_FILES = [
     "backend/static/location_sheets.js",  # cửa sổ Bối cảnh ở Bước 2 (khoá bối cảnh)
     "backend/static/media_viewer.js",  # xem lớn ảnh/video dùng chung
     "backend/static/scene_muse_video.js",  # nút "Muse Video" trên thẻ cảnh: video theo lời thoại
+    "backend/static/scene_prompts.js",  # thẻ cảnh hiện prompt thật gửi Muse
+    "backend/static/look_batch.js",  # Hình mẫu: vẽ tất cả / duyệt tất cả nhân vật và bối cảnh
+    "backend/static/one_pass.js",  # trang Cảnh: nút "Tạo hình cho cả dự án"
     "backend/static/tailwind.css",  # CSS Tailwind build sẵn (index.html không còn dùng CDN)
     "run.py",
     "run.bat",
