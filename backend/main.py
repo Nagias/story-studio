@@ -27,6 +27,7 @@ from routers.climax_video import router as climax_video_router
 from routers.character_sheets import router as character_sheets_router
 from routers.location_sheets import router as location_sheets_router
 from routers.scene_muse_video import router as scene_muse_video_router
+from routers.scene_prompt_preview import router as scene_prompt_preview_router
 from routers.video_share import router as video_share_router
 from routers.connections import router as connections_router
 from services import case_worker
@@ -120,6 +121,7 @@ app.include_router(climax_video_router)
 app.include_router(character_sheets_router)
 app.include_router(location_sheets_router)
 app.include_router(scene_muse_video_router)
+app.include_router(scene_prompt_preview_router)
 app.include_router(video_share_router)
 app.include_router(connections_router)
 

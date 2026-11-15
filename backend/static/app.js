@@ -1211,7 +1211,7 @@ function renderSceneList() {
     if (isGenImage || isGenVoice || isGenVideo) {
       statusBadgeHtml = `<span class="text-[11px] bg-slate-50 text-slate-700 px-2 py-0.5 rounded border border-slate-200 animate-pulse font-semibold flex items-center gap-1"><i class="fa-solid fa-spinner fa-spin"></i> Đang sinh AI... <button type="button" onclick="resetSceneImageStatus(${idx})" class="text-[9px] underline ml-1 text-slate-900 cursor-pointer">Bỏ qua</button></span>`;
     } else if (hasVideo && hasVoice) {
-      statusBadgeHtml = `<span class="text-[11px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 font-semibold flex items-center gap-1"><i class="fa-solid fa-circle-play text-emerald-600"></i> Đủ Voice & Video (10s)</span>`;
+      statusBadgeHtml = `<span class="text-[11px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 font-semibold flex items-center gap-1"><i class="fa-solid fa-circle-play text-emerald-600"></i> Đủ Voice & Video${scene.duration ? escapeHtml(` · ${Number(scene.duration).toFixed(1)}s`) : ''}</span>`;
     } else if (sceneHasRealVisual(scene) && hasVoice) {
       statusBadgeHtml = `<span class="text-[11px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 font-semibold"><i class="fa-solid fa-check mr-1"></i> Đủ Voice & Ảnh</span>`;
     } else if (hasVideo && !hasVoice) {
@@ -1355,7 +1355,7 @@ function renderSceneList() {
                     onclick="switchScenePromptTab(${idx}, 'image')" 
                     id="btn-tab-img-${idx}" 
                     class="px-2.5 py-1 rounded-md text-[10px] font-extrabold ${(!scene.active_prompt_tab || scene.active_prompt_tab === 'image') ? 'bg-white text-slate-700 shadow-2xs border border-slate-200' : 'text-slate-500 hover:text-slate-800'} transition cursor-pointer flex items-center gap-1.5"
-                    title="Chỉnh sửa mô tả hình ảnh tĩnh (Visual Prompt)"
+                    title="Mô tả cảnh để vẽ ảnh 2K, và chữ đầy đủ gửi Muse"
                   >
                     <i class="fa-solid fa-image text-slate-500 text-[10px]"></i>
                     <span>Prompt Ảnh (2K)</span>
@@ -1365,35 +1365,35 @@ function renderSceneList() {
                     onclick="switchScenePromptTab(${idx}, 'video')" 
                     id="btn-tab-vid-${idx}" 
                     class="px-2.5 py-1 rounded-md text-[10px] font-extrabold ${scene.active_prompt_tab === 'video' ? 'bg-white text-slate-700 shadow-2xs border border-slate-200' : 'text-slate-500 hover:text-slate-800'} transition cursor-pointer flex items-center gap-1.5"
-                    title="Chỉnh sửa chuyển động nhân vật & góc quay (Video Motion Prompt)"
+                    title="Số video, số giây và prompt từng video mà nút Muse Video sẽ gửi (chỉ đọc)"
                   >
                     <i class="fa-solid fa-film text-slate-500 text-[10px]"></i>
-                    <span>Prompt Video (Chuyển động)</span>
+                    <span>Video gửi Muse</span>
                   </button>
                 </div>
                 <span class="text-[9px] font-mono ${scene.active_prompt_tab === 'video' ? 'text-slate-700 font-bold' : 'text-slate-400'}" id="prompt-spec-${idx}">
-                  ${scene.active_prompt_tab === 'video' ? '🎬 5s Motion • Nhân vật & Máy quay' : '8K • Cinema Masterpiece'}
+                  ${scene.active_prompt_tab === 'video' ? 'Dài theo lời kể' : '2K • 16:9'}
                 </span>
               </div>
 
               <!-- Textarea for Image Prompt -->
               <div id="prompt-container-img-${idx}" class="${(!scene.active_prompt_tab || scene.active_prompt_tab === 'image') ? '' : 'hidden'}">
+                <div class="ws-mp-label">Mô tả cảnh (bạn sửa được)</div>
                 <textarea 
                   oninput="updateSceneVisualPromptLive(${idx}, this.value)"
                   onchange="updateSceneVisualPrompt(${idx}, this.value)" 
                   class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-[11px] text-slate-700 focus:bg-white focus:border-slate-700 focus:outline-none font-mono transition shadow-2xs resize-none h-14 leading-relaxed"
                   placeholder="Mô tả bối cảnh hình ảnh AI 2K/8K (Image Prompt)..."
                 >${escapeHtml(scene.visual_prompt || scene.image_prompt || '')}</textarea>
+                <details class="ws-mp" data-muse-prompt-kind="image" data-scene-index="${escapeHtml(idx)}">
+                  <summary>Prompt đầy đủ gửi Muse</summary>
+                  <div class="ws-mp-body" data-muse-prompt-body><div class="ws-mp-note">Mở ra để xem chữ Muse nhận.</div></div>
+                </details>
               </div>
 
-              <!-- Textarea for Video Motion Prompt -->
+              <!-- Video gửi Muse: chỉ đọc (scene_prompts.js tải khi tab hiện) -->
               <div id="prompt-container-vid-${idx}" class="${scene.active_prompt_tab === 'video' ? '' : 'hidden'}">
-                <textarea 
-                  oninput="updateSceneVideoPromptLive(${idx}, this.value)"
-                  onchange="updateSceneVideoPrompt(${idx}, this.value)" 
-                  class="w-full bg-slate-50/40 border border-slate-200 rounded-lg p-2 text-[11px] text-slate-900 focus:bg-white focus:border-slate-700 focus:outline-none font-mono transition shadow-2xs resize-none h-14 leading-relaxed"
-                  placeholder="Mô tả hành động nhân vật & chuyển động máy quay (ví dụ: thám tử bước đi chậm rãi trong mưa, áo khoác bay theo gió, đèn xe cảnh sát nhấp nháy, camera tracking theo bước chân)..."
-                >${escapeHtml(scene.video_prompt || '')}</textarea>
+                <div class="ws-mp-body" style="padding:0" data-muse-prompt-kind="video" data-scene-index="${escapeHtml(idx)}" data-muse-prompt-body><div class="ws-mp-note">Đang chờ tải…</div></div>
               </div>
             </div>
 
@@ -2004,33 +2004,11 @@ function updateSceneVisualPromptLive(index, newPrompt) {
   project.scenes[index].image_prompt = newPrompt;
 }
 
-function updateSceneVideoPrompt(index, newPrompt) {
-  const project = AppState.currentProject;
-  if (!project || !project.scenes[index]) return;
-
-  project.scenes[index].video_prompt = newPrompt;
-  saveStateToLocal();
-}
-
-function updateSceneVideoPromptLive(index, newPrompt) {
-  const project = AppState.currentProject;
-  if (!project || !project.scenes[index]) return;
-
-  project.scenes[index].video_prompt = newPrompt;
-}
-
 function switchScenePromptTab(index, tab) {
   const project = AppState.currentProject;
   if (!project || !project.scenes || !project.scenes[index]) return;
   const scene = project.scenes[index];
   scene.active_prompt_tab = tab;
-
-  // Tự động khởi tạo prompt chuyển động điện ảnh nếu chưa có
-  if (tab === 'video' && (!scene.video_prompt || scene.video_prompt.trim() === '')) {
-    const rawImgPrompt = scene.image_prompt || scene.visual_prompt || scene.text || "";
-    scene.video_prompt = `${rawImgPrompt}, cinematic continuous human walking motion, person moving forward through the scene, natural dynamic character movement, camera tracking front shot, fluid realistic motion`;
-    saveStateToLocal();
-  }
 
   const tabImgBtn = document.getElementById(`btn-tab-img-${index}`);
   const tabVidBtn = document.getElementById(`btn-tab-vid-${index}`);
@@ -2046,15 +2024,11 @@ function switchScenePromptTab(index, tab) {
       tabVidBtn.className = "px-2.5 py-1 rounded-md text-[10px] font-extrabold bg-white text-slate-700 shadow-2xs border border-slate-200 transition cursor-pointer flex items-center gap-1.5";
     }
     if (containerImg) containerImg.classList.add('hidden');
-    if (containerVid) {
-      containerVid.classList.remove('hidden');
-      const vidTa = containerVid.querySelector('textarea');
-      if (vidTa) {
-        vidTa.value = scene.video_prompt || '';
-      }
-    }
+    if (containerVid) containerVid.classList.remove('hidden');
+    // Prompt video thật (chỉ đọc) theo lời kể: scene_prompts.js hỏi máy chủ
+    if (typeof window.loadSceneMusePrompt === 'function') window.loadSceneMusePrompt(index, 'video');
     if (specBadge) {
-      specBadge.textContent = "🎬 5s Motion • Nhân vật & Máy quay";
+      specBadge.textContent = "Dài theo lời kể";
       specBadge.className = "text-[9px] font-mono text-slate-700 font-bold";
     }
   } else {
@@ -2069,7 +2043,7 @@ function switchScenePromptTab(index, tab) {
       containerImg.classList.remove('hidden');
     }
     if (specBadge) {
-      specBadge.textContent = "8K • Cinema Masterpiece";
+      specBadge.textContent = "2K • 16:9";
       specBadge.className = "text-[9px] font-mono text-slate-400";
     }
   }
@@ -4358,8 +4332,6 @@ window.updateSceneText = updateSceneText;
 window.updateSceneVisualPrompt = updateSceneVisualPrompt;
 window.updateSceneVisualPromptLive = updateSceneVisualPromptLive;
 window.switchScenePromptTab = switchScenePromptTab;
-window.updateSceneVideoPrompt = updateSceneVideoPrompt;
-window.updateSceneVideoPromptLive = updateSceneVideoPromptLive;
 window.playSceneVoice = playSceneVoice;
 window.togglePlayVoiceSample = togglePlayVoiceSample;
 window.seekSceneAudio = seekSceneAudio;

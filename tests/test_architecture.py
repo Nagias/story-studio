@@ -241,7 +241,7 @@ def test_toasts_escape_untrusted_text():
 # Khoá cứng từ 22/10/2026 (CLAUDE.md mục 2.4): đã gặp 9 chỗ ở thư viện ảnh Muse (d33d9df). Đếm mọi ${...} chưa lọc nằm
 # trong chuỗi `...` có thẻ HTML; chỗ cũ ghi đúng số lần (gồm cả số, chữ nội bộ an toàn — chưa rà từng chỗ).
 ALLOWED_UNESCAPED_HTML_INTERPOLATIONS = {
-    "backend/static/app.js": 88,
+    "backend/static/app.js": 86,
     "backend/static/true_crime.js": 28,
 }
 _REGEX_PREV = set("(,=:[!&|?{};+-*%<>~^")
