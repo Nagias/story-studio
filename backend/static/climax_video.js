@@ -9,11 +9,12 @@
   const el = (id) => document.getElementById(id);
   const POLL_MS = 4000;
   const PICK_POLL_MS = 2000;
-  const TARGET_PERCENT = 50;   // services/climax_video.CLIMAX_RATIO: mức sàn thời lượng làm bằng video Muse
+  const TARGET_PERCENT = 50;
+  const LOST_PICK_MESSAGE = 'Lượt chọn bị gián đoạn, bấm lại';   // như routers/climax_video.LOST_PICK_MESSAGE   // services/climax_video.CLIMAX_RATIO: mức sàn thời lượng làm bằng video Muse
   // picking: AI (Gemini qua 9router) đang chấm cảnh; pickError: lỗi lượt AI gần nhất (hiện trong dải tổng kết);
   // filter: bộ lọc thẻ cảnh 'all' | 'video' | 'image' (ẩn thẻ bằng lớp CSS trên #scene-list-container)
   const cx = { polling: null, running: false, lastSignature: '', cast: null, share: null,
-    picking: false, pickError: '', pickTimer: null, filter: 'all' };
+    picking: false, pickError: '', pickTimer: null, pickGen: 0, filter: 'all' };
 
   const LABEL = {
     selected: ['🎬 Sẽ làm video', 'bg-slate-50 text-slate-700 border-slate-200'],
@@ -104,6 +105,7 @@
     run.classList.toggle('cursor-not-allowed', disabled);
     pick.disabled = cx.running || cx.picking;
     pick.classList.toggle('opacity-30', cx.running);
+    pick.classList.toggle('ws-cx-busy', cx.picking && !cx.running);   // đang chọn: mờ vừa, vòng xoay vẫn nhìn rõ
     const pickLabel = pick.querySelector('span:not(.ws-cx-spinner)');
     if (pickLabel) pickLabel.textContent = cx.picking ? 'AI đang đọc kịch bản…' : 'AI chọn cảnh cao trào';
     let spin = pick.querySelector('.ws-cx-spinner');
@@ -513,31 +515,43 @@
     }
   }
 
+  // Hỏi pick-status bằng setTimeout nối tiếp (lần sau chỉ hẹn khi lần trước đã trả lời): không bao giờ có hai lần hỏi
+  // cùng lúc nên afterPick chạy đúng một lần. cx.pickGen đổi khi dừng hoặc đổi dự án: câu trả lời đến muộn bị bỏ.
   function startPickPolling() {
     stopPickPolling();
     cx.picking = true;
     decorateCards();
-    cx.pickTimer = setInterval(pollPick, PICK_POLL_MS);
+    const gen = cx.pickGen;
+    const pid = project()?.id;
+    cx.pickTimer = setTimeout(() => pollPick(gen, pid), PICK_POLL_MS);
   }
 
   function stopPickPolling() {
-    if (cx.pickTimer) clearInterval(cx.pickTimer);
+    if (cx.pickTimer) clearTimeout(cx.pickTimer);
     cx.pickTimer = null;
+    cx.pickGen = (cx.pickGen || 0) + 1;
   }
 
-  async function pollPick() {
-    let st;
+  async function pollPick(gen, pid) {
+    const stale = () => gen !== cx.pickGen || project()?.id !== pid;
+    if (stale()) return;
+    let st = null;
     try {
       st = await call('GET', '/pick-status');
     } catch (err) {
       console.warn('climax-video pick-status', err);
+    }
+    if (stale()) return;
+    if (!st || st.state === 'running') {
+      cx.pickTimer = setTimeout(() => pollPick(gen, pid), PICK_POLL_MS);
       return;
     }
-    if (st.state === 'running') return;
     stopPickPolling();
     cx.picking = false;
-    if (st.state === 'failed') {
-      cx.pickError = st.error || 'không rõ lý do';
+    // "idle" lúc đang chờ: máy chủ không còn biết lượt này (khởi động lại giữa chừng). Không phải "AI không chọn cảnh nào"
+    if (st.state === 'idle') st = { state: 'failed', error: LOST_PICK_MESSAGE };
+    if (st.state !== 'done') {
+      cx.pickError = st.error || LOST_PICK_MESSAGE;
       decorateCards();
       showToast(`AI không chọn được cảnh: ${escapeHtml(cx.pickError)}`, 'error', 9000);
       return;

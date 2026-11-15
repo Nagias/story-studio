@@ -154,7 +154,7 @@ def choose(project: Project, scores: dict[str, float], people: dict[str, bool]) 
 
 
 def _people_map(project: Project, scenes: list[Scene]) -> dict[str, bool]:
-    return {s.id: climax_video.scene_people_kind(project, s) != "none" for s in scenes}
+    return {sid: kind != "none" for sid, kind in climax_video.scene_people_kinds(project, scenes).items()}
 
 
 async def ai_pick(project_id: str, llm: Optional[LLMCall] = None) -> dict:

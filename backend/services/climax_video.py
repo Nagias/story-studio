@@ -180,10 +180,19 @@ def scene_people_kind(project: Project, scene: Scene) -> str:
     (cảnh sát, dân làng, quan toà không tên: giao việc giữ đúng người trong ảnh, crowd_brief); "none": không có người
     (phong cảnh, landscape_brief). Dự án chưa có bảng nhân vật thì "cast" (phải tìm nhân vật trước).
     Gặp 13/11/2026: cảnh có cảnh sát không tên bị coi là phong cảnh, Muse nhận bản giao việc "không có người"."""
-    people = _scenes_with_people(project)
+    return _people_kind(scene, _scenes_with_people(project))
+
+
+def _people_kind(scene: Scene, people: Optional[set[str]]) -> str:
     if people is None or scene.id in people:
         return "cast"
     return "unnamed" if PERSON_WORDS_RE.search(scene.image_prompt or "") else "none"
+
+
+def scene_people_kinds(project: Project, scenes: list[Scene]) -> dict[str, str]:
+    """scene_people_kind() cho nhiều cảnh, đọc bảng nhân vật một lần (không phải một lần mỗi cảnh)."""
+    people = _scenes_with_people(project)
+    return {s.id: _people_kind(s, people) for s in scenes}
 
 
 def is_landscape(project: Project, scene: Scene) -> bool:

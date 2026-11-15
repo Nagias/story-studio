@@ -22,11 +22,11 @@ STATIC = Path(__file__).resolve().parent.parent / "backend" / "static"
 
 @pytest.fixture(autouse=True)
 def _fresh_pick_state():
-    climax_router._picking.clear()
-    climax_router._pick_status.clear()
+    for d in (climax_router._picking, climax_router._pick_status, climax_router._running, climax_router._starting):
+        d.clear()
     yield
-    climax_router._picking.clear()
-    climax_router._pick_status.clear()
+    for d in (climax_router._picking, climax_router._pick_status, climax_router._running, climax_router._starting):
+        d.clear()
 
 
 def _ids_to_score(user: str) -> list[str]:
@@ -238,6 +238,59 @@ def test_api_refuses_edits_while_ai_is_picking(client, monkeypatch):  # noqa: F8
     assert client.post(f"{base}/run").status_code == 409
     assert client.get(f"{base}/status").json()["picking"] is True
     assert _wait_pick(client, base)["state"] == "done"
+
+
+def test_lost_pick_run_is_reported_as_interrupted_not_as_empty_result(client):  # noqa: F811
+    """Review A4, Important 1: lượt AI mất (máy chủ khởi động lại, task không còn) không được hiện như "AI không chọn cảnh
+    nào"; máy chủ báo failed kèm lời nhắn, giao diện coi "idle" lúc đang chờ là lượt bị gián đoạn."""
+    project = _api_project()
+    base = f"/api/projects/{project.id}/climax-video"
+    climax_router._pick_status[project.id] = {"state": "running", "mode": "ai"}   # không có task nào đi kèm
+    st = client.get(f"{base}/pick-status").json()
+    assert st == {"state": "failed", "mode": "ai", "error": climax_router.LOST_PICK_MESSAGE}
+    js = (STATIC / "climax_video.js").read_text(encoding="utf-8")
+    assert f"const LOST_PICK_MESSAGE = '{climax_router.LOST_PICK_MESSAGE}'" in js
+    poll = js[js.index("async function pollPick"):js.index("async function afterPick")]
+    assert "st.state === 'idle'" in poll and "st.state !== 'done'" in poll   # chỉ "done" mới tới afterPick
+    assert "setInterval(pollPick" not in js and "setTimeout(() => pollPick(gen, pid)" in js
+
+
+def test_concurrent_pick_and_run_requests_start_only_one_job(isolated_projects_dir, monkeypatch):
+    """Review A4, Important 2: hai yêu cầu tới cùng lúc (bấm đúp, pick đua với run) qua được phần kiểm trước lần await
+    đọc đĩa; nay dự án được giữ chỗ nên yêu cầu thứ hai bị 409, chỉ một lượt AI (hay một lượt Muse) chạy."""
+    import httpx
+    from fastapi import FastAPI
+
+    project = _api_project()
+    base = f"/api/projects/{project.id}/climax-video"
+    llm = make_llm({}, delay=0.2)
+    monkeypatch.setattr(ai, "call_llm_json", llm)
+    runs: list[list[str]] = []
+
+    async def fake_run_all(pid, queued):   # không gọi Muse
+        runs.append(queued)
+
+    monkeypatch.setattr(climax_router, "_run_all", fake_run_all)
+    app = FastAPI()
+    app.include_router(climax_router.router)
+
+    async def scenario():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1:8000") as c:
+            two_picks = await asyncio.gather(c.post(f"{base}/pick"), c.post(f"{base}/pick"))
+            await asyncio.gather(*climax_router._picking.values())
+            climax_router._picking.clear()
+            pick_and_run = await asyncio.gather(c.post(f"{base}/pick"), c.post(f"{base}/run"))
+            await asyncio.gather(*climax_router._picking.values(), *climax_router._running.values())
+            return two_picks, pick_and_run
+
+    two_picks, pick_and_run = asyncio.run(scenario())
+    assert sorted(r.status_code for r in two_picks) == [200, 409]
+    assert sorted(r.status_code for r in pick_and_run) == [200, 409]
+    started_ai = sum(1 for r in pick_and_run if r.status_code == 200 and r.json().get("picking"))
+    assert started_ai + len(runs) == 1                      # đúng một lượt bắt đầu
+    assert len(llm.calls) == 1 + started_ai                 # mỗi lượt AI một lần gọi (4 cảnh, một nhóm)
+    assert not climax_router._starting
 
 
 def test_api_ai_pick_needs_drawn_scenes(client):  # noqa: F811
