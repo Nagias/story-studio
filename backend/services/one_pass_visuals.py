@@ -93,8 +93,17 @@ def _climax_check(project: Project, scene: Scene, kind: str) -> tuple[Optional[d
     return None, grids
 
 
-def plan(project: Project) -> dict:
-    """Kế hoạch của một lượt (không tốn gì). Cảnh cao trào = cảnh có `metadata.climax_video.status` mà chưa "ready"."""
+PAGE_ACCOUNTS = ("accounts", "Tài khoản và kết nối")
+NO_VIDEO_ACCOUNT_REASON = ("Không có tài khoản Muse video nào dùng được (hết hạn mức tuần, bị khoá hoặc chưa đăng nhập): "
+                           "lượt này chỉ tạo ảnh, video cảnh cao trào làm khi có tài khoản")
+
+
+def plan(project: Project, video_accounts_usable: Optional[int] = None) -> dict:
+    """Kế hoạch của một lượt (không tốn gì). Cảnh cao trào = cảnh có `metadata.climax_video.status` mà chưa "ready".
+
+    `video_accounts_usable`: số tài khoản Muse video dùng được (router đếm, module này không import routers/). Bằng 0
+    thì mọi cảnh cao trào vào `missing` với lý do NO_VIDEO_ACCOUNT_REASON: chạy thật 15/11/2026, mọi tài khoản video hết
+    hạn mức tuần, lượt chạy vẫn giao Muse rồi chờ tới 75 phút mỗi cảnh để nhận lỗi. None là không kiểm (test cũ)."""
     eligible = [s for s in project.scenes if cv.is_eligible(s)]
     climax = [s for s in eligible if cv.scene_state(s).get("status") and cv.scene_state(s).get("status") != "ready"]
     climax_ids = {s.id for s in climax}
@@ -106,6 +115,9 @@ def plan(project: Project) -> dict:
     grid_turns = 0
     for s in climax:
         problem, grids = _climax_check(project, s, kinds.get(s.id, "cast"))
+        if not problem and video_accounts_usable == 0:
+            problem = {"scene_id": s.id, "label": scene_label(project, s), "reason": NO_VIDEO_ACCOUNT_REASON,
+                       "page": PAGE_ACCOUNTS[0], "page_label": PAGE_ACCOUNTS[1]}
         if problem:
             missing.append(problem)
             continue

@@ -34,6 +34,8 @@ PID = "proj_crime_onepass"
 def _no_pacing(monkeypatch):
     monkeypatch.setattr(cv, "MUSE_PACE_SEC", 0)
     monkeypatch.setattr(op, "PACE_SEC", 0)
+    # tài khoản video thật của máy không được quyết định kết quả test: mặc định coi như có 1 tài khoản dùng được
+    monkeypatch.setattr(op_router, "usable_video_accounts", lambda: 1)
     yield
     op._jobs.clear()
     op._starting.clear()
@@ -148,6 +150,34 @@ def test_plan_counts_image_for_climax_scene_and_skips_grid_already_drawn(client)
     plan = client.get(f"/api/projects/{PID}/one-pass/plan").json()
     assert plan["grid_turns"] == 0
     assert plan["grids_pending_review"] == [{"scene_id": "scene_003", "label": "Cảnh 3"}]   # nêu tên: sẽ tự duyệt
+
+
+def test_no_usable_video_account_moves_climax_to_missing_and_run_makes_images_only(client, monkeypatch):
+    """Chạy thật 15/11/2026: mọi tài khoản video hết hạn mức tuần, lượt chạy vẫn giao Muse và chờ tới 75 phút mỗi cảnh.
+    Nay kế hoạch báo trước, nút dẫn tới trang Tài khoản và kết nối, lượt chạy chỉ làm ảnh."""
+    _project()
+    monkeypatch.setattr(op_router, "usable_video_accounts", lambda: 0)
+    plan = client.get(f"/api/projects/{PID}/one-pass/plan").json()
+    assert plan["climax_videos"] == 0 and plan["muse_turns"] == 2 and plan["grid_turns"] == 0
+    by_id = {m["scene_id"]: m for m in plan["missing"]}
+    assert by_id["scene_003"]["page"] == "accounts" and by_id["scene_003"]["reason"] == op.NO_VIDEO_ACCOUNT_REASON
+    assert by_id["scene_004"]["page"] == "script"          # thiếu giọng vẫn báo đúng lý do của nó, không bị che
+    muse = FakeMuse(PID, "scene_003")
+    fleet = FakeFleet(muse)
+    monkeypatch.setattr(climax_router, "enqueue_and_wait_muse_task", fleet)
+    assert client.post(f"/api/projects/{PID}/one-pass/run").status_code == 200
+    s = _wait(client)
+    assert sorted(s["images_done"]) == ["scene_002", "scene_006"] and s["videos_done"] == []
+    assert not any(t.get("route_kind") == "video" or t.get("mode") == "agent-video" for t in fleet.images)
+    assert muse.tasks == []                                 # không lượt Muse nào cho lưới hay clip
+
+
+def test_usable_video_accounts_counts_only_available_video_accounts(monkeypatch):
+    accounts = [{"account_id": "a", "type": "video"}, {"account_id": "b", "type": "video"},
+                {"account_id": "c", "type": "image"}]
+    monkeypatch.setattr(op_router.muse_bridge, "muse_accounts", accounts)
+    monkeypatch.setattr(op_router.muse_bridge, "is_account_available", lambda a: a["account_id"] != "b")
+    assert op_router.usable_video_accounts() == 1
 
 
 # ------------------------------------------------------------------------------------------------------------ chạy

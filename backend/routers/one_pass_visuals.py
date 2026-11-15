@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from models.schemas import Project
 from routers import climax_video as climax_router
+from routers import muse_bridge
 from security import validate_path_ids
 from services import climax_video, one_pass_visuals, project_service
 
@@ -46,6 +47,13 @@ def _refuse_while_climax_busy(project_id: str) -> None:
                                                     "rồi bấm lại")
 
 
+def usable_video_accounts() -> int:
+    """Số tài khoản Muse video dùng được: rõ loại, đã đăng nhập, không bị khoá hạn mức (không đòi đang online, vì
+    muse_call_starting_runner tự bật Fleet Runner)."""
+    return sum(1 for a in muse_bridge.muse_accounts
+               if muse_bridge.account_kind(a) == "video" and muse_bridge.is_account_available(a))
+
+
 async def run_climax_scene(project_id: str, scene_id: str) -> dict:
     return await climax_video.run_scene_climax_video(project_id, scene_id,
                                                      muse_call=climax_router.muse_call_starting_runner,
@@ -55,7 +63,7 @@ async def run_climax_scene(project_id: str, scene_id: str) -> dict:
 @router.get("/projects/{project_id}/one-pass/plan")
 async def one_pass_plan(project_id: str):
     project = await _load(project_id)
-    data = await asyncio.to_thread(one_pass_visuals.plan, project)
+    data = await asyncio.to_thread(one_pass_visuals.plan, project, usable_video_accounts())
     return {**data, "running": one_pass_visuals.is_running(project_id)}
 
 
@@ -71,7 +79,7 @@ async def one_pass_run(project_id: str):
         raise HTTPException(status_code=409, detail=str(e)) from None
     try:
         project = await _load(project_id)
-        data = await asyncio.to_thread(one_pass_visuals.plan, project)
+        data = await asyncio.to_thread(one_pass_visuals.plan, project, usable_video_accounts())
         if not data["images"] and not data["climax_videos"]:
             raise HTTPException(status_code=400, detail="Không còn ảnh hay video cao trào nào làm được"
                                                         + (" (các cảnh cao trào còn thiếu điều kiện)"
