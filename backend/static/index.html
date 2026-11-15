@@ -656,6 +656,14 @@
       <section id="modal-character-sheets" class="ws-card ws-look-block">
         <h2 class="ws-h2">Nhân vật cố định (khoá nhân vật cho mọi ảnh cảnh)</h2>
         <p class="ws-look-intro">Làm bước này trước khi tạo ảnh cảnh. Muse vẽ bảng trên tài khoản video; vẽ lại thì ghi rõ chỗ sai, Muse sửa trong cùng chat. Bảng đã duyệt được đính kèm cho mọi ảnh cảnh có người đó, ảnh grid và clip cao trào.</p>
+        <!-- Vẽ tất cả / duyệt tất cả (code: look_batch.js). Mỗi bảng 1 lượt Muse, báo tổng số lượt trước khi chạy -->
+        <div id="character-batch-bar" class="flex flex-wrap items-center gap-2 text-xs mb-3">
+          <button type="button" id="btn-character-draw-all" class="ws-btn ws-btn-primary text-xs">AI tìm và vẽ tất cả nhân vật</button>
+          <label id="character-batch-refind-wrap" class="inline-flex items-center gap-1 text-slate-600"><input type="checkbox" id="character-batch-refind"> AI tìm lại nhân vật từ kịch bản trước khi vẽ</label>
+          <button type="button" id="btn-character-approve-all" class="ws-btn text-xs">Duyệt tất cả bảng đã vẽ</button>
+          <span id="character-batch-progress" class="text-slate-600"></span>
+          <button type="button" id="btn-character-draw-stop" class="ws-btn text-xs hidden">Dừng</button>
+        </div>
         <div id="character-sheets-list" class="space-y-4 text-xs"></div>
       </section>
 
@@ -663,6 +671,14 @@
       <section id="modal-location-sheets" class="ws-card ws-look-block">
         <h2 class="ws-h2">Bối cảnh lặp lại (khoá để các cảnh cùng nơi vẽ giống nhau)</h2>
         <p class="ws-look-intro">Mỗi nơi xuất hiện từ 2 cảnh trở lên có một mô tả cố định và một ảnh chuẩn (cảnh trống, không người). Chỉ bối cảnh đã duyệt mới được dùng: khi tạo ảnh hay video Muse cho cảnh của nơi đó, Muse nhận đúng mô tả này (và ảnh chuẩn, trừ cảnh cận mặt / cận đồ vật).</p>
+        <!-- Vẽ tất cả / duyệt tất cả (code: look_batch.js). Mỗi ảnh chuẩn 1 lượt Muse, báo tổng số lượt trước khi chạy -->
+        <div id="location-batch-bar" class="flex flex-wrap items-center gap-2 text-xs mb-3">
+          <button type="button" id="btn-location-draw-all" class="ws-btn ws-btn-primary text-xs">AI tìm và vẽ tất cả bối cảnh</button>
+          <label id="location-batch-refind-wrap" class="inline-flex items-center gap-1 text-slate-600"><input type="checkbox" id="location-batch-refind"> AI tìm lại bối cảnh trước khi vẽ</label>
+          <button type="button" id="btn-location-approve-all" class="ws-btn text-xs">Duyệt tất cả ảnh chuẩn đã vẽ</button>
+          <span id="location-batch-progress" class="text-slate-600"></span>
+          <button type="button" id="btn-location-draw-stop" class="ws-btn text-xs hidden">Dừng</button>
+        </div>
         <div id="location-sheets-list" class="space-y-4 text-xs"></div>
       </section>
     </section>
@@ -1511,6 +1527,8 @@
   <script src="/static/character_sheets.js?v=1.2.1"></script>
   <!-- Khoá bối cảnh (mọi dự án có từ 2 cảnh) -->
   <script src="/static/location_sheets.js?v=1.1.1"></script>
+  <!-- Vẽ tất cả / duyệt tất cả nhân vật và bối cảnh (trang Hình mẫu) -->
+  <script src="/static/look_batch.js?v=1.0.0"></script>
   <!-- Nút "Muse Video" trên thẻ cảnh: video dài theo lời thoại, báo số video Muse trước khi chạy -->
   <script src="/static/scene_muse_video.js?v=1.0.0"></script>
   <!-- Prompt thật gửi Muse trên thẻ cảnh (khối "Prompt đầy đủ gửi Muse", tab "Video gửi Muse") -->

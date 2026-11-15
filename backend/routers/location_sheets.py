@@ -3,6 +3,10 @@
 - GET    /api/projects/{project_id}/locations                          danh sách, cảnh của từng nơi, trạng thái tìm
 - POST   /api/projects/{project_id}/locations/analyze                  LLM tìm bối cảnh lặp lại (chạy nền; 1 lượt LLM)
 - POST   /api/projects/{project_id}/locations                          chủ dự án tự thêm một bối cảnh
+- POST   /api/projects/{project_id}/locations/draw-all                 vẽ lần lượt mọi ảnh chuẩn còn thiếu (nền; mỗi nơi 1 lượt Muse)
+- GET    /api/projects/{project_id}/locations/draw-all/status          tiến độ lượt vẽ tất cả
+- POST   /api/projects/{project_id}/locations/draw-all/stop            dừng sau bối cảnh đang vẽ
+- POST   /api/projects/{project_id}/locations/approve-all              duyệt mọi ảnh chuẩn đang chờ duyệt
 - PUT    /api/projects/{project_id}/locations/{location_id}            sửa tên, mô tả cố định, danh sách cảnh
 - DELETE /api/projects/{project_id}/locations/{location_id}            bỏ khỏi danh sách (ảnh chuẩn vẫn giữ trên đĩa)
 - POST   /api/projects/{project_id}/locations/{location_id}/draw       Muse vẽ ảnh chuẩn (chạy nền; 1 lượt Muse ảnh)
@@ -22,7 +26,7 @@ from pydantic import BaseModel, Field
 from routers.climax_video import muse_call_starting_runner
 from security import is_within, require_safe_id, validate_path_ids
 from services import location_sheets as ls
-from services import project_service
+from services import look_batch, project_service
 from services.case_adaptation_steps import StepFailed
 
 logger = logging.getLogger("story_studio.location_sheets_router")
@@ -31,6 +35,7 @@ router = APIRouter(prefix="/api", tags=["Location sheets"], dependencies=[Depend
 
 _drawing: dict[tuple[str, str], asyncio.Task] = {}
 _analyzing: dict[str, asyncio.Task] = {}
+BATCH_KIND = "locations"
 
 
 class LocationBody(BaseModel):
@@ -113,6 +118,8 @@ async def analyze(project_id: str):
         raise HTTPException(status_code=409, detail="Đang tìm bối cảnh cho dự án này")
     if any(_is_drawing(p, loc) for p, loc in _drawing if p == project_id):
         raise HTTPException(status_code=409, detail="Muse đang vẽ ảnh chuẩn bối cảnh, chờ xong rồi tìm lại")
+    if look_batch.is_running(BATCH_KIND, project_id):
+        raise HTTPException(status_code=409, detail="Muse đang vẽ tất cả ảnh chuẩn bối cảnh, chờ xong hoặc bấm Dừng")
 
     def prepare():
         project = project_service.get_project(project_id)
@@ -195,3 +202,63 @@ async def plate_image(project_id: str, location_id: str):
     if path is None or not path.is_file() or not is_within(path, ls.locations_dir(project_id)):
         raise HTTPException(status_code=404, detail="Bối cảnh chưa có ảnh chuẩn")
     return FileResponse(path, media_type="image/jpeg")
+
+
+# ------------------------------------------------------------------------------- vẽ tất cả / duyệt tất cả (A6)
+async def _batch_draw_one(project_id: str, location_id: str) -> Optional[str]:
+    """Vẽ một ảnh chuẩn bằng đúng hàm của nút "Vẽ ảnh chuẩn" (draw_plate); ghi vào _drawing để thẻ hiện "đang vẽ" và
+    nút vẽ từng nơi trả 409. Trả lời báo lỗi, None khi vẽ xong."""
+    task = asyncio.create_task(ls.draw_plate(project_id, location_id, muse_call_starting_runner))
+    _drawing[(project_id, location_id)] = task
+    try:
+        loc = await task
+    except Exception as e:   # draw_plate chỉ tự ghi "failed" cho lỗi Muse: lỗi khác ghi trạng thái rồi báo lên lượt
+        await asyncio.to_thread(ls.mark_draw_crashed, project_id, location_id, f"Lỗi ngoài dự kiến: {e}")
+        raise
+    return (loc.error or "Muse không vẽ được ảnh chuẩn bối cảnh") if loc.status == "failed" else None
+
+
+async def _batch_still_needed(project_id: str, location_id: str) -> bool:
+    if _is_drawing(project_id, location_id):
+        return False   # người dùng đã bấm vẽ riêng nơi này
+    data = await asyncio.to_thread(ls.load_locations, project_id)
+    loc = data.locations.get(location_id)   # tìm lại bối cảnh giữa chừng có thể đã bỏ nơi này
+    return loc is not None and loc.status in ls.BATCH_DRAW_STATUSES
+
+
+@router.post("/projects/{project_id}/locations/draw-all")
+async def draw_all(project_id: str):
+    """Vẽ lần lượt (không song song) mọi nơi chưa có ảnh chuẩn, bị ghi chỗ sai hoặc vẽ lỗi; mỗi nơi 1 lượt Muse."""
+    if _busy(_analyzing.get(project_id)):
+        raise HTTPException(status_code=409, detail="AI đang tìm bối cảnh, chờ xong rồi vẽ")
+    try:
+        look_batch.reserve(BATCH_KIND, project_id)
+    except look_batch.BatchBusy as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
+    try:
+        data = await _call(ls.load_locations, project_id)
+        items = [(v.location_id, v.name_vi) for v in ls.batch_targets(data)
+                 if not _is_drawing(project_id, v.location_id)]
+        if not items:
+            raise HTTPException(status_code=400, detail="Không còn bối cảnh nào cần vẽ ảnh chuẩn")
+        look_batch.start(BATCH_KIND, project_id, items,
+                         lambda i: _batch_still_needed(project_id, i), lambda i: _batch_draw_one(project_id, i))
+    finally:
+        look_batch.release(BATCH_KIND, project_id)
+    return look_batch.status(BATCH_KIND, project_id)
+
+
+@router.get("/projects/{project_id}/locations/draw-all/status")
+async def draw_all_status(project_id: str):
+    return look_batch.status(BATCH_KIND, project_id)
+
+
+@router.post("/projects/{project_id}/locations/draw-all/stop")
+async def draw_all_stop(project_id: str):
+    return look_batch.request_stop(BATCH_KIND, project_id)
+
+
+@router.post("/projects/{project_id}/locations/approve-all")
+async def approve_all(project_id: str):
+    ids = await _call(ls.approve_all, project_id)
+    return {"approved": len(ids), "location_ids": ids}

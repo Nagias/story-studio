@@ -423,6 +423,30 @@ def reject_sheet(project_id: str, entity_id: str, feedback: str) -> CharacterShe
     return _update(project_id, entity_id, change)
 
 
+# Vẽ tất cả (services/look_batch.py): người chưa có bảng, bảng bị ghi chỗ sai (về "draft"), hay lần vẽ trước lỗi.
+# "review" (đã vẽ, chờ duyệt) và "approved" không vẽ lại; "drawing" đang có lượt Muse.
+BATCH_DRAW_STATUSES = ("draft", "failed")
+
+
+def batch_targets(cast: ProjectCast) -> list[CharacterSheet]:
+    return [s for s in cast.characters.values() if s.status in BATCH_DRAW_STATUSES]
+
+
+def approve_all(project_id: str) -> list[str]:
+    """Duyệt mọi bảng đã vẽ đang chờ duyệt ("review"); bảng bị ghi chỗ sai hay chưa có bảng thì không. Trả id đã duyệt."""
+    cast = load_cast(project_id)
+    ids = [s.entity_id for s in cast.characters.values()
+           if s.status == "review" and s.sheet_path and Path(s.sheet_path).is_file()]
+    return [approve_sheet(project_id, e).entity_id for e in ids]
+
+
+def mark_draw_crashed(project_id: str, entity_id: str, message: str) -> None:
+    """Lỗi ngoài dự kiến khi vẽ: không để nhân vật kẹt mãi ở "drawing"."""
+    def change(s: CharacterSheet) -> None:
+        s.status, s.error = "failed", message
+    _update(project_id, entity_id, change)
+
+
 def set_design(project_id: str, entity_id: str, design_en: str) -> CharacterSheet:
     text = (design_en or "").strip()
     if not text:

@@ -487,6 +487,22 @@ def reject_plate(project_id: str, location_id: str, feedback: str) -> LocationSh
     return _update(project_id, location_id, change)
 
 
+# Vẽ tất cả (services/look_batch.py): nơi chưa có ảnh chuẩn, ảnh bị ghi chỗ sai (về "draft"), hay lần vẽ trước lỗi.
+BATCH_DRAW_STATUSES = ("draft", "failed")
+
+
+def batch_targets(data: ProjectLocations) -> list[LocationSheet]:
+    return [v for v in data.locations.values() if v.status in BATCH_DRAW_STATUSES]
+
+
+def approve_all(project_id: str) -> list[str]:
+    """Duyệt mọi ảnh chuẩn đã vẽ đang chờ duyệt ("review"). Trả id đã duyệt."""
+    data = load_locations(project_id)
+    ids = [v.location_id for v in data.locations.values()
+           if v.status == "review" and v.plate_path and Path(v.plate_path).is_file()]
+    return [approve_plate(project_id, i).location_id for i in ids]
+
+
 # --------------------------------------------------------------------------------- dùng khi tạo ảnh / video cảnh
 def lock_line(design_en: str) -> str:
     return LOCK_LINE_EN + " ".join(design_en.split())
