@@ -64,14 +64,25 @@ body.ws-collapsed .ws-sidebar { margin-left: calc(-1 * var(--ws-sidebar-w)); vis
 .ws-icon-btn.hidden { display: none; }
 .ws-icon-btn-strong { background: var(--ws-ink); color: #FFFFFF; border-radius: 9999px; padding: 0 12px; font-weight: 500; }
 .ws-icon-btn-strong:hover { background: #27272A; color: #FFFFFF; }
-/* Ô dự án đang mở ở đầu thanh bên: bấm mở trang Dự án */
-.ws-project-select {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 12px 0; padding: 8px 10px;
-  border: 1px solid var(--ws-line); border-radius: 8px; background: #fff; color: var(--ws-ink); font-size: 13px;
-  font-weight: 500; text-align: left; cursor: pointer; min-width: 0;
-}
-.ws-project-select:hover { background: var(--ws-soft); }
-.ws-project-select > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Tên dự án đang mở, chỉ hiển thị, cạnh tên trang ở thanh trên */
+.ws-project-name { font-size: 13px; color: var(--ws-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0; max-width: 40vw; }
+.ws-project-name:empty { display: none; }
+.ws-project-name::before { content: "/"; margin-right: 10px; color: var(--ws-micro); }
+/* Trang Dự án: lưới thẻ có ảnh bìa */
+.ws-project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.ws-project-card { display: flex; flex-direction: column; padding: 0; overflow: hidden; text-align: left; cursor: pointer;
+  background: #fff; border: 1px solid var(--ws-line); border-radius: 10px; color: var(--ws-ink); font: inherit; min-width: 0; }
+.ws-project-card:hover { background: var(--ws-soft); }
+.ws-project-card[aria-current="true"] { border-color: var(--ws-ink); }
+.ws-project-cover { aspect-ratio: 16 / 9; width: 100%; background: var(--ws-soft); display: flex; align-items: center;
+  justify-content: center; color: var(--ws-micro); font-size: 26px; overflow: hidden; }
+.ws-project-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ws-project-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ws-project-title { font-size: 13.5px; font-weight: 500; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.ws-project-meta { font-size: 11.5px; color: var(--ws-mute); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ws-project-badge { background: var(--ws-ink); color: #fff; border-radius: 4px; padding: 0 6px; font-size: 10.5px; font-weight: 500; }
 /* Chữ trạng thái Muse bên phải thanh trên; data-state do updateMuseCloudUI() đặt */
 .ws-muse-status { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; padding: 0 6px;
   height: 30px; border-radius: 6px; font-size: 12.5px; color: var(--ws-nav); cursor: pointer; }

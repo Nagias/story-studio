@@ -37,7 +37,7 @@
     return (typeof AppState !== 'undefined' && AppState) ? AppState.currentProject : null;
   }
 
-  // Chỉ tên trang: tên dự án đã hiện ở #btn-project-dropdown (app.js tự cập nhật khi đổi dự án)
+  // Chỉ tên trang: tên dự án hiện ở #current-project-title trên thanh trên (app.js tự cập nhật khi đổi dự án)
   function renderCrumb(name) {
     const crumb = document.getElementById('ws-crumb');
     if (!crumb) return;

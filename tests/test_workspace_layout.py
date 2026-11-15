@@ -131,7 +131,7 @@ def test_scenes_publish_page_script_loaded_after_app_and_shipped():
 
 
 PLACEMENT |= {"project-list-items": "projects", "btn-create-project": "projects", "new-project-name-input": "projects",
-              "btn-project-dropdown": None,
+              "current-project-title": None,
               "muse-fleet-pool-grid": "accounts", "muse-fleet-pool-container": "accounts",
               "btn-muse-refresh-accounts": "accounts", "btn-copy-start-fleet-cmd": "accounts",
               "btn-copy-setup-accounts-cmd": "accounts", "muse-modal-status-text": "accounts",
@@ -142,8 +142,11 @@ PLACEMENT |= {"project-list-items": "projects", "btn-create-project": "projects"
 
 def test_projects_gallery_accounts_pages_are_real_pages():
     h = INDEX_HTML
-    assert inside(h, "btn-project-dropdown", "ws-sidebar") and page_of(h, "btn-project-dropdown") is None
-    assert not inside(h, "btn-project-dropdown", "ws-top-right-x")
+    # nút dự án ở thanh bên đã gỡ (15/11/2026); tên dự án đang mở chỉ hiển thị ở thanh trên
+    assert 'id="btn-project-dropdown"' not in h
+    assert not inside(h, "current-project-title", "ws-sidebar") and page_of(h, "current-project-title") is None
+    top_h = h[h.index('<header class="ws-top">'):h.index("</header>")]
+    assert 'id="current-project-title"' in top_h
     assert "Tạm thời mở cửa sổ" not in h and "onclick=\"openMuseModal()\"" not in h
     assert "openProjectModal()\"" not in h
     # trạng thái Muse ở bên phải thanh trên, bấm mở trang Tài khoản

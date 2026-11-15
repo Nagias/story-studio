@@ -382,7 +382,6 @@ const DOM = {
 
   // Header
   currentProjectTitle: document.getElementById('current-project-title'),
-  btnProjectDropdown: document.getElementById('btn-project-dropdown'),
 
   // Left Panel Scene List
   sceneListContainer: document.getElementById('scene-list-container'),
@@ -1799,7 +1798,6 @@ function bindEventListeners() {
   DOM.btnCopySeoTags?.addEventListener('click', () => copyToClipboard('input-seo-tags', 'Đã sao chép thẻ từ khóa YouTube!'));
 
   // Project Dropdown / Manager
-  DOM.btnProjectDropdown?.addEventListener('click', openProjectModal);
   DOM.btnCreateProject?.addEventListener('click', handleCreateNewProject);
 
   // Global Audio and Video element listeners
@@ -3498,10 +3496,7 @@ function listenToProduceProgress(renderId) {
 }
 
 // ================= MODAL 4: PROJECT MANAGER =================
-// Mở trang Dự án; việc nạp danh sách nằm ở móc onPageShow('projects') trong initMuseCloud()
-function openProjectModal() {
-  showPage('projects');
-}
+// Trang Dự án: việc nạp danh sách nằm ở móc onPageShow('projects') trong initMuseCloud()
 
 // Mở hoặc tạo xong một dự án thì rời trang Dự án: về trang đã dùng lần trước của dự án đó, chưa có thì Cảnh hoặc Ý tưởng
 function leaveProjectsPage() {
@@ -3517,27 +3512,33 @@ function renderProjectListModal() {
   if (!container) return;
 
   const projects = AppState.projectsList || [];
+  container.classList.add('ws-project-grid');
   container.innerHTML = projects.map(p => {
     const isCurrent = AppState.currentProject && AppState.currentProject.id === p.id;
+    const unreadable = !!p.unreadable;
+    const scenes = isCurrent ? (AppState.currentProject.scenes?.length || 0) : (p.scenes_count ?? p.scene_count ?? 0);
+    const when = p.updated_at ? new Date(p.updated_at) : null;
+    const whenText = when && !isNaN(when) ? when.toLocaleDateString('vi-VN') : '';
+    const meta = unreadable ? 'Không đọc được' : `${scenes} cảnh${whenText ? ' · sửa ' + escapeHtml(whenText) : ''}`;
+    const cover = p.cover_url
+      ? `<img src="${escapeHtml(p.cover_url)}" alt="" loading="lazy">`
+      : '<i class="fa-solid fa-film" aria-hidden="true"></i>';
     return `
-      <div class="flex items-center justify-between p-3 rounded-xl border ${isCurrent ? 'bg-slate-50 border-slate-300' : 'bg-slate-50 border-slate-200 hover:border-slate-300'} transition">
-        <div>
-          <div class="text-xs font-bold text-slate-800 flex items-center gap-2">
-            <span>${escapeHtml(p.name)}</span>
-            ${isCurrent ? '<span class="text-[10px] bg-slate-900 text-white px-1.5 py-0.5 rounded font-semibold">Đang mở</span>' : ''}
-          </div>
-          <div class="text-[10px] text-slate-500 mt-0.5">${isCurrent ? (AppState.currentProject.scenes?.length || 0) : (p.scenes_count ?? p.scene_count ?? 0)} phân cảnh • 1080p</div>
-        </div>
-        <div class="flex items-center gap-1.5">
-          ${!isCurrent ? `
-            <button onclick="switchProject('${p.id}')" class="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 text-xs font-semibold text-slate-700 hover:text-slate-700 rounded-lg transition shadow-2xs">
-              Mở
-            </button>
-          ` : ''}
-        </div>
-      </div>
+      <button type="button" class="ws-card ws-project-card" data-project-id="${escapeHtml(p.id)}"${isCurrent ? ' aria-current="true"' : ''}${unreadable ? ' disabled' : ''}>
+        <span class="ws-project-cover">${cover}</span>
+        <span class="ws-project-body">
+          <span class="ws-project-title">${escapeHtml(p.name)}</span>
+          <span class="ws-project-meta">${isCurrent ? '<span class="ws-project-badge">Đang mở</span>' : ''}<span>${meta}</span></span>
+        </span>
+      </button>
     `;
   }).join('');
+  container.querySelectorAll('.ws-project-card[data-project-id]').forEach(card => {
+    card.addEventListener('click', () => {
+      if (AppState.currentProject && AppState.currentProject.id === card.dataset.projectId) leaveProjectsPage();
+      else switchProject(card.dataset.projectId);
+    });
+  });
 }
 
 async function handleCreateNewProject() {

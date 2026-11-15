@@ -51,6 +51,7 @@ REMOVED |= {i: "spec 4.2: nhân vật chính kiểu cũ, app tự bỏ khi có b
     "step1-char-preset-select", "step1-char-name", "step1-char-anchor", "step1-char-ref-file-input",
     "step1-char-ref-url", "btn-step1-char-ref-apply-url", "btn-step1-char-ref-remove", "step1-char-ref-dropzone",
     "step1-char-ref-preview-card", "step1-char-ref-preview-img", "step1-char-ref-file-name")}
+REMOVED |= {"btn-project-dropdown": "trùng trang Dự án ở thanh bên, chủ dự án yêu cầu bỏ 15/11/2026"}
 REMOVED |= {"btn-step1-open-true-crime": "spec 4.2: không còn cửa sổ Hồ Sơ Kỳ Án để mở"}
 REMOVED |= {"modal-true-crime": "spec 4.2: Hồ Sơ Kỳ Án vào trang Kịch bản",
             "btn-open-true-crime-modal": "như trên", "btn-close-true-crime-modal": "như trên",
