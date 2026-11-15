@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Story Studio — Bản xem thử giao diện gọn</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --canvas: #FFFFFF; --side: #F9FAFB; --soft: #F4F4F5; --line: #E4E4E7;
+    --ink: #09090B; --body: #18181B; --nav: #52525B; --micro: #A1A1AA; --mute: #71717A;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: 'Be Vietnam Pro', sans-serif; font-size: 14px; line-height: 1.6; color: var(--body);
+    background: var(--canvas); height: 100vh; overflow: hidden; display: flex;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font-family: inherit; cursor: pointer; }
+  code { font-family: Consolas, 'Courier New', monospace; font-size: 12px; background: var(--soft); border-radius: 4px; padding: 1px 5px; color: #3F3F46; overflow-wrap: anywhere; }
+  svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  /* ---------- Thanh bên ---------- */
+  .sidebar {
+    width: 240px; flex: none; background: var(--side); border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; height: 100vh; transition: margin-left .18s ease;
+  }
+  body.collapsed .sidebar { margin-left: -240px; }
+  .proj { margin: 12px 12px 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; display: flex; align-items: center; gap: 8px; text-align: left; width: calc(100% - 24px); }
+  .proj b { display: block; font-size: 13px; font-weight: 500; color: var(--ink); line-height: 1.3; }
+  .proj small { display: block; font-size: 11.5px; color: var(--mute); line-height: 1.3; }
+  .navscroll { flex: 1; overflow-y: auto; padding: 4px 12px 12px; }
+  .micro { font-size: 11.5px; font-weight: 500; color: var(--micro); padding: 16px 8px 6px; }
+  .nav {
+    display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: transparent; text-align: left;
+    font-size: 13.5px; font-weight: 500; color: var(--nav); padding: 7px 8px; border-radius: 6px; margin: 1px 0;
+  }
+  .nav:hover, .nav[aria-current="page"] { background: var(--soft); color: var(--ink); }
+  .nav .num { margin-left: auto; font-size: 11.5px; color: var(--micro); font-variant-numeric: tabular-nums; }
+  .nav .dot { margin-left: auto; width: 6px; height: 6px; border-radius: 50%; background: var(--ink); }
+  .nav .dot.off { background: transparent; border: 1.5px solid var(--micro); }
+  .sidefoot { border-top: 1px solid var(--line); padding: 8px 12px 12px; }
+
+  /* ---------- Vùng chính ---------- */
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100vh; }
+  .top { height: 52px; flex: none; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 16px; gap: 12px; }
+  .top .left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .icon-btn { width: 30px; height: 30px; display: grid; place-items: center; border: 0; background: transparent; border-radius: 6px; color: var(--nav); }
+  .icon-btn:hover { background: var(--soft); color: var(--ink); }
+  .crumb { font-size: 13px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .crumb b { color: var(--ink); font-weight: 500; }
+  .search { display: flex; align-items: center; gap: 8px; background: var(--soft); border-radius: 9999px; padding: 6px 14px; width: 300px; max-width: 34vw; color: var(--mute); font-size: 13px; }
+  .search kbd { margin-left: auto; font-family: inherit; font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; background: #fff; }
+  .top .right { display: flex; justify-content: flex-end; align-items: center; gap: 14px; font-size: 12.5px; color: var(--mute); white-space: nowrap; }
+  .stat { display: inline-flex; align-items: center; gap: 6px; }
+  .stat i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink); }
+  .work { flex: 1; min-height: 0; display: flex; }
+  .scroll { flex: 1; min-width: 0; overflow-y: auto; }
+  .canvas { max-width: 1100px; margin: 0 auto; padding: 36px 32px 80px; }
+
+  h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); margin: 0; line-height: 1.3; text-wrap: balance; }
+  .lede { color: var(--mute); margin: 4px 0 0; max-width: 62ch; }
+  .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 26px; flex-wrap: wrap; }
+  .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .btn { border-radius: 9999px; padding: 8px 16px; font-size: 13px; font-weight: 500; border: 1px solid var(--line); background: #fff; color: var(--ink); display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .btn:hover { background: var(--soft); }
+  .btn.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .btn.primary:hover { background: #27272A; }
+  .btn.ghost { border-color: transparent; color: var(--nav); }
+  h2 { font-size: 14px; font-weight: 600; color: var(--ink); margin: 30px 0 10px; display: flex; align-items: center; gap: 8px; }
+  .tag { font-size: 11px; font-weight: 500; border: 1px solid var(--line); border-radius: 9999px; padding: 0 8px; color: var(--nav); line-height: 18px; white-space: nowrap; }
+  .tag.solid { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .card { border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+  .pad { padding: 16px 18px; }
+  .grid { display: grid; gap: 12px; }
+  .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .g6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  @media (max-width: 900px) { .g3, .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .g6 { grid-template-columns: repeat(3, minmax(0, 1fr)); } .search { display: none; } .top { grid-template-columns: 1fr auto; } }
+  .pick { text-align: left; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: var(--body); }
+  .pick b { display: block; font-size: 13.5px; font-weight: 500; color: var(--ink); }
+  .pick span { display: block; font-size: 12.5px; color: var(--mute); line-height: 1.45; margin-top: 2px; }
+  .pick[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+  .pick:disabled { background: var(--side); cursor: default; }
+  .pick:disabled b { color: var(--mute); }
+  textarea.big { width: 100%; min-height: 150px; border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; font: inherit; font-size: 14.5px; color: var(--body); resize: vertical; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .sel { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 13px; background: #fff; color: var(--body); display: inline-flex; gap: 6px; align-items: center; }
+  .sel span { color: var(--mute); }
+  .note { font-size: 12.5px; color: var(--mute); margin-top: 8px; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; overflow-x: auto; }
+  .tab { border: 0; background: transparent; font-size: 13.5px; font-weight: 500; color: var(--nav); padding: 8px 10px; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+  .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+  .list > div { display: grid; grid-template-columns: 44px 1fr auto; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); align-items: start; }
+  .list > div:first-child { border-top: 0; }
+  .list .n { font-size: 12px; color: var(--micro); font-variant-numeric: tabular-nums; padding-top: 2px; }
+  .list .m { font-size: 12px; color: var(--mute); white-space: nowrap; padding-top: 2px; }
+  .ph { background: var(--soft); border-radius: 8px; aspect-ratio: 16 / 9; display: grid; place-items: center; color: var(--micro); font-size: 11.5px; }
+  .scene { text-align: left; border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 8px; color: var(--body); }
+  .scene:hover { border-color: #A1A1AA; }
+  .scene .meta { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--mute); padding: 8px 4px 2px; }
+  .scene .meta b { color: var(--ink); font-weight: 500; }
+  .meter { height: 6px; background: var(--soft); border-radius: 9999px; overflow: hidden; position: relative; }
+  .meter i { display: block; height: 100%; background: var(--ink); border-radius: 9999px; }
+  .kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; font-size: 13px; }
+  .kv span { color: var(--mute); }
+  .steps5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 12px; }
+  .steps5 div { font-size: 11.5px; color: var(--mute); border-top: 2px solid var(--line); padding-top: 6px; }
+  .steps5 div.done { border-color: var(--ink); color: var(--ink); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-size: 11.5px; font-weight: 500; color: var(--micro); padding: 8px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  td.c { text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tablewrap { overflow-x: auto; }
+
+  /* ---------- Ngăn kéo bên phải ---------- */
+  .drawer { width: 0; flex: none; border-left: 0 solid var(--line); overflow: hidden; background: #fff; transition: width .18s ease; display: flex; flex-direction: column; }
+  .drawer.open { width: 380px; border-left-width: 1px; }
+  @media (max-width: 900px) { .drawer.open { position: fixed; right: 0; top: 52px; bottom: 0; width: min(380px, 92vw); z-index: 5; } }
+  .drawer header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line); min-width: 300px; }
+  .drawer header b { font-size: 14px; font-weight: 600; color: var(--ink); }
+  .drawer .body { padding: 6px 16px 24px; overflow-y: auto; min-width: 300px; }
+  .drawer h3 { font-size: 11.5px; font-weight: 500; color: var(--micro); margin: 18px 0 6px; }
+  .drawer ul { margin: 0; padding: 0; list-style: none; }
+  .drawer li { font-size: 13px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .drawer li:first-child { border-top: 0; }
+  .drawer li small { display: block; color: var(--mute); font-size: 12px; margin-top: 2px; }
+  @media (prefers-reduced-motion: reduce) { .sidebar, .drawer { transition: none; } }
+</style>
+</head>
+<body>
+
+<aside class="sidebar" id="sidebar">
+  <button class="proj" data-go="projects" title="Đổi dự án">
+    <svg class="i"><use href="#i-folder"/></svg>
+    <span><b>Oan Khuất Giữa Cánh Đồng Ngô</b><small>Vụ án có thật · 72 cảnh</small></span>
+  </button>
+  <div class="navscroll">
+    <div class="micro">Làm video</div>
+    <button class="nav" data-go="idea"><svg class="i"><use href="#i-bulb"/></svg>Ý tưởng<span class="num">1</span></button>
+    <button class="nav" data-go="script"><svg class="i"><use href="#i-text"/></svg>Kịch bản và giọng<span class="num">2</span></button>
+    <button class="nav" data-go="look"><svg class="i"><use href="#i-users"/></svg>Hình mẫu<span class="num">3</span></button>
+    <button class="nav" data-go="scenes"><svg class="i"><use href="#i-grid"/></svg>Cảnh<span class="num">4</span></button>
+    <button class="nav" data-go="publish"><svg class="i"><use href="#i-play"/></svg>Dựng và xuất bản<span class="num">5</span></button>
+    <div class="micro">Thư viện</div>
+    <button class="nav" data-go="projects"><svg class="i"><use href="#i-folder"/></svg>Dự án</button>
+    <button class="nav" data-go="gallery"><svg class="i"><use href="#i-image"/></svg>Thư viện Muse</button>
+    <div class="micro">Ghi chú thiết kế (không có trong app thật)</div>
+    <button class="nav" data-go="map"><svg class="i"><use href="#i-layers"/></svg>Gom tính năng trùng</button>
+    <button class="nav" data-go="road"><svg class="i"><use href="#i-route"/></svg>Thứ tự làm</button>
+  </div>
+  <div class="sidefoot">
+    <button class="nav" data-go="accounts"><svg class="i"><use href="#i-key"/></svg>Tài khoản và kết nối<span class="dot" title="2 tài khoản Muse sẵn sàng"></span></button>
+  </div>
+</aside>
+
+<div class="main">
+  <div class="top">
+    <div class="left">
+      <button class="icon-btn" id="btn-side" aria-label="Ẩn hoặc hiện thanh bên"><svg class="i"><use href="#i-panel"/></svg></button>
+      <div class="crumb" id="crumb"></div>
+    </div>
+    <div class="search"><svg class="i"><use href="#i-search"/></svg>Tìm cảnh, dự án, lệnh<kbd>Ctrl K</kbd></div>
+    <div class="right">
+      <span class="stat"><i></i>Muse: 2 tài khoản sẵn sàng</span>
+      <span>Đã lưu</span>
+    </div>
+  </div>
+  <div class="work">
+    <div class="scroll"><div class="canvas" id="canvas"></div></div>
+    <aside class="drawer" id="drawer" aria-label="Ngăn chi tiết">
+      <header><b id="drawer-title"></b><button class="icon-btn" id="btn-drawer-close" aria-label="Đóng ngăn"><svg class="i"><use href="#i-x"/></svg></button></header>
+      <div class="body" id="drawer-body"></div>
+    </aside>
+  </div>
+</div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.3h6c0-1 .4-1.8 1-2.3A7 7 0 0 0 12 2z"/></symbol>
+  <symbol id="i-text" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h6"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 4l13 8-13 8z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M4 4h5l2 3h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 15l-5-5L5 19"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><path d="M15 7a4 4 0 1 1-3.9 5H8v3H5v3H2v-3.5l7.1-7.1A4 4 0 0 1 15 7zM16 9.5h.01"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 24 24"><path d="M3 4h18v16H3zM9 4v16"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 2l10 6-10 6L2 8zM2 14l10 6 10-6"/></symbol>
+  <symbol id="i-route" viewBox="0 0 24 24"><path d="M4 6h10a4 4 0 0 1 0 8H9a4 4 0 0 0 0 8h11"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 4L3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/></symbol>
+</svg>
+
+<script>
+/* =====================================================================
+   BẢNG GOM TÍNH NĂNG. Chữ trong ` ` là id hoặc tên hàm đang có thật trong code.
+   to: trang mới duy nhất. how: gom | chuyen | cat | bo | moi
+   ===================================================================== */
+const MAP = [
+  { f: "Nhập nội dung", n: 4, to: "idea", how: "gom", now: "Bước 1 `#step1-script-textarea`; cửa sổ Hồ Sơ Kỳ Án `#tc-case-text`; cửa sổ Kịch bản AI `#import-script-textarea`; cửa sổ 9-Grid Spec `#master-sb-script-text`", note: "Một ô dán duy nhất." },
+  { f: "Chọn thể loại", n: 4, to: "idea", how: "gom", now: "Ô `#step1-content-kind`; nút `#btn-open-true-crime-modal`; nút `#btn-step1-open-true-crime`; nút `#btn-open-comic-modal`", note: "Một hàng thẻ thể loại. Thể loại mới sau này chỉ là thêm một thẻ." },
+  { f: "Truyện tranh (cắt khung)", n: 2, to: "idea", how: "gom", now: "Bước 1 (`#step1-comic-dropzone`, `#step1-comic-mode`, `#step1-comic-order`); cửa sổ `#modal-comic-slicer` (`#comic-layout-mode`, `#comic-reading-order`)", note: "Hiện ra khi chọn thẻ Truyện tranh." },
+  { f: "Số phút của vụ án", n: 2, to: "idea", how: "gom", now: "`#step1-case-duration`; `#tc-duration-select`", note: "" },
+  { f: "Tuỳ chọn máy chia cảnh, nhịp kể", n: 4, to: "idea", how: "cat", now: "`#step1-engine-select`; `#step1-pacing-select`; `#tc-vision-engine`; `#split-mode-select`", note: "Cất vào nút Tuỳ chọn, mặc định không hiện." },
+  { f: "Dàn ý, tên hư cấu, cảnh báo của vụ án", n: 1, to: "script", how: "chuyen", now: "Cửa sổ `#modal-true-crime` (`#tc-outline-parts`, `#tc-entity-table`, `#tc-warnings`)", note: "Từ cửa sổ nổi thành hai thẻ trong trang, chỉ hiện với thể loại Vụ án." },
+  { f: "Sửa lời kể từng cảnh", n: 2, to: "script", how: "gom", now: "Thẻ cảnh ở Bảng Đạo Diễn (`updateSceneText()`); cửa sổ Hồ Sơ Kỳ Án `#tc-scene-review`", note: "" },
+  { f: "Thêm, xoá, đổi thứ tự cảnh", n: 1, to: "script", how: "chuyen", now: "Bảng Đạo Diễn: `#btn-add-scene`, `moveScene()`, `duplicateScene()`, `deleteScene()`", note: "Cảnh là đơn vị của lời kể nên sửa cấu trúc ở trang lời kể." },
+  { f: "Chọn giọng, nghe thử", n: 3, to: "script", how: "gom", now: "`#select-voice` và `#btn-preview-voice-sample`; `#tc-voice-vi`; `#tc-voice-en`", note: "" },
+  { f: "Thu giọng", n: 4, to: "script", how: "gom", now: "Nút Voice trên thẻ (`regenerateSceneVoice()`); `#btn-auto-gen-all`; `#btn-regen-all-voices`; giai đoạn 2 lúc dựng", note: "Giọng có trước thì mới biết mỗi cảnh dài bao nhiêu giây để làm video." },
+  { f: "Phong cách hình", n: 6, to: "idea", how: "gom", now: "`#step1-style-select`; `#tc-visual-style`; `#select-project-style`; `#split-style-select`; `#edit-char-style`; ô gõ `#master-sb-style-dna`", note: "Chọn một lần ở trang Ý tưởng, vì AI viết mô tả ảnh theo phong cách ngay lúc viết kịch bản. Hình mẫu chỉ hiện và cho đổi kèm cảnh báo." },
+  { f: "Nhân vật", n: 3, to: "look", how: "gom", now: "Bước 1 (`#step1-char-preset-select`, `#step1-char-name`, `#step1-char-anchor`, ảnh tham chiếu); cửa sổ cũ `#modal-character-editor`; cửa sổ mới `#modal-character-sheets`", note: "Giữ bảng nhân vật mới. Hai cách cũ app đã tự bỏ qua khi có bảng nhân vật, nên đề xuất gỡ khỏi giao diện." },
+  { f: "Bối cảnh lặp lại", n: 1, to: "look", how: "chuyen", now: "Cửa sổ `#modal-location-sheets`", note: "Từ cửa sổ nổi thành một khối trong trang." },
+  { f: "Cảnh thử trước khi làm cả loạt", n: 0, to: "look", how: "moi", now: "Chưa có", note: "Làm video thử 2 cảnh để chốt hướng hình rồi mới chạy hàng loạt. Xem lý do ở trang Hình mẫu." },
+  { f: "Tạo ảnh cảnh", n: 5, to: "scenes", how: "gom", now: "Nút Gen lại ảnh AI; nút Muse 2K; `#btn-auto-gen-all`; `#btn-regen-all-images`; giai đoạn 3 lúc dựng tự tạo ảnh thiếu", note: "Một nút Tạo ảnh còn thiếu, và nút Vẽ lại trong ngăn của từng cảnh." },
+  { f: "Làm video cho cảnh", n: 2, to: "scenes", how: "gom", now: "Nút Muse Video trên thẻ (theo lời thoại, `runSceneMuseVideo()`); bộ `#btn-climax-video-pick`, `#btn-climax-video-run`, nút Làm video trên thẻ", note: "Đề xuất giữ một cách làm mặc định (cách có lưới 9 ô). Cách theo lời thoại đã đo ngày 10/11: với nhân vật đầu tròn chỉ lia máy, nên cất vào Nâng cao." },
+  { f: "Ảnh, video riêng và chọn từ thư viện", n: 1, to: "scenes", how: "chuyen", now: "Nút trên thẻ: `uploadCustomSceneImage()`, `uploadCustomSceneVideo()`, `openMuseModalForScene()`", note: "Nằm trong ngăn của từng cảnh." },
+  { f: "Xem thử có tiếng", n: 1, to: "scenes", how: "chuyen", now: "Live Studio Player: `#btn-preview-play-toggle`, `#btn-play-all-story`", note: "" },
+  { f: "Nhạc nền, phụ đề, chuyển cảnh", n: 1, to: "publish", how: "chuyen", now: "Bảng Đạo Diễn: `#select-bgm`, `#select-subtitle-style`, `#toggle-hardsub`, `#select-transition`, `#toggle-audio-ducking`", note: "Đây là thiết lập lúc dựng, nên nằm cạnh nút dựng." },
+  { f: "Nút dựng video", n: 2, to: "publish", how: "gom", now: "`#btn-produce-long-video` trên thanh trên cùng; `#btn-produce-from-board` ở Bảng Đạo Diễn", note: "" },
+  { f: "Tiến trình dựng", n: 1, to: "publish", how: "gom", now: "Cả màn Bước 3 `#step-view-3`", note: "Thành một thanh tiến độ ngay dưới nút dựng. Đây là câu trả lời cho ý 7." },
+  { f: "Xem và tải video, phụ đề", n: 1, to: "publish", how: "chuyen", now: "Bước 4: `#cinema-video-player`, `#btn-cinema-download-video`, `#btn-cinema-download-srt`", note: "" },
+  { f: "Gói SEO, thumbnail", n: 1, to: "publish", how: "chuyen", now: "Bước 4: `#btn-yt-seo-research`, `#btn-yt-seo-generate`, `#btn-generate-custom-thumbnail`; hai nút tải thumbnail `#btn-download-thumbnail-direct` và `#btn-cinema-download-thumbnail`", note: "Giữ một nút tải thumbnail." },
+  { f: "Tạo bản tiếng Anh", n: 1, to: "publish", how: "chuyen", now: "Nút `#btn-create-en-version` trên thanh trên cùng", note: "" },
+  { f: "Tài khoản Muse", n: 1, to: "accounts", how: "chuyen", now: "Cửa sổ `#modal-muse-cloud`, nút `#btn-muse-cloud-status`", note: "" },
+  { f: "Nguồn tạo ảnh", n: 3, to: "look", how: "gom", now: "`#step1-engine-select`; `#tc-vision-engine`; Bảng Đạo Diễn, mục Nâng cao: `#select-image-provider`", note: "Là cài đặt của từng dự án nên đặt ở Hình mẫu, cạnh phong cách. Hai ô lúc tạo dự án giữ ẩn, mặc định Muse." },
+  { f: "Kết nối AI viết lời và ảnh Gemini, khoá YouTube", n: 0, to: "accounts", how: "moi", now: "Chỉ nằm trong file `.env`, giao diện không có chỗ nào hiện", note: "Bước đầu chỉ hiện trạng thái (đã có khoá chưa, gọi được không). Nhập khoá vẫn ở file `.env` cho an toàn." },
+  { f: "Thư viện ảnh và video Muse", n: 1, to: "gallery", how: "chuyen", now: "Nằm chung trong cửa sổ `#modal-muse-cloud`", note: "" },
+  { f: "Danh sách dự án", n: 1, to: "projects", how: "chuyen", now: "Cửa sổ `#modal-project-manager`", note: "" },
+  { f: "Nút Lưu", n: 1, to: "", how: "cat", now: "`#btn-save-project` (app đã tự lưu sau 1,5 giây)", note: "Thành dòng chữ Đã lưu ở góc trên. Phím Ctrl+S vẫn dùng được." },
+  { f: "9-Grid Spec", n: 1, to: "", how: "bo", now: "Cửa sổ `#modal-master-storyboard`", note: "Là lối tạo dự án thứ ba, nằm ngoài luồng đã chốt. Đề xuất gỡ khỏi giao diện, giữ API." },
+  { f: "Kịch bản AI (chia cảnh giữ nguyên chữ)", n: 1, to: "", how: "bo", now: "Cửa sổ `#modal-script-importer`", note: "Bạn đã chốt không bê nguyên văn (câu 16). Đề xuất gỡ khỏi giao diện, giữ API." }
+];
+const PAGES = {
+  idea: "Ý tưởng", script: "Kịch bản và giọng", look: "Hình mẫu", scenes: "Cảnh", publish: "Dựng và xuất bản",
+  projects: "Dự án", gallery: "Thư viện Muse", accounts: "Tài khoản và kết nối", map: "Gom tính năng trùng", road: "Thứ tự làm"
+};
+const HOW = { gom: "Gom về một chỗ", chuyen: "Chuyển chỗ", cat: "Cất gọn", bo: "Đề xuất gỡ khỏi giao diện", moi: "Mới" };
+const GENRES = {
+  story:  { name: "Truyện chữ", desc: "Dán truyện, AI kể lại kiểu review.", rewrite: "AI kể lại kiểu review, kiểm đủ ý từng phần.", extra: "Không có dàn ý và bảng tên.", ph: "Dán một hay nhiều chương truyện vào đây" },
+  case:   { name: "Vụ án có thật", desc: "Dán bài, AI lập dàn ý, đổi tên người và nơi chốn.", rewrite: "AI lập dàn ý cho bạn duyệt, đổi tên, rồi viết lại.", extra: "Bước 2 có thêm thẻ Dàn ý và thẻ Tên hư cấu.", ph: "Dán bài viết về vụ án vào đây" },
+  comic:  { name: "Truyện tranh", desc: "Thả ảnh trang truyện, app cắt thành từng khung.", rewrite: "Không viết lại. Mỗi khung thành một cảnh, bạn tự gõ lời.", extra: "Bỏ qua bước Hình mẫu vì hình đã có sẵn.", ph: "Thả ảnh trang truyện vào đây" }
+};
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmt = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+const view = { page: "idea", genre: "case", tab: "loi" };
+const $ = (id) => document.getElementById(id);
+const gomBtn = (p) => `<button class="btn ghost" data-drawer="map:${p}"><svg class="i"><use href="#i-swap"/></svg>Bước này gom những gì</button>`;
+
+/* ---------- Từng trang ---------- */
+const RENDER = {
+  idea() {
+    const g = GENRES[view.genre];
+    return `
+    <div class="head"><div><h1>Ý tưởng</h1><p class="lede">Chọn thể loại, dán nội dung. Mỗi thể loại là một khuôn làm sẵn, nên các bước sau tự biết phải làm gì.</p></div>
+      <div class="actions">${gomBtn("idea")}<button class="btn primary">Tạo kịch bản</button></div></div>
+    <div class="grid g3">
+      ${Object.entries(GENRES).map(([k, v]) => `<button class="pick" data-genre="${k}" aria-pressed="${k === view.genre}"><b>${v.name}</b><span>${v.desc}</span></button>`).join("")}
+      <button class="pick" disabled><b>Tổng hợp tin tức <span class="tag" style="display:inline-block">Sau này</span></b><span>Chưa làm. Khi cần chỉ thêm một khuôn.</span></button>
+      <button class="pick" disabled><b>Video kiến thức <span class="tag" style="display:inline-block">Sau này</span></b><span>Chưa làm. Khi cần chỉ thêm một khuôn.</span></button>
+      <button class="pick" disabled><b>Tổng hợp video ngắn <span class="tag" style="display:inline-block">Sau này</span></b><span>Chưa làm. Khi cần chỉ thêm một khuôn.</span></button>
+    </div>
+    <h2>Nội dung</h2>
+    <textarea class="big" placeholder="${g.ph}"></textarea>
+    <h2>Phong cách hình <span class="tag">Chỗ duy nhất để chọn</span></h2>
+    <div class="grid g4">
+      <button class="pick" aria-pressed="true"><b>Hoạt hình đầu tròn</b><span>Đang dùng cho 3 video gần nhất.</span></button>
+      <button class="pick" aria-pressed="false"><b>Anime</b><span>Nhân vật có mặt đầy đủ.</span></button>
+      <button class="pick" aria-pressed="false"><b>Điện ảnh tả thực</b><span>Người thật, ánh sáng phim.</span></button>
+      <button class="pick" aria-pressed="false"><b>Truyện tranh</b><span>Nét mực, mảng màu phẳng.</span></button>
+    </div>
+    <p class="note">Chọn ở đây vì lúc viết kịch bản, AI viết luôn mô tả ảnh của từng cảnh theo phong cách này.</p>
+    <div class="row" style="margin-top:10px">
+      <span class="sel"><span>Ngôn ngữ</span>Tiếng Việt</span>
+      ${view.genre === "case" ? `<span class="sel"><span>Độ dài</span>20 phút</span>` : ""}
+      <button class="btn ghost" data-drawer="opts">Tuỳ chọn</button>
+    </div>
+    <h2>Khuôn của thể loại “${g.name}”</h2>
+    <div class="card pad"><div class="kv">
+      <span>Có viết lại nội dung không</span><b style="font-weight:500">${g.rewrite}</b>
+      <span>Khác gì ở các bước sau</span><b style="font-weight:500">${g.extra}</b>
+    </div></div>
+    `;
+  },
+  script() {
+    const isCase = view.genre === "case";
+    const tabs = [["dan", "Dàn ý", isCase], ["ten", "Tên hư cấu", isCase], ["loi", "Lời kể theo cảnh", true], ["giong", "Giọng đọc", true]].filter((t) => t[2]);
+    if (!tabs.some((t) => t[0] === view.tab)) view.tab = "loi";
+    const body = {
+      dan: `<div class="card list">
+        <div><span class="n">Phần 1</span><span>Mở đầu: phát hiện ở cánh đồng ngô. 6 sự việc, 9 cảnh.</span><span class="m">Mở đầu</span></div>
+        <div><span class="n">Phần 2</span><span>Điều tra ban đầu và người bị bắt oan. 11 sự việc, 16 cảnh.</span><span class="m">Tăng dần</span></div>
+        <div><span class="n">Phần 3</span><span>Hai mươi năm kêu oan của gia đình. 9 sự việc, 14 cảnh.</span><span class="m">Trầm</span></div>
+        <div><span class="n">Phần 4</span><span>Hung thủ thật ra đầu thú. 12 sự việc, 19 cảnh.</span><span class="m">Cao trào</span></div></div>
+        <div class="row" style="margin-top:12px"><button class="btn primary">Duyệt dàn ý</button><button class="btn">Lưu chỉnh sửa</button><button class="btn ghost">Về bản AI đề xuất</button></div>`,
+      ten: `<div class="card tablewrap"><table><tr><th>Loại</th><th>Tên trong bài gốc</th><th>Tên trong video</th></tr>
+        <tr><td>Người</td><td>(ẩn, chỉ lưu trên máy)</td><td>Chu Khải Phong</td></tr>
+        <tr><td>Người</td><td>(ẩn, chỉ lưu trên máy)</td><td>Đỗ Thành Cương</td></tr>
+        <tr><td>Nơi chốn</td><td>(ẩn, chỉ lưu trên máy)</td><td>Tỉnh Yên Ký</td></tr></table></div>
+        <p class="note">Kiểm lọt tên thật: 60 tên, lọt 0.</p>`,
+      loi: `<div class="card list">
+        <div><span class="n">001</span><span>Mùa hè năm ấy, cánh đồng ngô ven khu công nghiệp cao quá đầu người.</span><span class="m">11 giây</span></div>
+        <div><span class="n">002</span><span>Một người phụ nữ đạp xe đi làm ca chiều và không bao giờ tới nhà máy.</span><span class="m">14 giây</span></div>
+        <div><span class="n">003</span><span>Ba tiếng sau, bố cô tìm thấy chiếc xe đạp nằm nghiêng bên lối mòn.</span><span class="m">16 giây</span></div>
+        <div><span class="n">004</span><span>Cảnh sát có mặt lúc trời sẩm tối, đèn pin quét qua từng hàng ngô.</span><span class="m">15 giây</span></div></div>
+        <div class="row" style="margin-top:12px"><button class="btn">Thêm cảnh</button><span class="note" style="margin:0">Di chuột lên một cảnh để đổi thứ tự, nhân bản hoặc xoá.</span></div>`,
+      giong: `<div class="card pad"><div class="row"><span class="sel"><span>Giọng</span>Nam Minh (Edge)</span><button class="btn">Nghe thử</button><button class="btn primary">Thu giọng còn thiếu</button></div>
+        <div style="margin-top:14px" class="kv"><span>Đã thu</span><b style="font-weight:500">72 trên 72 cảnh</b><span>Tổng thời lượng</span><b style="font-weight:500">19 phút 40 giây</b></div></div>
+        <p class="note">Thu giọng ở bước này vì độ dài giọng quyết định mỗi cảnh cần video dài bao nhiêu giây.</p>`
+    }[view.tab];
+    return `
+    <div class="head"><div><h1>Kịch bản và giọng</h1><p class="lede">Mọi thứ thuộc về chữ và tiếng nằm ở đây: ${isCase ? "dàn ý, tên hư cấu, " : ""}lời kể từng cảnh, giọng đọc.</p></div>
+      <div class="actions">${gomBtn("script")}</div></div>
+    <div class="tabs" role="tablist">${tabs.map((t) => `<button class="tab" role="tab" data-tab="${t[0]}" aria-selected="${t[0] === view.tab}">${t[1]}</button>`).join("")}</div>
+    ${body}`;
+  },
+  look() {
+    const people = [["Chu Khải Phong", "Đã duyệt"], ["Đỗ Thành Cương", "Đã duyệt"], ["Tống Lan Phương", "Đã duyệt"], ["Thẩm Hạo Nhiên", "Chờ bạn duyệt"]];
+    const places = [["Con đường đất ven cánh đồng ngô", "10 cảnh"], ["Phòng thẩm vấn cảnh sát", "4 cảnh"], ["Phòng xử án toà án", "5 cảnh"]];
+    return `
+    <div class="head"><div><h1>Hình mẫu</h1><p class="lede">Chốt hướng hình một lần: nhân vật ở mọi góc, bối cảnh. Từ bước sau trở đi chỉ dùng lại, không vẽ lại từ đầu.</p></div>
+      <div class="actions">${gomBtn("look")}</div></div>
+    <div class="card pad row" style="justify-content:space-between"><span><span style="color:var(--mute)">Phong cách của dự án:</span> <b style="font-weight:500;color:var(--ink)">Hoạt hình đầu tròn</b></span><button class="btn ghost" title="Mô tả ảnh của các cảnh đã viết theo phong cách cũ; đổi ở đây chỉ đổi phần phong cách gắn thêm khi vẽ, bảng nhân vật và ảnh chuẩn bối cảnh phải vẽ lại">Đổi</button></div>
+    <h2>Nhân vật <span class="tag">${people.length} người</span></h2>
+    <div class="grid g4">${people.map((p) => `<div class="scene" tabindex="0"><div class="ph">4 góc toàn thân, 5 góc đầu</div><div class="meta"><b>${p[0]}</b><span>${p[1]}</span></div></div>`).join("")}</div>
+    <div class="row" style="margin-top:12px"><button class="btn primary">Vẽ bảng còn thiếu</button><button class="btn">AI tìm lại nhân vật</button></div>
+    <h2>Bối cảnh <span class="tag">${places.length} nơi</span></h2>
+    <div class="grid g3">${places.map((p) => `<div class="scene" tabindex="0"><div class="ph">Ảnh chuẩn, không có người</div><div class="meta"><b>${p[0]}</b><span>${p[1]}</span></div></div>`).join("")}</div>
+    <h2>Cảnh thử <span class="tag solid">Mới</span></h2>
+    <div class="card pad">
+      <p style="margin:0 0 10px">Trước khi làm cả loạt, làm video cho 2 cảnh: một cảnh có người cử động nhiều, một cảnh phong cảnh. Bạn xem và chốt. Chưa ưng thì sửa phong cách hay thiết kế ngay ở trang này, mất 2 cảnh thay vì mất cả loạt.</p>
+      <div class="kv">
+        <span>Vụ xưởng sắt: số cảnh phải làm clip từ 2 lần trở lên</span><b style="font-weight:500">35 trên 47 cảnh</b>
+        <span>Vụ Khang Cúc Hoa: số cảnh phải làm clip từ 2 lần trở lên</span><b style="font-weight:500">14 trên 38 cảnh</b>
+        <span>Số video Muse tự làm đi làm lại trong mỗi cảnh</span><b style="font-weight:500">gần 5 trên tối đa 6</b>
+      </div>
+      <div class="row" style="margin-top:12px"><button class="btn">Chọn 2 cảnh thử</button></div>
+    </div>`;
+  },
+  scenes() {
+    const kinds = ["Video", "Video", "Ảnh", "Video", "Ảnh thật", "Video", "Ảnh", "Video", "Chờ duyệt lưới", "Ảnh", "Video", "Đang làm video"];
+    return `
+    <div class="head"><div><h1>Cảnh</h1><p class="lede">Chỉ còn hình: ảnh và video của từng cảnh. Chữ đã ở bước 2, hình mẫu đã ở bước 3.</p></div>
+      <div class="actions">${gomBtn("scenes")}<button class="btn">Tạo ảnh còn thiếu</button><button class="btn primary">Làm video cảnh đã chọn</button></div></div>
+    <div class="card pad">
+      <div class="row" style="justify-content:space-between"><span>Video Muse có cử động</span><b style="font-weight:500;font-variant-numeric:tabular-nums">52,9% · cần ít nhất 45%, mục tiêu 50%</b></div>
+      <div class="meter" style="margin-top:8px"><i style="width:52.9%"></i></div>
+      <div class="row" style="margin-top:10px"><button class="btn ghost">Chọn cảnh cho đủ 50%</button><button class="btn ghost">Duyệt lưới 9 ô (1 đang chờ)</button><button class="btn ghost">Xem thử có tiếng</button></div>
+    </div>
+    <h2>72 cảnh</h2>
+    <div class="grid g6">${kinds.map((k, i) => `<button class="scene" data-drawer="scene:${i + 1}"><div class="ph">${String(i + 1).padStart(3, "0")}</div><div class="meta"><b>${String(i + 1).padStart(3, "0")}</b><span>${k}</span></div></button>`).join("")}</div>
+    <p class="note">Bấm vào một cảnh để mở ngăn bên phải: vẽ lại ảnh, lưới 9 ô, clip, đánh dấu clip đã xem, tải ảnh riêng.</p>`;
+  },
+  publish() {
+    return `
+    <div class="head"><div><h1>Dựng và xuất bản</h1><p class="lede">Bấm dựng, theo dõi ngay tại chỗ, xem, tải về, lấy tiêu đề và thumbnail. Không còn màn Tiến trình riêng.</p></div>
+      <div class="actions">${gomBtn("publish")}<button class="btn" data-drawer="render">Tuỳ chỉnh dựng</button><button class="btn primary">Dựng video</button></div></div>
+    <div class="card pad">
+      <div class="row" style="justify-content:space-between"><span>Đang dựng: ghép cảnh 41 trên 72</span><b style="font-weight:500;font-variant-numeric:tabular-nums">64%</b></div>
+      <div class="meter" style="margin-top:8px"><i style="width:64%"></i></div>
+      <div class="steps5"><div class="done">Giọng</div><div class="done">Ảnh còn thiếu</div><div class="done">Kiểm 45% video</div><div class="done">Dựng từng cảnh</div><div>Ghép và nhạc</div></div>
+    </div>
+    <h2>Thành phẩm</h2>
+    <div class="grid" style="grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)">
+      <div class="ph" style="border-radius:12px">Video thành phẩm 19 phút 40 giây</div>
+      <div class="card pad"><div class="kv">
+        <span>Độ dài</span><b style="font-weight:500">19 phút 40 giây</b>
+        <span>Video Muse có cử động</span><b style="font-weight:500">52,9%</b>
+        <span>Khung hình</span><b style="font-weight:500">1920 x 1080</b></div>
+        <div class="row" style="margin-top:14px"><button class="btn primary">Tải video</button><button class="btn">Phụ đề</button><button class="btn ghost">Mở thư mục</button></div></div>
+    </div>
+    <h2>Đăng YouTube</h2>
+    <div class="grid g3">
+      <div class="card pad"><b style="font-weight:500;color:var(--ink)">Tiêu đề, mô tả, thẻ</b><p class="note" style="margin:4px 0 12px">Từ khoá tìm kiếm thật, AI viết trong khuôn, kiểm luật YouTube.</p><button class="btn">Mở gói SEO</button></div>
+      <div class="card pad"><b style="font-weight:500;color:var(--ink)">Thumbnail</b><p class="note" style="margin:4px 0 12px">Chữ lấy từ gói SEO, sửa được.</p><button class="btn">Tạo thumbnail</button></div>
+      <div class="card pad"><b style="font-weight:500;color:var(--ink)">Bản tiếng Anh</b><p class="note" style="margin:4px 0 12px">Dịch lời, dùng lại toàn bộ ảnh và clip.</p><button class="btn">Tạo bản tiếng Anh</button></div>
+    </div>`;
+  },
+  accounts() {
+    return `
+    <div class="head"><div><h1>Tài khoản và kết nối</h1><p class="lede">Một chỗ duy nhất để biết app đang nối với dịch vụ nào và dịch vụ đó còn dùng được không.</p></div>
+      <div class="actions">${gomBtn("accounts")}</div></div>
+    <h2>Muse <span class="tag">ảnh và video</span></h2>
+    <div class="card tablewrap"><table>
+      <tr><th>Tài khoản</th><th>Dùng cho</th><th>Trạng thái</th><th></th></tr>
+      <tr><td>muse_acc_vid_04</td><td>Video</td><td>Sẵn sàng</td><td class="c"><button class="btn ghost">Tạm khoá</button></td></tr>
+      <tr><td>muse_acc_vp_01</td><td>Video</td><td>Sẵn sàng</td><td class="c"><button class="btn ghost">Tạm khoá</button></td></tr>
+      <tr><td>muse_acc_vid_03</td><td>Video</td><td>Hết lượt tuần, mở lại 23:34 ngày 17/11</td><td class="c"><button class="btn ghost">Mở khoá</button></td></tr>
+      <tr><td>muse_acc_img_01</td><td>Ảnh</td><td>Sẵn sàng</td><td class="c"><button class="btn ghost">Tạm khoá</button></td></tr>
+    </table></div>
+    <p class="note">Hai nút Tạm khoá và Mở khoá là đề xuất mới. Hiện nay việc này phải sửa tay file cấu hình. Đăng nhập tài khoản mới vẫn chạy file <code>setup_muse_accounts.bat</code>.</p>
+    <h2>AI viết lời và ảnh Gemini <span class="tag solid">Mới</span></h2>
+    <div class="card pad"><div class="kv">
+      <span>Cổng kết nối</span><b style="font-weight:500">127.0.0.1:8317</b>
+      <span>Khoá truy cập</span><b style="font-weight:500">Đã có trong file .env</b>
+      <span>Nguồn tạo ảnh mặc định</span><b style="font-weight:500">Muse (miễn phí). Gemini là dịch vụ tính tiền</b></div>
+      <div class="row" style="margin-top:12px"><button class="btn">Gọi thử</button></div></div>
+    <p class="note">Bước đầu trang này chỉ hiện trạng thái. Khoá truy cập vẫn nhập trong file <code>.env</code> để không lộ ra màn hình.</p>
+    <h2>Giọng đọc và YouTube</h2>
+    <div class="card pad"><div class="kv">
+      <span>Edge-TTS (cần mạng)</span><b style="font-weight:500">Dùng được</b>
+      <span>VieNeu (chạy trên máy)</span><b style="font-weight:500">Chưa bật</b>
+      <span>Khoá YouTube Data API</span><b style="font-weight:500">Chưa có</b></div></div>`;
+  },
+  projects() {
+    return `<div class="head"><div><h1>Dự án</h1><p class="lede">Thay cho cửa sổ quản lý dự án.</p></div><div class="actions"><button class="btn primary" data-go="idea">Video mới</button></div></div>
+    <div class="card tablewrap"><table><tr><th>Tên</th><th>Thể loại</th><th>Đang ở bước</th><th>Sửa lần cuối</th></tr>
+      <tr><td>Oan Khuất Giữa Cánh Đồng Ngô</td><td>Vụ án</td><td>5. Dựng và xuất bản</td><td>13/11</td></tr>
+      <tr><td>Shadows in the Cornfield</td><td>Vụ án, bản Anh</td><td>5. Dựng và xuất bản</td><td>13/11</td></tr>
+      <tr><td>Shadows in the Metal Workshop</td><td>Vụ án, bản Anh</td><td>5. Dựng và xuất bản</td><td>14/11</td></tr>
+      <tr><td>ZZ Thử Muse — Chiếc ô đỏ trong hẻm</td><td>Truyện chữ</td><td>4. Cảnh</td><td>02/11</td></tr></table></div>`;
+  },
+  gallery() {
+    return `<div class="head"><div><h1>Thư viện Muse</h1><p class="lede">Mọi ảnh và video Muse đã tạo. Tách khỏi trang tài khoản.</p></div></div>
+    <div class="grid g4">${Array.from({ length: 8 }, (_, i) => `<div class="scene"><div class="ph">${i % 3 ? "Ảnh" : "Video"}</div><div class="meta"><b>Cảnh ${String(i * 7 + 3).padStart(3, "0")}</b><span>13/11</span></div></div>`).join("")}</div>`;
+  },
+  map() {
+    const dup = MAP.filter((m) => m.n >= 2);
+    const places = dup.reduce((n, m) => n + m.n, 0);
+    return `<div class="head"><div><h1>Gom tính năng trùng</h1><p class="lede">${MAP.length} nhóm tính năng đang có. ${dup.length} nhóm xuất hiện ở từ 2 nơi trở lên, tổng cộng ${places} chỗ, sẽ còn ${dup.length} chỗ.</p></div></div>
+    <div class="card tablewrap"><table>
+      <tr><th>Tính năng</th><th>Số nơi hiện có</th><th>Hiện nằm ở</th><th>Nơi duy nhất mới</th><th>Cách xử lý</th></tr>
+      ${MAP.map((m) => `<tr><td><b style="font-weight:500;color:var(--ink)">${esc(m.f)}</b>${m.note ? `<div class="note" style="margin-top:2px">${fmt(m.note)}</div>` : ""}</td><td class="c">${m.n || "0"}</td><td>${fmt(m.now)}</td><td style="white-space:nowrap">${m.to ? esc(PAGES[m.to]) : "Không còn trên giao diện"}</td><td><span class="tag ${m.how === "moi" ? "solid" : ""}">${HOW[m.how]}</span></td></tr>`).join("")}
+    </table></div>`;
+  },
+  road() {
+    const rows = [
+      ["0", "Bạn duyệt bản xem thử này", "Chốt 5 bước, chốt danh sách gom và gỡ.", "Không đụng code."],
+      ["1", "Khung mới", "Thanh bên, thanh trên, vùng giữa, bộ màu và chữ. 4 bước cũ hiện tạm trong khung mới.", "Không đổi tính năng. Mọi id cũ giữ nguyên nên test hiện có vẫn kiểm được."],
+      ["2", "Chia lại 5 trang", "Dời từng nút, từng ô sang đúng trang mới. Bảng Đạo Diễn tách làm ba: chữ sang bước 2, hình mẫu sang bước 3, thiết lập dựng sang bước 5.", "Không đổi tính năng."],
+      ["3", "Hồ Sơ Kỳ Án vào luồng chung", "Cửa sổ nổi thành thẻ Dàn ý và Tên hư cấu trong bước 2, chỉ hiện với thể loại Vụ án.", "Không đổi tính năng. Phần rủi ro nhất vì file giao diện vụ án dài 2.192 dòng."],
+      ["4", "Gỡ chỗ trùng", "Gỡ các ô và cửa sổ thừa theo trang Gom tính năng trùng.", "Mỗi lần gỡ cập nhật bản đồ tính năng và chạy bộ kiểm tra."],
+      ["5", "Trang Tài khoản và kết nối", "Dời tài khoản Muse sang, thêm phần hiện trạng thái kết nối AI.", "Có phần mới: máy chủ cần thêm đường báo trạng thái."],
+      ["6", "Video Muse nhanh hơn", "Cảnh thử, duyệt lưới xong tự làm clip, nút dừng.", "Đổi cách chạy, cần bạn duyệt riêng và cần thử thật với Muse (tốn lượt)."]
+    ];
+    return `<div class="head"><div><h1>Thứ tự làm</h1><p class="lede">Làm khung trước, dời tính năng sau, đổi cách chạy sau cùng. Mỗi đợt xong là app vẫn dùng được.</p></div></div>
+    <div class="card tablewrap"><table><tr><th>Đợt</th><th>Việc</th><th>Làm gì</th><th>Đụng tới tính năng không</th></tr>
+    ${rows.map((r) => `<tr><td class="c">${r[0]}</td><td><b style="font-weight:500;color:var(--ink)">${r[1]}</b></td><td>${r[2]}</td><td>${r[3]}</td></tr>`).join("")}</table></div>
+    <p class="note">Cách dựng: giữ nguyên phần xử lý và mọi id đang có, dựng lại khung HTML và CSS quanh chúng. Không viết lại 12.000 dòng giao diện từ số không, vì giao diện chưa có kiểm tra tự động nên viết lại hết rất dễ làm rơi tính năng mà không ai biết.</p>`;
+  }
+};
+
+/* ---------- Ngăn kéo ---------- */
+function openDrawer(key) {
+  const [kind, arg] = key.split(":");
+  let title = "", html = "";
+  if (kind === "map") {
+    const rows = MAP.filter((m) => m.to === arg);
+    title = "Gom về “" + PAGES[arg] + "”";
+    html = `<h3>${rows.length} nhóm tính năng chuyển về trang này</h3><ul>` +
+      rows.map((m) => `<li><b style="font-weight:500">${esc(m.f)}</b> <span class="tag ${m.how === "moi" ? "solid" : ""}">${HOW[m.how]}</span><small>Hiện ở ${m.n || 0} nơi: ${fmt(m.now)}</small>${m.note ? `<small>${fmt(m.note)}</small>` : ""}</li>`).join("") + "</ul>";
+  } else if (kind === "scene") {
+    const n = String(arg).padStart(3, "0");
+    title = "Cảnh " + n;
+    html = `<div class="ph" style="margin-top:12px">Ảnh hoặc clip của cảnh ${n}</div>
+      <h3>Hình</h3><ul><li>Vẽ lại ảnh<small>Tự kèm khoá nhân vật và khoá bối cảnh</small></li><li>Lưới 9 ô<small>Duyệt, hoặc ghi chỗ sai rồi vẽ lại</small></li><li>Clip<small>Điểm cử động 26,5 · Làm lại cảnh này</small></li><li>Đã xem, có cử động</li></ul>
+      <h3>Nguồn khác</h3><ul><li>Tải ảnh hoặc video riêng từ máy</li><li>Chọn từ Thư viện Muse</li></ul>
+      <h3>Nhân vật có mặt</h3><ul><li>Chu Khải Phong, Tống Lan Phương<small>Sửa ở bước 3, Hình mẫu</small></li></ul>
+      <h3>Nâng cao</h3><ul><li>Prompt ảnh, prompt video, chuyển động máy quay</li><li>Video theo lời thoại (cách cũ)</li></ul>`;
+  } else if (kind === "opts") {
+    title = "Tuỳ chọn";
+    html = `<h3>Ít khi cần đổi</h3><ul><li>Nhịp kể<small>Hiện là ô <code>#step1-pacing-select</code></small></li><li>Máy chia cảnh<small>Hiện là <code>#step1-engine-select</code>, <code>#tc-vision-engine</code></small></li></ul>`;
+  } else if (kind === "render") {
+    title = "Tuỳ chỉnh dựng";
+    html = `<h3>Âm thanh</h3><ul><li>Nhạc nền<small><code>#select-bgm</code>, tải nhạc riêng</small></li><li>Tự hạ nhạc khi có giọng<small><code>#toggle-audio-ducking</code></small></li></ul>
+      <h3>Hình</h3><ul><li>Kiểu phụ đề<small><code>#select-subtitle-style</code>, <code>#toggle-hardsub</code></small></li><li>Chuyển cảnh<small><code>#select-transition</code></small></li></ul>`;
+  }
+  $("drawer-title").textContent = title;
+  $("drawer-body").innerHTML = html;
+  $("drawer").classList.add("open");
+}
+function closeDrawer() { $("drawer").classList.remove("open"); }
+
+/* ---------- Điều hướng ---------- */
+function render() {
+  $("canvas").innerHTML = RENDER[view.page]();
+  document.querySelectorAll(".nav[data-go]").forEach((b) => {
+    if (b.dataset.go === view.page) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+  });
+  const step = ["idea", "script", "look", "scenes", "publish"].indexOf(view.page);
+  $("crumb").innerHTML = (step >= 0 ? "Oan Khuất Giữa Cánh Đồng Ngô / " : "") + "<b>" + esc(PAGES[view.page]) + "</b>";
+  document.querySelector(".scroll").scrollTop = 0;
+}
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-go],[data-genre],[data-tab],[data-drawer]");
+  if (!t) return;
+  if (t.dataset.go) { view.page = t.dataset.go; closeDrawer(); render(); }
+  else if (t.dataset.genre) { view.genre = t.dataset.genre; render(); }
+  else if (t.dataset.tab) { view.tab = t.dataset.tab; render(); }
+  else if (t.dataset.drawer) openDrawer(t.dataset.drawer);
+});
+$("btn-side").addEventListener("click", () => document.body.classList.toggle("collapsed"));
+$("btn-drawer-close").addEventListener("click", closeDrawer);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
+if (window.innerWidth < 860) document.body.classList.add("collapsed");
+render();
+</script>
+</body>
+</html>

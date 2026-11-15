@@ -85,7 +85,7 @@ Thiết kế: `docs/superpowers/specs/2026-10-19-true-crime-adaptation-design.md
 - [x] Task 8: API, bỏ luồng cũ (`67fa68f`)
 - [x] Task 9: Giao diện modal Hồ Sơ Kỳ Án (`be37212`)
 - [x] Task 10: Nút "Tạo bản tiếng Anh" (`3656370`)
-- [ ] Task 11: Hồi quy toàn bộ và chạy thật cả chuỗi (bước 1 xong; bước 2, 3 chờ 9router; bước 4 chờ người dùng; xem mục "Task 11" cuối file)
+- [x] Task 11: Hồi quy toàn bộ và chạy thật cả chuỗi (bước 1 xong; bước 2, 3 chờ 9router; bước 4 chờ người dùng; xem mục "Task 11" cuối file)
 
 ## Baseline trước khi sửa (Task 1, bước 1)
 - Bộ offline 18 file (lệnh trong kế hoạch, Task 1): **158 pass / 1 fail**, 332 s. Worktree không có `backend/config/muse_fleet_accounts.json` và `backend/chrome_profiles/`.
@@ -684,3 +684,57 @@ Plan chủ dự án duyệt: `C:\Users\pc\.claude\plans\gi-l-p-plan-c-c-efferves
 - Kiểm tra đầy đủ (14/11, 643 giây): ĐẠT, 1.078 test đạt, 0 lỗi
 - Còn lại, chờ chủ dự án: (1) Trịnh Đức Toàn (xưởng sắt): bảng nhân vật đã duyệt vẽ đầu màu da, có tai, nếp nhăn; Muse bám theo nên cảnh 009, 035 (và ảnh cảnh 035) mặt nhăn chi tiết; sửa tận gốc phải vẽ lại bảng nhân vật rồi vẽ lại các cảnh có ông. (2) Cảnh 063 xưởng sắt còn clip đứng hình (không tính vào tỉ lệ). (3) Lỗi nhẹ còn lại theo bảng rà soát (vd chữ "HANDPRINT" cảnh 058, viên cảnh sát mặt màu be cảnh 020 Khang Cúc Hoa)
 - Chủ dự án 15/11/2026 chọn "Giữ như hiện tại" cho bảng nhân vật Trịnh Đức Toàn: không vẽ lại bảng, cảnh 009 và 035 vụ xưởng sắt giữ như đã dựng
+
+# TASKS — giao diện gọn 5 bước kiểu ElevenLabs (15/11/2026, nhánh `giao-dien-gon`)
+Chủ dự án duyệt bản xem thử 15/11: "Duyệt, viết kế hoạch". Thiết kế: `docs/superpowers/specs/2026-11-15-giao-dien-gon-design.md`; kế hoạch: `docs/superpowers/plans/2026-11-15-giao-dien-gon.md`; bản xem thử: `docs/superpowers/specs/2026-11-15-giao-dien-gon-ban-xem-thu.html`.
+- [x] Viết thiết kế, cho người đọc độc lập soát (6 câu hỏi, 4 chỗ lệch code), sửa theo
+- [x] Đổi so với bản xem thử sau khi đọc code: phong cách hình chọn ở trang Ý tưởng (AI viết mô tả ảnh theo phong cách ngay lúc viết kịch bản); nguồn tạo ảnh ở trang Hình mẫu (cài đặt của từng dự án, không phải của cả app); thẻ Dàn ý và Tên hư cấu chỉ hiện khi đang theo dõi vụ chưa tạo dự án (như cửa sổ hiện nay); giọng từng cảnh ở trang Kịch bản
+- [x] Kiểm: mọi id và tên hàm trong hai tài liệu có trong code; `tools/check.py` ĐẠT (40 test kiến trúc, 26 giây)
+- [x] Làm 12 task của kế hoạch (mỗi task: người làm riêng, người soát riêng, controller bấm thử trên server 8010)
+- [x] Task 1: Khoá cứng giữ id và test bố cục
+- [x] Task 2: Khung mới (thanh bên, thanh trên, 8 trang, ngăn kéo)
+- [x] Task 3: Trang Kịch bản và giọng (phần chung cho mọi thể loại)
+- [x] Task 4: Trang Hình mẫu
+- [x] Task 5: Trang Cảnh và trang Dựng và xuất bản
+- [x] Task 6: Trang Dự án, Thư viện Muse, Tài khoản (phần Muse)
+- [x] Task 7: Khuôn thể loại và trang Ý tưởng
+- [x] Task 8: Hồ Sơ Kỳ Án vào trang Kịch bản
+- [x] Task 9: Gỡ các cửa sổ và nút trùng còn lại
+- [x] Task 10: Dọn màu trang trí sang hệ đen trắng xám (đỏ ban đầu: 296 chỗ lớp màu trang trí, index.html 106, app.js 128, climax_video.js 23, true_crime.js 14, youtube_seo.js 11, character_sheets.js 7, location_sheets.js 7; nay 0, test `tests/test_ui_palette.py`)
+- [x] Task 11: Trang Tài khoản và kết nối — trạng thái kết nối
+- [x] Task 12: Kiểm chứng cuối và tài liệu
+- Soát cả nhánh (model mạnh nhất): "sẵn sàng sau khi sửa", 5 lỗi đáng kể + 6 điểm nhỏ, sửa một lượt (commit `043b4e7`, `0864a3e`), soát lại: 11/11 đã sửa
+- Lỗi chỉ lộ ra khi bấm thật (người soát đọc mã chấm đạt): trang Kịch bản không hiện cảnh nào vì đọc `window.AppState`; sửa lời ở Kịch bản mà trang Cảnh vẫn lời cũ; dòng phong cách cũ sau khi đổi dự án; nút chính chưa thành viên thuốc đen
+### Bằng chứng (15/11/2026)
+- `tools/check.py --full`: ĐẠT, 1.128 test đạt, 19 bỏ qua (cờ live), Ruff không lỗi mới, 12 file JS đúng cú pháp (lần chạy của người sửa cuối; lần trước ở 4d3dd60: 1.118 đạt, 257,9 giây)
+- `tools/build_release.py`: gói 167 file, 23,8 MB, không báo thiếu file `/static/...`; gói thử đã chuyển vào Thùng rác
+- Bấm thử server 8010 (`proj_ea5b04db`, mở xem `proj_crime_52c3a5e8`, vụ `case_7dcf6158` qua localStorage, mọi lệnh ghi vào mục MẪU bị chặn): 8 trang, sửa lời, nghe giọng, thêm/xoá cảnh, Hình mẫu đổi dự án, ngăn xem thử, Tuỳ chỉnh dựng, dựng bị chặn 45% (giả lập) → hỏi bản nháp, gắn ảnh từ Thư viện (giả lập), vụ án đang theo dõi → thẻ Dàn ý/Tên hư cấu, Ctrl+S, trang Tài khoản khớp cấu hình thật
+- "Gọi thử" bấm 1 lần: báo "Không kết nối được 9router tại 127.0.0.1:8317" sau 2,1 giây (cổng 8317 và 20128 đang tắt trên máy) → 0 lượt AI bị tính
+- Tràn ngang: 0/8 trang ở 1024x768 (thanh bên mở và thu gọn), 1280x720, 1920x1080 (vùng giữa rộng 1.036 px, canh giữa); ảnh chụp ở `.cache/giao_dien_gon/`
+- `projects/` không thêm thư mục; `proj_ea5b04db` giống hệt bản sao trước khi thử (cảnh và cài đặt)
+- [ ] Còn chờ chủ dự án: `projects/proj_crime_52c3a5e8/renders/thumbnail.jpg` do máy chủ tự vẽ khi controller mở trang Dựng của dự án MẪU (file mới, không ghi đè gì); giữ hay chuyển vào Thùng rác
+- [ ] Còn chờ chủ dự án: gộp nhánh `giao-dien-gon` vào `master`
+- Số lần gọi dịch vụ: LLM 0 lượt tính tiền (1 lần gọi thử bị từ chối vì cổng AI tắt), Muse 0, ảnh trả phí 0
+
+# TASKS — sửa thao tác sau khi chủ dự án xem thử giao diện gọn (15/11/2026, nhánh `giao-dien-gon`)
+Chủ dự án xem giao diện mới, góp ý 9 điểm (chọn cảnh cao trào không thấy gì, prompt video giống prompt ảnh, video 5/10 giây, không xem lớn được ảnh/video, làm lại một cảnh lấy prompt ở đâu, không huỷ được bản tiếng Anh, nhân vật phải AI tự tìm và vẽ, tạo một lần ăn ngay, nút dự án thừa và lưới dự án có ảnh). Quyết định 15/11: lưới 9 khung tự chạy tiếp không chờ duyệt; chọn cảnh cao trào bằng Gemini, "không cần tiết kiệm token". Kế hoạch: `C:\Users\pc\.claude\plans\wobbly-brewing-aurora.md`.
+- [x] A1 Bỏ nút dự án ở thanh bên; trang Dự án thành lưới thẻ có ảnh bìa (`cover_url`, chỉ đọc, không gọi đường tự tạo thumbnail)
+- [x] A2 Bấm ảnh/video trên thẻ cảnh để xem lớn (`media_viewer.js`); bảng nhân vật, ảnh bối cảnh cũng vậy
+- [x] A3 Thẻ cảnh hiện prompt thật gửi Muse (ảnh 2K; video theo lời thoại: số video và số giây; bản giao việc cao trào, lý do khi sẽ bị chặn); gỡ ô prompt video không được gửi đi; bỏ chữ "(10s)" ghi cứng
+- [x] A4 Gemini chọn cảnh cao trào theo nhóm 14 cảnh có kiểm, lý do trên thẻ; dải tổng kết "Làm video: N/M cảnh · X% thời lượng", bộ lọc Tất cả/Làm video/Ảnh, công tắc Làm video trên mọi thẻ
+- [x] A5 Nút Huỷ khi tạo bản tiếng Anh (dừng sau bước AI đang chạy, dọn dự án dở, không đụng bản Việt)
+- [x] A6 "AI tìm và vẽ tất cả" nhân vật và bối cảnh, "Duyệt tất cả", tiến độ và Dừng; báo trước số lượt Muse
+- [x] B "Tạo hình cho cả dự án": cảnh thường ra ảnh, cảnh cao trào ra lưới → tự duyệt → clip; báo trước số ảnh, số video, số lượt Muse, cảnh thiếu điều kiện gom theo nguyên nhân; ảnh đi đúng việc "Muse 2K" của thẻ (không rơi sang ảnh trả phí)
+- Mỗi việc: người làm riêng, người soát riêng (A3, A4, A6, B có lỗi quan trọng, đã sửa và bấm thử lại), controller bấm thử trên 8010
+- Lỗi chỉ lộ khi bấm thử (người làm báo đạt): nút Huỷ bản tiếng Anh không hiện trong lúc chạy (sửa `efdfd29`); ô xác nhận "Tạo hình cho cả dự án" cao 1.380 px, nút Chạy nằm ngoài màn hình 720 px, và 7 giây chờ không báo gì (sửa `dfb85c5`)
+### Bằng chứng (15/11/2026)
+- Gemini chọn cảnh cao trào chạy thật 1 lần trên `proj_ea5b04db`: 1 lượt AI, dưới 1 phút, 5 cảnh có điểm và lý do tiếng Việt, chọn 3 cảnh (67,7% thời lượng); đã tắt lại 3 cảnh qua công tắc của app, project.json giống bản sao
+- Bấm thử 8010 (`proj_ea5b04db`, `proj_crime_thucaotrao`): lưới 11 dự án; xem lớn ảnh/video, Esc/nền/× đóng; prompt đầy đủ và kế hoạch video trên thẻ; 2 khối video cho cảnh cao trào, lý do chặn đúng; dải tổng kết 40/78 cảnh 51%, lọc 40/38; Huỷ bản tiếng Anh (máy chủ giả lập): hiện Huỷ, "Đang huỷ…", trả nút; vẽ tất cả nhân vật: xác nhận "16 lượt" đúng 16 bảng nháp, tiến độ, Dừng (máy chủ giả lập); kế hoạch "Tạo hình cho cả dự án": 11 video, khoảng 22 lượt Muse, 27 cảnh thiếu bảng nhân vật duyệt; ô xác nhận vừa 1280x720 và 1024x640
+- Không file dự án nào bị ghi thêm trong các lần bấm thử (so `find projects -newer`)
+- [x] Chạy thật "Tạo hình cho cả dự án" với Muse trên `proj_ea5b04db` (chủ dự án: "Chạy thử Muse"; server 8000 khởi động lại có phép), bấm nút thật lúc 15:19, xong 16:40 (81 phút). Trước khi chạy: sao `project.json` và 2 ảnh cũ (cảnh 1, 5) vào `.cache/muse_live_1115/`, bật Làm video cho cảnh 3, 4. Kế hoạch: 2 ảnh, 2 video cao trào, 0 lưới, 4 lượt Muse
+  - 2 ảnh cảnh thường: ra trong 2 phút, 2048x1152 (2K 16:9), mở xem: cùng một người đàn ông áo khoác xanh rêu trên vách núi, đúng kiểu khung prompt (cảnh 1 góc cao kiểu drone, cảnh 5 lùi xa). Prompt Muse nhận (`recent_completed` của cầu nối Muse) trùng phần "Scene Details" của khối "Prompt đầy đủ gửi Muse" trên thẻ, 2K, 16:9, cinematic_realistic. Ảnh không kể chuyện chiếc ô đỏ vì mô tả cảnh của dự án thử là câu chung chung và dự án không có bảng nhân vật, không phải lỗi đường gửi
+  - [ ] 2 video cao trào: thất bại, app ghi đúng lý do trên cảnh (không báo xong giả). Cảnh 3: Muse báo hết hạn mức video sau 66 phút. Cảnh 4: quá 4.500 giây chưa xong, Muse làm bản nháp lời kể thay video. Nguyên nhân: 6/7 tài khoản video hết hạn mức tuần (Muse ghi mở lại 23:34 thứ Ba 17/11/2026), tài khoản thứ 7 chỉ ghi "đang nghỉ". Chưa kiểm được phần video của nút này cho tới khi có tài khoản video
+  - Sửa sau lượt chạy: kế hoạch đếm tài khoản Muse video dùng được (`routers/one_pass_visuals.usable_video_accounts`); bằng 0 thì mọi cảnh cao trào vào "thiếu điều kiện" với lý do hết tài khoản video và nút "Mở trang Tài khoản và kết nối", lượt chạy chỉ làm ảnh, không ngồi chờ 75 phút mỗi cảnh. Hôm nay sửa này chưa tự chặn được vì tài khoản thứ 7 không mang dấu khoá. Test `test_no_usable_video_account_moves_climax_to_missing_and_run_makes_images_only`; bấm thử 8010 với kế hoạch giả: ô xác nhận hiện lý do và nút dẫn đúng trang Tài khoản, console sạch, `projects/` không đổi
+  - Dòng ghi chú ô xác nhận không còn nói "vẽ lưới 9 khung" khi kế hoạch có 0 lượt lưới (`one_pass.js?v=1.1.1`)
+- [ ] Chưa chạy thật "vẽ tất cả" nhân vật/bối cảnh với Muse
+- Số lần gọi dịch vụ: LLM 1 lượt (Gemini chọn cảnh); Muse 4 lượt (2 ảnh xong, 2 việc video thất bại), 81 phút; ảnh trả phí 0

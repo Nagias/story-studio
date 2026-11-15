@@ -12,7 +12,7 @@
 
   const STATUS = {
     draft: ['Chưa có ảnh chuẩn', 'bg-slate-100 text-slate-600 border-slate-200'],
-    drawing: ['Muse đang vẽ…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
+    drawing: ['Muse đang vẽ…', 'bg-slate-50 text-slate-700 border-slate-200 animate-pulse'],
     review: ['Chờ duyệt', 'bg-amber-50 text-amber-700 border-amber-200'],
     approved: ['Đã duyệt — đang khoá', 'bg-emerald-50 text-emerald-700 border-emerald-200'],
     failed: ['Vẽ lỗi', 'bg-red-50 text-red-700 border-red-200'],
@@ -45,7 +45,7 @@
   }
 
   function button(label, cls, onClick, disabled = false) {
-    const b = node('button', `text-xs px-3 py-1.5 rounded-lg border font-semibold transition ${cls}`, label);
+    const b = node('button', `ws-btn text-xs ${cls}`, label);
     b.type = 'button';
     b.disabled = disabled;
     if (disabled) b.classList.add('opacity-30', 'cursor-not-allowed');
@@ -119,7 +119,7 @@
     actions.appendChild(button('Lưu', 'bg-white text-slate-700 border-slate-300', () =>
       act(() => call('PUT', `/${lid}`, { name_vi: name.value, design_en: design.value, scene_ids: parseScenes(sceneInput.value) }),
         'Đã lưu bối cảnh'), drawing));
-    actions.appendChild(button(loc.versions ? 'Vẽ ảnh chuẩn mới' : 'Vẽ ảnh chuẩn (Muse)', 'bg-purple-600 text-white border-purple-300', () =>
+    actions.appendChild(button(loc.versions ? 'Vẽ ảnh chuẩn mới' : 'Vẽ ảnh chuẩn (Muse)', 'ws-btn-primary', () =>
       act(() => call('POST', `/${lid}/draw`), 'Đã gửi Muse vẽ ảnh chuẩn (1 lượt Muse ảnh)'), drawing));
     actions.appendChild(button('Duyệt', 'bg-emerald-50 text-emerald-700 border-emerald-200', () =>
       act(() => call('POST', `/${lid}/approve`), 'Đã duyệt: ảnh cảnh của nơi này sẽ dùng mô tả và ảnh chuẩn'),
@@ -146,6 +146,7 @@
       const img = node('img', 'w-full rounded-lg border border-slate-200');
       img.src = loc.plate_url;
       img.alt = `Ảnh chuẩn bối cảnh ${loc.name_vi}`;
+      if (typeof window.bindMediaViewerLink === 'function') window.bindMediaViewerLink(a, 'image', `Ảnh chuẩn bối cảnh ${loc.name_vi}`);
       a.appendChild(img);
       right.appendChild(a);
       right.appendChild(node('p', 'text-[10px] text-slate-500 mt-1', `Phiên bản ${loc.versions} — bấm ảnh để xem cỡ thật`));
@@ -188,7 +189,7 @@
         ? `${d.locations.length} bối cảnh lặp lại, ${approved} đã duyệt (đang khoá ảnh cảnh).`
         : `Chưa có bối cảnh nào. Bấm "Tìm bối cảnh lặp lại" (AI đọc ${d.eligible_scenes} cảnh, 1 lượt LLM).`)));
     const analyze = button(d.locations.length ? 'Tìm lại bối cảnh (LLM)' : 'Tìm bối cảnh lặp lại (LLM)',
-      'bg-indigo-600 text-white border-indigo-300', () => {
+      'ws-btn-primary', () => {
         if (d.locations.length && !window.confirm('Tìm lại sẽ thay các bối cảnh AI tìm trước đó còn ở dạng nháp. Bối cảnh tự thêm và bối cảnh đã có ảnh chuẩn được giữ. Tiếp tục? (1 lượt LLM)')) return;
         act(() => call('POST', '/analyze'), 'Đã gửi AI tìm bối cảnh');
       }, d.analyzing || d.eligible_scenes < d.min_scenes);
@@ -210,8 +211,15 @@
     }
   }
 
-  function open() {
-    el('modal-location-sheets')?.classList.remove('hidden');
+  function showReason() {
+    const list = el('location-sheets-list');
+    if (!list) return;
+    list.replaceChildren(node('p', 'text-slate-500', 'Chưa dùng được: dự án này chưa có từ 2 cảnh, hoặc là dự án mẫu chỉ để xem.'));
+  }
+
+  // Trang Hình mẫu đang hiện: nạp danh sách và hỏi lại khi Muse/AI còn đang làm. Không đụng class hidden (khối luôn hiện trong trang).
+  function start() {
+    if (!usable()) showReason();
     refresh();
     clearInterval(st.timer);
     st.timer = setInterval(() => {
@@ -219,24 +227,28 @@
     }, POLL_MS);
   }
 
-  function close() {
-    el('modal-location-sheets')?.classList.add('hidden');
+  function stop() {
     clearInterval(st.timer);
     st.timer = null;
   }
 
+  function onLookPage() {
+    return typeof window.currentPage === 'function' && window.currentPage() === 'look';
+  }
+
   function init() {
-    el('btn-location-sheets')?.addEventListener('click', open);
-    el('btn-close-location-sheets')?.addEventListener('click', close);
-    document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') close(); });
     let lastId = null;
-    setInterval(() => {   // nút hiện với dự án thật có từ 2 cảnh; đổi dự án thì đóng cửa sổ
+    setInterval(() => {   // đổi dự án: bỏ dữ liệu cũ, nếu trang Hình mẫu đang mở thì nạp lại cho dự án mới
       const id = project()?.id || null;
-      el('btn-location-sheets')?.classList.toggle('hidden', !usable());
-      if (id !== lastId) { lastId = id; st.data = null; close(); }
+      if (id !== lastId) {
+        lastId = id; st.data = null; stop(); el('location-sheets-list')?.replaceChildren();
+        if (onLookPage()) start();
+      }
     }, 1000);
   }
 
+  window.startLocationSheets = start;
+  window.stopLocationSheets = stop;
   window.refreshLocationSheets = refresh;
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

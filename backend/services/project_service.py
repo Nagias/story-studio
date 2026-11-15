@@ -11,6 +11,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+from urllib.parse import quote
 
 from pydantic import ValidationError
 
@@ -24,7 +25,7 @@ from models.schemas import (
     SceneCreateRequest,
     SceneUpdateRequest,
 )
-from security import is_safe_id
+from security import is_safe_id, is_within
 from services import safe_files
 
 
@@ -90,6 +91,29 @@ def _read_project_json(json_path: Path, project_id: str) -> Optional[Dict[str, A
         raise ProjectUnreadableError(project_id, "nội dung không phải một đối tượng JSON")
     return data
 
+def _cover_url(project_dir: Path, project_id: str, scenes: list) -> Optional[str]:
+    """Ảnh bìa: ảnh cảnh đầu tiên có file thật, không thì renders/thumbnail.jpg nếu có sẵn. Chỉ đọc, không tạo file."""
+    if not is_safe_id(project_id):
+        return None
+    images_dir = project_dir / "images"
+    for scene in scenes:
+        if not isinstance(scene, dict):
+            continue
+        for key in ("image_url", "image_path"):
+            raw = scene.get(key)
+            if not isinstance(raw, str) or not raw:
+                continue
+            name = raw.replace("\\", "/").split("?")[0].rsplit("/", 1)[-1]
+            if not name or name in (".", ".."):
+                continue
+            candidate = images_dir / name
+            if is_within(candidate, images_dir) and candidate.is_file():
+                return f"/api/projects/{project_id}/media/images/{quote(name)}"
+    thumb = project_dir / "renders" / "thumbnail.jpg"
+    if is_within(thumb, project_dir / "renders") and thumb.is_file():
+        return f"/api/projects/{project_id}/media/renders/thumbnail.jpg"
+    return None
+
 def list_projects() -> List[Dict[str, Any]]:
     """Danh sách dự án trong PROJECTS_DIR. Dự án không đọc được vẫn hiện (đánh dấu unreadable) và được ghi log."""
     projects = []
@@ -137,6 +161,7 @@ def list_projects() -> List[Dict[str, Any]]:
             "final_video_url": data.get("final_video_url"),
             "updated_at": data.get("updated_at"),
             "created_at": data.get("created_at"),
+            "cover_url": _cover_url(d, d.name, scenes) if is_safe_id(d.name) else None,
         })
 
     projects.sort(key=lambda x: x.get("updated_at") or "", reverse=True)

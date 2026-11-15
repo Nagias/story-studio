@@ -180,10 +180,19 @@ def scene_people_kind(project: Project, scene: Scene) -> str:
     (cảnh sát, dân làng, quan toà không tên: giao việc giữ đúng người trong ảnh, crowd_brief); "none": không có người
     (phong cảnh, landscape_brief). Dự án chưa có bảng nhân vật thì "cast" (phải tìm nhân vật trước).
     Gặp 13/11/2026: cảnh có cảnh sát không tên bị coi là phong cảnh, Muse nhận bản giao việc "không có người"."""
-    people = _scenes_with_people(project)
+    return _people_kind(scene, _scenes_with_people(project))
+
+
+def _people_kind(scene: Scene, people: Optional[set[str]]) -> str:
     if people is None or scene.id in people:
         return "cast"
     return "unnamed" if PERSON_WORDS_RE.search(scene.image_prompt or "") else "none"
+
+
+def scene_people_kinds(project: Project, scenes: list[Scene]) -> dict[str, str]:
+    """scene_people_kind() cho nhiều cảnh, đọc bảng nhân vật một lần (không phải một lần mỗi cảnh)."""
+    people = _scenes_with_people(project)
+    return {s.id: _people_kind(s, people) for s in scenes}
 
 
 def is_landscape(project: Project, scene: Scene) -> bool:
@@ -482,7 +491,9 @@ def _scene_seconds(scene: Scene) -> float:
     raise ClimaxVideoError("Cảnh chưa có giọng đọc nên chưa biết lời kể dài bao lâu: thu giọng cảnh này trước")
 
 
-def _scene_image(scene: Scene, project_id: str) -> Path:
+def find_scene_image(scene: Scene, project_id: str) -> Optional[Path]:
+    """File ảnh của cảnh trong thư mục dự án (image_path hoặc images/<scene_id>.jpg), None nếu chưa có. Nút "Tạo hình
+    cho cả dự án" (services/one_pass_visuals.py) dùng để biết cảnh nào thiếu ảnh."""
     candidates = []
     if scene.image_path:
         candidates.append(_studio_path(scene.image_path))
@@ -490,7 +501,14 @@ def _scene_image(scene: Scene, project_id: str) -> Path:
     for cand in candidates:
         if cand.is_file() and is_within(cand, PROJECTS_DIR, STATIC_DIR):
             return cand.resolve()
-    raise ClimaxVideoError("Cảnh chưa có ảnh (trong thư mục dự án) để làm tham chiếu cho ảnh 9-grid")
+    return None
+
+
+def _scene_image(scene: Scene, project_id: str) -> Path:
+    found = find_scene_image(scene, project_id)
+    if found is None:
+        raise ClimaxVideoError("Cảnh chưa có ảnh (trong thư mục dự án) để làm tham chiếu cho ảnh 9-grid")
+    return found
 
 
 def _result_file(result: Any, kind: str) -> Path:
@@ -595,13 +613,23 @@ async def _muse(muse_call: MuseCall, thread: SceneThread, task: dict) -> dict:
     return result
 
 
-def _prepare(scene: Scene, project_id: str) -> tuple[float, Path]:
+scene_seconds = _scene_seconds   # tên công khai: kế hoạch "Tạo hình cho cả dự án" (services/one_pass_visuals.py)
+
+
+def prepare_scene(scene: Scene, project_id: str) -> tuple[float, Path]:
+    """(số giây lời kể, ảnh cảnh) mà mọi lượt cao trào cần; thiếu thì ClimaxVideoError (chưa gọi Muse). Bản xem trước
+    prompt trên thẻ cảnh (services/scene_prompt_preview.py) gọi đúng hàm này."""
     return _scene_seconds(scene), _scene_image(scene, project_id)
 
 
-def _scene_state(scene: Scene) -> dict:
+def scene_state(scene: Scene) -> dict:
+    """Trạng thái video cao trào của cảnh (bản sao của metadata["climax_video"]); {} nếu cảnh không được chọn."""
     value = (scene.metadata or {}).get("climax_video")
     return dict(value) if isinstance(value, dict) else {}
+
+
+_prepare = prepare_scene
+_scene_state = scene_state
 
 
 def _merge_climax(project_id: str, scene_id: str, changes: dict) -> dict:
@@ -620,7 +648,7 @@ def _merge_climax(project_id: str, scene_id: str, changes: dict) -> dict:
     return out
 
 
-def _cast_for(project: Project, scene: Scene) -> tuple[list, list[str], Path]:
+def cast_for(project: Project, scene: Scene) -> tuple[list, list[str], Path]:
     """Nhân vật của cảnh (bảng đã duyệt), vị trí trong bảng diễn viên, ảnh bảng diễn viên. Thiếu thì ClimaxVideoError
     nêu rõ ai/cái gì (chưa gọi Muse)."""
     cast = cs.load_cast(project.id)
@@ -635,6 +663,20 @@ def _cast_for(project: Project, scene: Scene) -> tuple[list, list[str], Path]:
     except cs.CastError as e:
         raise ClimaxVideoError(str(e)) from e
     return people, cs.board_positions(len(people)), board
+
+
+_cast_for = cast_for
+
+
+def approved_grid_files(project_id: str, scene_id: str, state: dict, seconds: float) -> list[Path]:
+    """Ảnh grid đã duyệt của cảnh, đúng thư mục và khớp độ dài lời kể hiện tại; không thì ClimaxVideoError."""
+    work = project_service.get_scene_media_paths(project_id, scene_id)["video"].parent / "climax"
+    grid_files = [Path(p) for p in state.get("grid_paths") or []]
+    if not all(is_within(p, work) for p in grid_files):
+        raise ClimaxVideoError("Đường dẫn ảnh grid nằm ngoài thư mục làm việc của cảnh: vẽ lại grid")
+    if len(grid_files) != len(grid_plan(clip_count(seconds))) or not all(p.is_file() for p in grid_files):
+        raise ClimaxVideoError("Ảnh grid đã duyệt không khớp độ dài lời kể hiện tại: vẽ lại grid")
+    return grid_files
 
 
 async def run_scene_grid(project_id: str, scene_id: str, muse_call: MuseCall, account: Optional[str] = None) -> dict:
@@ -696,7 +738,15 @@ def approve_grid(project_id: str, scene_id: str) -> dict:
     state = _scene_state(scene)
     if state.get("status") != GRID_REVIEW or not state.get("grid_paths"):
         raise ClimaxVideoError("Cảnh không có ảnh grid đang chờ duyệt")
-    return _merge_climax(project_id, scene_id, {"status": GRID_APPROVED, "grid_approved": True, "error": None})
+    return _merge_climax(project_id, scene_id, {"status": GRID_APPROVED, "grid_approved": True,
+                                                "grid_approved_by": "manual", "error": None})
+
+
+def _auto_approve_grid(project_id: str, scene_id: str) -> dict:
+    """Tự duyệt grid vừa vẽ (nút "Tạo hình cho cả dự án", chủ dự án 15/11/2026: vẽ lưới xong thì làm clip luôn, không
+    dừng chờ duyệt); ghi rõ `grid_approved_by: "auto"` để phân biệt với grid chủ dự án tự duyệt."""
+    return _merge_climax(project_id, scene_id, {"status": GRID_APPROVED, "grid_approved": True,
+                                                "grid_approved_by": "auto", "error": None})
 
 
 def reject_grid(project_id: str, scene_id: str, feedback: str) -> dict:
@@ -709,7 +759,7 @@ def reject_grid(project_id: str, scene_id: str, feedback: str) -> dict:
     state = _scene_state(scene)
     if not state.get("grid_paths") or state.get("status") not in (GRID_REVIEW, GRID_APPROVED, "failed"):
         raise ClimaxVideoError("Cảnh chưa có ảnh grid để vẽ lại (hoặc đang chạy)")
-    return _merge_climax(project_id, scene_id, {"status": "selected", "grid_approved": None,
+    return _merge_climax(project_id, scene_id, {"status": "selected", "grid_approved": None, "grid_approved_by": None,
                                                 "grid_feedback": list(state.get("grid_feedback") or []) + [fb]})
 
 
@@ -742,11 +792,7 @@ async def run_scene_clips(project_id: str, scene_id: str, muse_call: MuseCall, a
             attachments = [str(image), *([str(plate)] if plate else [])]
         else:
             people, _positions, board = await asyncio.to_thread(_cast_for, project, scene)
-            grid_files = [Path(p) for p in old["grid_paths"]]
-            if not all(is_within(p, work) for p in grid_files):
-                raise ClimaxVideoError("Đường dẫn ảnh grid nằm ngoài thư mục làm việc của cảnh: vẽ lại grid")
-            if len(grid_files) != len(grid_plan(clip_count(seconds))) or not all(p.is_file() for p in grid_files):
-                raise ClimaxVideoError("Ảnh grid đã duyệt không khớp độ dài lời kể hiện tại: vẽ lại grid")
+            grid_files = await asyncio.to_thread(approved_grid_files, project_id, scene_id, old, seconds)
             prompt = scene_brief(project, scene, people, len(grid_files), seconds, token)
             attachments = [str(image), str(board), *(str(p) for p in grid_files)]
         task = {"mode": AGENT_VIDEO_MODE, "route_kind": "video", "raw_prompt": True, "prompt": prompt,
@@ -820,8 +866,11 @@ def redo_scene(project_id: str, scene_id: str) -> dict:
 
 
 async def run_scene_climax_video(project_id: str, scene_id: str, muse_call: MuseCall,
-                                 account: Optional[str] = None) -> dict:
+                                 account: Optional[str] = None, auto_approve_grid: bool = False) -> dict:
     """Bước tiếp theo của một cảnh: grid đã duyệt thì làm clip, không thì vẽ grid (rồi dừng chờ duyệt).
+
+    `auto_approve_grid` (nút "Tạo hình cho cả dự án"): grid vẽ xong (hoặc đang chờ duyệt từ lượt trước) thì tự duyệt
+    (`grid_approved_by: "auto"`) rồi làm clip ngay trong cùng lượt, cùng side chat. Không bật cờ: như cũ.
 
     Id sai, dự án/cảnh không có: LookupError/ValueError (chưa gọi Muse). Muse lỗi hay clip không đạt: ghi
     {"status": "failed", "error": ...} vào cảnh, giữ ảnh, trả trạng thái đó. Lỗi ngoài dự kiến: ghi "failed" rồi ném tiếp.
@@ -830,6 +879,9 @@ async def run_scene_climax_video(project_id: str, scene_id: str, muse_call: Muse
     state = _scene_state(scene)
     if state.get("grid_approved"):
         return await run_scene_clips(project_id, scene_id, muse_call, account)
+    if auto_approve_grid and state.get("status") == GRID_REVIEW and state.get("grid_paths"):
+        await asyncio.to_thread(_auto_approve_grid, project_id, scene_id)
+        return await run_scene_clips(project_id, scene_id, muse_call, account)
     # Xếp loại lại mỗi lần (không tin cờ đã lưu: cờ "landscape" cũ gắn cả cho cảnh có người không tên)
     kind = await asyncio.to_thread(scene_people_kind, project, scene)
     if kind != "cast":
@@ -837,4 +889,9 @@ async def run_scene_climax_video(project_id: str, scene_id: str, muse_call: Muse
                                 {"landscape": kind == "none", "crowd": kind == "unnamed"})
         return await run_scene_clips(project_id, scene_id, muse_call, account)
     await asyncio.to_thread(_merge_climax, project_id, scene_id, {"landscape": None, "crowd": None})
-    return await run_scene_grid(project_id, scene_id, muse_call, account)
+    state = await run_scene_grid(project_id, scene_id, muse_call, account)
+    if not auto_approve_grid or state.get("status") != GRID_REVIEW:
+        return state
+    await asyncio.to_thread(_auto_approve_grid, project_id, scene_id)
+    await _pace()
+    return await run_scene_clips(project_id, scene_id, muse_call, account)

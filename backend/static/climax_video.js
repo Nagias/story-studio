@@ -1,4 +1,5 @@
-/* Video cho cảnh cao trào (dự án vụ án), Bước 2: chọn cảnh, bật/tắt từng cảnh, chạy Muse, theo dõi tiến độ.
+/* Video cho cảnh cao trào (dự án vụ án), Bước 2: AI chọn cảnh (chạy nền, hỏi pick-status), dải tổng kết và bộ lọc
+ * trên đầu danh sách cảnh (#climax-summary), công tắc "Làm video" từng cảnh, chạy Muse, theo dõi tiến độ.
  * API: /api/projects/{id}/climax-video/... (routers/climax_video.py). Tốn lượt Muse khi bấm "Tạo video".
  * Dùng AppState, API, showToast, escapeHtml, renderSceneList, flushProjectSave, mergeServerSceneMedia của app.js
  * (nạp sau app.js). Nhãn và nút trên thẻ cảnh dựng bằng DOM (textContent), không chèn chuỗi HTML; mỗi nút chỉ gắn
@@ -7,15 +8,21 @@
 (function () {
   const el = (id) => document.getElementById(id);
   const POLL_MS = 4000;
-  const cx = { polling: null, running: false, lastSignature: '', cast: null, share: null };
+  const PICK_POLL_MS = 2000;
+  const TARGET_PERCENT = 50;
+  const LOST_PICK_MESSAGE = 'Lượt chọn bị gián đoạn, bấm lại';   // như routers/climax_video.LOST_PICK_MESSAGE   // services/climax_video.CLIMAX_RATIO: mức sàn thời lượng làm bằng video Muse
+  // picking: AI (Gemini qua 9router) đang chấm cảnh; pickError: lỗi lượt AI gần nhất (hiện trong dải tổng kết);
+  // filter: bộ lọc thẻ cảnh 'all' | 'video' | 'image' (ẩn thẻ bằng lớp CSS trên #scene-list-container)
+  const cx = { polling: null, running: false, lastSignature: '', cast: null, share: null,
+    picking: false, pickError: '', pickTimer: null, pickGen: 0, filter: 'all' };
 
   const LABEL = {
-    selected: ['🎬 Sẽ làm video', 'bg-purple-50 text-purple-700 border-purple-200'],
-    grid: ['🎬 Muse vẽ ảnh 9-grid…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
-    clips: ['🎬 Muse đang làm video (nhiều bước, 10–75 phút)…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
-    checking: ['🎬 Đang kiểm video của Muse…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
+    selected: ['🎬 Sẽ làm video', 'bg-slate-50 text-slate-700 border-slate-200'],
+    grid: ['🎬 Muse vẽ ảnh 9-grid…', 'bg-slate-50 text-slate-700 border-slate-200 animate-pulse'],
+    clips: ['🎬 Muse đang làm video (nhiều bước, 10–75 phút)…', 'bg-slate-50 text-slate-700 border-slate-200 animate-pulse'],
+    checking: ['🎬 Đang kiểm video của Muse…', 'bg-slate-50 text-slate-700 border-slate-200 animate-pulse'],
     grid_review: ['🎬 Chờ duyệt grid', 'bg-amber-50 text-amber-700 border-amber-200'],
-    grid_approved: ['🎬 Grid đã duyệt, chờ làm clip', 'bg-purple-50 text-purple-700 border-purple-200'],
+    grid_approved: ['🎬 Grid đã duyệt, chờ làm clip', 'bg-slate-50 text-slate-700 border-slate-200'],
     ready: ['🎬 Đã có video cao trào', 'bg-emerald-50 text-emerald-700 border-emerald-200'],
     failed: ['🎬 Video lỗi, giữ ảnh', 'bg-red-50 text-red-700 border-red-200'],
   };
@@ -92,18 +99,29 @@
         : (clips && clips === n ? `Làm clip cho ${n} cảnh đã duyệt grid`
           : (clips ? `Tạo video cho ${n} cảnh (${clips} cảnh làm clip)` : `Vẽ grid cho ${n} cảnh cao trào`));
     }
-    const disabled = cx.running || n === 0;
+    const disabled = cx.running || cx.picking || n === 0;
     run.disabled = disabled;
     run.classList.toggle('opacity-30', disabled);
     run.classList.toggle('cursor-not-allowed', disabled);
-    pick.disabled = cx.running;
+    pick.disabled = cx.running || cx.picking;
     pick.classList.toggle('opacity-30', cx.running);
+    pick.classList.toggle('ws-cx-busy', cx.picking && !cx.running);   // đang chọn: mờ vừa, vòng xoay vẫn nhìn rõ
+    const pickLabel = pick.querySelector('span:not(.ws-cx-spinner)');
+    if (pickLabel) pickLabel.textContent = cx.picking ? 'AI đang đọc kịch bản…' : 'AI chọn cảnh cao trào';
+    let spin = pick.querySelector('.ws-cx-spinner');
+    if (cx.picking && !spin) {
+      spin = node('span', 'ws-cx-spinner');
+      spin.setAttribute('aria-hidden', 'true');
+      pick.prepend(spin);
+    } else if (!cx.picking && spin) {
+      spin.remove();
+    }
   }
 
   function badgeFor(scene) {
     const state = climaxState(scene);
     const status = state.status;
-    if (!status) return null;
+    if (!status || status === 'selected') return null;   // "selected": nhãn "Video" và công tắc đã nói đủ
     let [text, cls] = LABEL[status] || [`🎬 ${status}`, 'bg-slate-100 text-slate-600 border-slate-200'];
     if (WORKING.includes(status) && !cx.running) {
       [text, cls] = ['🎬 Bị ngắt giữa chừng', 'bg-amber-50 text-amber-700 border-amber-200'];
@@ -118,21 +136,97 @@
     return span;
   }
 
-  function toggleFor(scene) {
-    const status = climaxState(scene).status;
-    const on = Boolean(status);
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `climax-video-toggle text-[10px] px-2 py-0.5 rounded border font-semibold transition ${on
-      ? 'bg-purple-600 text-white border-purple-300' : 'bg-white text-purple-700 border-purple-300'}`;
-    btn.textContent = on ? '🎬 Bỏ video' : '🎬 Làm video';
-    btn.title = on
-      ? 'Bỏ cảnh này khỏi danh sách làm video cao trào (cảnh đã có video thì về lại ảnh, clip vẫn giữ trên đĩa)'
-      : 'Làm video cho cảnh này bằng Muse (ảnh 9-grid, duyệt, rồi giao Muse một việc nhiều bước)';
-    btn.disabled = cx.running;
-    if (cx.running) btn.classList.add('opacity-30', 'cursor-not-allowed');
-    btn.addEventListener('click', (ev) => { ev.stopPropagation(); toggleScene(scene.id, !on); });
-    return btn;
+  // Công tắc "Làm video" ở hàng đầu thẻ cảnh: bật là cảnh vào danh sách làm video cao trào
+  function switchFor(scene) {
+    const on = Boolean(climaxState(scene).status);
+    const label = node('label', 'climax-video-toggle ws-cx-switch');
+    label.title = on
+      ? 'Tắt: bỏ cảnh này khỏi danh sách làm video cao trào (cảnh đã có video thì về lại ảnh, clip vẫn giữ trên đĩa)'
+      : 'Bật: làm video cho cảnh này bằng Muse (ảnh 9-grid, duyệt, rồi giao Muse một việc nhiều bước)';
+    const input = node('input');
+    input.type = 'checkbox';
+    input.setAttribute('role', 'switch');
+    input.checked = on;
+    input.disabled = cx.running || cx.picking;
+    label.appendChild(input);
+    label.appendChild(node('span', 'ws-cx-track'));
+    label.appendChild(node('span', '', 'Làm video'));
+    label.addEventListener('click', (ev) => ev.stopPropagation());
+    input.addEventListener('change', () => toggleScene(scene.id, input.checked));
+    return label;
+  }
+
+  // Dòng dưới hàng đầu thẻ: vì sao cảnh được chọn (lý do của AI, bạn bật tay, hay theo nhãn kịch bản)
+  function whyFor(scene) {
+    const state = climaxState(scene);
+    if (!state.status) return null;
+    let text = '';
+    if (state.picked_by === 'ai' && state.reason) {
+      text = `AI: ${state.reason}` + (state.ai_score != null ? ` (điểm ${String(state.ai_score).replace('.', ',')}/10)` : '');
+    } else if (state.picked_by === 'manual') {
+      text = 'Bạn chọn';
+    } else if (state.picked_by === 'score') {
+      text = 'Chọn theo nhãn kịch bản (không dùng AI)';
+    }
+    return text ? node('div', 'ws-cx-why', text) : null;
+  }
+
+  // Dải tổng kết trên đầu danh sách cảnh: bao nhiêu cảnh làm video, chiếm bao nhiêu thời lượng, bộ lọc thẻ, trạng thái AI
+  function renderSummary() {
+    const box = el('climax-summary');
+    if (!box) return;
+    const show = isCaseProject();
+    box.hidden = !show;
+    applyFilter(show ? cx.filter : 'all');
+    if (!show) return;
+    const scenes = project().scenes || [];
+    const video = scenes.filter(s => isEligible(s) && climaxState(s).status);
+    const total = scenes.reduce((a, s) => a + (Number(s.duration) || 0), 0);
+    const covered = video.reduce((a, s) => a + (Number(s.duration) || 0), 0);
+    const line = node('div', 'ws-cx-sum-line');
+    const pct = total > 0 ? Math.round((100 * covered) / total) : null;
+    line.appendChild(node('b', '', `Làm video: ${video.length}/${scenes.length} cảnh`));
+    line.appendChild(node('span', '', pct == null
+      ? ` · chưa có giọng đọc nên chưa tính được thời lượng (mục tiêu ${TARGET_PERCENT}%)`
+      : ` · ${pct}% thời lượng (mục tiêu ${TARGET_PERCENT}%)`));
+    if (pct != null && pct < TARGET_PERCENT) line.appendChild(node('span', 'ws-cx-sum-low', ' · còn thiếu'));
+    const row = node('div', 'ws-cx-sum-row');
+    row.appendChild(line);
+    const tabs = node('div', 'ws-cx-filter');
+    tabs.setAttribute('role', 'group');
+    tabs.setAttribute('aria-label', 'Lọc thẻ cảnh');
+    for (const [key, text] of [['all', 'Tất cả'], ['video', 'Làm video'], ['image', 'Ảnh']]) {
+      const b = node('button', 'ws-cx-filter-btn', text);
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(cx.filter === key));
+      b.addEventListener('click', () => { cx.filter = key; renderSummary(); });
+      tabs.appendChild(b);
+    }
+    row.appendChild(tabs);
+    const parts = [row];
+    if (cx.picking) {
+      const busy = node('div', 'ws-cx-sum-note');
+      busy.appendChild(node('span', 'ws-cx-spinner'));
+      busy.appendChild(node('span', '', 'AI đang đọc kịch bản và chấm từng cảnh… (vài phút với dự án dài)'));
+      parts.push(busy);
+    } else if (cx.pickError) {
+      const err = node('div', 'ws-cx-sum-error');
+      err.appendChild(node('span', '', `AI chưa chọn được cảnh: ${cx.pickError}`));
+      const fallback = node('button', 'ws-btn', 'Chọn theo nhãn kịch bản (không dùng AI)');
+      fallback.type = 'button';
+      fallback.disabled = cx.running;
+      fallback.addEventListener('click', pickByScore);
+      err.appendChild(fallback);
+      parts.push(err);
+    }
+    box.replaceChildren(...parts);
+  }
+
+  function applyFilter(filter) {
+    const list = el('scene-list-container');
+    if (!list) return;
+    list.classList.toggle('ws-cx-filter-video', filter === 'video');
+    list.classList.toggle('ws-cx-filter-image', filter === 'image');
   }
 
   function node(tag, cls, text) {
@@ -190,7 +284,7 @@
   // Dòng dưới thanh trên của thẻ cảnh đang làm video: nhân vật của cảnh, ảnh grid chờ duyệt
   function panelFor(scene) {
     const state = climaxState(scene);
-    const box = node('div', 'climax-video-panel mb-3 p-2 rounded-lg border border-purple-200 bg-purple-50 space-y-2 text-[11px]');
+    const box = node('div', 'climax-video-panel mb-3 p-2 rounded-lg border border-slate-200 bg-slate-50 space-y-2 text-[11px]');
     const chars = Object.fromEntries((cx.cast?.characters || []).map(c => [c.entity_id, c]));
     const ids = (cx.cast?.scene_cast || {})[scene.id] || [];
     const row = node('div', 'flex items-center gap-1 flex-wrap');
@@ -230,6 +324,7 @@
         img.src = url;
         img.alt = `Ảnh 9-grid ${i}`;
         img.style.width = '220px';
+        if (typeof window.bindMediaViewerLink === 'function') window.bindMediaViewerLink(a, 'image', `Ảnh 9-grid ${i}`);
         a.appendChild(img);
         grids.appendChild(a);
       }
@@ -264,7 +359,7 @@
       wrap.appendChild(det);
     }
     if (state.grid_approved || state.landscape || state.crowd) {
-      const b = smallButton('↻ Làm lại cảnh này', 'bg-white text-purple-700 border-purple-300', () => redo(scene.id));
+      const b = smallButton('↻ Làm lại cảnh này', 'bg-white text-slate-700 border-slate-300', () => redo(scene.id));
       b.dataset.climaxRedo = scene.id;
       wrap.appendChild(b);
     }
@@ -350,23 +445,30 @@
   // Gắn nhãn và nút vào thẻ cảnh do renderSceneList() (app.js) vẽ
   function decorateCards() {
     refreshButtons();
+    renderSummary();
     if (!isCaseProject()) return;
     for (const scene of project().scenes || []) {
       if (!isEligible(scene)) continue;
       const card = document.getElementById(`scene-card-${scene.id}`);
       const bar = card && card.querySelector('.flex.items-center.justify-between > .flex.items-center.gap-2');
       if (!bar) continue;
-      bar.querySelectorAll('.climax-video-badge, .climax-video-toggle').forEach(n => n.remove());
+      card.querySelectorAll('.climax-video-badge, .climax-video-toggle, .ws-cx-tag, .ws-cx-why').forEach(n => n.remove());
       card.querySelectorAll('.motion-review').forEach(n => n.remove());
+      const on = Boolean(climaxState(scene).status);
+      card.classList.toggle('ws-cx-on', on);   // viền đậm; bộ lọc "Làm video" / "Ảnh" dựa vào lớp này
+      if (on) bar.appendChild(node('span', 'ws-cx-tag', 'Video'));
       const badge = badgeFor(scene);
       if (badge) bar.appendChild(badge);
-      bar.appendChild(toggleFor(scene));
+      const right = bar.parentElement.lastElementChild;
+      if (right && right !== bar) right.prepend(switchFor(scene)); else bar.appendChild(switchFor(scene));
       const review = reviewFor(scene);   // hàng riêng dưới thanh tiêu đề: thanh tiêu đề hẹp, chữ bị bóp từng chữ
       if (review) bar.parentElement.insertAdjacentElement('afterend', review);
       card.querySelectorAll('.climax-video-panel').forEach(n => n.remove());
       if (climaxState(scene).status && cx.cast) {
         bar.parentElement.insertAdjacentElement('afterend', panelFor(scene));
       }
+      const why = whyFor(scene);   // chèn sau cùng: nằm ngay dưới hàng đầu thẻ
+      if (why) bar.parentElement.insertAdjacentElement('afterend', why);
     }
   }
 
@@ -382,17 +484,92 @@
       await loadCast();
       renderSceneList();
     } catch (err) {
+      decorateCards();   // công tắc về lại đúng trạng thái đã lưu
       showToast(`Không đổi được cảnh: ${escapeHtml(err.message)}`, 'error', 7000);
     }
   }
 
+  // "AI chọn cảnh cao trào": máy chủ chạy nền (Gemini chấm từng nhóm cảnh), giao diện hỏi pick-status tới khi xong
   async function pick() {
     try {
-      await flushProjectSave({ silent: true });
-      const data = await call('POST', '/pick');
+      if (!(await flushProjectSave({ silent: true }))) throw new Error('chưa lưu được dự án, thử lại sau');
+      await call('POST', '/pick?mode=ai');
+      cx.pickError = '';
+      startPickPolling();
+    } catch (err) {
+      cx.pickError = err.message;
+      decorateCards();
+      showToast(`AI không chọn được cảnh: ${escapeHtml(err.message)}`, 'error', 7000);
+    }
+  }
+
+  // Chọn theo nhãn kịch bản (nhịp, nhạc, tiếng động), không gọi AI: chỉ khi người dùng bấm, không tự chuyển sang
+  async function pickByScore() {
+    try {
+      if (!(await flushProjectSave({ silent: true }))) throw new Error('chưa lưu được dự án, thử lại sau');
+      const data = await call('POST', '/pick?mode=score');
+      cx.pickError = '';
+      await afterPick(data, 'theo nhãn kịch bản');
+    } catch (err) {
+      showToast(`Không chọn được cảnh: ${escapeHtml(err.message)}`, 'error', 7000);
+    }
+  }
+
+  // Hỏi pick-status bằng setTimeout nối tiếp (lần sau chỉ hẹn khi lần trước đã trả lời): không bao giờ có hai lần hỏi
+  // cùng lúc nên afterPick chạy đúng một lần. cx.pickGen đổi khi dừng hoặc đổi dự án: câu trả lời đến muộn bị bỏ.
+  function startPickPolling() {
+    stopPickPolling();
+    cx.picking = true;
+    decorateCards();
+    const gen = cx.pickGen;
+    const pid = project()?.id;
+    cx.pickTimer = setTimeout(() => pollPick(gen, pid), PICK_POLL_MS);
+  }
+
+  function stopPickPolling() {
+    if (cx.pickTimer) clearTimeout(cx.pickTimer);
+    cx.pickTimer = null;
+    cx.pickGen = (cx.pickGen || 0) + 1;
+  }
+
+  async function pollPick(gen, pid) {
+    const stale = () => gen !== cx.pickGen || project()?.id !== pid;
+    if (stale()) return;
+    let st = null;
+    try {
+      st = await call('GET', '/pick-status');
+    } catch (err) {
+      console.warn('climax-video pick-status', err);
+    }
+    if (stale()) return;
+    if (!st || st.state === 'running') {
+      cx.pickTimer = setTimeout(() => pollPick(gen, pid), PICK_POLL_MS);
+      return;
+    }
+    stopPickPolling();
+    cx.picking = false;
+    // "idle" lúc đang chờ: máy chủ không còn biết lượt này (khởi động lại giữa chừng). Không phải "AI không chọn cảnh nào"
+    if (st.state === 'idle') st = { state: 'failed', error: LOST_PICK_MESSAGE };
+    if (st.state !== 'done') {
+      cx.pickError = st.error || LOST_PICK_MESSAGE;
+      decorateCards();
+      showToast(`AI không chọn được cảnh: ${escapeHtml(cx.pickError)}`, 'error', 9000);
+      return;
+    }
+    cx.pickError = '';
+    try {
+      await afterPick(st, 'AI');
+    } catch (err) {
+      showToast(`Đã chọn xong nhưng chưa tải lại được thẻ cảnh: ${escapeHtml(err.message)}`, 'error', 7000);
+    }
+  }
+
+  async function afterPick(data, who) {
+    {
       await pullScenes(null);
       await loadCast();
       renderSceneList();
+      decorateCards();
       const n = (data.scene_ids || []).length;
       const cov = data.coverage || {};
       const share = cov.percent == null ? '' : ` Lời kể của các cảnh này chiếm ${escapeHtml(String(cov.percent).replace('.', ','))}% thời lượng video.`;
@@ -407,11 +584,9 @@
           + `mục tiêu ${escapeHtml(cov.target_percent)}%. Bật/tắt từng cảnh trên thẻ rồi bấm "Tạo video".`, 'warning', 12000);
       } else {
         showToast(n
-          ? `Đã chọn ${escapeHtml(n)} cảnh cao trào.${share} Bật/tắt từng cảnh trên thẻ rồi bấm "Tạo video".`
-          : 'Không có cảnh nào đủ dấu hiệu cao trào; bật tay từng cảnh trên thẻ cảnh.', n ? 'success' : 'info', 8000);
+          ? `${escapeHtml(who)} đã chọn ${escapeHtml(n)} cảnh cao trào.${share} Lý do ghi trên từng thẻ; bật/tắt công tắc "Làm video" rồi bấm "Tạo video".`
+          : 'Không có cảnh nào được chọn; bật tay công tắc "Làm video" trên thẻ cảnh.', n ? 'success' : 'info', 8000);
       }
-    } catch (err) {
-      showToast(`Không chọn được cảnh: ${escapeHtml(err.message)}`, 'error', 7000);
     }
   }
 
@@ -483,6 +658,10 @@ Cảnh chưa có grid: vẽ ảnh 9-grid (1 grid mỗi 45 giây lời kể) `
       cx.running = Boolean(data.running);
       cx.lastSignature = signature(data.scenes);
       if (cx.running) startPolling();
+      // Lượt AI chọn cảnh đang chạy (tải lại trang giữa chừng) thì theo dõi tiếp; lượt trước lỗi thì hiện lỗi
+      const st = await call('GET', '/pick-status');
+      cx.pickError = st.state === 'failed' ? (st.error || 'không rõ lý do') : '';
+      if (st.state === 'running') startPickPolling();
       await loadCast();
       await loadShare();
       decorateCards();
@@ -502,7 +681,10 @@ Cảnh chưa có grid: vẽ ảnh 9-grid (1 grid mỗi 45 giây lời kể) `
       if (id !== lastProjectId) {
         lastProjectId = id;
         stopPolling();
+        stopPickPolling();
         cx.running = false;
+        cx.picking = false;
+        cx.pickError = '';
         cx.lastSignature = '';
         checkOnce();
         decorateCards();

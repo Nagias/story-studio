@@ -272,3 +272,15 @@ async def get_job(job_id: str):
     if job is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy job.")
     return job
+
+
+@router.post("/jobs/{job_id}/cancel", status_code=202)
+async def cancel_job(job_id: str):
+    """Xin huỷ job. Lượt LLM đang chạy không ngắt giữa chừng được: job dừng ngay sau lượt đó."""
+    require_safe_id(job_id, "job_id")
+    status = case_jobs.request_cancel(job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy job.")
+    if status != "running":
+        raise HTTPException(status_code=409, detail=f"Job đã kết thúc ({status}), không huỷ được.")
+    return {"status": "cancelling"}

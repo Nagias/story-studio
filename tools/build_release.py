@@ -33,13 +33,23 @@ REQUIRED_FILES = [
     "backend/security.py",
     "backend/requirements.txt",
     "backend/static/index.html",
+    "backend/static/script_page.js",  # trang Kịch bản và giọng (nạp sau app.js)
+    "backend/static/connections.js",  # trang Tài khoản và kết nối: trạng thái AI, YouTube, VieNeu (nạp sau script_page.js)
+    "backend/static/scenes_publish_page.js",  # trang Cảnh và trang Dựng: ngăn kéo Xem thử, Tuỳ chỉnh dựng (nạp sau app.js)
+    "backend/static/workspace.js",  # khung giao diện gọn: showPage(), ngăn kéo, thanh bên (index.html nạp trước app.js)
+    "backend/static/workspace.css",  # giao diện của khung đó (index.html nạp sau tailwind.css)
     "backend/static/app.js",
+    "backend/static/genres.js",  # khuôn thể loại và trang Ý tưởng (index.html nạp sau app.js, trước true_crime.js)
     "backend/static/true_crime.js",  # modal Hồ Sơ Kỳ Án (index.html nạp sau app.js)
     "backend/static/youtube_seo.js",  # gói SEO YouTube ở Bước 4 (index.html nạp sau true_crime.js)
     "backend/static/climax_video.js",  # video cảnh cao trào ở Bước 2 (index.html nạp sau youtube_seo.js)
     "backend/static/character_sheets.js",  # cửa sổ Bảng nhân vật ở Bước 2 (index.html nạp sau climax_video.js)
     "backend/static/location_sheets.js",  # cửa sổ Bối cảnh ở Bước 2 (khoá bối cảnh)
+    "backend/static/media_viewer.js",  # xem lớn ảnh/video dùng chung
     "backend/static/scene_muse_video.js",  # nút "Muse Video" trên thẻ cảnh: video theo lời thoại
+    "backend/static/scene_prompts.js",  # thẻ cảnh hiện prompt thật gửi Muse
+    "backend/static/look_batch.js",  # Hình mẫu: vẽ tất cả / duyệt tất cả nhân vật và bối cảnh
+    "backend/static/one_pass.js",  # trang Cảnh: nút "Tạo hình cho cả dự án"
     "backend/static/tailwind.css",  # CSS Tailwind build sẵn (index.html không còn dùng CDN)
     "run.py",
     "run.bat",
@@ -188,10 +198,11 @@ def verify_zip(zip_path: Path) -> list[str]:
             if f"{TOP}/{f}" not in names:
                 problems.append(f"thiếu file {f}")
         # Mọi file /static/... mà giao diện gọi cố định phải có trong gói (tránh gửi bản thiếu CSS/ảnh)
-        for ui_file in ("backend/static/index.html", "backend/static/app.js", "backend/static/true_crime.js",
+        for ui_file in ("backend/static/index.html", "backend/static/workspace.js", "backend/static/app.js", "backend/static/script_page.js", "backend/static/connections.js", "backend/static/scenes_publish_page.js",
+                        "backend/static/genres.js", "backend/static/true_crime.js",
                         "backend/static/youtube_seo.js", "backend/static/climax_video.js",
                         "backend/static/character_sheets.js", "backend/static/location_sheets.js",
-                        "backend/static/scene_muse_video.js"):
+                        "backend/static/scene_muse_video.js", "backend/static/media_viewer.js"):
             arc = f"{TOP}/{ui_file}"
             if arc not in names:
                 continue

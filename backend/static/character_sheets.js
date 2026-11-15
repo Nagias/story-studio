@@ -13,7 +13,7 @@
 
   const STATUS = {
     draft: ['Chưa có bảng', 'bg-slate-100 text-slate-600 border-slate-200'],
-    drawing: ['Muse đang vẽ…', 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'],
+    drawing: ['Muse đang vẽ…', 'bg-slate-50 text-slate-700 border-slate-200 animate-pulse'],
     review: ['Chờ duyệt', 'bg-amber-50 text-amber-700 border-amber-200'],
     approved: ['Đã duyệt', 'bg-emerald-50 text-emerald-700 border-emerald-200'],
     failed: ['Vẽ lỗi', 'bg-red-50 text-red-700 border-red-200'],
@@ -47,7 +47,7 @@
   }
 
   function button(label, cls, onClick, disabled = false) {
-    const b = node('button', `text-xs px-3 py-1.5 rounded-lg border font-semibold transition ${cls}`, label);
+    const b = node('button', `ws-btn text-xs ${cls}`, label);
     b.type = 'button';
     b.disabled = disabled;
     if (disabled) b.classList.add('opacity-30', 'cursor-not-allowed');
@@ -92,7 +92,7 @@
     const eid = encodeURIComponent(c.entity_id);
     actions.appendChild(button('Lưu thiết kế', 'bg-white text-slate-700 border-slate-300', () =>
       act(() => call('PUT', `/${eid}`, { design_en: design.value }), 'Đã lưu thiết kế'), drawing));
-    actions.appendChild(button(c.versions ? 'Vẽ bảng mới' : 'Vẽ bảng (Muse)', 'bg-purple-600 text-white border-purple-300', () =>
+    actions.appendChild(button(c.versions ? 'Vẽ bảng mới' : 'Vẽ bảng (Muse)', 'ws-btn-primary', () =>
       act(() => call('POST', `/${eid}/draw`), 'Đã gửi Muse vẽ bảng'), drawing));
     actions.appendChild(button('Duyệt', 'bg-emerald-50 text-emerald-700 border-emerald-200', () =>
       act(() => call('POST', `/${eid}/approve`), 'Đã duyệt bảng'), drawing || !c.sheet_url || c.status === 'approved'));
@@ -114,6 +114,7 @@
       const img = node('img', 'w-full rounded-lg border border-slate-200');
       img.src = c.sheet_url;
       img.alt = `Bảng nhân vật ${c.name_vi}`;
+      if (typeof window.bindMediaViewerLink === 'function') window.bindMediaViewerLink(a, 'image', `Bảng nhân vật ${c.name_vi}`);
       a.appendChild(img);
       right.appendChild(a);
       right.appendChild(node('p', 'text-[10px] text-slate-500 mt-1', `Phiên bản ${c.versions} — bấm ảnh để xem cỡ thật`));
@@ -139,7 +140,7 @@
         : 'Chưa tìm nhân vật cho truyện này.'));
     if (d.analysis_error) info.appendChild(node('p', 'text-[11px] text-red-700', `Lần tìm trước lỗi: ${d.analysis_error}`));
     bar.appendChild(info);
-    bar.appendChild(button(d.analyzed_at ? 'AI tìm lại nhân vật' : 'AI tìm nhân vật', 'bg-indigo-600 text-white border-indigo-300',
+    bar.appendChild(button(d.analyzed_at ? 'AI tìm lại nhân vật' : 'AI tìm nhân vật', 'ws-btn-primary',
       () => act(() => call('POST', '/analyze'), 'Đã gửi AI tìm nhân vật'), Boolean(d.analyzing)));
     bar.lastChild.id = 'btn-character-analyze';
     return bar;
@@ -156,7 +157,7 @@
       for (const eid of ids) (scenesOf[eid] = scenesOf[eid] || []).push(`#${sceneIndex[sid] || sid}`);
     }
     const needed = new Set(st.data.needed || []);
-    const chars = (st.data.characters || []).filter(c => st.showAll || needed.has(c.entity_id) || c.status !== 'draft');
+    const chars = (st.data?.characters || []).filter(c => st.showAll || needed.has(c.entity_id) || c.status !== 'draft');
     list.appendChild(sourceBar());
     const bar = node('div', 'flex items-center justify-between gap-2');
     bar.appendChild(node('p', 'text-slate-600', needed.size
@@ -179,8 +180,15 @@
     }
   }
 
-  function open() {
-    el('modal-character-sheets')?.classList.remove('hidden');
+  function showReason() {
+    const list = el('character-sheets-list');
+    if (!list) return;
+    list.replaceChildren(node('p', 'text-slate-500', 'Chưa dùng được: dự án này chưa có cảnh vẽ nào, hoặc là dự án mẫu chỉ để xem.'));
+  }
+
+  // Trang Hình mẫu đang hiện: nạp danh sách và hỏi lại khi Muse/AI còn đang làm. Không đụng class hidden (khối luôn hiện trong trang).
+  function start() {
+    if (!usable()) showReason();
     refresh();
     clearInterval(st.timer);
     st.timer = setInterval(() => {
@@ -188,24 +196,28 @@
     }, POLL_MS);
   }
 
-  function close() {
-    el('modal-character-sheets')?.classList.add('hidden');
+  function stop() {
     clearInterval(st.timer);
     st.timer = null;
   }
 
+  function onLookPage() {
+    return typeof window.currentPage === 'function' && window.currentPage() === 'look';
+  }
+
   function init() {
-    el('btn-character-sheets')?.addEventListener('click', open);
-    el('btn-close-character-sheets')?.addEventListener('click', close);
-    document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') close(); });
     let lastId = null;
-    setInterval(() => {   // nút hiện với dự án có cảnh vẽ (truyện chữ và vụ án); đổi dự án thì đóng cửa sổ
+    setInterval(() => {   // đổi dự án: bỏ dữ liệu cũ, nếu trang Hình mẫu đang mở thì nạp lại cho dự án mới
       const id = project()?.id || null;
-      el('btn-character-sheets')?.classList.toggle('hidden', !usable());
-      if (id !== lastId) { lastId = id; st.data = null; close(); }
+      if (id !== lastId) {
+        lastId = id; st.data = null; stop(); el('character-sheets-list')?.replaceChildren();
+        if (onLookPage()) start();
+      }
     }, 1000);
   }
 
+  window.startCharacterSheets = start;
+  window.stopCharacterSheets = stop;
   window.refreshCharacterSheets = refresh;
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

@@ -18,8 +18,7 @@ from pydantic import BaseModel, Field
 
 from config import EXTRA_CHROME_PROFILES_DIRS, MUSE_AGENT_WAIT_MIN, PROJECTS_DIR, STATIC_DIR
 from services.climax_brief import AGENT_REPLY_MAX_CHARS, AGENT_VIDEO_MODE
-from services import scene_locks
-from services.image_service import with_style
+from services import muse_image_task, scene_locks
 from services.muse_motion import LOCKED_CAMERA_EN
 from security import (
     MEDIA_EXTS,
@@ -1133,28 +1132,17 @@ async def create_task(req: TaskCreateRequest):
         }
     else:
         mode = "text-to-image"
-        aspect_ratio = req.aspect_ratio or params.get("aspect_ratio") or "16:9"
-        char_anchor = req.character_anchor or params.get("character_anchor") or ""
-        params.setdefault("aspect_ratio", aspect_ratio)
-        params.setdefault("resolution", "2K")
-        if char_anchor:
-            params.setdefault("character_anchor", char_anchor)
-
+        # phần ảnh của việc (prompt có câu phong cách, tham số mặc định) dùng chung với nút xem trước prompt
+        image_fields = muse_image_task.image_task_fields(
+            req.prompt, params, aspect_ratio=req.aspect_ratio, character_anchor=req.character_anchor,
+            negative_prompt=req.negative_prompt, reference_image=ref_img, reference_image_url=ref_url,
+            reference_image_path=ref_path)
         task = {
             "task_id": task_id,
-            "mode": mode,
-            # câu mô tả phong cách như mọi đường tạo ảnh khác (Muse không hiểu mã phong cách trần)
-            "prompt": with_style(req.prompt, params.get("style_preset")),
-            "negative_prompt": req.negative_prompt,
+            **image_fields,
             "project_id": req.project_id,
             "scene_id": req.scene_id,
             "output_path": req.output_path,
-            "parameters": params,
-            "reference_image": ref_img,
-            "reference_image_url": ref_url,
-            "reference_image_path": ref_path,
-            "character_anchor": char_anchor,
-            "aspect_ratio": aspect_ratio,
             "assigned_account": req.assigned_account,
             "profile_dir": req.profile_dir,
             "timeout_sec": req.timeout_sec or 180,

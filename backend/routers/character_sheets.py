@@ -2,6 +2,10 @@
 
 - GET  /api/projects/{project_id}/characters                          danh sách, nhân vật từng cảnh, người cần cho video
 - POST /api/projects/{project_id}/characters/analyze                  truyện chữ: LLM tìm nhân vật (chạy nền; 1 lượt LLM)
+- POST /api/projects/{project_id}/characters/draw-all                 vẽ lần lượt mọi bảng còn thiếu (nền; mỗi bảng 1 lượt Muse)
+- GET  /api/projects/{project_id}/characters/draw-all/status          tiến độ lượt vẽ tất cả
+- POST /api/projects/{project_id}/characters/draw-all/stop            dừng sau nhân vật đang vẽ
+- POST /api/projects/{project_id}/characters/approve-all              duyệt mọi bảng đang chờ duyệt
 - PUT  /api/projects/{project_id}/characters/{entity_id}              sửa thiết kế (design_en)
 - POST /api/projects/{project_id}/characters/{entity_id}/draw         Muse vẽ bảng (chạy nền; tốn 1 lượt Muse)
 - POST /api/projects/{project_id}/characters/{entity_id}/approve      duyệt
@@ -21,7 +25,7 @@ from pydantic import BaseModel, Field
 from routers.climax_video import muse_call_starting_runner
 from security import is_within, require_safe_id, validate_path_ids
 from services import character_sheets as cs
-from services import project_service, story_cast
+from services import look_batch, project_service, story_cast
 from services.case_adaptation_steps import StepFailed
 
 logger = logging.getLogger("story_studio.character_sheets_router")
@@ -31,6 +35,7 @@ router = APIRouter(prefix="/api", tags=["Character sheets"], dependencies=[Depen
 NEEDED_STATUSES = ("selected", "failed", "grid", "grid_review", "grid_approved", "clips", "checking")
 _drawing: dict[tuple[str, str], asyncio.Task] = {}
 _analyzing: dict[str, asyncio.Task] = {}
+BATCH_KIND = "characters"
 
 
 class DesignBody(BaseModel):
@@ -71,6 +76,11 @@ async def _call(fn, *args):
         raise HTTPException(status_code=400, detail=str(e)) from None
 
 
+def _busy_analyzing(project_id: str) -> bool:
+    task = _analyzing.get(project_id)
+    return task is not None and not task.done()
+
+
 def _overview(project_id: str) -> dict:
     project = project_service.get_project(project_id)
     if project is None:
@@ -107,6 +117,8 @@ async def analyze(project_id: str):
     task = _analyzing.get(project_id)
     if task is not None and not task.done():
         raise HTTPException(status_code=409, detail="Đang tìm nhân vật cho dự án này")
+    if look_batch.is_running(BATCH_KIND, project_id):
+        raise HTTPException(status_code=409, detail="Muse đang vẽ tất cả bảng nhân vật, chờ xong hoặc bấm Dừng rồi tìm lại")
 
     def prepare():
         project = project_service.get_project(project_id)
@@ -134,6 +146,18 @@ async def update_design(project_id: str, entity_id: str, body: DesignBody):
     return _sheet_json(project_id, await _call(cs.set_design, project_id, entity_id, body.design_en))
 
 
+def _reference(project_id: str, entity_id: str) -> Optional[Path]:
+    project = project_service.get_project(project_id)
+    if project is None:
+        raise LookupError(f"Không có dự án {project_id}")
+    cast = cs.load_cast(project_id)
+    if entity_id not in cast.characters:
+        raise LookupError(f"Dự án không có nhân vật {entity_id}")
+    # Có ảnh cảnh có người này thì Muse theo đúng nét vẽ của ảnh đó; chưa có (luồng chung: khoá nhân vật trước
+    # khi tạo ảnh cảnh) thì vẽ theo phong cách ghi trong thiết kế
+    return cs.reference_image(project, cast, entity_id)
+
+
 async def _draw(project_id: str, entity_id: str, reference: Optional[Path]) -> None:
     try:
         await cs.draw_sheet(project_id, entity_id, muse_call_starting_runner, reference)
@@ -147,18 +171,7 @@ async def draw(project_id: str, entity_id: str):
     if _is_drawing(project_id, entity_id):
         raise HTTPException(status_code=409, detail="Muse đang vẽ bảng của nhân vật này")
 
-    def prepare():
-        project = project_service.get_project(project_id)
-        if project is None:
-            raise LookupError(f"Không có dự án {project_id}")
-        cast = cs.load_cast(project_id)
-        if entity_id not in cast.characters:
-            raise LookupError(f"Dự án không có nhân vật {entity_id}")
-        # Có ảnh cảnh có người này thì Muse theo đúng nét vẽ của ảnh đó; chưa có (luồng chung: khoá nhân vật trước
-        # khi tạo ảnh cảnh) thì vẽ theo phong cách ghi trong thiết kế
-        return cs.reference_image(project, cast, entity_id)
-
-    reference = await _call(prepare)
+    reference = await _call(_reference, project_id, entity_id)
     _drawing[(project_id, entity_id)] = asyncio.create_task(_draw(project_id, entity_id, reference))
     return {"entity_id": entity_id, "drawing": True}
 
@@ -191,3 +204,64 @@ async def set_cast(project_id: str, scene_id: str, body: CastBody):
     for e in body.entity_ids:
         require_safe_id(e, "entity_id")
     return {"scene_id": scene_id, "entity_ids": await _call(cs.set_scene_cast, project_id, scene_id, body.entity_ids)}
+
+
+# ------------------------------------------------------------------------------- vẽ tất cả / duyệt tất cả (A6)
+async def _batch_draw_one(project_id: str, entity_id: str) -> Optional[str]:
+    """Vẽ một bảng bằng đúng hàm của nút "Vẽ bảng" (draw_sheet); ghi vào _drawing để thẻ hiện "đang vẽ" và nút vẽ
+    từng người trả 409. Trả lời báo lỗi, None khi vẽ xong."""
+    reference = await asyncio.to_thread(_reference, project_id, entity_id)
+    task = asyncio.create_task(cs.draw_sheet(project_id, entity_id, muse_call_starting_runner, reference))
+    _drawing[(project_id, entity_id)] = task
+    try:
+        sheet = await task
+    except Exception as e:   # draw_sheet chỉ tự ghi "failed" cho lỗi Muse: lỗi khác ghi trạng thái rồi báo lên lượt
+        await asyncio.to_thread(cs.mark_draw_crashed, project_id, entity_id, f"Lỗi ngoài dự kiến: {e}")
+        raise
+    return (sheet.error or "Muse không vẽ được bảng nhân vật") if sheet.status == "failed" else None
+
+
+async def _batch_still_needed(project_id: str, entity_id: str) -> bool:
+    if _is_drawing(project_id, entity_id):
+        return False   # người dùng đã bấm vẽ riêng người này
+    cast = await asyncio.to_thread(cs.load_cast, project_id)
+    s = cast.characters.get(entity_id)
+    return s is not None and s.status in cs.BATCH_DRAW_STATUSES
+
+
+@router.post("/projects/{project_id}/characters/draw-all")
+async def draw_all(project_id: str):
+    """Vẽ lần lượt (không song song) mọi người chưa có bảng, bị ghi chỗ sai hoặc vẽ lỗi; mỗi người 1 lượt Muse."""
+    if _busy_analyzing(project_id):
+        raise HTTPException(status_code=409, detail="AI đang tìm nhân vật, chờ xong rồi vẽ")
+    try:
+        look_batch.reserve(BATCH_KIND, project_id)
+    except look_batch.BatchBusy as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
+    try:
+        cast = await _call(cs.load_cast, project_id)
+        items = [(s.entity_id, s.name_vi) for s in cs.batch_targets(cast)
+                 if not _is_drawing(project_id, s.entity_id)]
+        if not items:
+            raise HTTPException(status_code=400, detail="Không còn nhân vật nào cần vẽ bảng")
+        look_batch.start(BATCH_KIND, project_id, items,
+                         lambda e: _batch_still_needed(project_id, e), lambda e: _batch_draw_one(project_id, e))
+    finally:
+        look_batch.release(BATCH_KIND, project_id)
+    return look_batch.status(BATCH_KIND, project_id)
+
+
+@router.get("/projects/{project_id}/characters/draw-all/status")
+async def draw_all_status(project_id: str):
+    return look_batch.status(BATCH_KIND, project_id)
+
+
+@router.post("/projects/{project_id}/characters/draw-all/stop")
+async def draw_all_stop(project_id: str):
+    return look_batch.request_stop(BATCH_KIND, project_id)
+
+
+@router.post("/projects/{project_id}/characters/approve-all")
+async def approve_all(project_id: str):
+    ids, failed = await _call(cs.approve_all, project_id)
+    return {"approved": len(ids), "entity_ids": ids, "failed": failed}

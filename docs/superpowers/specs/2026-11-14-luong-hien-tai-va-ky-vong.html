@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Story Studio — Bản thiết kế luồng làm video</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:ital,wght@0,400;0,500;1,400;1,500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --page: #f8fafc; --card: #ffffff; --line: #e5e7eb;
+    --ink: #111827; --ink2: #374151; --mute: #6b7280;
+    --pill: #f3f4f6; --core: #e5e7eb; --core-b: #6b7280;
+    --blue: #3b82f6; --blue-bg: #eff6ff;
+    --red: #dc2626; --red-bg: #fef2f2; --red-line: #fecaca;
+    --green: #15803d; --green-bg: #f0fdf4;
+    --amber: #b45309; --amber-bg: #fffbeb;
+    --col: 164px; --gap: 34px; --label: 104px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--page); color: var(--ink);
+    font-family: "Be Vietnam Pro", Inter, "Segoe UI", system-ui, sans-serif;
+    font-size: 14px; line-height: 1.55; padding: 28px 16px 60px;
+  }
+  code, .mono { font-family: "JetBrains Mono", Consolas, monospace; font-size: .86em; }
+  code { background: #f3f4f6; border-radius: 5px; padding: 1px 5px; color: #1f2937; overflow-wrap: anywhere; }
+
+  .card {
+    max-width: 1760px; margin: 0 auto; background: var(--card);
+    border-radius: 24px; box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 12px 32px rgba(15,23,42,.06);
+    padding: 28px 28px 32px;
+  }
+  header h1 { font-size: 22px; font-weight: 700; margin: 0 0 4px; letter-spacing: -.01em; text-wrap: balance; }
+  header p { margin: 0; color: var(--mute); font-size: 13px; max-width: 980px; }
+  .notice {
+    margin-top: 14px; border: 1px solid #fde68a; background: var(--amber-bg); color: #78350f;
+    border-radius: 14px; padding: 10px 14px; font-size: 13px; max-width: 1100px;
+  }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 22px 0 6px; }
+  .switch { display: inline-flex; background: #f1f5f9; border-radius: 999px; padding: 4px; gap: 4px; flex-wrap: wrap; }
+  .switch button {
+    font: inherit; font-weight: 600; font-size: 13px; border: 0; background: transparent; color: var(--ink2);
+    padding: 8px 16px; border-radius: 999px; cursor: pointer;
+  }
+  .switch button[aria-selected="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(15,23,42,.14); }
+  .btn-pill {
+    font: inherit; font-weight: 600; font-size: 13px; cursor: pointer;
+    border: 1.5px solid var(--blue); background: var(--blue-bg); color: #1d4ed8;
+    padding: 8px 16px; border-radius: 999px;
+  }
+  .btn-pill:hover { background: #dbeafe; }
+  button:focus-visible, .node:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+
+  .stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+  .chip { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: #f3f4f6; color: var(--ink2); }
+  .chip.red { background: var(--red-bg); color: #991b1b; }
+  .chip.green { background: var(--green-bg); color: #166534; }
+  .chip b { font-variant-numeric: tabular-nums; }
+
+  /* ---------- Sơ đồ ---------- */
+  .scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 18px; }
+  .diagram { position: relative; width: max-content; min-width: 100%; }
+  .lane {
+    display: grid; grid-template-columns: var(--label) repeat(8, var(--col));
+    column-gap: var(--gap); align-items: center; padding: 24px 26px 24px 0;
+    border-top: 1px solid var(--line);
+  }
+  .lane:first-of-type { border-top: 0; }
+  .lane.claude { background: var(--red-bg); border-top: 1px solid var(--red-line); }
+  .lane-label {
+    position: sticky; left: 0; z-index: 3; align-self: stretch; display: flex; align-items: center; margin: -24px 0;
+    padding: 0 8px 0 18px; font-size: 12px; font-weight: 600; color: var(--ink2); background: inherit;
+  }
+  .lane:not(.claude) .lane-label { background: #fff; }
+  .lane-label small { display: block; font-weight: 400; color: var(--mute); }
+  .lane.claude .lane-label { color: #991b1b; }
+
+  .node {
+    position: relative; z-index: 2; width: 100%; text-align: center; cursor: pointer;
+    border-radius: 999px; padding: 9px 14px; font: inherit; color: var(--ink);
+    display: block; transition: background .15s, border-color .15s;
+  }
+  .node.open { border-radius: 20px; padding: 11px 12px 12px; }
+  .node .t { display: block; font-weight: 600; font-size: 12.5px; line-height: 1.3; }
+  .node .s { display: block; font-style: italic; color: var(--mute); font-size: 11px; line-height: 1.3; margin-top: 2px; overflow-wrap: anywhere; }
+  .node.user { background: var(--pill); border: 0; }
+  .node.ui { background: var(--core); border: 1.5px solid var(--core-b); }
+  .node.ui.active { background: var(--blue-bg); border: 2px solid var(--blue); }
+  .node.be { background: #fff; border: 1.5px solid var(--core-b); }
+  .node.be .t { font-family: "JetBrains Mono", Consolas, monospace; font-style: italic; font-weight: 500; font-size: 11.5px; overflow-wrap: anywhere; }
+  .node.be .s { font-style: normal; }
+  .node.manual { background: #fff; border: 1.5px solid var(--red); }
+  .node.manual .t { color: #991b1b; }
+  .node.none { background: transparent; border: 1.5px dashed #d1d5db; color: var(--mute); cursor: default; }
+  .node.none .t { font-weight: 500; color: var(--mute); }
+  .tag-new {
+    display: inline-block; font-style: normal; font-family: "Be Vietnam Pro", sans-serif; font-size: 9.5px; font-weight: 700;
+    letter-spacing: .04em; color: var(--green); background: var(--green-bg); border: 1px solid #bbf7d0;
+    border-radius: 999px; padding: 0 6px; margin-left: 4px; vertical-align: 1px;
+  }
+  .subs { display: none; list-style: none; margin: 8px 0 0; padding: 8px 0 0; border-top: 1px dashed #d1d5db; text-align: left; }
+  .node.open .subs { display: block; }
+  .subs li { font-size: 11px; line-height: 1.4; color: var(--ink2); padding: 2px 0 2px 12px; position: relative; overflow-wrap: anywhere; }
+  .subs li::before { content: ""; position: absolute; left: 2px; top: 8px; width: 4px; height: 4px; border-radius: 50%; background: #9ca3af; }
+  .subs li.new::before { background: var(--green); }
+  .subs li.gap::before { background: var(--red); }
+  .subs code { font-size: 10px; padding: 0 3px; }
+
+  svg.wires { position: absolute; left: 0; top: 0; z-index: 1; pointer-events: none; overflow: visible; }
+  .wire { fill: none; stroke: #6b7280; stroke-width: 1.4; stroke-dasharray: 3 3; }
+  .wire.auto { stroke: #2563eb; }
+  .wire.bad { stroke: var(--red); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 12px 2px 0; font-size: 12px; color: var(--mute); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { display: inline-block; width: 26px; border-top: 2px dotted #6b7280; }
+  .legend i.auto { border-color: #2563eb; } .legend i.bad { border-color: var(--red); }
+  .legend .dot { width: 8px; height: 8px; border-radius: 50%; border: 0; }
+
+  /* ---------- Bảng chi tiết ---------- */
+  .detail { margin-top: 26px; }
+  .detail h2 { font-size: 18px; margin: 0 0 2px; font-weight: 700; }
+  .detail .where { color: var(--mute); font-size: 13px; margin: 0 0 14px; }
+  .cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  @media (max-width: 1000px) { .cols { grid-template-columns: 1fr; } }
+  .box { border: 1px solid var(--line); border-radius: 18px; padding: 16px 18px; background: #fff; }
+  .box h3 { margin: 0 0 8px; font-size: 14px; font-weight: 700; }
+  .box.warn { border-color: var(--red-line); background: #fffafa; }
+  .box.fix { border-color: #bbf7d0; background: #fbfffc; }
+  .box ul { margin: 0; padding: 0; list-style: none; }
+  .box li { padding: 8px 0; border-top: 1px solid #f1f5f9; font-size: 13px; overflow-wrap: anywhere; }
+  .box li:first-child { border-top: 0; padding-top: 2px; }
+  .badge { display: inline-block; font-size: 10.5px; font-weight: 700; border-radius: 999px; padding: 1px 8px; margin-right: 6px; vertical-align: 1px; white-space: nowrap; }
+  .badge.miss { background: #fee2e2; color: #991b1b; }
+  .badge.proxy { background: #ffedd5; color: #9a3412; }
+  .badge.app { background: #e0e7ff; color: #3730a3; }
+  .badge.new { background: #dcfce7; color: #166534; }
+  .badge.edit { background: #e0f2fe; color: #075985; }
+  .ev { display: block; color: var(--mute); font-size: 12px; margin-top: 2px; }
+  .empty { color: var(--mute); font-style: italic; }
+  .foot { margin-top: 22px; font-size: 12px; color: var(--mute); border-top: 1px solid var(--line); padding-top: 14px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <header>
+    <h1>Story Studio — Bản thiết kế luồng làm video</h1>
+    <p>Lập ngày 14/11/2026 từ <code>FEATURE_MAP.md</code>, nhật ký <code>TASKS.md</code> (các lượt làm video 05–13/11/2026), code trong <code>backend/</code> và 64 script tạm còn nằm trong <code>.cache/</code>. Mọi tên nút, state và hàm không gắn nhãn MỚI đều đang có thật trong code.</p>
+    <div class="notice"><b>Đề xuất của agent, chưa duyệt.</b> “Tự động hoá 100%” ở đây nghĩa là không bước nào còn phải nhờ Claude chạy lệnh. Các điểm bạn duyệt bằng mắt (dàn ý, bảng nhân vật, bối cảnh, lưới 9 ô) vẫn giữ nguyên, đúng câu trả lời số 4 và 17 trong <code>CLAUDE.md</code> mục 1.2: làm từng bước trước, chưa gộp thành một nút.</div>
+  </header>
+
+  <div class="controls">
+    <div class="switch" role="tablist" aria-label="Chế độ xem">
+      <button role="tab" id="tab-tobe" aria-selected="true">🟢 Luồng Kỳ Vọng (To-Be - Tự động hóa 3 Làn)</button>
+      <button role="tab" id="tab-asis" aria-selected="false">🔴 Luồng Hiện Tại (As-Is - Đang lỗi ở đâu?)</button>
+    </div>
+    <button class="btn-pill" id="btn-expand" aria-pressed="false">↕ Mở toàn bộ nhánh phụ</button>
+  </div>
+  <div class="stats" id="stats"></div>
+
+  <div class="scroll" id="scroll">
+    <div class="diagram" id="diagram">
+      <svg class="wires" id="wires" aria-hidden="true">
+        <defs>
+          <marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 z" fill="#6b7280"/></marker>
+          <marker id="ah-auto" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 z" fill="#2563eb"/></marker>
+          <marker id="ah-bad" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 z" fill="#dc2626"/></marker>
+        </defs>
+        <g id="wire-g"></g>
+      </svg>
+      <div id="lanes"></div>
+    </div>
+  </div>
+  <div class="legend" id="legend"></div>
+
+  <section class="detail" id="detail" aria-live="polite"></section>
+
+  <div class="foot">
+    Cách đọc: mũi tên dọc là trong cùng một bước (bạn thao tác, giao diện gửi lệnh, máy chủ chạy). Mũi tên gấp khúc là chuyển bước: máy chủ làm xong thì mở bước kế tiếp trên giao diện. Bấm vào bất kỳ ô nào để xem bảng chi tiết của bước đó. File này chỉ để xem và duyệt, chưa có dòng code nào của dự án bị sửa.
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   DỮ LIỆU. Chữ trong dấu ` ` là tên có thật trong code (trừ mục gắn isNew / kind "new").
+   ===================================================================== */
+const STEPS = [
+  {
+    n: 1, ui: "UI Nhập liệu", where: "Bước 1 trên thanh trên cùng, khung `#step-view-1`",
+    state: "AppState.currentStep = 1",
+    user: { title: "Dán nội dung, chọn loại", subs: [
+      "Chọn “Truyện chữ” hoặc “Vụ án có thật” ở `#step1-content-kind`",
+      "Dán bài vào `#step1-script-textarea`",
+      "Chọn phong cách `#step1-style-select`, ngôn ngữ `#step1-language-select`",
+      "Vụ án: chọn số phút `#step1-case-duration`",
+      "Bấm `#btn-step1-process-script`" ] },
+    uiSubs: [
+      "Dòng tiến độ “Đang viết và kiểm phần X/Y” (hỏi theo `progress_id`)",
+      "Nút bài mẫu `data-sample`",
+      "Nhánh truyện tranh: `#step1-comic-dropzone`, `#btn-step1-process-comic`",
+      "Theo dõi vụ án đang làm: `#btn-step1-open-true-crime`" ],
+    uiNew: [ "Ước số phút video ngay khi dán bài, cảnh báo khi dưới 15 phút", "Nút “Ghép thêm chương” và “Kể dài hơn”" ],
+    be: { fn: "review_story()", desc: "Viết lời kể từng phần, kiểm đủ ý" },
+    beToBe: { fn: "review_story()", desc: "Viết lời kể, kiểm đủ ý, ước số phút" },
+    asIsNext: "auto",
+    manual: { title: "Gửi bài hộ bằng script", items: [
+      { kind: "proxy", text: "Claude gửi bài vụ án bằng `.cache/vu_an/gui_vu_an.py` (gọi thẳng `POST /api/true-crime/analyze`) thay vì bạn bấm nút.", ev: "Vụ Khang Cúc Hoa, đêm 05/11/2026. Giao diện có nút, chỉ là không ai bấm." } ] },
+    branches: [
+      "Truyện chữ: `handleStep1ProcessScript()` gọi `POST /api/projects/create-from-script`, máy chủ chạy `create_project_from_script()`, viết từng phần bằng `story_review.review_story()` rồi tìm nhân vật bằng `story_cast.analyze_people()`. Xong thì tự sang Bước 2.",
+      "Vụ án: `tcStartFromStep1()` chép bài sang cửa sổ Hồ Sơ Kỳ Án rồi gọi `POST /api/true-crime/analyze`.",
+      "Truyện tranh: `handleStep1ProcessComic()` cắt khung bằng `comic_slicer.py`.",
+      "Cửa sổ “Kịch bản AI” (`#btn-open-script-modal`) chia cảnh offline, nối thêm vào dự án đang mở." ],
+    problems: [
+      { kind: "app", text: "Truyện chữ chưa ước được độ dài và chưa cảnh báo khi video ra dưới 15 phút. Chưa có nút ghép chương.", ev: "`CLAUDE.md` mục 1.1 ghi “thiếu”; bạn đã yêu cầu ở câu 2 và câu 8 mục 1.2." },
+      { kind: "app", text: "Viết lời kể mất nhiều phút nhưng nếu bạn đóng tab thì không có chỗ nào báo lại là đã xong hay đã lỗi.", ev: "Tiến độ chỉ sống trong lúc trang đang mở (`progress_id`)." } ],
+    fixes: [
+      { kind: "edit", text: "`backend/services/story_review.py`: thêm hàm ước số phút từ số chữ (đã có sẵn `source_words()`), trả về cùng kết quả tạo dự án." },
+      { kind: "edit", text: "`backend/static/app.js` hàm `handleStep1ProcessScript()` và `backend/static/index.html`: hiện cảnh báo dưới 15 phút, thêm hai nút lựa chọn." },
+      { kind: "new", text: "API mới `POST /api/projects/{project_id}/append-chapter` trong `backend/routers/api.py`: ghép thêm chương vào dự án đã có, vẫn đi qua `review_story()`." } ]
+  },
+  {
+    n: 2, ui: "UI Hồ Sơ Kỳ Án", where: "Cửa sổ `#modal-true-crime` (file `backend/static/true_crime.js`). Truyện chữ bỏ qua bước này.",
+    state: "story_studio_true_crime_case_id",
+    user: { title: "Duyệt dàn ý, tên hư cấu", subs: [
+      "Sửa dàn ý trong `#tc-outline-parts`, bấm `#btn-tc-outline-approve`",
+      "Sửa bảng tên hư cấu, bấm `#btn-tc-save-entities`",
+      "Sửa lời từng cảnh trong `#tc-scene-review`",
+      "Bấm `#btn-tc-create-vi` để tạo dự án" ] },
+    uiSubs: [
+      "Thanh tiến độ `#tc-progress-bar` (hỏi máy chủ 2 giây một lần)",
+      "Danh sách cảnh báo `#tc-warnings`",
+      "Bảng ghim bằng chứng `#tc-evidence-canvas`",
+      "Nút “Thử lại” `#btn-tc-resume`" ],
+    uiNew: [ "Báo trên thanh trên cùng khi vụ chuyển sang chờ duyệt", "Cảnh báo riêng khi hai người trong vụ trùng họ" ],
+    be: { fn: "_run_write_vi()", desc: "Viết từng nhịp, kiểm lọt tên thật" },
+    beToBe: { fn: "_run_write_vi()", desc: "Viết từng nhịp, kiểm tên thật và người trùng họ" },
+    asIsNext: "auto",
+    manual: { title: "Duyệt hộ, sửa tay 2 cảnh", items: [
+      { kind: "proxy", text: "Claude duyệt dàn ý bằng `.cache/vu_an/duyet_dan_y.py` thay vì bạn bấm `#btn-tc-outline-approve`.", ev: "Vụ Khang Cúc Hoa, 05/11/2026." },
+      { kind: "proxy", text: "Claude sửa tay lời cảnh 38 và 68 bằng `.cache/vu_an/sua_canh.py` vì app gộp nhầm hai nạn nhân cùng họ thành một người.", ev: "`TASKS.md` 05–06/11/2026. Giao diện có ô sửa lời, nhưng app không báo là có chỗ gộp nhầm nên người dùng không biết mà sửa." } ] },
+    branches: [
+      "Phân tích chạy nền trong máy chủ bằng `case_worker.py`, đóng cửa sổ vẫn chạy. Vụ thật mất 60–90 phút; hai vụ gần nhất tốn 89 và 94 lần gọi AI.",
+      "Vụ tự dừng ở trạng thái `review` để bạn duyệt dàn ý: `GET` và `PUT /api/true-crime/cases/{case_id}/outline`, rồi `POST .../outline/approve`.",
+      "Sau khi duyệt, `case_adaptation_steps.py` viết lời từng nhịp và kiểm bằng `coverage_guard.py`, `case_adaptation_checks.py`.",
+      "`tcCreateVietnameseProject()` gọi `create_project_from_plan()` rồi mở dự án ở Bước 2." ],
+    problems: [
+      { kind: "app", text: "Hai nạn nhân cùng họ bị gộp thành một người mà không có cảnh báo nào.", ev: "Vụ Khang Cúc Hoa cảnh 38, 68. Hiếm gặp, đã sửa tay, chưa sửa gốc." },
+      { kind: "app", text: "49 cảnh báo “bằng chứng chưa hiện lên bảng” hiện chung với cảnh báo thật, dễ làm bạn bỏ sót cảnh báo quan trọng.", ev: "`TASKS.md` 06/11/2026: “không chặn”." },
+      { kind: "app", text: "Phân tích xong sau 60–90 phút nhưng phải tự mở lại cửa sổ mới biết.", ev: "Tiến độ chỉ hiện trong `#tc-progress`." } ],
+    fixes: [
+      { kind: "edit", text: "`backend/services/case_adaptation_checks.py`: thêm một phép kiểm “hai người khác nhau trùng họ trong bảng tên”, gắn cờ vào `#tc-warnings`." },
+      { kind: "edit", text: "`backend/static/true_crime.js` hàm `tcRenderProgress()`: khi vụ sang `review` hoặc xong thì đổi tiêu đề tab và hiện chấm báo trên `#btn-open-true-crime-modal`." },
+      { kind: "edit", text: "`tcRenderReview()`: tách cảnh báo chặn và cảnh báo chỉ để biết thành hai nhóm." } ]
+  },
+  {
+    n: 3, ui: "UI Nhân vật & Bối cảnh", where: "Hai cửa sổ `#modal-character-sheets` và `#modal-location-sheets`, mở từ Bước 2",
+    state: "characters.json · locations.json",
+    user: { title: "Duyệt nhân vật, bối cảnh", subs: [
+      "Mở `#btn-character-sheets`, sửa thiết kế, bấm “Lưu thiết kế”",
+      "Bấm “Vẽ bảng (Muse)” cho từng người",
+      "Bấm “Duyệt” hoặc “Ghi chỗ sai rồi vẽ lại”",
+      "Mở `#btn-location-sheets`, bấm “Tìm bối cảnh lặp lại (LLM)”",
+      "Bấm “Vẽ ảnh chuẩn (Muse)” cho từng nơi, rồi duyệt" ] },
+    userToBe: { title: "Duyệt nhân vật, bối cảnh", subs: [
+      "Xem bảng nhân vật máy đã vẽ sẵn, bấm “Duyệt” hoặc “Ghi chỗ sai rồi vẽ lại”",
+      "Xem ảnh chuẩn từng nơi, bấm “Duyệt” hoặc ghi chỗ sai",
+      "Sửa thiết kế khi cần" ] },
+    uiSubs: [
+      "Nút “AI tìm lại nhân vật” (truyện chữ)",
+      "Nút “Chỉ hiện người cần cho video cao trào”",
+      "Khung “+ Tự thêm một bối cảnh”, nút “Bỏ bối cảnh”" ],
+    uiNew: [ "Nút “Vẽ hết bảng còn thiếu” cho cả nhân vật và bối cảnh", "Số bảng đang chờ duyệt hiện ngay trên hai nút mở cửa sổ" ],
+    be: { fn: "draw_sheet()", desc: "Muse vẽ từng bảng, từng ảnh chuẩn" },
+    beToBe: { fn: "draw_sheet() · draw_plate()", desc: "Tự tìm bối cảnh, tự vẽ hết bảng còn thiếu" },
+    asIsNext: "manual",
+    manual: { title: "Vẽ từng bảng, canh, duyệt hộ", items: [
+      { kind: "miss", text: "Không có nút vẽ hàng loạt và không có gì báo khi Muse vẽ xong. Claude gọi vẽ từng bảng rồi canh bằng `.cache/vu_an/cho_nv.py` và `cho_khoa.py`.", ev: "Khang Cúc Hoa: 10 bảng nhân vật, 7 ảnh bối cảnh. Xưởng sắt: 13 bảng, 8 ảnh." },
+      { kind: "miss", text: "Sửa ngoại hình một nhân vật trong prompt của 4 cảnh và gán nhân vật cho cảnh bằng `.cache/vu_xuong_sat/sua_con_gai.py`, ghi thẳng qua `project_service`.", ev: "Vụ xưởng sắt, cảnh 49, 64, 65, 70. Giao diện không có chỗ sửa một lượt cho nhiều cảnh." },
+      { kind: "proxy", text: "Claude xem từng bảng rồi bấm duyệt hoặc trả về thay bạn.", ev: "Có nút “Duyệt” trong cửa sổ, nhưng bạn không theo dõi lúc chạy." } ] },
+    branches: [
+      "Nhân vật: `services/character_sheets.py` với `load_cast()`, `draw_sheet()`, `approve_sheet()`, `reject_sheet()`, `cast_board()`.",
+      "Bối cảnh: `services/location_sheets.py` với `analyze_locations()`, `draw_plate()`, `approve_plate()`, `reject_plate()`.",
+      "Hai khoá được dùng ở mọi đường tạo ảnh cảnh qua `services/scene_locks.py` hàm `scene_locks()`.",
+      "Gán nhân vật cho từng cảnh: `PUT /api/projects/{project_id}/scenes/{scene_id}/cast`." ],
+    problems: [
+      { kind: "app", text: "Mỗi bảng nhân vật, mỗi ảnh bối cảnh phải bấm vẽ riêng rồi ngồi chờ. Một vụ có khoảng 15–20 lần bấm và chờ như vậy.", ev: "Đã tìm trong code: không có đường API hay nút nào vẽ hàng loạt." },
+      { kind: "app", text: "Truyện chữ được tự tìm nhân vật khi tạo dự án, nhưng bối cảnh thì phải tự nhớ bấm tìm.", ev: "`analyze_locations()` chỉ chạy khi bấm nút trong cửa sổ." },
+      { kind: "app", text: "Thiết kế nhân vật có thể ghi ánh sáng trái với cảnh (ghi “ánh đêm xanh lạnh” trong khi cảnh là buổi sáng), Muse dừng lại hỏi thay vì vẽ.", ev: "Khang Cúc Hoa cảnh 2, ngày 12/11/2026." },
+      { kind: "app", text: "Cảnh có người nhưng chưa gán nhân vật bị xếp nhầm là “phong cảnh không người”, nên không được đính bảng nhân vật.", ev: "Khang Cúc Hoa cảnh 036, ngày 13/11/2026, ghi “phát hiện chưa sửa”." } ],
+    fixes: [
+      { kind: "new", text: "`backend/routers/character_sheets.py`: API mới `POST /api/projects/{project_id}/characters/draw-all`, lặp `draw_sheet()` cho người chưa có bảng. Tương tự `locations/draw-all` trong `backend/routers/location_sheets.py`." },
+      { kind: "edit", text: "`backend/routers/api.py` và `case_project_builder.py`: sau khi tạo dự án thì tự gọi `analyze_locations()` như đang làm với `analyze_people()`." },
+      { kind: "edit", text: "`backend/static/character_sheets.js`, `location_sheets.js`: nút vẽ hết, và số bảng chờ duyệt trên `#btn-character-sheets`, `#btn-location-sheets`." },
+      { kind: "edit", text: "`services/character_sheets.py`: khi lưu thiết kế, bỏ chữ tả ánh sáng và thời điểm trong ngày để không trái với cảnh." },
+      { kind: "edit", text: "`services/climax_video.py` hàm `is_landscape()`: cảnh mà lời kể có nhắc tên nhân vật thì không coi là phong cảnh, hỏi bạn gán nhân vật." } ]
+  },
+  {
+    n: 4, ui: "UI Bảng Đạo Diễn", where: "Bước 2, khung `#step-view-2`, danh sách thẻ cảnh `#scene-list-container`",
+    state: "AppState.currentProject.scenes",
+    user: { title: "Tạo giọng và ảnh cảnh", subs: [
+      "Chọn giọng `#select-voice`, nhạc nền `#select-bgm`",
+      "Bấm `#btn-auto-gen-all` và giữ tab mở tới khi xong",
+      "Sửa lời kể, prompt ảnh trên từng thẻ",
+      "Bấm “Gen lại ảnh AI” hoặc “Muse 2K” cho cảnh hỏng",
+      "Tải ảnh riêng từ máy cho cảnh cần ảnh thật" ] },
+    userToBe: { title: "Chọn giọng, xem ảnh cảnh", subs: [
+      "Chọn giọng `#select-voice`, nhạc nền `#select-bgm`",
+      "Bấm một lần “Tạo giọng và ảnh”, đóng tab cũng được",
+      "Xem lại ảnh, bấm vẽ lại cảnh chưa ưng",
+      "Gắn ảnh thật kèm chú thích cho cảnh cần" ] },
+    uiSubs: [
+      "Thẻ cảnh do `renderSceneList()` vẽ, tự lưu qua `ProjectSync`",
+      "Trình xem thử `#btn-preview-play-toggle`",
+      "Nguồn ảnh `#select-image-provider`, phong cách `#select-project-style`",
+      "Vẽ lại hoặc thu lại toàn bộ: `#btn-regen-all-images`, `#btn-regen-all-voices`" ],
+    uiNew: [ "Thanh tiến độ ảnh và giọng lấy từ máy chủ, mở lại trang vẫn thấy", "Nút “Ảnh thật” trên thẻ: tải ảnh, gõ chú thích", "Hỏi trước khi chuyển sang ảnh trả phí" ],
+    be: { fn: "generate_scene_image()", desc: "Vẽ từng cảnh khi trình duyệt gọi" },
+    beToBe: { fn: "generate_scene_image()", desc: "Hàng việc ảnh và giọng chạy trên máy chủ", isNew: true },
+    asIsNext: "manual",
+    manual: { title: "Chạy ảnh bằng script, chèn ảnh thật", items: [
+      { kind: "miss", text: "Nút `#btn-auto-gen-all` chạy vòng lặp ngay trong trình duyệt (`handleAutoGenAll()`), đóng tab là dừng. Claude phải viết `.cache/vu_xuong_sat/chay_anh_video.py` (127 dòng, hai luồng) để chạy thay.", ev: "Vụ xưởng sắt 08–09/11/2026: 48 ảnh cảnh, 29 lượt lỗi phải chạy lại." },
+      { kind: "miss", text: "Chèn 8 ảnh thật có chú thích: Claude xoá chữ cũ, vẽ chú thích bằng `.cache/vu_xuong_sat/ve_chu_anh.py`, rồi tự gắn cờ `metadata.real_photo`. Giao diện không có nút nào cho việc này.", ev: "`TASKS.md` 11/11/2026: “chèn ảnh thật vẫn làm bằng script ngoài app”." },
+      { kind: "proxy", text: "Muse từ chối vẽ cảnh có thuốc, dây trói. Claude viết lại prompt nhẹ hơn rồi chạy lại.", ev: "Xưởng sắt cảnh 36. Có ô sửa prompt, nhưng app chỉ báo lỗi, không gợi ý cách viết lại." },
+      { kind: "proxy", text: "Vẽ lại ảnh lệch phong cách bằng `.cache/ve_lai_anh_kch.py`.", ev: "Khang Cúc Hoa cảnh 004, 056, ngày 13/11/2026." } ] },
+    branches: [
+      "Ảnh: `regenerateSceneImage()` gọi `POST .../scenes/{scene_id}/gen-image`, máy chủ chạy `generate_scene_image()` rồi `image_service.generate_image()` kèm `scene_locks()`.",
+      "Ảnh Muse 2K: `generateSceneWithMuse()` gọi `POST /api/muse-bridge/tasks/create`, Fleet Runner nộp kết quả qua `complete_task()`.",
+      "Giọng: `regenerateSceneVoice()` gọi `POST .../gen-voice`, máy chủ chạy `tts_service.generate_speech()`.",
+      "Tải ảnh, video riêng: `uploadCustomSceneImage()`, `uploadCustomSceneVideo()`.",
+      "Sửa trên thẻ: `updateSceneText()`, `updateSceneVisualPrompt()`, `moveScene()`, `duplicateScene()`, `deleteScene()`." ],
+    problems: [
+      { kind: "app", text: "Tạo ảnh và giọng cho 70 cảnh mất hàng giờ mà phụ thuộc vào một tab trình duyệt đang mở.", ev: "`handleAutoGenAll()` lặp từng cảnh ở phía trình duyệt." },
+      { kind: "app", text: "Khi Muse không trả ảnh, app tự chuyển sang 9router là dịch vụ tính tiền, ảnh ra lại không theo bảng nhân vật.", ev: "Khang Cúc Hoa cảnh 2, 13. Đường cấm số 4 trong `CLAUDE.md`, hiện vẫn là khoá mềm." },
+      { kind: "app", text: "Ảnh thật của vụ án không có đường vào chính thức: không nút tải kèm chú thích, không nút đánh dấu “ảnh thật”.", ev: "`real_photo` nằm trong `SERVER_OWNED_METADATA_KEYS`, giao diện không ghi được." } ],
+    fixes: [
+      { kind: "new", text: "Router mới `backend/routers/scene_assets.py`: `POST /api/projects/{project_id}/assets/run` chạy nền và `GET .../assets/status`, theo đúng mẫu `routers/climax_video.py`. Bên trong vẫn gọi `generate_scene_image()` và `generate_speech()` đang có." },
+      { kind: "edit", text: "`backend/static/app.js` hàm `handleAutoGenAll()`: đổi từ tự lặp sang gọi API trên rồi hỏi tiến độ." },
+      { kind: "new", text: "API `PUT /api/projects/{project_id}/scenes/{scene_id}/real-photo`: nhận ảnh và chú thích, vẽ chú thích bằng font có sẵn trong `backend/assets/fonts/`, đặt `metadata.real_photo`." },
+      { kind: "edit", text: "`backend/services/image_service.py` hàm `generate_image()`: Muse lỗi thì dừng và hỏi, không tự sang ảnh trả phí." } ]
+  },
+  {
+    n: 5, ui: "UI Video Muse", where: "Trên thẻ cảnh ở Bước 2 (file `backend/static/climax_video.js`) và cửa sổ `#modal-muse-cloud`",
+    state: "metadata.climax_video",
+    user: { title: "Chọn cảnh, duyệt lưới 9 ô", subs: [
+      "Bấm `#btn-climax-video-pick` để chọn cảnh đủ 50% thời lượng",
+      "Bật, tắt “🎬 Làm video” và gán nhân vật trên từng thẻ",
+      "Bấm `#btn-climax-video-run` lần 1 để vẽ lưới 9 ô",
+      "Bấm “Duyệt grid” hoặc “Vẽ lại grid” trên từng thẻ",
+      "Bấm `#btn-climax-video-run` lần 2 để làm clip",
+      "Bấm lại mỗi khi lượt chạy dừng vì tài khoản hết lượt",
+      "Bấm “Đã xem, có cử động” hoặc “↻ Làm lại cảnh này”" ] },
+    userToBe: { title: "Duyệt lưới 9 ô, xem clip", subs: [
+      "Bấm `#btn-climax-video-pick`, chỉnh danh sách cảnh",
+      "Bấm `#btn-climax-video-run` một lần duy nhất",
+      "Duyệt lưới trên một trang chung, cảnh nào duyệt xong máy làm clip luôn",
+      "Xem tờ tổng hợp clip, đánh dấu clip cần làm lại",
+      "Bấm “Dừng” khi muốn nghỉ" ] },
+    uiSubs: [
+      "Nhãn trạng thái trên thẻ, hỏi máy chủ 4 giây một lần (`poll()`)",
+      "“Báo cáo của Muse” và cảnh báo “Clip gần như đứng hình”",
+      "Phần trăm video Muse: vàng dưới 50%, đỏ dưới 45% (`coverage()`)",
+      "Cửa sổ Muse Fleet: danh sách tài khoản `#muse-fleet-pool-grid`" ],
+    uiNew: [ "Nút “Dừng lượt chạy”", "Trang duyệt lưới chung và tờ tổng hợp clip", "Bảng tài khoản: còn đăng nhập hay không, khoá tới khi nào, nút Khoá và Mở" ],
+    be: { fn: "run_scene_climax_video()", desc: "Hai pha: lưới 9 ô rồi clip, lỗi thì dừng" },
+    beToBe: { fn: "run_scene_climax_video()", desc: "Tự nối pha, tự xếp lại cảnh khi tài khoản hồi lượt" },
+    asIsNext: "manual",
+    manual: { title: "Canh 2–14 giờ, khoá tài khoản tay", items: [
+      { kind: "miss", text: "Lượt chạy kéo dài 2 đến 14 giờ và dừng giữa chừng nhiều lần. Claude canh bằng `.cache/vu_an/cho_climax.py`, `canh_treo.py`, `.cache/theo_doi_cao_trao.py` rồi bấm chạy lại.", ev: "Khang Cúc Hoa: lượt 1 từ 22:33 ngày 06/11 tới 12:13 ngày 07/11. Từ 12 tới 13/11 dừng 3 lần vì tài khoản hết lượt Muse." },
+      { kind: "miss", text: "Khoá và mở tài khoản Muse bằng cách sửa tay file `backend/config/muse_fleet_accounts.json`.", ev: "12/11: khoá `vid_05`, `vp_04`, `vp_03`. 13/11: khoá `vp_02` để chỉ dùng hai tài khoản bạn chỉ định." },
+      { kind: "miss", text: "Kiểm tài khoản nào còn đăng nhập bằng `.cache/kiem_dang_nhap_muse.py`. Giao diện chỉ hiện tài khoản, không biết phiên đăng nhập còn hay mất.", ev: "07/11: 8 tài khoản video báo mất phiên, chỉ còn 1 tài khoản video làm được." },
+      { kind: "miss", text: "Không có nút dừng. Muốn dừng lượt chạy, Claude phải khởi động lại máy chủ cổng 8000.", ev: "23:56 ngày 12/11: khởi động lại để dừng lượt xưởng sắt. Đã tìm trong `routers/climax_video.py`: không có đường API dừng." },
+      { kind: "miss", text: "Xem nhanh mọi clip bằng tờ ảnh do `.cache/to_xem_clip.py` tạo (mỗi clip 3 khung). Trong app phải mở từng thẻ.", ev: "Đêm 12/11: xem 48 clip xưởng sắt, 26 clip Khang Cúc Hoa." },
+      { kind: "proxy", text: "Claude xem từng lưới 9 ô rồi duyệt hoặc trả về, và bỏ hẳn cảnh hỏng nhiều lần.", ev: "Khang Cúc Hoa: bỏ cảnh 2, 4, 45 sau 3 lần hỏng." } ] },
+    branches: [
+      "Chọn cảnh: `pick()` gọi `POST .../climax-video/pick`, máy chủ chạy `pick_climax_scenes()` theo `CLIMAX_RATIO` = 50%.",
+      "Lưới 9 ô: `run_scene_grid()`, rồi `approve_grid()` hoặc `reject_grid()`.",
+      "Làm clip: `run_scene_clips()` giao Muse một việc nhiều bước, bản giao việc từ `scene_brief()` hoặc `landscape_brief()`.",
+      "Đo cử động: `clip_motion.motion_score()`. Duyệt tay: `PUT .../scenes/{scene_id}/motion-review`.",
+      "Video theo lời thoại trên từng thẻ: `runSceneMuseVideo()` với `plan_segments()`, `run_scene()`.",
+      "Fleet Runner `backend/runners/muse_fleet_runner.py` nhận việc qua `GET /api/muse-bridge/tasks/poll`." ],
+    problems: [
+      { kind: "app", text: "Phải bấm “chạy” hai lần (một lần cho lưới, một lần cho clip), và bấm lại sau mỗi lần dừng. Không ai canh thì cả đêm đứng yên.", ev: "`FEATURE_MAP.md` mục 2.3: “chạy hai pha”, “không tự thử lại”." },
+      { kind: "app", text: "Tài khoản hết lượt tuần thì cảnh của nó nằm chờ, tới giờ hồi lượt cũng không tự chạy tiếp.", ev: "`block_account()` chỉ khoá, không có việc nào hẹn chạy lại." },
+      { kind: "app", text: "Không biết trước tài khoản nào đã mất đăng nhập, phải chạy thử mới lộ ra.", ev: "Đăng nhập lại vẫn phải chạy `setup_muse_accounts.bat` ngoài app." },
+      { kind: "app", text: "Lưới 9 ô duyệt đúng nhưng Muse vẫn vẽ lệch nét mặt khi làm chuyển động. Máy chưa đo được, phải có người xem.", ev: "Xưởng sắt cảnh 3, 9, 19, 35, 39, 49. Việc xem này là của bạn, không tự động hoá được." },
+      { kind: "app", text: "Máy chủ cổng 8000 từng tắt theo phiên làm việc của Claude giữa lúc đang làm clip.", ev: "19:17 và 00:19 ngày 09/11, 13:23 ngày 13/11. Từ đó máy chủ được bật thành tiến trình riêng." } ],
+    fixes: [
+      { kind: "new", text: "`backend/routers/climax_video.py`: API mới `POST /api/projects/{project_id}/climax-video/stop`, đặt cờ để lượt chạy dừng sau cảnh đang làm." },
+      { kind: "edit", text: "`backend/services/climax_video.py`: `approve_grid()` duyệt xong thì cảnh tự vào hàng làm clip, không cần bấm lần hai." },
+      { kind: "edit", text: "`backend/routers/muse_bridge.py`: khi `blocked_until` của một tài khoản hết hạn thì tự xếp lại cảnh đang ghim vào tài khoản đó." },
+      { kind: "new", text: "`backend/routers/muse_bridge.py`: API mới `POST /api/muse-bridge/accounts/{account_id}/block`, `/unblock` và `/check-login` (đưa phần kiểm của `kiem_dang_nhap_muse.py` vào Fleet Runner)." },
+      { kind: "edit", text: "`backend/static/app.js` hàm `loadMuseAccountsUI()`: hiện `blocked_until`, `block_reason`, trạng thái đăng nhập, thêm nút Khoá và Mở." },
+      { kind: "new", text: "File mới `backend/static/climax_review.js`: một trang duyệt lưới chung và tờ tổng hợp clip (3 khung mỗi clip, lấy bằng ffmpeg như `last_frame()` đang làm)." },
+      { kind: "edit", text: "`backend/static/climax_video.js`: cảnh hỏng 2 lần thì hiện gợi ý “bỏ cảnh này, chọn cảnh khác bù”." } ]
+  },
+  {
+    n: 6, ui: "UI Bản ngôn ngữ", where: "Nút `#btn-create-en-version` trên thanh trên cùng, chỉ hiện với dự án vụ án bản Việt",
+    state: "language-version-job",
+    user: { title: "Bấm tạo bản tiếng Anh", subs: [
+      "Chọn giọng tiếng Anh `#tc-voice-en`",
+      "Bấm `#btn-create-en-version`",
+      "Mở dự án bản Anh vừa tạo" ] },
+    userToBe: { title: "Chọn ngôn ngữ thứ hai", subs: [
+      "Bấm tạo bản ngôn ngữ thứ hai (cả truyện chữ lẫn vụ án)",
+      "Chọn giọng đọc cho bản đó" ] },
+    uiSubs: [
+      "Theo dõi việc qua `GET /api/true-crime/jobs/{job_id}`",
+      "Tải lại trang thì hỏi `GET /api/projects/{project_id}/language-version-job`" ],
+    uiNew: [ "Nút cũng hiện cho dự án truyện chữ", "Dòng báo “bản Anh đang thiếu N clip so với bản Việt” kèm nút đồng bộ" ],
+    be: { fn: "create_language_version()", desc: "Dịch lời, chép ảnh và clip một lần" },
+    beToBe: { fn: "create_language_version()", desc: "Dịch lời, tự đồng bộ hình mỗi khi bản gốc đổi" },
+    asIsNext: "manual",
+    manual: { title: "Chép clip sang bản Anh bằng script", items: [
+      { kind: "miss", text: "Bản Anh chỉ chép ảnh và clip đúng một lần lúc tạo. Mỗi khi bản Việt có clip mới, Claude phải chạy `.cache/vu_an/chep_clip_en.py --ghi` để chép sang.", ev: "02:35 ngày 13/11 chép 20 clip, chiều 13/11 chép thêm 8 clip." },
+      { kind: "miss", text: "Truyện chữ không có nút tạo bản ngôn ngữ thứ hai.", ev: "`refreshLanguageVersionButton()` chỉ bật khi có `metadata.case_id` và `language == 'vi'`." },
+      { kind: "proxy", text: "Claude kiểm thêm tên thật có lọt vào lời tiếng Anh không bằng `.cache/vu_an/kiem_ten_en.py`.", ev: "10/11/2026: 41 tên cấm, lọt 0. App đã có `_guard_rewritten()`, đây là kiểm chồng thêm." } ] },
+    branches: [
+      "`tcCreateEnglishVersion()` gọi `POST /api/projects/{project_id}/create-language-version` trong `routers/language_versions.py`.",
+      "Máy chủ chạy `case_project_builder.create_language_version()`, chép hình bằng `_carry_scene_media()`.",
+      "Bảng hồ sơ và thẻ miễn trừ được vẽ lại bằng tiếng Anh, không chép từ bản Việt." ],
+    problems: [
+      { kind: "app", text: "Hai bản Việt và Anh không còn liên kết sau khi tạo: làm lại clip ở bản Việt thì bản Anh vẫn giữ clip cũ.", ev: "Phải có `chep_clip_en.py` mới giữ được hai bản cùng 52%." },
+      { kind: "app", text: "Truyện chữ chưa tạo được bản ngôn ngữ thứ hai từ giao diện.", ev: "`CLAUDE.md` mục 1.1. Bạn chốt ở câu 15: mỗi truyện chọn Việt hoặc Anh, nên việc này để sau cũng được." } ],
+    fixes: [
+      { kind: "new", text: "`backend/services/case_project_builder.py`: hàm mới `sync_language_media()` dùng lại `_carry_scene_media()`, bỏ qua ảnh có chữ (bảng hồ sơ, thẻ miễn trừ)." },
+      { kind: "new", text: "`backend/routers/language_versions.py`: API mới `POST /api/projects/{project_id}/sync-media-from-source`. Tự gọi sau mỗi lượt làm clip xong ở bản gốc." },
+      { kind: "edit", text: "`backend/static/true_crime.js` hàm `refreshLanguageVersionButton()`: hiện số clip còn thiếu và nút đồng bộ." } ]
+  },
+  {
+    n: 7, ui: "UI Tiến trình dựng", where: "Bước 3, khung `#step-view-3`",
+    state: "AppState.produceState",
+    user: { title: "Bấm Sản xuất video dài", subs: [
+      "Bấm `#btn-produce-from-board` hoặc `#btn-produce-long-video`",
+      "Dưới 45% video Muse: chọn dựng bản nháp hoặc quay lại",
+      "Xong thì bấm `#btn-producer-goto-cinema`" ] },
+    userToBe: { title: "Bấm dựng, đọc báo cáo", subs: [
+      "Bấm `#btn-produce-from-board`",
+      "Đọc bảng kiểm sau dựng: thời lượng, phụ đề, giọng, âm lượng",
+      "Bấm sang Rạp chiếu" ] },
+    uiSubs: [
+      "Tiến độ 5 giai đoạn qua WebSocket `/ws/render/{render_id}`",
+      "Rớt mạng thì hỏi `GET /api/render-status/{render_id}`",
+      "Hộp hỏi dựng bản nháp khi máy chủ trả mã `VIDEO_SHARE_LOW`" ],
+    uiNew: [ "Bảng kiểm chất lượng sau dựng", "Nút “Lấy lại bản dựng trước”" ],
+    be: { fn: "execute_produce_long_video()", desc: "Giọng, ảnh thiếu, dựng cảnh, ghép" },
+    beToBe: { fn: "execute_produce_long_video()", desc: "Dựng, tự kiểm phụ đề và giọng, giữ bản trước" },
+    asIsNext: "auto",
+    manual: { title: "Canh dựng, tự kiểm, giữ bản cũ", items: [
+      { kind: "miss", text: "Sau khi dựng, app chỉ báo tỉ lệ video Muse. Việc kiểm phụ đề chồng nhau, giọng bị cụt, khung hình có khớp clip không là do Claude chạy `.cache/kiem_phu_de.py`, `.cache/vu_an/kiem_final.py`, `chong_phu_de.py`, `kiem_giong.py`.", ev: "Hai lỗi thật chỉ lộ ra nhờ kiểm tay: giọng cảnh 52 bị cụt (06/11), phụ đề nháy hai dòng 388 chỗ ở bản Anh (10/11)." },
+      { kind: "miss", text: "Dựng lại là ghi đè `renders/story_final.mp4`. Claude chép tay bản cũ vào `.cache/` trước mỗi lần dựng.", ev: "`.cache/vu_an/story_final_ban1.mp4`, `ban2`, `.cache/thanh_pham_cu_13-11/`." },
+      { kind: "proxy", text: "Claude bấm dựng và canh 15–25 phút mỗi bản bằng `.cache/vu_an/cho_render.py`.", ev: "Có nút và có thanh tiến độ trong Bước 3." } ] },
+    branches: [
+      "`startProduceLongVideo()` gọi `POST /api/projects/{project_id}/produce-long-video`.",
+      "Chốt tỉ lệ video Muse: `_preflight_video_share()` ngay khi bấm, rồi `video_share.require_gate()` trước khi ghép.",
+      "Dựng từng cảnh `render_scene_video()`, trộn tiếng động `mix_scene_sfx()`, ghép `assemble_full_video()`.",
+      "Bản nháp ra `renders/story_nhap_duoi_45.mp4`, không ghi đè thành phẩm.",
+      "Xem trước tỉ lệ: `GET /api/projects/{project_id}/video-share`." ],
+    problems: [
+      { kind: "app", text: "App báo “xong” khi ghép được file, chưa tự kiểm chất lượng bên trong (phụ đề, giọng, âm lượng).", ev: "Đường cấm số 3 “thành công giả” mới khoá cứng một phần." },
+      { kind: "app", text: "Không giữ bản dựng trước, dựng hỏng là mất bản tốt.", ev: "`assemble_full_video()` ghi thẳng `story_final.mp4`." } ],
+    fixes: [
+      { kind: "new", text: "File mới `backend/services/render_report.py`: sau khi ghép thì đo thời lượng bằng ffprobe, đếm chỗ phụ đề chồng trong file `.ass` và `.srt`, tìm file giọng ngắn hơn mốc chữ, đo âm lượng. Lưu vào `metadata.render_report`." },
+      { kind: "edit", text: "`backend/routers/api.py` hàm `execute_produce_long_video()`: gọi báo cáo trên ở cuối giai đoạn 5 và đẩy qua WebSocket." },
+      { kind: "edit", text: "`backend/services/video_service.py` hàm `assemble_full_video()`: trước khi ghi thì đổi tên bản cũ thành `story_final.truoc.mp4` (giữ một bản)." },
+      { kind: "edit", text: "`backend/static/app.js`: vẽ bảng kiểm trong `#step-view-3`." } ]
+  },
+  {
+    n: 8, ui: "UI Rạp chiếu & YouTube", where: "Bước 4, khung `#step-view-4` (file `backend/static/youtube_seo.js`)",
+    state: "metadata.video_share",
+    user: { title: "Xem, tải video, gói SEO", subs: [
+      "Xem video ở `#cinema-video-player`",
+      "Gõ từ khoá gốc `#yt-seo-seed`, bấm `#btn-yt-seo-research`",
+      "Tích từ khoá, bấm `#btn-yt-seo-generate`",
+      "Sửa tiêu đề, mô tả, bấm `#btn-yt-seo-save`",
+      "Bấm `#btn-generate-custom-thumbnail`",
+      "Tải video, phụ đề, gói chữ, thumbnail" ] },
+    uiSubs: [
+      "Kết quả kiểm luật YouTube `#yt-seo-checks`",
+      "Danh sách tiêu đề gợi ý `#yt-seo-title-options`",
+      "Nút tải: `#btn-cinema-download-video`, `#btn-cinema-download-srt`, `#btn-yt-seo-download`",
+      "Mở thư mục: `#btn-cinema-open-folder`" ],
+    uiNew: [],
+    be: { fn: "generate_pack()", desc: "Viết tiêu đề, mô tả trong khuôn từ khoá" },
+    beToBe: { fn: "generate_pack()", desc: "Giữ nguyên như hiện tại" },
+    asIsNext: "auto",
+    manual: null,
+    branches: [
+      "Từ khoá thật: `POST .../youtube-seo/research`, máy chủ chạy `youtube_keywords.research()`.",
+      "Gói chữ: `youtube_seo_pack.generate_pack()`, `update_pack()`, `download_text()`. Luật trong `youtube_seo_rules.py`.",
+      "Thumbnail: `handleGenerateCustomThumbnail()` gọi `thumbnail_service.generate_youtube_thumbnail()`.",
+      "Tải file: `GET /api/projects/{project_id}/download`, `download-srt`, `download-ass`." ],
+    problems: [
+      { kind: "ok", text: "Nhật ký `TASKS.md` không ghi lần nào phải nhờ Claude ở bước này. Bước này đã tự làm được trên giao diện.", ev: "Bạn tự đăng YouTube (câu 6), SEO chưa cần làm thêm (câu 20)." } ],
+    fixes: [
+      { kind: "ok", text: "Chưa cần sửa gì. Nguồn YouTube Analytics và khái niệm “kênh” vẫn để sau theo quyết định của bạn." } ]
+  }
+];
+
+/* =====================================================================
+   VẼ
+   ===================================================================== */
+const view = { mode: "tobe", expanded: false, step: 1 };
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmt = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+const BADGE = {
+  miss: ["miss", "Thiếu nút"], proxy: ["proxy", "Có nút, Claude làm hộ"], app: ["app", "Lỗi / thiếu trong app"],
+  new: ["new", "Thêm mới"], edit: ["edit", "Sửa file có sẵn"], ok: ["new", "Ổn"]
+};
+const badge = (k) => `<span class="badge ${BADGE[k][0]}">${BADGE[k][1]}</span>`;
+
+function subsHtml(items, cls) {
+  return items.map((t) => `<li class="${cls || ""}">${fmt(t)}</li>`).join("");
+}
+
+function nodeHtml(lane, st) {
+  const tobe = view.mode === "tobe";
+  const open = view.expanded ? " open" : "";
+  const attrs = `data-lane="${lane}" data-step="${st.n}" tabindex="0" role="button"`;
+  if (lane === "user") {
+    const u = tobe && st.userToBe ? st.userToBe : st.user;
+    return `<div class="node user${open}" ${attrs}><span class="t">${esc(u.title)}</span><span class="s">${u.subs.length} thao tác phụ</span><ul class="subs">${subsHtml(u.subs)}</ul></div>`;
+  }
+  if (lane === "ui") {
+    const active = view.step === st.n ? " active" : "";
+    const extra = tobe ? subsHtml(st.uiNew.map((t) => t + " (MỚI)"), "new") : "";
+    return `<div class="node ui${active}${open}" ${attrs} aria-pressed="${view.step === st.n}"><span class="t">${st.n}. ${esc(st.ui)}</span><span class="s mono">${esc(st.state)}</span><ul class="subs">${subsHtml(st.uiSubs)}${extra}</ul></div>`;
+  }
+  if (lane === "be") {
+    const b = tobe ? st.beToBe : st.be;
+    const tag = tobe && b.isNew ? `<span class="tag-new">MỚI</span>` : "";
+    return `<div class="node be" ${attrs}><span class="t">${esc(b.fn)}</span><span class="s">${esc(b.desc)}${tag}</span></div>`;
+  }
+  // làn Claude / thủ công
+  if (!st.manual) return `<div class="node none" data-lane="manual" data-step="${st.n}"><span class="t">Không cần nhờ</span></div>`;
+  const items = st.manual.items.map((i) => i.text.split(/[.:]/)[0]);
+  return `<div class="node manual${open}" ${attrs.replace(`data-lane="${lane}"`, 'data-lane="manual"')}><span class="t">${esc(st.manual.title)}</span><span class="s">${st.manual.items.length} việc làm hộ</span><ul class="subs">${subsHtml(items, "gap")}</ul></div>`;
+}
+
+function renderLanes() {
+  const lanes = [
+    ["user", "Người dùng", "(User)", ""],
+    ["ui", "Giao diện", "(Web UI)", ""],
+    ["be", "Hệ thống", "(Backend)", ""]
+  ];
+  if (view.mode === "asis") lanes.push(["manual", "⚠️ Claude /", "Thủ công", " claude"]);
+  $("lanes").innerHTML = lanes.map(([key, a, b, cls]) =>
+    `<div class="lane${cls}" data-lane-row="${key}"><div class="lane-label"><span>${a}<small>${b}</small></span></div>${STEPS.map((s) => nodeHtml(key, s)).join("")}</div>`
+  ).join("");
+}
+
+function renderStats() {
+  const withManual = STEPS.filter((s) => s.manual).length;
+  const tasks = STEPS.reduce((n, s) => n + (s.manual ? s.manual.items.length : 0), 0);
+  const miss = STEPS.reduce((n, s) => n + (s.manual ? s.manual.items.filter((i) => i.kind === "miss").length : 0), 0);
+  const broken = STEPS.filter((s) => s.asIsNext === "manual").length;
+  const fixes = STEPS.reduce((n, s) => n + s.fixes.filter((f) => f.kind !== "ok").length, 0);
+  const newApis = STEPS.reduce((n, s) => n + s.fixes.filter((f) => f.kind === "new").length, 0);
+  $("stats").innerHTML = view.mode === "asis"
+    ? `<span class="chip"><b>${STEPS.length}</b> bước</span>
+       <span class="chip red"><b>${withManual}</b>/${STEPS.length} bước có việc Claude làm hộ</span>
+       <span class="chip red"><b>${tasks}</b> việc làm hộ, trong đó <b>${miss}</b> việc giao diện không có nút</span>
+       <span class="chip red"><b>${broken}</b>/${STEPS.length - 1} chỗ chuyển bước bị đứt</span>`
+    : `<span class="chip"><b>${STEPS.length}</b> bước</span>
+       <span class="chip green"><b>0</b> bước cần Claude</span>
+       <span class="chip green"><b>${STEPS.length - 1}</b>/${STEPS.length - 1} chỗ chuyển bước tự nối</span>
+       <span class="chip"><b>${fixes}</b> chỗ cần sửa, trong đó <b>${newApis}</b> mục thêm mới</span>`;
+  $("legend").innerHTML = view.mode === "asis"
+    ? `<span><i></i> Đang chạy được trên giao diện</span><span><i class="bad"></i> Đứt mạch: phải có Claude nối</span><span><span class="dot" style="background:#dc2626"></span> Việc Claude đang làm hộ</span>`
+    : `<span><i></i> Trong cùng một bước</span><span><i class="auto"></i> Máy chủ làm xong, tự mở bước kế tiếp</span><span><span class="dot" style="background:#15803d"></span> Mục thêm mới (đề xuất)</span>`;
+}
+
+/* ---------- Đường nối SVG ---------- */
+function drawWires() {
+  const dia = $("diagram"), svg = $("wires"), g = $("wire-g");
+  const base = dia.getBoundingClientRect();
+  svg.setAttribute("width", dia.scrollWidth);
+  svg.setAttribute("height", dia.scrollHeight);
+  const box = (lane, n) => {
+    const el = dia.querySelector(`.node[data-lane="${lane}"][data-step="${n}"]`);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { l: r.left - base.left, r: r.right - base.left, t: r.top - base.top, b: r.bottom - base.top,
+             cx: (r.left + r.right) / 2 - base.left, cy: (r.top + r.bottom) / 2 - base.top, none: el.classList.contains("none") };
+  };
+  const out = [];
+  const path = (d, cls) => out.push(`<path class="wire ${cls}" d="${d}" marker-end="url(#ah${cls === "auto" ? "-auto" : cls === "bad" ? "-bad" : ""})"/>`);
+  const asis = view.mode === "asis";
+  STEPS.forEach((s, i) => {
+    const u = box("user", s.n), w = box("ui", s.n), b = box("be", s.n), m = asis ? box("manual", s.n) : null;
+    path(`M${u.cx} ${u.b + 2} L${w.cx} ${w.t - 3}`, "");
+    path(`M${w.cx} ${w.b + 2} L${b.cx} ${b.t - 3}`, "");
+    if (m && !m.none) path(`M${b.cx} ${b.b + 2} L${m.cx} ${m.t - 3}`, "bad");
+    const next = STEPS[i + 1];
+    if (!next) return;
+    const nw = box("ui", next.n);
+    const broken = asis && s.asIsNext === "manual" && m && !m.none;
+    const from = broken ? m : b;
+    const gx = (from.r + nw.l) / 2;
+    path(`M${from.r + 2} ${from.cy} L${gx} ${from.cy} L${gx} ${nw.cy} L${nw.l - 3} ${nw.cy}`, broken ? "bad" : asis ? "" : "auto");
+  });
+  g.innerHTML = out.join("");
+}
+
+/* ---------- Bảng chi tiết ---------- */
+function renderDetail() {
+  const s = STEPS.find((x) => x.n === view.step);
+  const tobe = view.mode === "tobe";
+  const li = (i) => `<li>${badge(i.kind)}${fmt(i.text)}${i.ev ? `<span class="ev">${fmt(i.ev)}</span>` : ""}</li>`;
+  const manual = s.manual ? s.manual.items.map(li).join("") : "";
+  const probs = s.problems.map(li).join("");
+  const next = STEPS.find((x) => x.n === s.n + 1);
+  const link = !next ? "" : s.asIsNext === "manual"
+    ? `<li>${badge("miss")}Chuyển sang bước ${next.n} đang bị đứt: máy chủ làm xong không tự mở việc kế tiếp, phải có người canh rồi bấm.</li>`
+    : "";
+  const newUi = s.uiNew.length ? s.uiNew.map((t) => `<li>${badge("new")}${fmt(t)}</li>`).join("") : "";
+  $("detail").innerHTML = `
+    <h2>Bước ${s.n}. ${esc(s.ui)}</h2>
+    <p class="where">${fmt(s.where)} · state: <code>${esc(s.state)}</code> · đang xem: ${tobe ? "luồng kỳ vọng" : "luồng hiện tại"}</p>
+    <div class="cols">
+      <div class="box"><h3>🌿 Các nhánh tính năng phụ quanh bước này</h3><ul>${s.branches.map((t) => `<li>${fmt(t)}</li>`).join("")}</ul></div>
+      <div class="box warn"><h3>⚠️ Hiện tại trong code đang lỗi hoặc thiếu gì</h3><ul>${manual}${link}${probs}</ul></div>
+      <div class="box fix"><h3>🛠️ Cần sửa, thêm file hay API nào</h3><ul>${s.fixes.map(li).join("")}${newUi}</ul></div>
+    </div>`;
+}
+
+function renderAll() {
+  renderLanes(); renderStats(); renderDetail();
+  requestAnimationFrame(drawWires);
+}
+
+/* ---------- Sự kiện ---------- */
+function setMode(mode) {
+  view.mode = mode;
+  $("tab-tobe").setAttribute("aria-selected", mode === "tobe");
+  $("tab-asis").setAttribute("aria-selected", mode === "asis");
+  renderAll();
+}
+$("tab-tobe").addEventListener("click", () => setMode("tobe"));
+$("tab-asis").addEventListener("click", () => setMode("asis"));
+$("btn-expand").addEventListener("click", () => {
+  view.expanded = !view.expanded;
+  $("btn-expand").textContent = view.expanded ? "↕ Thu gọn nhánh phụ" : "↕ Mở toàn bộ nhánh phụ";
+  $("btn-expand").setAttribute("aria-pressed", view.expanded);
+  renderAll();
+});
+function pick(target) {
+  const node = target.closest(".node[data-step]");
+  if (!node || node.classList.contains("none")) return;
+  view.step = Number(node.dataset.step);
+  renderAll();
+}
+$("lanes").addEventListener("click", (e) => pick(e.target));
+$("lanes").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(e.target); }
+});
+window.addEventListener("resize", drawWires);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawWires);
+renderAll();
+</script>
+</body>
+</html>

@@ -9,12 +9,17 @@ const AppState = {
   projectsList: [],
   selectedSceneIndex: 0,
   currentStep: 2, // 1: Nhập liệu, 2: Bảng đạo diễn, 3: Tiến trình, 4: Rạp chiếu
-  characterReferenceImage: null, // Base64 data URL or image URL for Step 1 character anchor
   isPlaying: false,
   isPlayingAll: false,
   playAllIndex: 0,
   playbackTimer: null,
   produceState: {
+    // Trạng thái dựng gắn với một dự án (projectId): đổi sang dự án khác thì trang Dựng vẽ trạng thái "chưa dựng" của
+    // dự án đó, còn lần dựng đang chạy vẫn nhận tiến độ và hiện lại khi mở lại đúng dự án đang dựng.
+    projectId: null,
+    draft: false,
+    statusMsg: '',
+    failed: null,
     isProducing: false,
     renderId: null,
     progress: 0,
@@ -318,17 +323,6 @@ const DOM = {
   step1StyleSelect: document.getElementById('step1-style-select'),
   step1ContentKind: document.getElementById('step1-content-kind'),
   step1CaseDuration: document.getElementById('step1-case-duration'),
-  step1CharPresetSelect: document.getElementById('step1-char-preset-select'),
-  step1CharName: document.getElementById('step1-char-name'),
-  step1CharAnchor: document.getElementById('step1-char-anchor'),
-  step1CharRefDropzone: document.getElementById('step1-char-ref-dropzone'),
-  step1CharRefFileInput: document.getElementById('step1-char-ref-file-input'),
-  step1CharRefPreviewCard: document.getElementById('step1-char-ref-preview-card'),
-  step1CharRefPreviewImg: document.getElementById('step1-char-ref-preview-img'),
-  step1CharRefFileName: document.getElementById('step1-char-ref-file-name'),
-  btnStep1CharRefRemove: document.getElementById('btn-step1-char-ref-remove'),
-  step1CharRefUrl: document.getElementById('step1-char-ref-url'),
-  btnStep1CharRefApplyUrl: document.getElementById('btn-step1-char-ref-apply-url'),
   btnStep1ProcessScript: document.getElementById('btn-step1-process-script'),
   step1ComicDropzone: document.getElementById('step1-comic-dropzone'),
   step1ComicFileInput: document.getElementById('step1-comic-file-input'),
@@ -343,15 +337,11 @@ const DOM = {
   selectProjectStyle: document.getElementById('select-project-style'),
   selectImageProvider: document.getElementById('select-image-provider'),
   btnProduceFromBoard: document.getElementById('btn-produce-from-board'),
-  btnProduceLongVideo: document.getElementById('btn-produce-long-video'),
   btnProduceLabel: document.getElementById('btn-produce-label'),
   boardAssetReadiness: document.getElementById('board-asset-readiness'),
   readinessVoiceCount: document.getElementById('readiness-voice-count'),
   readinessImageCount: document.getElementById('readiness-image-count'),
   readinessLabelBadge: document.getElementById('readiness-label-badge'),
-  btnToggleAssetAccordion: document.getElementById('btn-toggle-asset-accordion'),
-  assetAccordionBody: document.getElementById('asset-accordion-body'),
-  assetAccordionChevron: document.getElementById('asset-accordion-chevron'),
   btnRegenAllImages: document.getElementById('btn-regen-all-images'),
   btnRegenAllVoices: document.getElementById('btn-regen-all-voices'),
 
@@ -361,7 +351,6 @@ const DOM = {
   producerProgressBar: document.getElementById('producer-progress-bar'),
   producerTimerText: document.getElementById('producer-timer-text'),
   producerLogConsole: document.getElementById('producer-log-console'),
-  btnProducerGotoCinema: document.getElementById('btn-producer-goto-cinema'),
   producerStep1: document.getElementById('producer-step-1'),
   producerStep2: document.getElementById('producer-step-2'),
   producerStep3: document.getElementById('producer-step-3'),
@@ -384,7 +373,6 @@ const DOM = {
   inputThumbSubtext: document.getElementById('input-thumb-subtext'),
   btnGenerateCustomThumbnail: document.getElementById('btn-generate-custom-thumbnail'),
   btnCinemaDownloadThumbnail: document.getElementById('btn-cinema-download-thumbnail'),
-  btnDownloadThumbnailDirect: document.getElementById('btn-download-thumbnail-direct'),
   inputSeoTitle: document.getElementById('input-seo-title'),
   btnCopySeoTitle: document.getElementById('btn-copy-seo-title'),
   textareaSeoDesc: document.getElementById('textarea-seo-desc'),
@@ -394,9 +382,6 @@ const DOM = {
 
   // Header
   currentProjectTitle: document.getElementById('current-project-title'),
-  btnProjectDropdown: document.getElementById('btn-project-dropdown'),
-  btnSaveProject: document.getElementById('btn-save-project'),
-  btnOpenScriptModal: document.getElementById('btn-open-script-modal'),
 
   // Left Panel Scene List
   sceneListContainer: document.getElementById('scene-list-container'),
@@ -426,15 +411,6 @@ const DOM = {
   globalPreviewAudio: document.getElementById('global-preview-audio'),
   globalBgmAudio: document.getElementById('global-bgm-audio'),
 
-  // Character Consistency Card
-  characterConsistencyCard: document.getElementById('character-consistency-card'),
-  charStatusBadge: document.getElementById('char-status-badge'),
-  charThumbElem: document.getElementById('char-thumb-elem'),
-  charIconFallback: document.getElementById('char-icon-fallback'),
-  charNameDisplay: document.getElementById('char-name-display'),
-  charPromptPreview: document.getElementById('char-prompt-preview'),
-  btnEditCharacter: document.getElementById('btn-edit-character'),
-
   // Audio Settings Card
   selectVoice: document.getElementById('select-voice'),
   btnPreviewVoiceSample: document.getElementById('btn-preview-voice-sample'),
@@ -452,63 +428,10 @@ const DOM = {
   backendStatusDot: document.getElementById('backend-status-dot'),
   backendStatusText: document.getElementById('backend-status-text'),
 
-  // Modals
-  // Script Modal
-  modalScriptImporter: document.getElementById('modal-script-importer'),
-  btnCloseScriptModal: document.getElementById('btn-close-script-modal'),
-  btnCancelScriptModal: document.getElementById('btn-cancel-script-modal'),
-  btnSubmitScriptSplit: document.getElementById('btn-submit-script-split'),
-  importScriptTextarea: document.getElementById('import-script-textarea'),
-  scriptWordCount: document.getElementById('script-word-count'),
-  splitModeSelect: document.getElementById('split-mode-select'),
-  splitStyleSelect: document.getElementById('split-style-select'),
-
-  // Character Modal
-  modalCharacterEditor: document.getElementById('modal-character-editor'),
-  btnCloseCharacterModal: document.getElementById('btn-close-character-modal'),
-  btnCancelCharModal: document.getElementById('btn-cancel-char-modal'),
-  btnSaveCharacter: document.getElementById('btn-save-character'),
-  editCharName: document.getElementById('edit-char-name'),
-  editCharPrompt: document.getElementById('edit-char-prompt'),
-  editCharStyle: document.getElementById('edit-char-style'),
-  editCharNegative: document.getElementById('edit-char-negative'),
-
   // Project Modal
-  modalProjectManager: document.getElementById('modal-project-manager'),
-  btnCloseProjectModal: document.getElementById('btn-close-project-modal'),
   newProjectNameInput: document.getElementById('new-project-name-input'),
   btnCreateProject: document.getElementById('btn-create-project'),
   projectListItems: document.getElementById('project-list-items'),
-
-  // Comic Slicer Modal & Controls
-  btnOpenComicModal: document.getElementById('btn-open-comic-modal'),
-  modalComicSlicer: document.getElementById('modal-comic-slicer'),
-  btnCloseComicModal: document.getElementById('btn-close-comic-modal'),
-  btnCancelComicModal: document.getElementById('btn-cancel-comic-modal'),
-  comicDropzone: document.getElementById('comic-dropzone'),
-  comicFileInput: document.getElementById('comic-file-input'),
-  comicSelectedFileInfo: document.getElementById('comic-selected-file-info'),
-  comicLayoutMode: document.getElementById('comic-layout-mode'),
-  comicReadingOrderBox: document.getElementById('comic-reading-order-box'),
-  comicReadingOrder: document.getElementById('comic-reading-order'),
-  comicMinArea: document.getElementById('comic-min-area'),
-  btnSampleMangaGrid: document.getElementById('btn-sample-manga-grid'),
-  btnSampleWebtoonStrip: document.getElementById('btn-sample-webtoon-strip'),
-  btnStartSlice: document.getElementById('btn-start-slice'),
-  comicSliceLoading: document.getElementById('comic-slice-loading'),
-  comicUploadSection: document.getElementById('comic-upload-section'),
-  comicResultsSection: document.getElementById('comic-results-section'),
-  comicPanelCount: document.getElementById('comic-panel-count'),
-  comicModeBadge: document.getElementById('comic-mode-badge'),
-  tabBtnPanels: document.getElementById('tab-btn-panels'),
-  tabBtnAnnotated: document.getElementById('tab-btn-annotated'),
-  comicPanelsTabContent: document.getElementById('comic-panels-tab-content'),
-  comicAnnotatedTabContent: document.getElementById('comic-annotated-tab-content'),
-  comicAnnotatedImg: document.getElementById('comic-annotated-img'),
-  btnResetComic: document.getElementById('btn-reset-comic'),
-  comicClearExistingCb: document.getElementById('comic-clear-existing-cb'),
-  btnImportComicToStoryboard: document.getElementById('btn-import-comic-to-storyboard'),
-  importCountLabel: document.getElementById('import-count-label'),
 
   // Toast
   toastContainer: document.getElementById('toast-container'),
@@ -518,9 +441,6 @@ const DOM = {
   headerMuseStatusDot: document.getElementById('header-muse-status-dot'),
   headerMuseStatusText: document.getElementById('header-muse-status-text'),
   headerMuseSpecsBadge: document.getElementById('header-muse-specs-badge'),
-  modalMuseCloud: document.getElementById('modal-muse-cloud'),
-  btnCloseMuseModal: document.getElementById('btn-close-muse-modal'),
-  btnCloseMuseModalFooter: document.getElementById('btn-close-muse-modal-footer'),
   museModalStatusBadge: document.getElementById('muse-modal-status-badge'),
   museModalStatusDot: document.getElementById('muse-modal-status-dot'),
   museModalStatusText: document.getElementById('muse-modal-status-text'),
@@ -543,10 +463,8 @@ const DOM = {
   museFleetImageIndicator: document.getElementById('muse-fleet-image-indicator'),
   museFleetVideoIndicator: document.getElementById('muse-fleet-video-indicator'),
   museFleetConcurrency: document.getElementById('muse-fleet-concurrency'),
-  btnMuseRefreshAccounts: document.getElementById('btn-muse-refresh-accounts'),
-
-  // True Crime Studio: chỉ giữ modal (closeAllModals dùng); các phần tử khác do true_crime.js tự tra
-  modalTrueCrime: document.getElementById('modal-true-crime')
+  btnMuseRefreshAccounts: document.getElementById('btn-muse-refresh-accounts')
+  // Hồ Sơ Kỳ Án: các phần tử do true_crime.js tự tra (khối của vụ nằm trong trang Kịch bản)
 };
 
 // ================= API SERVICE LAYER =================
@@ -612,22 +530,6 @@ const API = {
       this.lastError = `Không kết nối được máy chủ: ${e.message || e}`;
     }
     return null;
-  },
-
-  async splitScript(projectId, text, options = {}) {
-    try {
-      const endpoint = projectId ? `${this.baseUrl}/projects/${projectId}/split-script` : `${this.baseUrl}/split-script`;
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, ...options })
-      });
-      if (res.ok) return await res.json();
-      return await this._errorResult(res);
-    } catch (e) {
-      console.warn("API splitScript failed", e);
-      return { success: false, detail: `Không kết nối được máy chủ: ${e.message || e}` };
-    }
   },
 
   // Lỗi trả về dạng { success: false, detail } để giao diện báo đúng lý do, không tự dựng kết quả giả
@@ -912,21 +814,21 @@ function showToast(message, type = 'info', duration = 3500) {
   if (!container) return;
 
   const toast = document.createElement('div');
-  toast.className = 'pointer-events-auto transform transition-all duration-300 translate-y-2 opacity-0 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl text-xs font-medium border max-w-sm';
+  toast.className = 'pointer-events-auto transform transition-all duration-300 translate-y-2 opacity-0 flex items-center gap-3 px-4 py-3 rounded-xl shadow-sm text-xs font-medium border max-w-sm';
 
   let iconHtml = '';
   if (type === 'success') {
     toast.classList.add('bg-[#14261e]', 'border-emerald-500/50', 'text-emerald-200');
     iconHtml = '<i class="fa-solid fa-circle-check text-emerald-400 text-sm"></i>';
   } else if (type === 'error') {
-    toast.classList.add('bg-[#2d161a]', 'border-rose-500/50', 'text-rose-200');
-    iconHtml = '<i class="fa-solid fa-circle-exclamation text-rose-400 text-sm"></i>';
+    toast.classList.add('bg-[#2d161a]', 'border-red-500/50', 'text-red-200');
+    iconHtml = '<i class="fa-solid fa-circle-exclamation text-red-400 text-sm"></i>';
   } else if (type === 'warning') {
     toast.classList.add('bg-[#2c2214]', 'border-amber-500/50', 'text-amber-200');
     iconHtml = '<i class="fa-solid fa-triangle-exclamation text-amber-400 text-sm"></i>';
   } else {
-    toast.classList.add('bg-[#1a2035]', 'border-indigo-500/50', 'text-indigo-200');
-    iconHtml = '<i class="fa-solid fa-circle-info text-indigo-400 text-sm"></i>';
+    toast.classList.add('bg-[#1a2035]', 'border-slate-700/50', 'text-slate-300');
+    iconHtml = '<i class="fa-solid fa-circle-info text-slate-400 text-sm"></i>';
   }
 
   toast.innerHTML = `
@@ -961,6 +863,12 @@ const LAST_PROJECT_KEY = 'story_studio_last_proj_id';
 const LEGACY_PROJECT_KEY_PREFIX = 'story_studio_proj_';
 const AUTOSAVE_DELAY_MS = 1500;
 const ProjectSync = { timer: null, dirty: false, inFlight: null, lastErrorToastAt: 0 };
+
+// Chữ trạng thái lưu ở thanh trên (#ws-save-state) thay cho nút Lưu cũ
+function setSaveState(text) {
+  const el = document.getElementById('ws-save-state');
+  if (el) el.textContent = text;
+}
 
 function rememberLastProjectId(projectId) {
   try { localStorage.setItem(LAST_PROJECT_KEY, projectId); } catch { /* chế độ riêng tư / bị chặn */ }
@@ -1007,6 +915,7 @@ function saveStateToLocal() {
   rememberLastProjectId(project.id);
   if (project.is_demo) return; // dự án mẫu chỉ để xem, không lưu
   ProjectSync.dirty = true;
+  setSaveState('Đang lưu…');
   clearTimeout(ProjectSync.timer);
   ProjectSync.timer = setTimeout(() => { flushProjectSave({ silent: true }); }, AUTOSAVE_DELAY_MS);
 }
@@ -1017,18 +926,25 @@ async function flushProjectSave({ silent = false } = {}) {
   const project = AppState.currentProject;
   if (!project || project.is_demo) return true;
   if (ProjectSync.inFlight) await ProjectSync.inFlight;
-  if (!ProjectSync.dirty) return true;
+  if (!ProjectSync.dirty) { setSaveState('Đã lưu'); return true; }
   if (!AppState.serverOnline) {
+    setSaveState('Chưa lưu (máy chủ offline)');
     if (!silent) showToast("Máy chủ đang offline: thay đổi CHƯA được lưu. Sẽ tự lưu khi máy chủ online lại.", "warning", 7000);
     return false;
   }
   ProjectSync.dirty = false;
+  setSaveState('Đang lưu…');
   ProjectSync.inFlight = API.saveProject(buildServerPayload(project));
   const saved = await ProjectSync.inFlight;
   ProjectSync.inFlight = null;
-  if (saved && saved.id) return true;
+  if (saved && saved.id) {
+    // Trong lúc chờ, người dùng có thể đã sửa tiếp: khi đó vẫn là "Đang lưu…" cho tới lần lưu sau
+    setSaveState(ProjectSync.dirty ? 'Đang lưu…' : 'Đã lưu');
+    return true;
+  }
 
   ProjectSync.dirty = true;
+  setSaveState('Lưu thất bại');
   const now = Date.now();
   if (!silent || now - ProjectSync.lastErrorToastAt > 30000) {
     ProjectSync.lastErrorToastAt = now;
@@ -1085,8 +1001,13 @@ async function initApp() {
     DOM.step1EngineSelect.value = "meta_muse_cloud";
   }
 
-  // Set initial step view
-  if (AppState.currentProject && AppState.currentProject.scenes && AppState.currentProject.scenes.length > 0) {
+  // Trang mở đầu: trang đã dùng lần trước của dự án này (workspace.js, localStorage ws_page_<project_id>);
+  // đọc trước khi switchStep() ghi đè; chưa có thì như cũ (có cảnh: trang Cảnh, chưa có: trang Ý tưởng)
+  const savedPage = rememberedPage(AppState.currentProject?.id);
+  // Dự án, Thư viện Muse, Tài khoản không phải trang làm việc: tải lại luôn mở trang làm việc (móc của chúng cũng chưa đăng ký lúc này)
+  if (savedPage && !['projects', 'gallery', 'accounts'].includes(savedPage)) {
+    showPage(savedPage);
+  } else if (AppState.currentProject && AppState.currentProject.scenes && AppState.currentProject.scenes.length > 0) {
     switchStep(2);
   } else {
     switchStep(1);
@@ -1148,7 +1069,7 @@ async function checkServerHealth() {
   if (DOM.backendStatusDot && DOM.backendStatusText) {
     if (isHealthy) {
       DOM.backendStatusDot.className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
-      DOM.backendStatusText.textContent = "FastAPI Backend Online (Port 8000)";
+      DOM.backendStatusText.textContent = `FastAPI Backend Online (Port ${window.location.port || (window.location.protocol === 'https:' ? '443' : '80')})`;
     } else {
       DOM.backendStatusDot.className = "w-2 h-2 rounded-full bg-amber-500";
       DOM.backendStatusText.textContent = "Backend Offline - Chế độ Client Studio";
@@ -1180,8 +1101,8 @@ function renderFullUI() {
   renderHeader();
   renderSceneList();
   renderPreviewPlayer();
-  renderCharacterCard();
   renderSettings();
+  paintProducerForCurrentProject();
   // Nút "Tạo bản tiếng Anh" (true_crime.js) hiện hay ẩn tuỳ dự án đang mở. Hook ở đây thay vì ở switchProject để
   // cũng đúng khi tải lại trang, tạo dự án mới hay nhập dự án.
   window.refreshLanguageVersionButton?.(AppState.currentProject);
@@ -1259,14 +1180,15 @@ function renderSceneList() {
       <div class="text-center py-16 bg-[#161824] rounded-2xl border border-dashed border-gray-800 p-8">
         <i class="fa-solid fa-film text-4xl text-gray-600 mb-3"></i>
         <h4 class="text-sm font-semibold text-gray-300">Chưa có phân cảnh nào</h4>
-        <p class="text-xs text-gray-500 mt-1 max-w-sm mx-auto">Bấm "Nhập kịch bản truyện" để AI tự động chia cảnh, hoặc bấm "Thêm cảnh mới" để bắt đầu sáng tạo.</p>
+        <p class="text-xs text-gray-500 mt-1 max-w-sm mx-auto">Quay về trang Ý tưởng để dán truyện cho AI chia cảnh, hoặc bấm "Thêm cảnh mới" để bắt đầu sáng tạo.</p>
         <div class="mt-4 flex items-center justify-center gap-2">
-          <button onclick="openScriptModal()" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-md">
-            <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Nhập kịch bản truyện
+          <button onclick="showPage('idea')" class="ws-btn ws-btn-primary">
+            <i class="fa-solid fa-arrow-left mr-1"></i> Về trang Ý tưởng
           </button>
         </div>
       </div>
     `;
+    if (window.renderScriptList) window.renderScriptList();
     return;
   }
 
@@ -1287,28 +1209,28 @@ function renderSceneList() {
 
     let statusBadgeHtml = '';
     if (isGenImage || isGenVoice || isGenVideo) {
-      statusBadgeHtml = `<span class="text-[11px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200 animate-pulse font-semibold flex items-center gap-1"><i class="fa-solid fa-spinner fa-spin"></i> Đang sinh AI... <button type="button" onclick="resetSceneImageStatus(${idx})" class="text-[9px] underline ml-1 text-indigo-900 cursor-pointer">Bỏ qua</button></span>`;
+      statusBadgeHtml = `<span class="text-[11px] bg-slate-50 text-slate-700 px-2 py-0.5 rounded border border-slate-200 animate-pulse font-semibold flex items-center gap-1"><i class="fa-solid fa-spinner fa-spin"></i> Đang sinh AI... <button type="button" onclick="resetSceneImageStatus(${idx})" class="text-[9px] underline ml-1 text-slate-900 cursor-pointer">Bỏ qua</button></span>`;
     } else if (hasVideo && hasVoice) {
-      statusBadgeHtml = `<span class="text-[11px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 font-semibold flex items-center gap-1"><i class="fa-solid fa-circle-play text-emerald-600"></i> Đủ Voice & Video (10s)</span>`;
+      statusBadgeHtml = `<span class="text-[11px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 font-semibold flex items-center gap-1"><i class="fa-solid fa-circle-play text-emerald-600"></i> Đủ Voice & Video${scene.duration ? escapeHtml(` · ${Number(scene.duration).toFixed(1)}s`) : ''}</span>`;
     } else if (sceneHasRealVisual(scene) && hasVoice) {
       statusBadgeHtml = `<span class="text-[11px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 font-semibold"><i class="fa-solid fa-check mr-1"></i> Đủ Voice & Ảnh</span>`;
     } else if (hasVideo && !hasVoice) {
-      statusBadgeHtml = `<span class="text-[11px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded border border-purple-200 font-semibold"><i class="fa-solid fa-film mr-1"></i> Có Video (Chưa voice)</span>`;
+      statusBadgeHtml = `<span class="text-[11px] bg-slate-50 text-slate-700 px-2 py-0.5 rounded border border-slate-200 font-semibold"><i class="fa-solid fa-film mr-1"></i> Có Video (Chưa voice)</span>`;
     } else if (!sceneHasRealVisual(scene) && hasVoice) {
       statusBadgeHtml = `<span class="text-[11px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200 font-semibold"><i class="fa-solid fa-image mr-1"></i> Chưa có Ảnh/Video</span>`;
     } else if (hasImage && !hasVoice) {
-      statusBadgeHtml = `<span class="text-[11px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded border border-purple-200 font-semibold"><i class="fa-solid fa-microphone mr-1"></i> Chưa có Voice</span>`;
+      statusBadgeHtml = `<span class="text-[11px] bg-slate-50 text-slate-700 px-2 py-0.5 rounded border border-slate-200 font-semibold"><i class="fa-solid fa-microphone mr-1"></i> Chưa có Voice</span>`;
     } else {
       statusBadgeHtml = `<span class="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">Cảnh mới</span>`;
     }
 
     return `
-      <div id="scene-card-${scene.id}" data-index="${idx}" class="scene-card group transition-all duration-200 rounded-xl p-3.5 border ${isSelected ? 'bg-indigo-50/70 border-indigo-500 shadow-md ring-2 ring-indigo-500/20' : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs'}">
+      <div id="scene-card-${scene.id}" data-index="${idx}" class="scene-card group transition-all duration-200 rounded-xl p-3.5 border ${isSelected ? 'bg-slate-50/70 border-slate-700 shadow-md ring-2 ring-slate-700/20' : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs'}">
         
         <!-- Card Top Bar -->
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2">
-            <span class="cursor-pointer font-bold text-[11px] px-2.5 py-0.5 rounded ${isSelected ? 'bg-indigo-600 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}" onclick="selectScene(${idx})">
+            <span class="cursor-pointer font-bold text-[11px] px-2.5 py-0.5 rounded ${isSelected ? 'bg-slate-900 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}" onclick="selectScene(${idx})">
               Cảnh #${idx + 1}
             </span>
             <span class="text-xs text-slate-500 font-mono"><i class="fa-regular fa-clock mr-1"></i> ${durStr}</span>
@@ -1319,7 +1241,7 @@ function renderSceneList() {
           <div class="flex items-center gap-1.5">
             <!-- Ken Burns / Motion FX Selector -->
             <div class="relative">
-              <select onchange="updateSceneKenBurns(${idx}, this.value)" class="text-xs bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg px-2 py-1 border border-slate-300 focus:outline-none focus:border-indigo-500 cursor-pointer font-medium shadow-2xs">
+              <select onchange="updateSceneKenBurns(${idx}, this.value)" class="text-xs bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg px-2 py-1 border border-slate-300 focus:outline-none focus:border-slate-700 cursor-pointer font-medium shadow-2xs">
                 <option value="zoom_in" ${(scene.ken_burns === 'zoom_in' || scene.camera_motion === 'zoom_in' || !scene.camera_motion) ? 'selected' : ''}>🔍 Zoom In Chậm</option>
                 <option value="zoom_out" ${(scene.ken_burns === 'zoom_out' || scene.camera_motion === 'zoom_out') ? 'selected' : ''}>🔎 Zoom Out</option>
                 <option value="action_camera_shake" ${(scene.camera_motion === 'action_camera_shake' || scene.ken_burns === 'action_camera_shake') ? 'selected' : ''}>💥 Camera Rung Chấn</option>
@@ -1333,22 +1255,6 @@ function renderSceneList() {
               </select>
             </div>
 
-            <!-- Move Up -->
-            <button onclick="moveScene(${idx}, -1)" title="Di chuyển lên" class="text-slate-400 hover:text-slate-800 p-1 rounded hover:bg-slate-100 ${idx === 0 ? 'opacity-30 cursor-not-allowed' : ''}">
-              <i class="fa-solid fa-arrow-up text-xs"></i>
-            </button>
-            <!-- Move Down -->
-            <button onclick="moveScene(${idx}, 1)" title="Di chuyển xuống" class="text-slate-400 hover:text-slate-800 p-1 rounded hover:bg-slate-100 ${idx === scenes.length - 1 ? 'opacity-30 cursor-not-allowed' : ''}">
-              <i class="fa-solid fa-arrow-down text-xs"></i>
-            </button>
-            <!-- Duplicate Scene -->
-            <button onclick="duplicateScene(${idx})" title="Nhân bản cảnh" class="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-slate-100">
-              <i class="fa-solid fa-copy text-xs"></i>
-            </button>
-            <!-- Delete Scene -->
-            <button onclick="deleteScene(${idx})" title="Xóa cảnh này" class="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-slate-100">
-              <i class="fa-solid fa-trash-can text-xs"></i>
-            </button>
           </div>
         </div>
 
@@ -1359,11 +1265,11 @@ function renderSceneList() {
           <div class="col-span-12 sm:col-span-4 relative rounded-xl overflow-hidden border border-slate-300 aspect-video bg-slate-900 flex items-center justify-center group/img shadow-2xs">
             ${hasVideo ? `
               <div class="absolute top-1.5 left-1.5 z-20 flex items-center bg-black/80 backdrop-blur-md p-0.5 rounded-lg border border-white/20 shadow-xs">
-                <button type="button" onclick="setMediaViewMode(${idx}, 'image')" class="px-2 py-0.5 rounded text-[9px] font-bold ${!isShowingVideo ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-300 hover:text-white'} transition cursor-pointer flex items-center gap-1" title="Chuyển sang xem Ảnh 2K">
+                <button type="button" onclick="setMediaViewMode(${idx}, 'image')" class="px-2 py-0.5 rounded text-[9px] font-bold ${!isShowingVideo ? 'bg-slate-900 text-white shadow-2xs' : 'text-slate-300 hover:text-white'} transition cursor-pointer flex items-center gap-1" title="Chuyển sang xem Ảnh 2K">
                   <i class="fa-solid fa-image"></i>
                   <span>Ảnh</span>
                 </button>
-                <button type="button" onclick="setMediaViewMode(${idx}, 'video')" class="px-2 py-0.5 rounded text-[9px] font-bold ${isShowingVideo ? 'bg-purple-600 text-white shadow-2xs' : 'text-slate-300 hover:text-white'} transition cursor-pointer flex items-center gap-1" title="Chuyển sang xem Video chuyển động">
+                <button type="button" onclick="setMediaViewMode(${idx}, 'video')" class="px-2 py-0.5 rounded text-[9px] font-bold ${isShowingVideo ? 'bg-slate-900 text-white shadow-2xs' : 'text-slate-300 hover:text-white'} transition cursor-pointer flex items-center gap-1" title="Chuyển sang xem Video chuyển động">
                   <i class="fa-solid fa-film"></i>
                   <span>Video</span>
                 </button>
@@ -1371,9 +1277,9 @@ function renderSceneList() {
             ` : ''}
 
             ${isShowingVideo && currentVideoUrl ? `
-              <video src="${currentVideoUrl}${currentVideoUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(scene.updated_at || Date.now())}" class="w-full h-full object-cover rounded-xl" controls preload="metadata" playsinline></video>
+              <video src="${currentVideoUrl}${currentVideoUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(scene.updated_at || Date.now())}" class="w-full h-full object-cover rounded-xl" data-viewer-src="${escapeHtml(currentVideoUrl)}" data-viewer-kind="video" data-viewer-caption="Cảnh #${escapeHtml(String(idx + 1))}" preload="metadata" playsinline></video>
             ` : (hasImage ? `
-              <img src="${scene.image_url}" alt="Scene #${idx + 1}" class="w-full h-full object-cover" onerror="handleSceneImageError(this, ${idx})">
+              <img src="${scene.image_url}" alt="Scene #${idx + 1}" class="w-full h-full object-cover" data-viewer-src="${escapeHtml(scene.image_url)}" data-viewer-kind="image" data-viewer-caption="Cảnh #${escapeHtml(String(idx + 1))}" onerror="handleSceneImageError(this, ${idx})">
             ` : `
               <div class="w-full h-full bg-slate-100 flex flex-col items-center justify-center text-center p-2">
                 <i class="fa-solid fa-mountain-sun text-2xl text-slate-400 mb-1"></i>
@@ -1383,14 +1289,14 @@ function renderSceneList() {
 
             ${isGenImage && !isShowingVideo ? `
               <div class="absolute inset-0 bg-white/85 backdrop-blur-xs flex flex-col items-center justify-center p-2 text-center z-10">
-                <i class="fa-solid fa-spinner fa-spin text-xl text-indigo-600 mb-1"></i>
-                <span class="text-[10px] text-indigo-900 font-bold mb-1">Đang sinh ảnh AI...</span>
+                <i class="fa-solid fa-spinner fa-spin text-xl text-slate-700 mb-1"></i>
+                <span class="text-[10px] text-slate-900 font-bold mb-1">Đang sinh ảnh AI...</span>
                 <button type="button" onclick="resetSceneImageStatus(${idx})" class="text-[9px] px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded cursor-pointer">Bỏ qua</button>
               </div>
             ` : (isGenVideo && isShowingVideo ? `
               <div class="absolute inset-0 bg-white/85 backdrop-blur-xs flex flex-col items-center justify-center p-2 text-center z-10">
-                <i class="fa-solid fa-spinner fa-spin text-xl text-purple-600 mb-1"></i>
-                <span class="text-[10px] text-purple-900 font-bold mb-1">Đang sinh video AI...</span>
+                <i class="fa-solid fa-spinner fa-spin text-xl text-slate-700 mb-1"></i>
+                <span class="text-[10px] text-slate-900 font-bold mb-1">Đang sinh video AI...</span>
               </div>
             ` : '')}
 
@@ -1400,14 +1306,14 @@ function renderSceneList() {
             </div>
             
             <!-- Hover Action Buttons Overlay -->
-            <div class="absolute inset-0 bg-slate-950/60 opacity-0 group-hover/img:opacity-100 flex items-center justify-center gap-1.5 transition duration-200 z-10">
-              <button onclick="regenerateSceneImage(${idx})" title="Gen lại ảnh AI" class="p-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
+            <div class="ws-scene-actions absolute inset-0 bg-slate-950/60 opacity-0 group-hover/img:opacity-100 flex items-center justify-center gap-1.5 transition duration-200 z-10">
+              <button onclick="regenerateSceneImage(${idx})" title="Gen lại ảnh AI" class="p-1.5 bg-slate-900 hover:bg-slate-700 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
                 <i class="fa-solid fa-arrows-rotate"></i>
               </button>
-              <button onclick="generateSceneWithMuse(${idx}, 'image')" title="Tạo ảnh 2K bằng Muse Fleet (tài khoản ảnh)" class="p-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
+              <button onclick="generateSceneWithMuse(${idx}, 'image')" title="Tạo ảnh 2K bằng Muse Fleet (tài khoản ảnh)" class="p-1.5 bg-slate-900 hover:bg-slate-700 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
                 <i class="fa-brands fa-meta"></i>
               </button>
-              <button onclick="generateSceneWithMuse(${idx}, 'video')" title="Tạo video Muse dài theo lời thoại: lời dài thì nhiều video nối nhau (báo số video trước khi chạy)" class="p-1.5 bg-purple-600 hover:bg-purple-500 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
+              <button onclick="generateSceneWithMuse(${idx}, 'video')" title="Tạo video Muse dài theo lời thoại: lời dài thì nhiều video nối nhau (báo số video trước khi chạy)" class="p-1.5 bg-slate-900 hover:bg-slate-700 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
                 <i class="fa-solid fa-film"></i>
               </button>
               <button onclick="openMuseModalForScene(${idx})" title="Chọn video/ảnh từ Gallery Muse" class="p-1.5 bg-amber-600 hover:bg-amber-500 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
@@ -1417,10 +1323,11 @@ function renderSceneList() {
                 <i class="fa-solid fa-upload"></i>
                 <input type="file" accept="image/*" class="hidden" onchange="uploadCustomSceneImage(${idx}, this)">
               </label>
-              <label title="Tải video MP4 riêng từ máy" class="p-1.5 bg-purple-700 hover:bg-purple-600 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110 cursor-pointer">
+              <label title="Tải video MP4 riêng từ máy" class="p-1.5 bg-slate-800 hover:bg-slate-900 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110 cursor-pointer">
                 <i class="fa-solid fa-file-video"></i>
                 <input type="file" accept="video/*" class="hidden" onchange="uploadCustomSceneVideo(${idx}, this)">
               </label>
+              ${(isShowingVideo && currentVideoUrl) || hasImage ? `<button type="button" data-viewer-src="${escapeHtml(isShowingVideo && currentVideoUrl ? currentVideoUrl : scene.image_url)}" data-viewer-kind="${isShowingVideo && currentVideoUrl ? 'video' : 'image'}" data-viewer-caption="Cảnh #${escapeHtml(String(idx + 1))}" title="Xem lớn" class="p-1.5 bg-slate-900 hover:bg-slate-700 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110"><i class="fa-solid fa-magnifying-glass-plus"></i></button>` : ''}
               <button onclick="selectScene(${idx})" title="Xem trong Studio Player" class="p-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
                 <i class="fa-solid fa-play"></i>
               </button>
@@ -1430,18 +1337,13 @@ function renderSceneList() {
           <!-- Script & Voice Column (8 cols) -->
           <div class="col-span-12 sm:col-span-8 flex flex-col justify-between space-y-2">
             
-            <!-- Voiceover Textarea -->
+            <!-- Lời kể: chỉ đọc, sửa ở trang Kịch bản và giọng -->
             <div>
               <div class="flex items-center justify-between text-[11px] text-slate-500 mb-1">
-                <label class="font-bold uppercase tracking-wider text-slate-700">Lời thuyết minh (Voiceover):</label>
+                <span class="font-bold uppercase tracking-wider text-slate-700">Lời kể</span>
                 <span class="text-[10px] text-slate-400 font-mono">${(scene.text || '').length} ký tự</span>
               </div>
-              <textarea 
-                oninput="updateSceneTextLive(${idx}, this.value)"
-                onchange="updateSceneText(${idx}, this.value)" 
-                class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs text-slate-800 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none resize-none h-16 leading-relaxed transition shadow-2xs font-normal"
-                placeholder="Nhập lời đọc thuyết minh cho phân cảnh này..."
-              >${escapeHtml(scene.text || '')}</textarea>
+              <p class="scene-narration-readonly text-xs text-slate-700 leading-relaxed" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin:0">${escapeHtml(scene.text || '') || '(Chưa có lời kể)'}</p>
             </div>
 
             <!-- Dual Prompt Switcher: Image Prompt vs Video Motion Prompt -->
@@ -1452,88 +1354,66 @@ function renderSceneList() {
                     type="button" 
                     onclick="switchScenePromptTab(${idx}, 'image')" 
                     id="btn-tab-img-${idx}" 
-                    class="px-2.5 py-1 rounded-md text-[10px] font-extrabold ${(!scene.active_prompt_tab || scene.active_prompt_tab === 'image') ? 'bg-white text-indigo-700 shadow-2xs border border-indigo-200' : 'text-slate-500 hover:text-slate-800'} transition cursor-pointer flex items-center gap-1.5"
-                    title="Chỉnh sửa mô tả hình ảnh tĩnh (Visual Prompt)"
+                    class="px-2.5 py-1 rounded-md text-[10px] font-extrabold ${(!scene.active_prompt_tab || scene.active_prompt_tab === 'image') ? 'bg-white text-slate-700 shadow-2xs border border-slate-200' : 'text-slate-500 hover:text-slate-800'} transition cursor-pointer flex items-center gap-1.5"
+                    title="Mô tả cảnh để vẽ ảnh 2K, và chữ đầy đủ gửi Muse"
                   >
-                    <i class="fa-solid fa-image text-indigo-500 text-[10px]"></i>
+                    <i class="fa-solid fa-image text-slate-500 text-[10px]"></i>
                     <span>Prompt Ảnh (2K)</span>
                   </button>
                   <button 
                     type="button" 
                     onclick="switchScenePromptTab(${idx}, 'video')" 
                     id="btn-tab-vid-${idx}" 
-                    class="px-2.5 py-1 rounded-md text-[10px] font-extrabold ${scene.active_prompt_tab === 'video' ? 'bg-white text-purple-700 shadow-2xs border border-purple-200' : 'text-slate-500 hover:text-slate-800'} transition cursor-pointer flex items-center gap-1.5"
-                    title="Chỉnh sửa chuyển động nhân vật & góc quay (Video Motion Prompt)"
+                    class="px-2.5 py-1 rounded-md text-[10px] font-extrabold ${scene.active_prompt_tab === 'video' ? 'bg-white text-slate-700 shadow-2xs border border-slate-200' : 'text-slate-500 hover:text-slate-800'} transition cursor-pointer flex items-center gap-1.5"
+                    title="Chỉ đọc: prompt từng video mà nút Muse Video trên thẻ gửi (số video, số giây); cảnh được chọn làm video cao trào thì thêm bản giao việc mà nút làm video cao trào gửi"
                   >
-                    <i class="fa-solid fa-film text-purple-500 text-[10px]"></i>
-                    <span>Prompt Video (Chuyển động)</span>
+                    <i class="fa-solid fa-film text-slate-500 text-[10px]"></i>
+                    <span>Video gửi Muse</span>
                   </button>
                 </div>
-                <span class="text-[9px] font-mono ${scene.active_prompt_tab === 'video' ? 'text-purple-600 font-bold' : 'text-slate-400'}" id="prompt-spec-${idx}">
-                  ${scene.active_prompt_tab === 'video' ? '🎬 5s Motion • Nhân vật & Máy quay' : '8K • Cinema Masterpiece'}
+                <span class="text-[9px] font-mono ${scene.active_prompt_tab === 'video' ? 'text-slate-700 font-bold' : 'text-slate-400'}" id="prompt-spec-${idx}">
+                  ${scene.active_prompt_tab === 'video' ? 'Dài theo lời kể' : '2K • 16:9'}
                 </span>
               </div>
 
               <!-- Textarea for Image Prompt -->
               <div id="prompt-container-img-${idx}" class="${(!scene.active_prompt_tab || scene.active_prompt_tab === 'image') ? '' : 'hidden'}">
+                <div class="ws-mp-label">Mô tả cảnh (bạn sửa được)</div>
                 <textarea 
                   oninput="updateSceneVisualPromptLive(${idx}, this.value)"
                   onchange="updateSceneVisualPrompt(${idx}, this.value)" 
-                  class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-[11px] text-slate-700 focus:bg-white focus:border-indigo-500 focus:outline-none font-mono transition shadow-2xs resize-none h-14 leading-relaxed"
+                  class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-[11px] text-slate-700 focus:bg-white focus:border-slate-700 focus:outline-none font-mono transition shadow-2xs resize-none h-14 leading-relaxed"
                   placeholder="Mô tả bối cảnh hình ảnh AI 2K/8K (Image Prompt)..."
                 >${escapeHtml(scene.visual_prompt || scene.image_prompt || '')}</textarea>
+                <details class="ws-mp" data-muse-prompt-kind="image" data-scene-index="${escapeHtml(idx)}">
+                  <summary>Prompt đầy đủ gửi Muse</summary>
+                  <div class="ws-mp-body" data-muse-prompt-body><div class="ws-mp-note">Mở ra để xem chữ Muse nhận.</div></div>
+                </details>
               </div>
 
-              <!-- Textarea for Video Motion Prompt -->
+              <!-- Video gửi Muse: chỉ đọc (scene_prompts.js tải khi tab hiện) -->
               <div id="prompt-container-vid-${idx}" class="${scene.active_prompt_tab === 'video' ? '' : 'hidden'}">
-                <textarea 
-                  oninput="updateSceneVideoPromptLive(${idx}, this.value)"
-                  onchange="updateSceneVideoPrompt(${idx}, this.value)" 
-                  class="w-full bg-purple-50/40 border border-purple-200 rounded-lg p-2 text-[11px] text-purple-900 focus:bg-white focus:border-purple-500 focus:outline-none font-mono transition shadow-2xs resize-none h-14 leading-relaxed"
-                  placeholder="Mô tả hành động nhân vật & chuyển động máy quay (ví dụ: thám tử bước đi chậm rãi trong mưa, áo khoác bay theo gió, đèn xe cảnh sát nhấp nháy, camera tracking theo bước chân)..."
-                >${escapeHtml(scene.video_prompt || '')}</textarea>
+                <div class="ws-mp-body" style="padding:0" data-muse-prompt-kind="video" data-scene-index="${escapeHtml(idx)}" data-muse-prompt-body><div class="ws-mp-note">Đang chờ tải…</div></div>
               </div>
             </div>
 
-            <!-- Mini Audio Player & Controls -->
-            <div class="flex items-center justify-between pt-2 border-t border-slate-100 flex-wrap gap-2">
-              <div class="flex items-center gap-2">
-                <button 
-                  onclick="playSceneVoice(${idx})" 
-                  class="w-7 h-7 rounded-full ${isSelected && AppState.isPlaying ? 'bg-indigo-600 text-white animate-pulse' : 'bg-indigo-600 hover:bg-indigo-700 text-white'} flex items-center justify-center text-xs transition shadow-xs"
-                  title="Nghe thử voice đọc"
-                >
-                  <i class="fa-solid ${isSelected && AppState.isPlaying ? 'fa-pause' : 'fa-play'} ml-0.5"></i>
-                </button>
-                <div class="w-24 sm:w-36 h-1.5 bg-slate-200 rounded-full overflow-hidden cursor-pointer" onclick="seekSceneAudio(${idx}, event)">
-                  <div id="scene-progress-${idx}" class="h-full bg-indigo-600 w-0 transition-all duration-100"></div>
-                </div>
-                <span class="text-[10px] font-mono text-slate-500 font-medium">${durStr}</span>
-              </div>
-
+            <!-- Nút Muse của cảnh (nghe, tua, thu lại giọng nằm ở trang Kịch bản và giọng) -->
+            <div class="flex items-center justify-end pt-2 border-t border-slate-100 flex-wrap gap-2">
               <div class="flex items-center gap-1.5 flex-wrap">
                 <button 
-                  onclick="regenerateSceneVoice(${idx})" 
-                  class="text-[10px] text-indigo-700 hover:text-indigo-900 font-bold flex items-center gap-1 transition px-2 py-1 rounded-lg bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 cursor-pointer"
-                  title="Tạo lại file âm thanh Edge-TTS"
-                >
-                  <i class="fa-solid fa-rotate-right ${isGenVoice ? 'fa-spin' : ''}"></i>
-                  <span>Voice</span>
-                </button>
-                <button 
                   onclick="generateSceneWithMuse(${idx}, 'image')" 
-                  class="text-[10px] text-blue-700 hover:text-blue-900 font-bold flex items-center gap-1 transition px-2 py-1 rounded-lg bg-blue-50 border border-blue-200 hover:bg-blue-100 cursor-pointer shadow-2xs"
+                  class="text-[10px] text-slate-700 hover:text-slate-900 font-bold flex items-center gap-1 transition px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 hover:bg-slate-100 cursor-pointer shadow-2xs"
                   title="Tạo ảnh 2K riêng cảnh này bằng Muse Fleet (tài khoản ảnh)"
                 >
-                  <i class="fa-brands fa-meta text-xs text-blue-600"></i>
+                  <i class="fa-brands fa-meta text-xs text-slate-700"></i>
                   <span>Muse 2K</span>
                 </button>
                 <button 
                   onclick="generateSceneWithMuse(${idx}, 'video')" 
-                  class="text-[10px] text-purple-700 hover:text-purple-900 font-bold flex items-center gap-1 transition px-2 py-1 rounded-lg bg-purple-50 border border-purple-200 hover:bg-purple-100 cursor-pointer shadow-2xs"
+                  class="text-[10px] text-slate-700 hover:text-slate-900 font-bold flex items-center gap-1 transition px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 hover:bg-slate-100 cursor-pointer shadow-2xs"
                   title="Tạo video Muse dài theo lời thoại: lời dài thì nhiều video nối nhau (báo số video trước khi chạy)"
                 >
-                  <i class="fa-solid fa-film text-xs text-purple-600"></i>
+                  <i class="fa-solid fa-film text-xs text-slate-700"></i>
                   <span>Muse Video</span>
                 </button>
               </div>
@@ -1546,6 +1426,7 @@ function renderSceneList() {
       </div>
     `;
   }).join('');
+  if (window.renderScriptList) window.renderScriptList();
 }
 
 function renderPreviewPlayer() {
@@ -1570,7 +1451,7 @@ function renderPreviewPlayer() {
     }
     DOM.previewImageElem.classList.add('hidden');
     DOM.previewImagePlaceholder.classList.add('hidden');
-    DOM.previewKbBadge.innerHTML = `<i class="fa-solid fa-film text-purple-400 mr-1"></i> Video Motion`;
+    DOM.previewKbBadge.innerHTML = `<i class="fa-solid fa-film text-slate-400 mr-1"></i> Video Motion`;
   } else if (hasImage) {
     if (DOM.previewVideoElem) {
       DOM.previewVideoElem.pause();
@@ -1678,46 +1559,6 @@ function applyKenBurnsEffect(effect) {
   }
 }
 
-function renderCharacterCard() {
-  const project = AppState.currentProject;
-  const char = project?.character;
-  const anchor = project?.character_anchor;
-  const isTrueCrime = project?.style_preset === 'neo_noir_silhouette' || project?.id?.includes('crime');
-  const card = DOM.characterConsistencyCard || document.getElementById('character-consistency-card');
-  const statusBadge = DOM.charStatusBadge || document.getElementById('char-status-badge');
-
-  if (isTrueCrime || (!char && !anchor)) {
-    if (card) card.classList.add('hidden');
-    if (statusBadge) {
-      statusBadge.className = "text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded border border-slate-200 font-semibold";
-      statusBadge.innerHTML = '<i class="fa-solid fa-ban mr-1"></i> Tắt';
-    }
-    if (DOM.charNameDisplay) DOM.charNameDisplay.textContent = "Không áp dụng (True Crime / Tự do)";
-    if (DOM.charPromptPreview) DOM.charPromptPreview.textContent = "Không sử dụng neo nhân vật cho dự án này.";
-    if (DOM.charThumbElem) DOM.charThumbElem.classList.add('hidden');
-    if (DOM.charIconFallback) DOM.charIconFallback.classList.remove('hidden');
-    return;
-  }
-
-  // Active character for anime/fantasy
-  if (card) card.classList.remove('hidden');
-  if (statusBadge) {
-    statusBadge.className = "text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 font-bold";
-    statusBadge.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Bật';
-  }
-  if (DOM.charNameDisplay) DOM.charNameDisplay.textContent = char?.name || anchor || "Chưa đặt tên";
-  if (DOM.charPromptPreview) DOM.charPromptPreview.textContent = char?.prompt || anchor || "Chưa có mô tả đặc điểm nhân vật.";
-
-  if (char?.avatar) {
-    DOM.charThumbElem.src = char.avatar;
-    DOM.charThumbElem.classList.remove('hidden');
-    DOM.charIconFallback.classList.add('hidden');
-  } else {
-    DOM.charThumbElem.classList.add('hidden');
-    DOM.charIconFallback.classList.remove('hidden');
-  }
-}
-
 function updateAssetReadiness() {
   const project = AppState.currentProject;
   const scenes = project?.scenes || [];
@@ -1745,14 +1586,6 @@ function updateAssetReadiness() {
       labelElem.textContent = "Chưa đủ Asset";
     }
   }
-
-  // If all ready, keep advanced accordion collapsed by default to avoid confusion
-  const accordionBody = DOM.assetAccordionBody || document.getElementById('asset-accordion-body');
-  if (isAllReady && accordionBody && !accordionBody.dataset.userOpened) {
-    accordionBody.classList.add('hidden');
-    const chevron = DOM.assetAccordionChevron || document.getElementById('asset-accordion-chevron');
-    if (chevron) chevron.classList.remove('rotate-180');
-  }
 }
 
 function renderSettings() {
@@ -1775,6 +1608,7 @@ function renderSettings() {
 
   if (DOM.selectProjectStyle && project) {
     DOM.selectProjectStyle.value = project.style_preset || "cinematic_realistic";
+    if (typeof window.renderLookStyleLine === "function") window.renderLookStyleLine(); // đặt .value không bắn sự kiện change nên dòng phong cách ở trang Hình mẫu phải vẽ lại tay
   }
 
   updateAssetReadiness();
@@ -1788,72 +1622,6 @@ function bindEventListeners() {
   DOM.step1ContentKind?.addEventListener('change', applyStep1ContentKind);
   applyStep1ContentKind();
 
-  // Step 1 Character Reference Image Event Listeners
-  DOM.step1CharRefDropzone?.addEventListener('click', () => DOM.step1CharRefFileInput?.click());
-  DOM.step1CharRefFileInput?.addEventListener('change', (e) => {
-    if (e.target.files && e.target.files[0]) {
-      handleCharRefFileSelect(e.target.files[0]);
-    }
-  });
-  DOM.step1CharRefDropzone?.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    DOM.step1CharRefDropzone?.classList.add('border-indigo-500', 'bg-indigo-50');
-  });
-  DOM.step1CharRefDropzone?.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    DOM.step1CharRefDropzone?.classList.remove('border-indigo-500', 'bg-indigo-50');
-  });
-  DOM.step1CharRefDropzone?.addEventListener('drop', (e) => {
-    e.preventDefault();
-    DOM.step1CharRefDropzone?.classList.remove('border-indigo-500', 'bg-indigo-50');
-    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleCharRefFileSelect(e.dataTransfer.files[0]);
-    }
-  });
-  DOM.btnStep1CharRefRemove?.addEventListener('click', handleCharRefRemove);
-  DOM.btnStep1CharRefApplyUrl?.addEventListener('click', handleCharRefUrlApply);
-  DOM.step1CharRefUrl?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleCharRefUrlApply();
-    }
-  });
-
-  const charPresetSelect = document.getElementById('step1-char-preset-select');
-  if (charPresetSelect) {
-    charPresetSelect.addEventListener('change', () => {
-      const val = charPresetSelect.value;
-      if (val === 'custom') {
-        if (DOM.step1CharName && DOM.step1CharName.value.includes("Võ Giả Cuồng Nộ")) DOM.step1CharName.value = "";
-        if (DOM.step1CharAnchor && DOM.step1CharAnchor.value.includes("Tattered dark martial arts")) DOM.step1CharAnchor.value = "";
-      } else if (val === 'murata_fighter') {
-        if (DOM.step1CharName) DOM.step1CharName.value = "Võ Giả Cuồng Nộ (Murata Fighter)";
-        if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Tattered dark martial arts dogi gi pants, bare muscular athletic chest, scarred arms wrapped in white combat tape, radiant fiery red shockwave energy fists";
-        if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "manga_murata_battle";
-      } else if (val === 'spartan_leon') {
-        if (DOM.step1CharName) DOM.step1CharName.value = "Dũng Tướng Leon (Spartan Champion)";
-        if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Spartan hoplite champion, sculpted bronze muscle cuirass with filigree, golden Corinthian helmet with plume, circular bronze hoplon shield with embossed sun, sharp dory spear";
-        if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "spartan_epic_mythology";
-      } else if (val === 'paladin_kai') {
-        if (DOM.step1CharName) DOM.step1CharName.value = "Dũng Sĩ Kai (Paladin)";
-        if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Silver full plate armor with glowing cyan turquoise gemstones, crimson velvet cape, two-handed carved gold broadsword";
-        if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "fantasy_paladin_armor";
-      } else if (val === 'roman_titus') {
-        if (DOM.step1CharName) DOM.step1CharName.value = "Chiến Binh Titus (Quân Đoàn La Mã)";
-        if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Roman legionary soldier, polished iron lorica segmentata, bronze galea helmet with red crest, curved red scutum shield with golden bull, pilum spear";
-        if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "roman_legionary_epic";
-      } else if (val === 'kingdom_shin') {
-        if (DOM.step1CharName) DOM.step1CharName.value = "Tướng Quân Shin (Kingdom)";
-        if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Young warrior general, pale blue scale lamellar armor, messy black ponytail, massive broadsword carried on back, determined battle smirk";
-        if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "manga_historical_war";
-      } else if (val === 'tienhiep_lam') {
-        if (DOM.step1CharName) DOM.step1CharName.value = "Lâm (Chiến binh áo lam)";
-        if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Asian warrior boy, sharp amber eyes, spiky black hair, dark navy tunic, glowing blue talisman necklace";
-        if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "anime";
-      }
-    });
-  }
-  
   document.querySelectorAll('.btn-step1-sample').forEach(btn => {
     btn.addEventListener('click', () => {
       const sampleKey = btn.getAttribute('data-sample');
@@ -1861,32 +1629,21 @@ function bindEventListeners() {
         DOM.step1ScriptTextarea.value = SAMPLE_STORIES[sampleKey];
         handleStep1ScriptInput();
 
-        const charSelect = document.getElementById('step1-char-preset-select');
         if (sampleKey === 'us_murata_battle') {
           if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "manga_murata_battle";
-          if (charSelect) charSelect.value = "murata_fighter";
-          if (DOM.step1CharName) DOM.step1CharName.value = "Võ Giả Cuồng Nộ (Murata Fighter)";
-          if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Tattered dark martial arts dogi gi pants, bare muscular athletic chest, scarred arms wrapped in white combat tape, radiant fiery red shockwave energy fists";
           if (DOM.selectVoice) DOM.selectVoice.value = "en-US-BrianMultilingualNeural";
         } else if (sampleKey === 'us_spartan') {
           if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "spartan_epic_mythology";
-          if (charSelect) charSelect.value = "spartan_leon";
-          if (DOM.step1CharName) DOM.step1CharName.value = "Dũng Tướng Leon (Spartan Champion)";
-          if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Spartan hoplite champion, sculpted bronze muscle cuirass with filigree, golden Corinthian helmet with plume, circular bronze hoplon shield with embossed sun, sharp dory spear";
           if (DOM.selectVoice) DOM.selectVoice.value = "en-US-AndrewMultilingualNeural";
         } else if (sampleKey === 'paladin') {
           if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "fantasy_paladin_armor";
-          if (charSelect) charSelect.value = "paladin_kai";
-          if (DOM.step1CharName) DOM.step1CharName.value = "Dũng Sĩ Kai (Paladin)";
-          if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Silver full plate armor with glowing cyan turquoise gemstones, crimson velvet cape, two-handed carved gold broadsword";
           if (DOM.selectVoice) DOM.selectVoice.value = "vi-VN-NamMinhNeural";
         } else if (sampleKey === 'kingdom') {
           if (DOM.step1StyleSelect) DOM.step1StyleSelect.value = "manga_historical_war";
-          if (charSelect) charSelect.value = "kingdom_shin";
-          if (DOM.step1CharName) DOM.step1CharName.value = "Tướng Quân Shin (Kingdom)";
-          if (DOM.step1CharAnchor) DOM.step1CharAnchor.value = "Young warrior general, pale blue scale lamellar armor, messy black ponytail, massive broadsword carried on back, determined battle smirk";
           if (DOM.selectVoice) DOM.selectVoice.value = "vi-VN-NamMinhNeural";
         }
+        // Thẻ phong cách ở trang Ý tưởng (genres.js) theo dõi sự kiện change của ô chọn
+        DOM.step1StyleSelect?.dispatchEvent(new Event('change'));
 
         showToast(`Đã nạp kịch bản & visual prompt: ${btn.textContent.trim()}`, "info");
       }
@@ -1939,25 +1696,6 @@ function bindEventListeners() {
   });
 
   DOM.btnProduceFromBoard?.addEventListener('click', startProduceLongVideo);
-  DOM.btnProduceLongVideo?.addEventListener('click', startProduceLongVideo);
-
-  // Asset Regeneration Accordion
-  DOM.btnToggleAssetAccordion?.addEventListener('click', () => {
-    const body = DOM.assetAccordionBody || document.getElementById('asset-accordion-body');
-    const chevron = DOM.assetAccordionChevron || document.getElementById('asset-accordion-chevron');
-    if (body) {
-      const isHidden = body.classList.contains('hidden');
-      if (isHidden) {
-        body.classList.remove('hidden');
-        body.dataset.userOpened = "true";
-        if (chevron) chevron.classList.add('rotate-180');
-      } else {
-        body.classList.add('hidden');
-        delete body.dataset.userOpened;
-        if (chevron) chevron.classList.remove('rotate-180');
-      }
-    }
-  });
 
   DOM.btnRegenAllImages?.addEventListener('click', handleRegenAllImages);
   DOM.btnRegenAllVoices?.addEventListener('click', handleRegenAllVoices);
@@ -1968,79 +1706,6 @@ function bindEventListeners() {
       API.openFolder(AppState.currentProject.id);
       showToast("Đang mở thư mục video trên Windows Explorer...", "info");
     }
-  });
-
-  // Save Project
-  DOM.btnSaveProject?.addEventListener('click', handleSaveProject);
-
-  // Comic Slicer Modal Actions
-  DOM.btnOpenComicModal?.addEventListener('click', openComicModal);
-  DOM.btnCloseComicModal?.addEventListener('click', closeComicModal);
-  DOM.btnCancelComicModal?.addEventListener('click', closeComicModal);
-  DOM.btnResetComic?.addEventListener('click', resetComicModal);
-
-  // Comic Dropzone & File Input
-  DOM.comicDropzone?.addEventListener('click', () => DOM.comicFileInput?.click());
-  DOM.comicFileInput?.addEventListener('change', (e) => {
-    if (e.target.files && e.target.files[0]) {
-      handleComicFileSelect(e.target.files[0]);
-    }
-  });
-
-  DOM.comicDropzone?.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    DOM.comicDropzone?.classList.add('border-amber-500', 'bg-amber-100/50');
-  });
-  DOM.comicDropzone?.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    DOM.comicDropzone?.classList.remove('border-amber-500', 'bg-amber-100/50');
-  });
-  DOM.comicDropzone?.addEventListener('drop', (e) => {
-    e.preventDefault();
-    DOM.comicDropzone?.classList.remove('border-amber-500', 'bg-amber-100/50');
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleComicFileSelect(e.dataTransfer.files[0]);
-    }
-  });
-
-  // Comic Layout Mode Change
-  DOM.comicLayoutMode?.addEventListener('change', (e) => {
-    if (e.target.value === 'strip') {
-      DOM.comicReadingOrderBox?.classList.add('hidden');
-    } else {
-      DOM.comicReadingOrderBox?.classList.remove('hidden');
-    }
-  });
-
-  // Comic Quick Samples
-  DOM.btnSampleMangaGrid?.addEventListener('click', () => loadComicSample('grid'));
-  DOM.btnSampleWebtoonStrip?.addEventListener('click', () => loadComicSample('strip'));
-
-  // Comic Slice & Tab Actions
-  DOM.btnStartSlice?.addEventListener('click', handleStartSlice);
-  DOM.tabBtnPanels?.addEventListener('click', () => switchComicResultTab('panels'));
-  DOM.tabBtnAnnotated?.addEventListener('click', () => switchComicResultTab('annotated'));
-
-  // Import Comic to Storyboard
-  DOM.btnImportComicToStoryboard?.addEventListener('click', handleImportComicToStoryboard);
-
-  // Script Modal Actions
-  DOM.btnOpenScriptModal?.addEventListener('click', openScriptModal);
-  DOM.btnCloseScriptModal?.addEventListener('click', closeScriptModal);
-  DOM.btnCancelScriptModal?.addEventListener('click', closeScriptModal);
-  DOM.btnSubmitScriptSplit?.addEventListener('click', handleSubmitScriptSplit);
-  DOM.importScriptTextarea?.addEventListener('input', handleScriptInputCount);
-
-  // Quick Sample Stories
-  document.querySelectorAll('.btn-sample-story').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const sampleKey = btn.getAttribute('data-sample');
-      if (SAMPLE_STORIES[sampleKey] && DOM.importScriptTextarea) {
-        DOM.importScriptTextarea.value = SAMPLE_STORIES[sampleKey];
-        handleScriptInputCount();
-        showToast(`Đã nạp kịch bản mẫu: ${btn.textContent.trim()}`, "info");
-      }
-    });
   });
 
   // Scene Actions
@@ -2133,15 +1798,7 @@ function bindEventListeners() {
   DOM.btnCopySeoDesc?.addEventListener('click', () => copyToClipboard('textarea-seo-desc', 'Đã sao chép mô tả YouTube!'));
   DOM.btnCopySeoTags?.addEventListener('click', () => copyToClipboard('input-seo-tags', 'Đã sao chép thẻ từ khóa YouTube!'));
 
-  // Character Modal
-  DOM.btnEditCharacter?.addEventListener('click', openCharacterModal);
-  DOM.btnCloseCharacterModal?.addEventListener('click', closeCharacterModal);
-  DOM.btnCancelCharModal?.addEventListener('click', closeCharacterModal);
-  DOM.btnSaveCharacter?.addEventListener('click', handleSaveCharacter);
-
   // Project Dropdown / Manager
-  DOM.btnProjectDropdown?.addEventListener('click', openProjectModal);
-  DOM.btnCloseProjectModal?.addEventListener('click', closeProjectModal);
   DOM.btnCreateProject?.addEventListener('click', handleCreateNewProject);
 
   // Global Audio and Video element listeners
@@ -2174,13 +1831,19 @@ function handleGlobalKeydown(e) {
   }
 
   if (e.code === 'Space') {
+    // Space trên nút, liên kết, ô nhập hay vùng sửa chữ thì để trình duyệt xử lý (bấm nút, gõ chữ)
+    const t = e.target;
+    if (t && t.closest && t.closest('button, a, input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+    // Chỉ phát/dừng khi đang ở trang Cảnh hoặc ngăn Xem thử đang mở
+    const previewOpen = !!document.getElementById('scenes-preview-block')?.closest('#ws-drawer-body')
+      && document.getElementById('ws-drawer')?.classList.contains('open');
+    const onScenes = typeof currentPage === 'function' && currentPage() === 'scenes';
+    if (!onScenes && !previewOpen) return;
     e.preventDefault();
     togglePreviewPlayback();
   } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
     e.preventDefault();
     handleSaveProject();
-  } else if (e.key === 'Escape') {
-    closeAllModals();
   }
 }
 
@@ -2341,33 +2004,11 @@ function updateSceneVisualPromptLive(index, newPrompt) {
   project.scenes[index].image_prompt = newPrompt;
 }
 
-function updateSceneVideoPrompt(index, newPrompt) {
-  const project = AppState.currentProject;
-  if (!project || !project.scenes[index]) return;
-
-  project.scenes[index].video_prompt = newPrompt;
-  saveStateToLocal();
-}
-
-function updateSceneVideoPromptLive(index, newPrompt) {
-  const project = AppState.currentProject;
-  if (!project || !project.scenes[index]) return;
-
-  project.scenes[index].video_prompt = newPrompt;
-}
-
 function switchScenePromptTab(index, tab) {
   const project = AppState.currentProject;
   if (!project || !project.scenes || !project.scenes[index]) return;
   const scene = project.scenes[index];
   scene.active_prompt_tab = tab;
-
-  // Tự động khởi tạo prompt chuyển động điện ảnh nếu chưa có
-  if (tab === 'video' && (!scene.video_prompt || scene.video_prompt.trim() === '')) {
-    const rawImgPrompt = scene.image_prompt || scene.visual_prompt || scene.text || "";
-    scene.video_prompt = `${rawImgPrompt}, cinematic continuous human walking motion, person moving forward through the scene, natural dynamic character movement, camera tracking front shot, fluid realistic motion`;
-    saveStateToLocal();
-  }
 
   const tabImgBtn = document.getElementById(`btn-tab-img-${index}`);
   const tabVidBtn = document.getElementById(`btn-tab-vid-${index}`);
@@ -2380,23 +2021,19 @@ function switchScenePromptTab(index, tab) {
       tabImgBtn.className = "px-2.5 py-1 rounded-md text-[10px] font-bold text-slate-500 hover:text-slate-800 transition cursor-pointer flex items-center gap-1.5";
     }
     if (tabVidBtn) {
-      tabVidBtn.className = "px-2.5 py-1 rounded-md text-[10px] font-extrabold bg-white text-purple-700 shadow-2xs border border-purple-200 transition cursor-pointer flex items-center gap-1.5";
+      tabVidBtn.className = "px-2.5 py-1 rounded-md text-[10px] font-extrabold bg-white text-slate-700 shadow-2xs border border-slate-200 transition cursor-pointer flex items-center gap-1.5";
     }
     if (containerImg) containerImg.classList.add('hidden');
-    if (containerVid) {
-      containerVid.classList.remove('hidden');
-      const vidTa = containerVid.querySelector('textarea');
-      if (vidTa) {
-        vidTa.value = scene.video_prompt || '';
-      }
-    }
+    if (containerVid) containerVid.classList.remove('hidden');
+    // Prompt video thật (chỉ đọc) theo lời kể: scene_prompts.js hỏi máy chủ
+    if (typeof window.loadSceneMusePrompt === 'function') window.loadSceneMusePrompt(index, 'video');
     if (specBadge) {
-      specBadge.textContent = "🎬 5s Motion • Nhân vật & Máy quay";
-      specBadge.className = "text-[9px] font-mono text-purple-600 font-bold";
+      specBadge.textContent = "Dài theo lời kể";
+      specBadge.className = "text-[9px] font-mono text-slate-700 font-bold";
     }
   } else {
     if (tabImgBtn) {
-      tabImgBtn.className = "px-2.5 py-1 rounded-md text-[10px] font-extrabold bg-white text-indigo-700 shadow-2xs border border-indigo-200 transition cursor-pointer flex items-center gap-1.5";
+      tabImgBtn.className = "px-2.5 py-1 rounded-md text-[10px] font-extrabold bg-white text-slate-700 shadow-2xs border border-slate-200 transition cursor-pointer flex items-center gap-1.5";
     }
     if (tabVidBtn) {
       tabVidBtn.className = "px-2.5 py-1 rounded-md text-[10px] font-bold text-slate-500 hover:text-slate-800 transition cursor-pointer flex items-center gap-1.5";
@@ -2406,7 +2043,7 @@ function switchScenePromptTab(index, tab) {
       containerImg.classList.remove('hidden');
     }
     if (specBadge) {
-      specBadge.textContent = "8K • Cinema Masterpiece";
+      specBadge.textContent = "2K • 16:9";
       specBadge.className = "text-[9px] font-mono text-slate-400";
     }
   }
@@ -2629,10 +2266,29 @@ function resetSceneImageStatus(index) {
   showToast(`Đã xóa trạng thái kẹt cho Cảnh #${index + 1}`, "info");
 }
 
+// Cảnh đang được chọn ảnh/video từ Thư viện Muse (null: đang xem thư viện bình thường)
+let museAttachSceneIndex = null;
+
+function updateMuseAttachStrip() {
+  const strip = document.getElementById('muse-attach-strip');
+  const text = document.getElementById('muse-attach-strip-text');
+  if (!strip || !text) return;
+  strip.hidden = museAttachSceneIndex === null;
+  if (museAttachSceneIndex !== null) {
+    text.textContent = `Đang chọn ảnh cho cảnh ${String(museAttachSceneIndex + 1).padStart(3, '0')}. Bấm "Gắn Cảnh" trên ảnh hoặc video muốn dùng.`;
+  }
+}
+
+function clearMuseAttachMode() {
+  museAttachSceneIndex = null;
+  updateMuseAttachStrip();
+}
+
 function openMuseModalForScene(index) {
   AppState.selectedSceneIndex = index;
-  openMuseModal();
-  showToast(`Đang mở Gallery Muse cho Cảnh #${index + 1}. Bấm [📌 Gắn vào Cảnh #${index + 1}] để chọn!`, "info");
+  museAttachSceneIndex = index;
+  showPage('gallery');
+  showToast(`Đang mở Thư viện Muse cho Cảnh #${index + 1}. Bấm [📌 Gắn vào Cảnh #${index + 1}] để chọn!`, "info");
 }
 
 async function attachMediaToScene(index, mediaUrl, isVideo, outputPath = '') {
@@ -2666,7 +2322,7 @@ async function attachMediaToScene(index, mediaUrl, isVideo, outputPath = '') {
   }
   renderSceneList();
   renderPreviewPlayer();
-  closeMuseModal();
+  showPage('scenes');
 }
 
 // Chạy lần lượt từng cảnh cho các nút "làm cả dự án": khoá nút khi đang chạy (bấm lại không chạy hai lượt),
@@ -2873,11 +2529,11 @@ function updatePlayButtonIcon() {
 
   if (AppState.isPlaying) {
     icon.className = "fa-solid fa-pause text-xl";
-    btn.className = "absolute w-14 h-14 rounded-full bg-indigo-600/75 hover:bg-indigo-600 text-white flex items-center justify-center text-xl shadow-2xl transition-all duration-300 opacity-0 hover:opacity-100 cursor-pointer z-20";
+    btn.className = "absolute w-14 h-14 rounded-full bg-slate-900/75 hover:bg-slate-900 text-white flex items-center justify-center text-xl shadow-sm transition-all duration-300 opacity-0 hover:opacity-100 cursor-pointer z-20";
     btn.title = "Tạm dừng";
   } else {
     icon.className = "fa-solid fa-play ml-0.5 text-xl";
-    btn.className = "absolute w-14 h-14 rounded-full bg-indigo-600/90 hover:bg-indigo-600 text-white flex items-center justify-center text-xl shadow-2xl transition-all duration-300 opacity-90 hover:opacity-100 transform hover:scale-110 active:scale-95 cursor-pointer z-20";
+    btn.className = "absolute w-14 h-14 rounded-full bg-slate-900/90 hover:bg-slate-900 text-white flex items-center justify-center text-xl shadow-sm transition-all duration-300 opacity-90 hover:opacity-100 transform hover:scale-110 active:scale-95 cursor-pointer z-20";
     btn.title = "Phát Cảnh này";
   }
 }
@@ -3005,11 +2661,11 @@ let isVoiceSamplePlaying = false;
 
 function resetVoiceSampleButtonState() {
   isVoiceSamplePlaying = false;
-  if (DOM.iconPreviewVoice) DOM.iconPreviewVoice.className = "fa-solid fa-volume-high text-indigo-600 text-xs";
+  if (DOM.iconPreviewVoice) DOM.iconPreviewVoice.className = "fa-solid fa-volume-high text-slate-700 text-xs";
   if (DOM.textPreviewVoice) DOM.textPreviewVoice.textContent = "Nghe thử";
   if (DOM.btnPreviewVoiceSample) {
-    DOM.btnPreviewVoiceSample.classList.remove("bg-indigo-600", "text-white");
-    DOM.btnPreviewVoiceSample.classList.add("bg-indigo-50", "text-indigo-700");
+    DOM.btnPreviewVoiceSample.classList.remove("bg-slate-900", "text-white");
+    DOM.btnPreviewVoiceSample.classList.add("bg-slate-50", "text-slate-700");
   }
 }
 
@@ -3046,8 +2702,8 @@ async function togglePlayVoiceSample() {
     if (DOM.iconPreviewVoice) DOM.iconPreviewVoice.className = "fa-solid fa-pause text-xs";
     if (DOM.textPreviewVoice) DOM.textPreviewVoice.textContent = "Tạm dừng";
     if (DOM.btnPreviewVoiceSample) {
-      DOM.btnPreviewVoiceSample.classList.remove("bg-indigo-50", "text-indigo-700");
-      DOM.btnPreviewVoiceSample.classList.add("bg-indigo-600", "text-white");
+      DOM.btnPreviewVoiceSample.classList.remove("bg-slate-50", "text-slate-700");
+      DOM.btnPreviewVoiceSample.classList.add("bg-slate-900", "text-white");
     }
   } catch (err) {
     console.error("Play voice sample failed", err);
@@ -3157,63 +2813,7 @@ function togglePlayerFullscreen() {
   }
 }
 
-// ================= COMIC & WEBTOON SLICER CONTROLLER =================
-function openComicModal() {
-  if (!DOM.modalComicSlicer) return;
-  DOM.modalComicSlicer.classList.remove('hidden');
-  if (!AppState.comicState.slicedPanels || AppState.comicState.slicedPanels.length === 0) {
-    resetComicModal();
-  }
-}
-
-function closeComicModal() {
-  if (!DOM.modalComicSlicer) return;
-  DOM.modalComicSlicer.classList.add('hidden');
-}
-
-function resetComicModal() {
-  AppState.comicState.selectedFile = null;
-  AppState.comicState.slicedPanels = [];
-  AppState.comicState.annotatedPreviewUrl = null;
-  AppState.comicState.isSlicing = false;
-  AppState.comicState.activeTab = 'panels';
-
-  if (DOM.comicFileInput) DOM.comicFileInput.value = '';
-  if (DOM.comicSelectedFileInfo) {
-    DOM.comicSelectedFileInfo.textContent = '';
-    DOM.comicSelectedFileInfo.classList.add('hidden');
-  }
-  if (DOM.btnStartSlice) {
-    DOM.btnStartSlice.disabled = true;
-    DOM.btnStartSlice.innerHTML = '<i class="fa-solid fa-scissors mr-1.5"></i> <span>Phân tích & Cắt khung tranh (OpenCV)</span>';
-  }
-  if (DOM.comicUploadSection) DOM.comicUploadSection.classList.remove('hidden');
-  if (DOM.comicSliceLoading) DOM.comicSliceLoading.classList.add('hidden');
-  if (DOM.comicResultsSection) DOM.comicResultsSection.classList.add('hidden');
-  if (DOM.btnResetComic) DOM.btnResetComic.classList.add('hidden');
-  if (DOM.btnImportComicToStoryboard) DOM.btnImportComicToStoryboard.disabled = true;
-  if (DOM.importCountLabel) DOM.importCountLabel.textContent = '0';
-  if (DOM.comicPanelsTabContent) DOM.comicPanelsTabContent.innerHTML = '';
-}
-
-function handleComicFileSelect(file) {
-  if (!file) return;
-  if (!file.type.startsWith('image/')) {
-    showToast("Vui lòng chọn file hình ảnh (JPG, PNG, WebP)!", "warning");
-    return;
-  }
-
-  AppState.comicState.selectedFile = file;
-  const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
-  if (DOM.comicSelectedFileInfo) {
-    DOM.comicSelectedFileInfo.textContent = `📁 ${file.name} (${sizeMb} MB)`;
-    DOM.comicSelectedFileInfo.classList.remove('hidden');
-  }
-  if (DOM.btnStartSlice) {
-    DOM.btnStartSlice.disabled = false;
-  }
-}
-
+// ================= TRUYỆN TRANH: ẢNH MẪU CỦA TRANG Ý TƯỞNG =================
 async function loadComicSample(type) {
   try {
     const sampleUrl = type === 'strip' 
@@ -3226,16 +2826,7 @@ async function loadComicSample(type) {
     const filename = type === 'strip' ? 'sample_webtoon_strip.jpg' : 'sample_manga_grid.jpg';
     const file = new File([blob], filename, { type: 'image/jpeg' });
 
-    if (type === 'strip') {
-      if (DOM.comicLayoutMode) DOM.comicLayoutMode.value = 'strip';
-      if (DOM.comicReadingOrderBox) DOM.comicReadingOrderBox.classList.add('hidden');
-    } else {
-      if (DOM.comicLayoutMode) DOM.comicLayoutMode.value = 'grid';
-      if (DOM.comicReadingOrderBox) DOM.comicReadingOrderBox.classList.remove('hidden');
-    }
-
-    handleComicFileSelect(file);
-    // Nút mẫu ở Bước 1 dùng chung hàm này: cập nhật cả ô file và nút "Cắt khung" của Bước 1
+    // Cập nhật ô chế độ và nút "Cắt khung" của trang Ý tưởng
     if (DOM.step1ComicMode) DOM.step1ComicMode.value = type === 'strip' ? 'strip' : 'grid';
     handleStep1ComicFileSelect(file);
     showToast(`Đã nạp ảnh mẫu: ${escapeHtml(filename)}`, "info");
@@ -3245,308 +2836,27 @@ async function loadComicSample(type) {
   }
 }
 
-async function handleStartSlice() {
-  const file = AppState.comicState.selectedFile;
-  if (!file) {
-    showToast("Vui lòng chọn hoặc kéo thả ảnh truyện tranh trước!", "warning");
-    return;
-  }
+// ================= ĐIỀU HƯỚNG: BƯỚC CŨ 1–4 → TRANG (workspace.js) =================
+// Giữ tên cho mọi chỗ gọi cũ; ẩn hiện theo trang, không còn đổi lớp từng khối bước.
+const STEP_TO_PAGE = { 1: 'idea', 2: 'scenes', 3: 'publish', 4: 'publish' };
 
-  const mode = DOM.comicLayoutMode?.value || 'grid';
-  const readingOrder = DOM.comicReadingOrder?.value || 'ltr';
-  const minAreaRatio = parseFloat(DOM.comicMinArea?.value || '0.03');
-  const projectId = AppState.currentProject?.id || null;
-
-  if (DOM.comicUploadSection) DOM.comicUploadSection.classList.add('hidden');
-  if (DOM.comicSliceLoading) DOM.comicSliceLoading.classList.remove('hidden');
-  if (DOM.btnStartSlice) DOM.btnStartSlice.disabled = true;
-
-  try {
-    const result = await API.sliceComic(file, mode, readingOrder, minAreaRatio, projectId);
-    if (!result || !result.success) {
-      throw new Error(result?.error || "Không thể cắt khung tranh từ ảnh này");
-    }
-
-    AppState.comicState.slicedPanels = result.panels || [];
-    AppState.comicState.annotatedPreviewUrl = result.annotated_preview_url || null;
-
-    // Display Results
-    if (DOM.comicSliceLoading) DOM.comicSliceLoading.classList.add('hidden');
-    if (DOM.comicResultsSection) DOM.comicResultsSection.classList.remove('hidden');
-    if (DOM.btnResetComic) DOM.btnResetComic.classList.remove('hidden');
-
-    if (DOM.comicPanelCount) DOM.comicPanelCount.textContent = result.total_panels;
-    if (DOM.comicModeBadge) {
-      const modeText = result.mode === 'strip' ? 'Webtoon Strip (Cuộn dọc)' : `Manga Grid (${result.reading_order.toUpperCase()})`;
-      DOM.comicModeBadge.textContent = `${modeText} • ${result.source_dimensions?.width}x${result.source_dimensions?.height}px`;
-    }
-
-    // Set annotated image
-    if (DOM.comicAnnotatedImg && result.annotated_preview_url) {
-      DOM.comicAnnotatedImg.src = result.annotated_preview_url;
-    }
-
-    // Render panel cards
-    renderComicPanelCards(result.panels);
-
-    // Switch to panels tab initially
-    switchComicResultTab('panels');
-
-    showToast(`Bóc tách thành công ${result.total_panels} khung tranh!`, "success");
-  } catch (err) {
-    console.error("handleStartSlice error", err);
-    if (DOM.comicSliceLoading) DOM.comicSliceLoading.classList.add('hidden');
-    if (DOM.comicUploadSection) DOM.comicUploadSection.classList.remove('hidden');
-    if (DOM.btnStartSlice) DOM.btnStartSlice.disabled = false;
-    showToast(`Lỗi cắt ảnh: ${escapeHtml(err.message || err)}`, "error");
-  }
-}
-
-function renderComicPanelCards(panels) {
-  const container = DOM.comicPanelsTabContent;
-  if (!container) return;
-
-  if (!panels || panels.length === 0) {
-    container.innerHTML = `<div class="col-span-full py-8 text-center text-slate-400">Không tìm thấy khung tranh nào phù hợp.</div>`;
-    return;
-  }
-
-  container.innerHTML = panels.map((p, idx) => {
-    const isSelected = p.selected !== false;
-    const isWide = p.is_wide || (p.aspect_ratio > 1.5);
-    const motion = p.camera_motion || (isWide ? 'pan_right' : 'zoom_in');
-
-    const motionBadgeColor = isWide
-      ? 'bg-blue-50 text-blue-700 border-blue-200'
-      : 'bg-purple-50 text-purple-700 border-purple-200';
-
-    return `
-      <div class="comic-panel-card bg-white border border-slate-200 rounded-xl p-3 shadow-xs hover:border-amber-400 hover:shadow-md transition flex flex-col gap-2.5 relative group" data-panel-index="${idx}">
-        <!-- Top bar: Checkbox + Panel # + Aspect Ratio badge -->
-        <div class="flex items-center justify-between">
-          <label class="flex items-center gap-1.5 cursor-pointer select-none">
-            <input type="checkbox" class="comic-panel-cb rounded text-amber-600 focus:ring-amber-500" data-idx="${idx}" ${isSelected ? 'checked' : ''}>
-            <span class="font-bold text-slate-800 text-xs">Cảnh #${p.index}</span>
-          </label>
-          <span class="text-[10px] font-mono px-2 py-0.5 rounded-full border ${motionBadgeColor} font-semibold">
-            AR: ${p.aspect_ratio} (${isWide ? 'Rộng' : 'Dọc/Vuông'})
-          </span>
-        </div>
-
-        <!-- Thumbnail Image with Hover Zoom -->
-        <div class="w-full aspect-video bg-slate-900 rounded-lg overflow-hidden relative border border-slate-200 flex items-center justify-center">
-          <img src="${p.image_url}" alt="Panel ${p.index}" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300">
-          <span class="absolute bottom-1 right-1 text-[9px] bg-black/70 text-white font-mono px-1.5 py-0.5 rounded backdrop-blur-xs">
-            ${p.width}x${p.height}
-          </span>
-        </div>
-
-        <!-- Camera Motion Selector -->
-        <div>
-          <label class="text-[11px] text-slate-500 font-semibold block mb-0.5">Góc quay Ken Burns:</label>
-          <select class="comic-panel-motion-select w-full bg-slate-50 border border-slate-300 rounded-lg p-1.5 text-xs text-slate-800 font-medium focus:border-amber-500" data-idx="${idx}">
-            <option value="pan_right" ${motion === 'pan_right' ? 'selected' : ''}>Pan Phải (Khung ngang)</option>
-            <option value="pan_left" ${motion === 'pan_left' ? 'selected' : ''}>Pan Trái (Khung ngang)</option>
-            <option value="zoom_in" ${motion === 'zoom_in' ? 'selected' : ''}>Zoom In (Cận cảnh / Kịch tính)</option>
-            <option value="zoom_out" ${motion === 'zoom_out' ? 'selected' : ''}>Zoom Out (Bao quát)</option>
-            <option value="static" ${motion === 'static' ? 'selected' : ''}>Tĩnh (Static)</option>
-          </select>
-        </div>
-
-        <!-- Caption / Prompt input -->
-        <div>
-          <input type="text" class="comic-panel-caption-input w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-xs text-slate-800 focus:bg-white focus:border-amber-500" placeholder="Lời thoại hoặc mô tả cảnh #${p.index}..." value="${p.custom_text || ''}" data-idx="${idx}">
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  updateImportButtonCount();
-
-  // Attach card event listeners
-  container.querySelectorAll('.comic-panel-cb').forEach(cb => {
-    cb.addEventListener('change', (e) => {
-      const idx = parseInt(e.target.getAttribute('data-idx'));
-      if (AppState.comicState.slicedPanels[idx]) {
-        AppState.comicState.slicedPanels[idx].selected = e.target.checked;
-      }
-      updateImportButtonCount();
-    });
-  });
-
-  container.querySelectorAll('.comic-panel-motion-select').forEach(sel => {
-    sel.addEventListener('change', (e) => {
-      const idx = parseInt(e.target.getAttribute('data-idx'));
-      if (AppState.comicState.slicedPanels[idx]) {
-        AppState.comicState.slicedPanels[idx].camera_motion = e.target.value;
-      }
-    });
-  });
-
-  container.querySelectorAll('.comic-panel-caption-input').forEach(inp => {
-    inp.addEventListener('input', (e) => {
-      const idx = parseInt(e.target.getAttribute('data-idx'));
-      if (AppState.comicState.slicedPanels[idx]) {
-        AppState.comicState.slicedPanels[idx].custom_text = e.target.value;
-      }
-    });
-  });
-}
-
-function updateImportButtonCount() {
-  const panels = AppState.comicState.slicedPanels || [];
-  const selectedCount = panels.filter(p => p.selected !== false).length;
-  if (DOM.importCountLabel) DOM.importCountLabel.textContent = selectedCount;
-  if (DOM.btnImportComicToStoryboard) {
-    DOM.btnImportComicToStoryboard.disabled = selectedCount === 0;
-  }
-}
-
-function switchComicResultTab(tabName) {
-  AppState.comicState.activeTab = tabName;
-  if (tabName === 'panels') {
-    DOM.comicPanelsTabContent?.classList.remove('hidden');
-    DOM.comicAnnotatedTabContent?.classList.add('hidden');
-    DOM.tabBtnPanels?.classList.add('bg-white', 'text-amber-800', 'font-bold', 'border-amber-300', 'shadow-2xs');
-    DOM.tabBtnPanels?.classList.remove('text-slate-600');
-    DOM.tabBtnAnnotated?.classList.remove('bg-white', 'text-amber-800', 'font-bold', 'border-amber-300', 'shadow-2xs');
-    DOM.tabBtnAnnotated?.classList.add('text-slate-600');
-  } else {
-    DOM.comicPanelsTabContent?.classList.add('hidden');
-    DOM.comicAnnotatedTabContent?.classList.remove('hidden');
-    DOM.tabBtnAnnotated?.classList.add('bg-white', 'text-amber-800', 'font-bold', 'border-amber-300', 'shadow-2xs');
-    DOM.tabBtnAnnotated?.classList.remove('text-slate-600');
-    DOM.tabBtnPanels?.classList.remove('bg-white', 'text-amber-800', 'font-bold', 'border-amber-300', 'shadow-2xs');
-    DOM.tabBtnPanels?.classList.add('text-slate-600');
-  }
-}
-
-async function handleImportComicToStoryboard() {
-  const panels = AppState.comicState.slicedPanels || [];
-  const selectedPanels = panels.filter(p => p.selected !== false);
-
-  if (selectedPanels.length === 0) {
-    showToast("Vui lòng chọn ít nhất một khung tranh để nhập!", "warning");
-    return;
-  }
-
-  const project = AppState.currentProject;
-  if (!project) {
-    showToast("Chưa có dự án nào được chọn!", "error");
-    return;
-  }
-
-  const clearExisting = DOM.comicClearExistingCb?.checked || false;
-  const existing = project.scenes?.length || 0;
-  if (clearExisting && existing > 0 && !confirm(`Xóa ${existing} cảnh hiện có của dự án "${project.name}" rồi thay bằng ${selectedPanels.length} khung tranh?`)) return;
-
-  DOM.btnImportComicToStoryboard.disabled = true;
-  DOM.btnImportComicToStoryboard.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Đang nhập vào Storyboard...';
-
-  try {
-    // Server sẽ ghi các cảnh mới vào bản trên server: lưu chỉnh sửa hiện tại trước
-    if (!(await flushProjectSave())) throw new Error("Chưa lưu được dự án lên máy chủ");
-    const res = await API.importComicPanels(project.id, selectedPanels, clearExisting, "Khung tranh");
-    if (!res || !res.success) {
-      throw new Error(res?.detail || "Nhập phân cảnh thất bại");
-    }
-
-    if (res.project) {
-      AppState.currentProject = adoptServerProject(res.project);
-      rememberLastProjectId(res.project.id);
-    }
-
-    // Refresh UI
-    renderSceneList();
-    if (AppState.currentProject.scenes.length > 0) {
-      selectScene(clearExisting ? 0 : AppState.currentProject.scenes.length - selectedPanels.length);
-    }
-
-    closeComicModal();
-    switchStep(2); // mở Bảng Đạo Diễn để thấy ngay các cảnh vừa nhập
-    if (res.failed_panels > 0) {
-      showToast(`Đã đưa ${res.imported_scenes_count} phân cảnh vào Storyboard, nhưng ${res.failed_panels} khung không chép được ảnh (đánh dấu "Lỗi ảnh").`, "warning", 8000);
-    } else {
-      showToast(`Đã đưa ${res.imported_scenes_count} phân cảnh truyện tranh vào Storyboard! Bạn có thể lồng tiếng và render video ngay.`, "success", 4500);
-    }
-  } catch (err) {
-    console.error("handleImportComicToStoryboard error", err);
-    showToast(`Lỗi nhập phân cảnh: ${escapeHtml(err.message || err)}`, "error");
-  } finally {
-    if (DOM.btnImportComicToStoryboard) {
-      DOM.btnImportComicToStoryboard.disabled = false;
-      DOM.btnImportComicToStoryboard.innerHTML = '<i class="fa-solid fa-layer-group mr-1.5"></i> <span>Nhập vào Storyboard (<span id="import-count-label">' + selectedPanels.length + '</span> cảnh)</span>';
-      // Ô đếm vừa được tạo lại: trỏ DOM vào ô mới, nếu không số khung đã chọn sẽ không cập nhật nữa
-      DOM.importCountLabel = document.getElementById('import-count-label');
-    }
-  }
-}
-
-// ================= 4-STEP STEPPER CONTROLLER (MoneyPrinterTurbo Architecture) =================
 function switchStep(stepNumber) {
   AppState.currentStep = stepNumber;
-
-  // 1. Update navigation button styles
-  for (let i = 1; i <= 4; i++) {
-    const btn = document.getElementById(`step-nav-${i}`);
-    const view = document.getElementById(`step-view-${i}`);
-
-    if (btn) {
-      const badge = btn.querySelector('.step-badge');
-      if (i === stepNumber) {
-        btn.classList.add('bg-white', 'text-indigo-700', 'font-bold', 'shadow-xs');
-        btn.classList.remove('text-slate-600');
-        if (badge) {
-          badge.classList.add('bg-indigo-600', 'text-white');
-          badge.classList.remove('bg-slate-200', 'text-slate-700');
-        }
-      } else {
-        btn.classList.remove('bg-white', 'text-indigo-700', 'font-bold', 'shadow-xs');
-        btn.classList.add('text-slate-600');
-        if (badge) {
-          badge.classList.remove('bg-indigo-600', 'text-white');
-          badge.classList.add('bg-slate-200', 'text-slate-700');
-        }
-      }
-    }
-
-    if (view) {
-      if (i === stepNumber) {
-        view.classList.remove('hidden');
-      } else {
-        view.classList.add('hidden');
-      }
-    }
-  }
-
-  const currentView = document.getElementById(`step-view-${stepNumber}`);
-  if (currentView) currentView.scrollTop = 0;
-
+  showPage(STEP_TO_PAGE[stepNumber]);
+  // Bước 3 và 4 chung trang Dựng và xuất bản (bước 3 ở trên): bước 4 cuộn tới khối Rạp chiếu
   if (stepNumber === 4) {
-    loadCinemaYouTubePackage();
+    document.getElementById('step-view-4')?.scrollIntoView({ block: 'start' });
   }
 }
+
+// Vào trang Dựng và xuất bản thì nạp video thành phẩm và gói YouTube (trước đây switchStep(4) gọi thẳng)
+onPageShow('publish', loadCinemaYouTubePackage);
 
 async function loadCinemaYouTubePackage() {
   const project = AppState.currentProject;
   if (!project) return;
 
-  const videoUrl = AppState.produceState.videoUrl || project.final_video_url || `/api/projects/${project.id}/media/renders/story_final.mp4`;
-  const srtUrl = AppState.produceState.srtUrl || `/api/projects/${project.id}/download-srt`;
-
-  // Hydrate video player & download links directly
-  if (DOM.cinemaVideoPlayer) {
-    DOM.cinemaVideoPlayer.src = videoUrl;
-  }
-  if (DOM.btnCinemaDownloadVideo) {
-    DOM.btnCinemaDownloadVideo.href = `/api/projects/${project.id}/download`;
-  }
-  if (DOM.btnCinemaDownloadSrt) {
-    DOM.btnCinemaDownloadSrt.href = srtUrl;
-  }
-  if (DOM.btnCinemaDownloadAss) {
-    DOM.btnCinemaDownloadAss.href = `/api/projects/${project.id}/download-ass`;
-  }
+  renderFinalVideoBlock(project);
 
   const thumbUrl = `/api/projects/${project.id}/thumbnail?t=${Date.now()}`;
   if (DOM.cinemaThumbnailPreview) {
@@ -3557,9 +2867,6 @@ async function loadCinemaYouTubePackage() {
   }
   if (DOM.btnCinemaDownloadThumbnail) {
     DOM.btnCinemaDownloadThumbnail.href = `/api/projects/${project.id}/thumbnail`;
-  }
-  if (DOM.btnDownloadThumbnailDirect) {
-    DOM.btnDownloadThumbnailDirect.href = `/api/projects/${project.id}/thumbnail`;
   }
 
   // Gói SEO YouTube: xử lý trong /static/youtube_seo.js
@@ -3622,57 +2929,6 @@ function copyToClipboard(elemId, toastMsg) {
   }
 }
 window.copyToClipboard = copyToClipboard;
-
-// CHARACTER REFERENCE IMAGE HANDLERS
-function handleCharRefFileSelect(file) {
-  if (!file) return;
-  if (!file.type.startsWith('image/')) {
-    showToast("Vui lòng chọn file ảnh hợp lệ (PNG, JPG, WebP)!", "warning");
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const dataUrl = e.target.result;
-    AppState.characterReferenceImage = dataUrl;
-    if (DOM.step1CharRefPreviewImg) DOM.step1CharRefPreviewImg.src = dataUrl;
-    if (DOM.step1CharRefFileName) DOM.step1CharRefFileName.textContent = `${file.name} (${(file.size / 1024).toFixed(0)} KB)`;
-    if (DOM.step1CharRefPreviewCard) DOM.step1CharRefPreviewCard.classList.remove('hidden');
-    if (DOM.step1CharRefDropzone) DOM.step1CharRefDropzone.classList.add('hidden');
-    if (DOM.step1CharRefUrl) DOM.step1CharRefUrl.value = '';
-    showToast(`Đã nạp ảnh tham chiếu nhân vật: ${escapeHtml(file.name)}`, "success");
-  };
-  reader.onerror = () => {
-    showToast("Không thể đọc file ảnh tham chiếu!", "error");
-  };
-  reader.readAsDataURL(file);
-}
-
-function handleCharRefUrlApply() {
-  const url = DOM.step1CharRefUrl?.value.trim();
-  if (!url) {
-    showToast("Vui lòng dán liên kết URL ảnh tham chiếu trước!", "warning");
-    return;
-  }
-  if (!/^https?:\/\//i.test(url) && !url.startsWith('data:image/')) {
-    showToast("URL ảnh phải bắt đầu bằng http:// hoặc https://", "warning");
-    return;
-  }
-  AppState.characterReferenceImage = url;
-  if (DOM.step1CharRefPreviewImg) DOM.step1CharRefPreviewImg.src = url;
-  if (DOM.step1CharRefFileName) DOM.step1CharRefFileName.textContent = url.length > 40 ? url.substring(0, 37) + '...' : url;
-  if (DOM.step1CharRefPreviewCard) DOM.step1CharRefPreviewCard.classList.remove('hidden');
-  if (DOM.step1CharRefDropzone) DOM.step1CharRefDropzone.classList.add('hidden');
-  showToast("Đã nạp ảnh tham chiếu từ URL!", "success");
-}
-
-function handleCharRefRemove() {
-  AppState.characterReferenceImage = null;
-  if (DOM.step1CharRefPreviewCard) DOM.step1CharRefPreviewCard.classList.add('hidden');
-  if (DOM.step1CharRefDropzone) DOM.step1CharRefDropzone.classList.remove('hidden');
-  if (DOM.step1CharRefFileInput) DOM.step1CharRefFileInput.value = '';
-  if (DOM.step1CharRefUrl) DOM.step1CharRefUrl.value = '';
-  showToast("Đã gỡ bỏ ảnh tham chiếu nhân vật", "info");
-}
 
 // STEP 1 HANDLERS
 function handleStep1ScriptInput() {
@@ -3741,10 +2997,6 @@ async function handleStep1ProcessScript() {
   const pacing = DOM.step1PacingSelect?.value || 'fast';
   const style = DOM.step1StyleSelect?.value || 'horror_cartoon_2d';
   const imageProvider = DOM.step1EngineSelect?.value || DOM.selectImageProvider?.value || 'meta_muse_cloud';
-  const charName = DOM.step1CharName?.value.trim() || '';
-  const charAnchor = DOM.step1CharAnchor?.value.trim() || '';
-  const charPreset = document.getElementById('step1-char-preset-select')?.value || '';
-  const charRefImage = AppState.characterReferenceImage || DOM.step1CharRefUrl?.value.trim() || undefined;
 
   const isEnglish = !(/[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđĐ]/i.test(text));
   // Ngôn ngữ lời review (CLAUDE.md mục 1.2 câu 15): rỗng = theo ngôn ngữ truyện
@@ -3777,10 +3029,6 @@ async function handleStep1ProcessScript() {
         text: text,
         pacing: pacing,
         style_preset: style,
-        character_preset_id: charPreset && charPreset !== 'custom' ? charPreset : undefined,
-        character_name: charName || undefined,
-        character_anchor: charAnchor,
-        character_reference_image: charRefImage,
         voice: autoVoice,
         image_provider: imageProvider,
         // Làm từng bước (CLAUDE.md mục 1.2 câu 4): ảnh cảnh tạo sau khi khoá nhân vật và bối cảnh
@@ -3792,9 +3040,6 @@ async function handleStep1ProcessScript() {
 
     if (createdProject && Array.isArray(createdProject.scenes) && createdProject.scenes.length > 0) {
       AppState.currentProject = adoptServerProject(createdProject);
-      if (charRefImage && !AppState.currentProject.character_reference_image) {
-        AppState.currentProject.character_reference_image = charRefImage;
-      }
       saveStateToLocal();
       renderFullUI();
       selectScene(0);
@@ -3894,6 +3139,71 @@ async function handleStep1ProcessComic() {
   }
 }
 
+// Video thành phẩm của một dự án: lần dựng vừa xong trong phiên này (đúng dự án), hoặc video máy chủ đã ghi vào dự án.
+// Không có thì trả null: trang Dựng không được trỏ trình phát vào story_final.mp4 khi file chưa có (đường cấm 3).
+function finalVideoOf(project) {
+  if (!project) return null;
+  const ps = AppState.produceState;
+  if (ps.projectId === project.id && ps.videoUrl) {
+    return { videoUrl: ps.videoUrl, srtUrl: ps.srtUrl || `/api/projects/${project.id}/download-srt`, draft: !!ps.draft };
+  }
+  const videoUrl = project.final_video_url
+    || (project.final_video_path ? `/api/projects/${project.id}/media/renders/story_final.mp4` : null);
+  return videoUrl ? { videoUrl, srtUrl: `/api/projects/${project.id}/download-srt`, draft: false } : null;
+}
+
+// Khối video thành phẩm (tiêu đề, trình phát, nút tải) chỉ hiện khi dự án có video; chưa có thì một dòng "Chưa có video thành phẩm"
+function renderFinalVideoBlock(project) {
+  const box = document.getElementById('publish-final-video');
+  const none = document.getElementById('publish-no-video');
+  const found = finalVideoOf(project);
+  if (box) box.hidden = !found;
+  if (none) none.hidden = !!found;
+  if (!found) {
+    if (DOM.cinemaVideoPlayer && DOM.cinemaVideoPlayer.getAttribute('src')) {
+      DOM.cinemaVideoPlayer.pause();
+      DOM.cinemaVideoPlayer.removeAttribute('src');
+      DOM.cinemaVideoPlayer.load();
+    }
+    return;
+  }
+  // Bản nháp (dưới mức video Muse) ra file riêng, không phải video cuối: ghi rõ trên tiêu đề
+  const title = document.getElementById('publish-final-title');
+  if (title) title.textContent = found.draft ? 'Bản nháp (không phải thành phẩm)' : 'Video thành phẩm';
+  if (DOM.cinemaVideoPlayer && DOM.cinemaVideoPlayer.getAttribute('src') !== found.videoUrl) {
+    DOM.cinemaVideoPlayer.src = found.videoUrl;
+  }
+  if (DOM.btnCinemaDownloadVideo) DOM.btnCinemaDownloadVideo.href = `/api/projects/${project.id}/download`;
+  if (DOM.btnCinemaDownloadSrt) DOM.btnCinemaDownloadSrt.href = found.srtUrl;
+  if (DOM.btnCinemaDownloadAss) DOM.btnCinemaDownloadAss.href = `/api/projects/${project.id}/download-ass`;
+}
+
+// Khối tiến độ dựng về trạng thái chưa dựng: không vòng quay, 0%, năm giai đoạn trung tính
+const PRODUCER_STATUS_CLASS = 'text-sm font-bold text-slate-800 flex items-center gap-2';
+function resetProducerUI() {
+  updateProducerStageUI(0, 0, 'Chưa dựng', []);
+  if (DOM.producerStatusText) DOM.producerStatusText.className = PRODUCER_STATUS_CLASS;
+  if (DOM.producerLogConsole) DOM.producerLogConsole.textContent = '> Chưa dựng lần nào trong phiên này.';
+  if (DOM.producerTimerText) DOM.producerTimerText.textContent = '00:00';
+}
+
+// Vẽ khối tiến độ và khối video theo dự án đang mở (renderFullUI() gọi mỗi lần đổi, tạo hay nạp dự án).
+// Lần dựng đang chạy của dự án khác không bị ngắt: tiến độ vẫn ghi vào AppState.produceState, mở lại đúng dự án thì vẽ lại.
+function paintProducerForCurrentProject() {
+  const project = AppState.currentProject;
+  const ps = AppState.produceState;
+  if (project && ps.projectId === project.id && (ps.isProducing || ps.progress > 0)) {
+    updateProducerStageUI(ps.step, ps.progress, ps.statusMsg || 'Đang xử lý...', ps.logs);
+    if (ps.failed && DOM.producerStatusText) {
+      DOM.producerStatusText.textContent = `Thất bại: ${ps.failed}`;
+      DOM.producerStatusText.className = "text-xs font-bold text-red-600 truncate";
+    }
+  } else {
+    resetProducerUI();
+  }
+  renderFinalVideoBlock(project);
+}
+
 // STEP 3: PRODUCTION STEPPER EXECUTION
 function updateProducerStageUI(stepNum, progressPercent, statusMsg, logs = []) {
   // Update phase indicators (1 to 5)
@@ -3908,8 +3218,8 @@ function updateProducerStageUI(stepNum, progressPercent, statusMsg, logs = []) {
         icon.innerHTML = '<i class="fa-solid fa-check text-[10px]"></i>';
       } else if (s === stepNum) {
         // Active phase
-        box.className = "p-3 rounded-2xl border-2 border-indigo-500 bg-indigo-50/70 transition shadow-md font-bold text-indigo-950 ring-2 ring-indigo-500/20";
-        icon.className = "w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center mx-auto mb-1.5 text-xs font-bold animate-pulse";
+        box.className = "p-3 rounded-2xl border-2 border-slate-700 bg-slate-50/70 transition shadow-md font-bold text-slate-950 ring-2 ring-slate-700/20";
+        icon.className = "w-7 h-7 rounded-full bg-slate-900 text-white flex items-center justify-center mx-auto mb-1.5 text-xs font-bold animate-pulse";
         icon.textContent = s;
       } else {
         // Pending phase
@@ -3922,7 +3232,11 @@ function updateProducerStageUI(stepNum, progressPercent, statusMsg, logs = []) {
 
   // Update status text and progress bar
   if (DOM.producerStatusText) {
-    DOM.producerStatusText.innerHTML = `<i class="fa-solid ${progressPercent >= 100 ? 'fa-circle-check text-emerald-600' : 'fa-spinner fa-spin text-indigo-600'} mr-1.5"></i> <span>${statusMsg}</span>`;
+    if (stepNum === 0) {
+      DOM.producerStatusText.textContent = statusMsg;   // chưa dựng: không vòng quay
+    } else {
+      DOM.producerStatusText.innerHTML = `<i class="fa-solid ${progressPercent >= 100 ? 'fa-circle-check text-emerald-600' : 'fa-spinner fa-spin text-slate-700'} mr-1.5"></i> <span>${statusMsg}</span>`;
+    }
   }
   if (DOM.producerPercentText) {
     DOM.producerPercentText.textContent = `${progressPercent}%`;
@@ -3962,14 +3276,19 @@ async function startProduceLongVideo(opts) {
   // Switch to Step 3 immediately
   switchStep(3);
 
-  // Reset produce state
+  // Reset produce state (gắn với dự án đang dựng)
+  AppState.produceState.projectId = project.id;
+  AppState.produceState.renderId = null;
+  AppState.produceState.videoUrl = null;
+  AppState.produceState.srtUrl = null;
+  AppState.produceState.failed = null;
+  AppState.produceState.draft = draft;
+  AppState.produceState.statusMsg = "Bước 1/5: Phân tích kịch bản & Khóa đặc điểm nhân vật đồng bộ...";
   AppState.produceState.isProducing = true;
   AppState.produceState.progress = 5;
   AppState.produceState.step = 1;
   AppState.produceState.logs = ["Bắt đầu quy trình sản xuất Video Dài (MoneyPrinterTurbo Stepper Pipeline)..."];
   AppState.produceState.startTime = Date.now();
-
-  if (DOM.btnProducerGotoCinema) DOM.btnProducerGotoCinema.disabled = true;
 
   // Start timer
   if (AppState.produceState.timerInterval) clearInterval(AppState.produceState.timerInterval);
@@ -3978,6 +3297,7 @@ async function startProduceLongVideo(opts) {
       clearInterval(AppState.produceState.timerInterval);
       return;
     }
+    if (AppState.currentProject?.id !== AppState.produceState.projectId) return;
     const elapsedSecs = Math.floor((Date.now() - AppState.produceState.startTime) / 1000);
     const m = Math.floor(elapsedSecs / 60);
     const s = elapsedSecs % 60;
@@ -4023,6 +3343,9 @@ async function startProduceLongVideo(opts) {
     if (err && err.shareLow) {
       // Bị chốt tỉ lệ video Muse chặn trước khi dựng: không có gì chạy. Hỏi có dựng bản nháp (không phải thành phẩm) không.
       AppState.produceState.isProducing = false;
+      AppState.produceState.progress = 0;
+      AppState.produceState.statusMsg = 'Chưa dựng: tỉ lệ video Muse chưa đủ';
+      AppState.produceState.logs = [err.message];
       updateProducerStageUI(1, 0, 'Chưa dựng: tỉ lệ video Muse chưa đủ', [err.message]);
       const ok = window.confirm(`${err.message}\n\nDựng BẢN NHÁP để xem thử? Bản nháp ra file riêng, không phải thành phẩm, `
         + 'không ghi đè video cuối của dự án.');
@@ -4033,6 +3356,9 @@ async function startProduceLongVideo(opts) {
     }
     console.error("startProduceLongVideo error", err);
     AppState.produceState.isProducing = false;
+    AppState.produceState.progress = 100;
+    AppState.produceState.statusMsg = `Lỗi sản xuất: ${err.message || err}`;
+    AppState.produceState.logs = [`LỖI: ${err.message || err}`];
     updateProducerStageUI(1, 100, `Lỗi sản xuất: ${err.message || err}`, [
       `LỖI: ${err.message || err}`
     ]);
@@ -4078,17 +3404,23 @@ function listenToProduceProgress(renderId) {
 
   function handleProduceStatusUpdate(data) {
     if (!data) return;
+    // Tin của một lần dựng cũ (đã bắt đầu lần khác) thì bỏ, để không ghi đè trạng thái lần mới
+    if (AppState.produceState.renderId !== renderId) return;
 
     const progress = data.progress || 0;
     const step = data.step || 1;
     const stepLabel = data.step_label || "Đang xử lý...";
     const logs = data.logs || [];
+    const renderedProjectId = AppState.produceState.projectId;
+    // Đang mở dự án khác thì chỉ giữ trạng thái; mở lại dự án đang dựng thì paintProducerForCurrentProject() vẽ lại
+    const visible = AppState.currentProject?.id === renderedProjectId;
 
     AppState.produceState.progress = progress;
     AppState.produceState.step = step;
     AppState.produceState.logs = logs;
+    AppState.produceState.statusMsg = stepLabel;
 
-    updateProducerStageUI(step, progress, stepLabel, logs);
+    if (visible) updateProducerStageUI(step, progress, stepLabel, logs);
 
     // Fail-Safe: Check failure first (Anti-Fail-Open)
     if (data.status === 'failed' || data.error) {
@@ -4098,10 +3430,11 @@ function listenToProduceProgress(renderId) {
       }
       if (pollInterval) clearInterval(pollInterval);
       const errMsg = data.error || 'Quy trình sản xuất video dài thất bại!';
+      AppState.produceState.failed = errMsg;
       showToast(`❌ LỖI SẢN XUẤT: ${escapeHtml(errMsg)}`, "error", 6000);
-      if (DOM.producerStatusText) {
+      if (visible && DOM.producerStatusText) {
         DOM.producerStatusText.textContent = `Thất bại: ${errMsg}`;
-        DOM.producerStatusText.className = "text-xs font-bold text-rose-600 truncate";
+        DOM.producerStatusText.className = "text-xs font-bold text-red-600 truncate";
       }
       return;
     }
@@ -4114,156 +3447,39 @@ function listenToProduceProgress(renderId) {
       }
       if (pollInterval) clearInterval(pollInterval);
 
-      const videoUrl = data.video_url || `/api/projects/${AppState.currentProject.id}/media/renders/story_final.mp4`;
-      const srtUrl = data.srt_url || `/api/projects/${AppState.currentProject.id}/download-srt`;
+      const videoUrl = data.video_url || `/api/projects/${renderedProjectId}/media/renders/story_final.mp4`;
+      const srtUrl = data.srt_url || `/api/projects/${renderedProjectId}/download-srt`;
 
       AppState.produceState.videoUrl = videoUrl;
       AppState.produceState.srtUrl = srtUrl;
 
-      // Populate Cinema Player
-      if (DOM.cinemaVideoPlayer) {
-        DOM.cinemaVideoPlayer.src = videoUrl;
+      if (!visible) {
+        showToast("Đã dựng xong video của dự án đang dựng. Mở lại dự án đó để xem.", "success", 6000);
+        return;
       }
-      if (DOM.btnCinemaDownloadVideo) {
-        DOM.btnCinemaDownloadVideo.href = `/api/projects/${AppState.currentProject.id}/download`;
-      }
-      if (DOM.btnCinemaDownloadSrt) {
-        DOM.btnCinemaDownloadSrt.href = srtUrl;
-      }
-      if (DOM.btnCinemaDownloadAss) {
-        DOM.btnCinemaDownloadAss.href = `/api/projects/${AppState.currentProject.id}/download-ass`;
-      }
-      if (DOM.btnProducerGotoCinema) {
-        DOM.btnProducerGotoCinema.disabled = false;
-      }
+      // Hiện trình phát và nút tải (chỉ khi đúng dự án đang mở)
+      renderFinalVideoBlock(AppState.currentProject);
 
       showToast("🎉 Hoàn tất sản xuất Video Dài 1080p! Đang mở Rạp Chiếu Phim...", "success", 4000);
 
       // Auto switch to Step 4 after 1.5 seconds
       setTimeout(() => {
-        switchStep(4);
+        if (AppState.currentProject?.id === renderedProjectId) switchStep(4);
       }, 1500);
     }
   }
 }
 
-// ================= MODAL 1: SCRIPT IMPORTER =================
-function openScriptModal() {
-  DOM.modalScriptImporter.classList.remove('hidden');
-  DOM.importScriptTextarea.focus();
-}
-
-function closeScriptModal() {
-  DOM.modalScriptImporter.classList.add('hidden');
-}
-
-function handleScriptInputCount() {
-  const text = DOM.importScriptTextarea.value.trim();
-  const words = text ? text.split(/\s+/).length : 0;
-  const sentences = text ? (text.match(/[^.!?]+[.!?]+/g) || [text]).length : 0;
-  DOM.scriptWordCount.textContent = `${words} từ • ${sentences} câu`;
-}
-
-async function handleSubmitScriptSplit() {
-  const text = DOM.importScriptTextarea.value.trim();
-  if (!text) {
-    showToast("Vui lòng dán nội dung câu chuyện trước!", "warning");
-    return;
-  }
-
-  const mode = DOM.splitModeSelect.value;
-  const style = DOM.splitStyleSelect.value;
-  const project = AppState.currentProject;
-
-  DOM.btnSubmitScriptSplit.disabled = true;
-  DOM.btnSubmitScriptSplit.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Đang phân tích kịch bản...';
-
-  // Server tách kịch bản và THÊM các cảnh mới vào dự án; giao diện lấy lại đúng bản dự án server trả về
-  let result;
-  if (!AppState.serverOnline) {
-    result = { success: false, detail: 'Máy chủ đang offline.' };
-  } else if (project.is_demo) {
-    result = { success: false, detail: 'đây là dự án mẫu, hãy tạo dự án mới trước.' };
-  } else if (!(await flushProjectSave())) {
-    result = { success: false, detail: 'chưa lưu được dự án hiện tại lên máy chủ.' };
-  } else {
-    result = await API.splitScript(project.id, text, { mode, style, pacing: mode, style_preset: style });
-  }
-
-  if (result?.success && result.project && Array.isArray(result.project.scenes)) {
-    const firstNewIndex = Math.max(0, result.project.scenes.length - (result.added_scenes || 0));
-    AppState.currentProject = adoptServerProject(result.project);
-    AppState.selectedSceneIndex = firstNewIndex;
-    rememberLastProjectId(result.project.id);
-    renderFullUI();
-    closeScriptModal();
-    showToast(`Đã thêm ${result.added_scenes || 0} phân cảnh (tổng ${result.total_scenes || result.project.scenes.length}).`, "success");
-  } else {
-    showToast(`Không thể phân tích kịch bản: ${escapeHtml(String(result?.detail || 'máy chủ không phản hồi'))}`, "error", 7000);
-  }
-
-  DOM.btnSubmitScriptSplit.disabled = false;
-  DOM.btnSubmitScriptSplit.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> <span>Tự động phân tích & tạo Storyboard</span>';
-}
-
-// ================= MODAL 3: CHARACTER CONSISTENCY =================
-function openCharacterModal() {
-  const char = AppState.currentProject?.character;
-  if (char) {
-    DOM.editCharName.value = char.name || "";
-    DOM.editCharPrompt.value = char.prompt || "";
-    // Giá trị cũ không còn hợp lệ (realistic, 3d_disney, manhwa) -> theo phong cách dự án
-    DOM.editCharStyle.value = characterStyleOverride(char);
-    if (DOM.editCharStyle.value !== characterStyleOverride(char)) DOM.editCharStyle.value = "";
-    DOM.editCharNegative.value = char.negative || "";
-  } else {
-    // character_anchor là mô tả ngoại hình, không phải tên
-    DOM.editCharName.value = "";
-    DOM.editCharPrompt.value = AppState.currentProject?.character_anchor || "";
-    DOM.editCharStyle.value = "";
-    DOM.editCharNegative.value = "";
-  }
-  DOM.modalCharacterEditor.classList.remove('hidden');
-}
-
-function closeCharacterModal() {
-  DOM.modalCharacterEditor.classList.add('hidden');
-}
-
-function handleSaveCharacter() {
-  const project = AppState.currentProject;
-  if (!project) return;
-
-  project.character = {
-    name: DOM.editCharName.value.trim(),
-    prompt: DOM.editCharPrompt.value.trim(),
-    style: DOM.editCharStyle.value,
-    negative: DOM.editCharNegative.value.trim(),
-    avatar: project.character?.avatar || ""
-  };
-  // Mô tả ngoại hình trong hộp này chính là character_anchor máy chủ ghép vào mọi ảnh
-  project.character_anchor = project.character.prompt;
-
-  saveStateToLocal();
-  renderCharacterCard();
-  closeCharacterModal();
-  showToast("Đã lưu cấu hình Khóa nhân vật đồng bộ!", "success");
-}
-
 // ================= MODAL 4: PROJECT MANAGER =================
-function openProjectModal() {
-  DOM.modalProjectManager.classList.remove('hidden');
-  renderProjectListModal();
-  // Lấy lại danh sách để số cảnh của các dự án khác là số mới nhất
-  if (AppState.serverOnline) {
-    loadProjectsList().then(() => {
-      if (!DOM.modalProjectManager.classList.contains('hidden')) renderProjectListModal();
-    }).catch(() => {});
-  }
-}
+// Trang Dự án: việc nạp danh sách nằm ở móc onPageShow('projects') trong initMuseCloud()
 
-function closeProjectModal() {
-  DOM.modalProjectManager.classList.add('hidden');
+// Mở hoặc tạo xong một dự án thì rời trang Dự án: về trang đã dùng lần trước của dự án đó, chưa có thì Cảnh hoặc Ý tưởng
+function leaveProjectsPage() {
+  const proj = AppState.currentProject;
+  const saved = typeof rememberedPage === 'function' ? rememberedPage(proj?.id) : null;
+  const target = (saved && !['projects', 'gallery', 'accounts'].includes(saved)) ? saved
+    : (proj?.scenes?.length ? 'scenes' : 'idea');
+  showPage(target);
 }
 
 function renderProjectListModal() {
@@ -4271,27 +3487,33 @@ function renderProjectListModal() {
   if (!container) return;
 
   const projects = AppState.projectsList || [];
+  container.classList.add('ws-project-grid');
   container.innerHTML = projects.map(p => {
     const isCurrent = AppState.currentProject && AppState.currentProject.id === p.id;
+    const unreadable = !!p.unreadable;
+    const scenes = isCurrent ? (AppState.currentProject.scenes?.length || 0) : (p.scenes_count ?? p.scene_count ?? 0);
+    const when = p.updated_at ? new Date(p.updated_at) : null;
+    const whenText = when && !isNaN(when) ? when.toLocaleDateString('vi-VN') : '';
+    const meta = unreadable ? 'Không đọc được' : `${scenes} cảnh${whenText ? ' · sửa ' + escapeHtml(whenText) : ''}`;
+    const cover = p.cover_url
+      ? `<img src="${escapeHtml(p.cover_url)}" alt="" loading="lazy">`
+      : '<i class="fa-solid fa-film" aria-hidden="true"></i>';
     return `
-      <div class="flex items-center justify-between p-3 rounded-xl border ${isCurrent ? 'bg-indigo-50 border-indigo-300' : 'bg-slate-50 border-slate-200 hover:border-slate-300'} transition">
-        <div>
-          <div class="text-xs font-bold text-slate-800 flex items-center gap-2">
-            <span>${escapeHtml(p.name)}</span>
-            ${isCurrent ? '<span class="text-[10px] bg-indigo-600 text-white px-1.5 py-0.5 rounded font-semibold">Đang mở</span>' : ''}
-          </div>
-          <div class="text-[10px] text-slate-500 mt-0.5">${isCurrent ? (AppState.currentProject.scenes?.length || 0) : (p.scenes_count ?? p.scene_count ?? 0)} phân cảnh • 1080p</div>
-        </div>
-        <div class="flex items-center gap-1.5">
-          ${!isCurrent ? `
-            <button onclick="switchProject('${p.id}')" class="px-2.5 py-1 bg-white hover:bg-indigo-50 border border-slate-300 text-xs font-semibold text-slate-700 hover:text-indigo-600 rounded-lg transition shadow-2xs">
-              Mở
-            </button>
-          ` : ''}
-        </div>
-      </div>
+      <button type="button" class="ws-card ws-project-card" data-project-id="${escapeHtml(p.id)}"${isCurrent ? ' aria-current="true"' : ''}${unreadable ? ' disabled' : ''}>
+        <span class="ws-project-cover">${cover}</span>
+        <span class="ws-project-body">
+          <span class="ws-project-title">${escapeHtml(p.name)}</span>
+          <span class="ws-project-meta">${isCurrent ? '<span class="ws-project-badge">Đang mở</span>' : ''}<span>${meta}</span></span>
+        </span>
+      </button>
     `;
   }).join('');
+  container.querySelectorAll('.ws-project-card[data-project-id]').forEach(card => {
+    card.addEventListener('click', () => {
+      if (AppState.currentProject && AppState.currentProject.id === card.dataset.projectId) leaveProjectsPage();
+      else switchProject(card.dataset.projectId);
+    });
+  });
 }
 
 async function handleCreateNewProject() {
@@ -4317,7 +3539,7 @@ async function handleCreateNewProject() {
   rememberLastProjectId(remote.id);
   AppState.projectsList.push({ id: remote.id, name: remote.name, scene_count: 0 });
   renderFullUI();
-  closeProjectModal();
+  leaveProjectsPage();
   DOM.newProjectNameInput.value = "";
   showToast(`Đã tạo dự án mới: "${escapeHtml(name)}"`, "success");
 }
@@ -4338,7 +3560,7 @@ async function switchProject(projectId) {
   AppState.currentProject = adoptServerProject(remote);
   rememberLastProjectId(remote.id);
   renderFullUI();
-  closeProjectModal();
+  leaveProjectsPage();
   showToast(`Đã mở dự án: ${escapeHtml(remote.name)}`, "info");
 }
 
@@ -4362,172 +3584,6 @@ async function handleSaveProject() {
   }
 }
 
-function closeAllModals() {
-  DOM.modalScriptImporter?.classList.add('hidden');
-  DOM.modalComicSlicer?.classList.add('hidden');
-  DOM.modalCharacterEditor?.classList.add('hidden');
-  DOM.modalProjectManager?.classList.add('hidden');
-  document.getElementById('modal-master-storyboard')?.classList.add('hidden');
-  // closeTrueCrimeModal (true_crime.js) còn dừng việc hỏi tiến độ phân tích
-  if (typeof closeTrueCrimeModal === 'function') closeTrueCrimeModal();
-  else DOM.modalTrueCrime?.classList.add('hidden');
-}
-
-// ================= OP_CTOOL MASTER STORYBOARD SPEC HANDLER =================
-let cachedMasterStoryboard = null;
-
-function initMasterStoryboardSpec() {
-  const btnOpen = document.getElementById('btn-open-master-storyboard-modal');
-  const modal = document.getElementById('modal-master-storyboard');
-  const btnClose = document.getElementById('btn-close-master-sb-modal');
-  const btnCancel = document.getElementById('btn-cancel-master-sb-modal');
-  const btnSampleDet = document.getElementById('btn-msb-sample-detective');
-  const btnSampleSciFi = document.getElementById('btn-msb-sample-scifi');
-  const btnDeconstruct = document.getElementById('btn-run-master-sb-deconstruct');
-  const btnApply = document.getElementById('btn-apply-master-sb-to-project');
-  const textarea = document.getElementById('master-sb-script-text');
-
-  if (!modal) return;
-
-  btnOpen?.addEventListener('click', () => {
-    modal.classList.remove('hidden');
-    if (textarea && !textarea.value) {
-      textarea.value = "Cơn mưa rào trút xuống màn đêm tĩnh mịch, xóa nhòa mọi dấu vết trên con đường dẫn vào căn biệt thự bỏ hoang.\nNam đẩy nhẹ cánh cổng sắt rỉ sét. Một tiếng kẽo kẹt xé toạc không gian... nhưng bên trong phòng khách, một đốm sáng đỏ kỳ dị vẫn đang nhấp nháy.\nTừng bước chân trĩu nặng trên sỏi ướt, hơi thở anh ngưng trệ khi nhìn thấy vệt máu loang trên thảm nhung.";
-    }
-  });
-
-  const closeModal = () => modal.classList.add('hidden');
-  btnClose?.addEventListener('click', closeModal);
-  btnCancel?.addEventListener('click', closeModal);
-
-  btnSampleDet?.addEventListener('click', () => {
-    if (textarea) {
-      textarea.value = "Cơn mưa rào trút xuống màn đêm tĩnh mịch, xóa nhòa mọi dấu vết trên con đường dẫn vào căn biệt thự bỏ hoang.\nNam đẩy nhẹ cánh cổng sắt rỉ sét. Một tiếng kẽo kẹt xé toạc không gian... nhưng bên trong phòng khách, một đốm sáng đỏ kỳ dị vẫn đang nhấp nháy.\nTừng bước chân trĩu nặng trên sỏi ướt, hơi thở anh ngưng trệ khi nhìn thấy vệt máu loang trên thảm nhung.";
-    }
-  });
-
-  btnSampleSciFi?.addEventListener('click', () => {
-    if (textarea) {
-      textarea.value = "Giữa khoảng không vô tận của vũ trụ, trạm không gian Aethelgard trôi dạt trong im lặng tuyệt đối.\nTín hiệu cầu cứu phát ra từ ba mươi năm trước bất ngờ kích hoạt trở lại trên màn hình radar.\nHệ thống dưỡng khí đang cạn kiệt, và một bóng đen khổng lồ đang từ từ bao trùm khoang điều khiển.";
-    }
-  });
-
-  btnDeconstruct?.addEventListener('click', async () => {
-    const text = textarea?.value?.trim();
-    if (!text) {
-      showToast("Vui lòng nhập kịch bản cần phân rã!", "warning");
-      return;
-    }
-
-    const styleDna = document.getElementById('master-sb-style-dna')?.value || "Dark moody cinematic neo-noir, 35mm film grain";
-    const gridMode = document.getElementById('master-sb-grid-mode')?.value === "true";
-
-    btnDeconstruct.disabled = true;
-    btnDeconstruct.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>Đang phân tích LLM...</span>';
-
-    try {
-      const resp = await fetch('/api/storyboard/deconstruct', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          script_text: text,
-          art_style: styleDna,
-          tone_and_mood: "tense_suspense",
-          batch_9_grid: gridMode,
-          provider: "auto",
-        }),
-      });
-
-      if (!resp.ok) throw new Error("Lỗi gọi API phân rã kịch bản");
-      const sb = await resp.json();
-      cachedMasterStoryboard = sb;
-
-      // Render preview
-      const previewCont = document.getElementById('master-sb-preview-container');
-      const cardsCont = document.getElementById('master-sb-preview-cards');
-      const countLabel = document.getElementById('master-sb-scene-count');
-      const titleLabel = document.getElementById('master-sb-preview-title');
-
-      if (previewCont && cardsCont) {
-        previewCont.classList.remove('hidden');
-        if (titleLabel) titleLabel.textContent = sb.project_metadata?.title || "Master Storyboard";
-        if (countLabel) countLabel.textContent = `${sb.scenes?.length || 0} cảnh`;
-
-        // Nội dung do LLM viết: luôn escape trước khi đưa vào HTML
-        const esc = v => escapeHtml(String(v ?? ''));
-        cardsCont.innerHTML = (sb.scenes || []).map(sc => `
-          <div class="p-2.5 bg-white rounded-lg border border-slate-200 space-y-1">
-            <div class="flex items-center justify-between text-[11px] font-bold">
-              <span class="text-purple-700">Cảnh ${esc(sc.scene_id)} • ${esc(sc.visual?.shot_type || 'Medium Shot')}</span>
-              <span class="text-amber-700 font-mono bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                ${sc.visual?.generation_mode === '9_grid_composite' ? '⚡ 9-Grid' : 'Single'} • ⏱️ ${esc(sc.estimated_duration_sec)}s (Nghỉ ${esc(sc.audio?.pause_after_sec)}s)
-              </span>
-            </div>
-            <div class="text-slate-800 font-medium">"${esc(sc.audio?.voiceover_text)}"</div>
-            <div class="text-[11px] text-slate-500 flex flex-wrap gap-2 pt-1 border-t border-slate-100">
-              <span>🔊 SFX: <b>${esc((sc.sound_design?.sfx_cue || []).join(', ') || 'none')}</b></span>
-              <span>🎵 BGM: <b>${esc(sc.sound_design?.bgm_energy || 'ambient')}</b></span>
-              <span>✨ Từ khóa: <b class="text-amber-600">${esc((sc.subtitles?.kinetic_highlight_words || []).join(', '))}</b></span>
-            </div>
-          </div>
-        `).join('');
-      }
-
-      btnApply?.classList.remove('hidden');
-      showToast("Phân rã Master Storyboard thành công!", "success");
-    } catch (err) {
-      console.error(err);
-      showToast("Lỗi phân rã kịch bản: " + escapeHtml(err.message), "error");
-    } finally {
-      btnDeconstruct.disabled = false;
-      btnDeconstruct.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> <span>Phân rã Master Storyboard</span>';
-    }
-  });
-
-  btnApply?.addEventListener('click', async () => {
-    if (!cachedMasterStoryboard) return;
-
-    btnApply.disabled = true;
-    btnApply.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>Đang nạp vào dự án...</span>';
-
-    try {
-      // Không gửi project_id: máy chủ ghi đè TOÀN BỘ dự án có id đó. Storyboard luôn được nạp thành dự án mới.
-      if (!(await flushProjectSave())) throw new Error("chưa lưu được dự án đang mở lên máy chủ");
-      const resp = await fetch('/api/storyboard/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storyboard: cachedMasterStoryboard,
-          title: cachedMasterStoryboard.project_metadata?.title,
-        }),
-      });
-
-      if (!resp.ok) throw new Error("Lỗi nạp storyboard vào dự án");
-      const resData = await resp.json();
-
-      closeModal();
-      showToast(`Đã tạo dự án mới "${escapeHtml(String(resData.title || ''))}" với ${resData.scenes_count} phân cảnh!`, "success");
-
-      // Reload project
-      if (resData.project_id) {
-        await switchProject(resData.project_id);
-        switchStep(2);
-      }
-    } catch (err) {
-      console.error(err);
-      showToast("Lỗi nạp storyboard: " + escapeHtml(err.message), "error");
-    } finally {
-      btnApply.disabled = false;
-      btnApply.innerHTML = '<i class="fa-solid fa-check"></i> <span>Nạp vào Dự Án & Bắt đầu Dựng</span>';
-    }
-  });
-}
-
-// Call on startup
-document.addEventListener('DOMContentLoaded', () => {
-  initMasterStoryboardSpec();
-});
-
 // ================= META MUSE CLOUD STUDIO ENGINE =================
 function initMuseCloud() {
   console.log("Initializing Meta Muse Cloud Studio Engine...");
@@ -4536,11 +3592,19 @@ function initMuseCloud() {
   if (DOM.btnMuseCloudStatus) {
     DOM.btnMuseCloudStatus.addEventListener('click', openMuseModal);
   }
-  if (DOM.btnCloseMuseModal) {
-    DOM.btnCloseMuseModal.addEventListener('click', closeMuseModal);
-  }
-  if (DOM.btnCloseMuseModalFooter) {
-    DOM.btnCloseMuseModalFooter.addEventListener('click', closeMuseModal);
+  document.getElementById('btn-muse-attach-cancel')?.addEventListener('click', () => {
+    clearMuseAttachMode();
+    if (typeof showPage === 'function') showPage('scenes');
+  });
+  // Mở trang thì nạp lại dữ liệu như cửa sổ cũ làm khi mở; rời trang Thư viện thì bỏ chế độ chọn ảnh cho cảnh
+  if (typeof onPageShow === 'function') {
+    onPageShow('gallery', () => { pollMuseBridgeStatus(); updateMuseAttachStrip(); });
+    onPageShow('accounts', () => { pollMuseBridgeStatus(); loadMuseAccountsUI(); });
+    for (const page of ['idea', 'script', 'look', 'scenes', 'publish', 'projects', 'accounts']) onPageShow(page, clearMuseAttachMode);
+    onPageShow('projects', () => {
+      renderProjectListModal();
+      if (AppState.serverOnline) loadProjectsList().then(() => { if (currentPage() === 'projects') renderProjectListModal(); }).catch(() => {});
+    });
   }
 
   const btnRefreshAcc = DOM.btnMuseRefreshAccounts;
@@ -4574,7 +3638,7 @@ function initMuseCloud() {
       const cmd = "setup_muse_accounts.bat";
       const ok = await copyTextToClipboard(cmd);
       showToast(ok
-        ? "Đã sao chép lệnh: 'setup_muse_accounts.bat'! Chạy file này để đăng nhập lần đầu cho 10 tài khoản."
+        ? "Đã sao chép lệnh: 'setup_muse_accounts.bat'! Chạy file này để đăng nhập lần đầu cho các tài khoản."
         : "Chưa chép được vào bộ nhớ tạm. Hãy chạy file setup_muse_accounts.bat trong thư mục story-studio.", ok ? "success" : "warning", 5000);
     });
   }
@@ -4705,16 +3769,16 @@ function museFleetStatusBadge(acc) {
     case 'online':
       return make('text-emerald-700 bg-emerald-50 border-emerald-200', 'bg-emerald-500 animate-pulse', 'online');
     case 'ready':
-      return make('text-teal-700 bg-teal-50 border-teal-200', 'bg-teal-500', 'sẵn sàng');
+      return make('text-slate-700 bg-slate-50 border-slate-200', 'bg-slate-700', 'sẵn sàng');
     case 'busy':
-      return make('text-indigo-700 bg-indigo-50 border-indigo-200', 'bg-indigo-500 animate-pulse', 'đang chạy');
+      return make('text-slate-700 bg-slate-50 border-slate-200', 'bg-slate-700 animate-pulse', 'đang chạy');
     case 'cooldown':
       return make('text-amber-700 bg-amber-50 border-amber-200', 'bg-amber-400', 'nghỉ (cooldown)', until ? `Nghỉ tới ${until}` : '');
     case 'blocked':
-      return make('text-rose-700 bg-rose-50 border-rose-200', 'bg-rose-500', 'bị khóa',
+      return make('text-red-700 bg-red-50 border-red-200', 'bg-red-500', 'bị khóa',
         [acc.block_reason, until ? `tới ${until}` : ''].filter(Boolean).join(' • ') || 'Tài khoản đang bị khóa');
     case 'needs_login':
-      return make('text-rose-700 bg-rose-50 border-rose-200', 'bg-rose-500', 'cần đăng nhập lại', 'Phiên đăng nhập đã hết hạn: chạy lại lệnh --setup cho tài khoản này');
+      return make('text-red-700 bg-red-50 border-red-200', 'bg-red-500', 'cần đăng nhập lại', 'Phiên đăng nhập đã hết hạn: chạy lại lệnh --setup cho tài khoản này');
     default:
       return make('text-slate-500 bg-slate-100 border-slate-200', 'bg-slate-400', 'offline');
   }
@@ -4729,10 +3793,10 @@ function renderMuseFleetAccountRow(acc, kind, activeId) {
     : '';
   const rowTitle = acc.last_error ? ` title="Lỗi gần nhất: ${escapeHtml(String(acc.last_error))}"` : '';
   const setBtnCls = isActive
-    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 cursor-default'
-    : (acc.has_profile ? 'bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer' : 'bg-slate-200 text-slate-500 cursor-pointer');
+    ? 'bg-slate-50 text-slate-700 border border-slate-200 cursor-default'
+    : (acc.has_profile ? 'bg-slate-900 hover:bg-slate-700 text-white cursor-pointer' : 'bg-slate-200 text-slate-500 cursor-pointer');
   return `
-    <div class="p-2.5 bg-white rounded-lg border ${isActive ? 'border-indigo-400 ring-2 ring-indigo-50' : 'border-slate-200'} flex items-center justify-between gap-2"${rowTitle}>
+    <div class="p-2.5 bg-white rounded-lg border ${isActive ? 'border-slate-300 ring-2 ring-slate-100' : 'border-slate-200'} flex items-center justify-between gap-2"${rowTitle}>
       <div class="min-w-0">
         <div class="flex items-center gap-1.5 flex-wrap">
           <span class="text-xs font-bold text-slate-900 truncate">${escapeHtml(String(acc.label || aid))}</span>
@@ -4760,10 +3824,10 @@ function updateMuseFleetIndicators() {
   const paint = (el, kind, label) => {
     if (!el) return;
     const v = museKindOnline(kind);
-    const icon = kind === 'video' ? 'fa-film text-purple-500' : 'fa-image text-indigo-500';
+    const icon = kind === 'video' ? 'fa-film text-slate-500' : 'fa-image text-slate-500';
     const tone = v === true
       ? ['bg-emerald-50 border-emerald-200 text-emerald-800', 'bg-emerald-500 animate-pulse', 'online']
-      : (v === false ? ['bg-rose-50 border-rose-200 text-rose-700', 'bg-rose-500', 'offline'] : ['bg-slate-50 border-slate-200 text-slate-600', 'bg-slate-400', 'chưa rõ']);
+      : (v === false ? ['bg-red-50 border-red-200 text-red-700', 'bg-red-500', 'offline'] : ['bg-slate-50 border-slate-200 text-slate-600', 'bg-slate-400', 'chưa rõ']);
     el.className = `px-2.5 py-1 border rounded-lg text-[10px] sm:text-[11px] font-mono font-bold flex items-center gap-1 ${tone[0]}`;
     el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full ${tone[1]}"></span><i class="fa-solid ${icon}"></i> ${label}: ${tone[2]}`;
   };
@@ -4818,7 +3882,7 @@ async function loadMuseAccountsUI() {
     return;
   }
   if (!cachedMuseAccounts.length) {
-    const msg = '<p class="text-[11px] text-rose-500 px-1">Không tải được danh sách tài khoản (server không phản hồi).</p>';
+    const msg = '<p class="text-[11px] text-red-500 px-1">Không tải được danh sách tài khoản (server không phản hồi).</p>';
     if (DOM.museFleetImageList) DOM.museFleetImageList.innerHTML = msg;
     if (DOM.museFleetVideoList) DOM.museFleetVideoList.innerHTML = msg;
     museFleetState.lastRenderKey = '';
@@ -4874,18 +3938,9 @@ async function handleMuseFleetAccountClick(e) {
   }
 }
 
+// Mở trang Tài khoản và kết nối; nạp lại trạng thái và tài khoản nằm ở móc onPageShow('accounts') trong initMuseCloud()
 function openMuseModal() {
-  if (DOM.modalMuseCloud) {
-    DOM.modalMuseCloud.classList.remove('hidden');
-    pollMuseBridgeStatus(); // Immediate refresh on open
-    loadMuseAccountsUI(); // Immediate refresh of multi-account switcher
-  }
-}
-
-function closeMuseModal() {
-  if (DOM.modalMuseCloud) {
-    DOM.modalMuseCloud.classList.add('hidden');
-  }
+  showPage('accounts');
 }
 
 // Một lần /status lỗi hoặc quá 4 s (trang bị ẩn, máy bận) chưa phải mất kết nối: giữ trạng thái cũ,
@@ -4929,18 +3984,15 @@ function updateMuseCloudUI(data) {
   // 1. Update Header Status Badge (huy hiệu chỉ hiện từ 1880px, khớp với nút trong header của index.html)
   if (DOM.btnMuseCloudStatus && DOM.headerMuseStatusDot && DOM.headerMuseStatusText && DOM.headerMuseSpecsBadge) {
     if (statusStr === 'online') {
-      DOM.btnMuseCloudStatus.className = "px-2.5 py-1.5 bg-gradient-to-r from-emerald-50 to-teal-50 hover:from-emerald-100 hover:to-teal-100 text-emerald-800 rounded-lg text-xs font-bold border border-emerald-300 transition flex items-center gap-1.5 shadow-xs group cursor-pointer";
+      DOM.btnMuseCloudStatus.dataset.state = "online";
       DOM.headerMuseStatusDot.innerHTML = `
-        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
         <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
       `;
       DOM.headerMuseStatusText.textContent = "Sẵn sàng";
-      DOM.headerMuseStatusText.className = "text-emerald-900";
       DOM.headerMuseStatusText.title = "";
-      DOM.headerMuseSpecsBadge.className = "hidden min-[1880px]:inline text-[10px] bg-white px-1.5 py-0.5 rounded text-emerald-700 border border-emerald-200 font-mono";
       DOM.headerMuseSpecsBadge.textContent = museFleetKindSummary();
     } else if (statusStr === 'busy') {
-      DOM.btnMuseCloudStatus.className = "px-2.5 py-1.5 bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 rounded-lg text-xs font-bold border border-amber-300 transition flex items-center gap-1.5 shadow-xs group cursor-pointer animate-pulse";
+      DOM.btnMuseCloudStatus.dataset.state = "busy";
       DOM.headerMuseStatusDot.innerHTML = `
         <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
       `;
@@ -4948,19 +4000,15 @@ function updateMuseCloudUI(data) {
       DOM.headerMuseStatusText.textContent = activeMsg.length > 25 ? activeMsg.substring(0, 22) + "..." : activeMsg;
       // Giới hạn bề rộng để thông báo dài không ép mất tên dự án trên màn 1280-1600px; rê chuột xem đủ câu.
       // 140px vừa đủ các câu runner gửi lâu nhất ("Muse đang tạo video..." 136px, "Gửi prompt lên Muse..." 137px).
-      DOM.headerMuseStatusText.className = "text-amber-900 truncate max-w-[140px]";
       DOM.headerMuseStatusText.title = activeMsg;
-      DOM.headerMuseSpecsBadge.className = "hidden min-[1880px]:inline text-[10px] bg-white px-1.5 py-0.5 rounded text-amber-800 border border-amber-200 font-mono";
       DOM.headerMuseSpecsBadge.textContent = museFleetKindSummary();   // chữ trạng thái bên cạnh đã nói đang render
     } else {
-      DOM.btnMuseCloudStatus.className = "px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold border border-rose-300 transition flex items-center gap-1.5 shadow-xs group cursor-pointer";
+      DOM.btnMuseCloudStatus.dataset.state = "offline";
       DOM.headerMuseStatusDot.innerHTML = `
-        <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+        <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
       `;
       DOM.headerMuseStatusText.textContent = "Chưa kết nối";
-      DOM.headerMuseStatusText.className = "text-rose-700 underline decoration-rose-300";
       DOM.headerMuseStatusText.title = "";
-      DOM.headerMuseSpecsBadge.className = "hidden min-[1880px]:inline text-[10px] bg-rose-100 px-1.5 py-0.5 rounded text-rose-800 font-semibold";
       DOM.headerMuseSpecsBadge.textContent = "Bấm để xem Fleet";
     }
   }
@@ -4968,22 +4016,22 @@ function updateMuseCloudUI(data) {
   // 2. Update Modal Status Badge
   if (DOM.museModalStatusBadge && DOM.museModalStatusDot && DOM.museModalStatusText) {
     if (statusStr === 'online') {
-      DOM.museModalStatusBadge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5";
-      DOM.museModalStatusDot.className = "w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse";
+      DOM.museModalStatusBadge.dataset.state = "online";
+      DOM.museModalStatusDot.className = "w-1.5 h-1.5 rounded-full bg-emerald-500";
       DOM.museModalStatusText.textContent = "Đang kết nối (Online)";
     } else if (statusStr === 'busy') {
-      DOM.museModalStatusBadge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5";
-      DOM.museModalStatusDot.className = "w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse";
+      DOM.museModalStatusBadge.dataset.state = "busy";
+      DOM.museModalStatusDot.className = "w-1.5 h-1.5 rounded-full bg-amber-500";
       DOM.museModalStatusText.textContent = "Đang render tác vụ (Busy)";
     } else {
-      DOM.museModalStatusBadge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1.5";
-      DOM.museModalStatusDot.className = "w-1.5 h-1.5 rounded-full bg-rose-400";
+      DOM.museModalStatusBadge.dataset.state = "offline";
+      DOM.museModalStatusDot.className = "w-1.5 h-1.5 rounded-full bg-red-500";
       DOM.museModalStatusText.textContent = "Chưa kết nối (Offline)";
     }
   }
 
-  // 3. Fleet accounts: refresh the account list when the modal is visible (accounts come with every status poll)
-  if (DOM.modalMuseCloud && !DOM.modalMuseCloud.classList.contains('hidden') && data && Array.isArray(data.accounts)) {
+  // 3. Fleet accounts: refresh the account list when the accounts page is visible (accounts come with every status poll)
+  if (typeof currentPage === 'function' && currentPage() === 'accounts' && data && Array.isArray(data.accounts)) {
     renderMuseFleetAccounts();
   }
   updateMuseFleetIndicators();
@@ -5067,11 +4115,11 @@ function renderMuseGalleryItems(items) {
               <i class="fa-solid fa-thumbtack text-[10px]"></i>
               <span>Gắn Cảnh #${AppState.selectedSceneIndex + 1}</span>
             </button>
-            <a href="${escapeHtml(downloadUrl)}" download="${escapeHtml(sceneId)}${isVideo ? '.mp4' : '.jpg'}" class="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs" title="Tải file về máy tính">
+            <a href="${escapeHtml(downloadUrl)}" download="${escapeHtml(sceneId)}${isVideo ? '.mp4' : '.jpg'}" class="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs" title="Tải file về máy tính">
               <i class="fa-solid fa-download"></i>
               <span class="hidden sm:inline">Tải</span>
             </a>
-            <button type="button" class="btn-delete-gallery-item px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer" data-task-id="${escapeHtml(taskId)}" title="Xóa tệp media này">
+            <button type="button" class="btn-delete-gallery-item px-2 py-1 bg-red-50 hover:bg-red-50 text-red-600 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer" data-task-id="${escapeHtml(taskId)}" title="Xóa tệp media này">
               <i class="fa-solid fa-trash-can"></i>
             </button>
           </div>
@@ -5273,8 +4321,6 @@ function escapeHtml(text) {
 window.switchStep = switchStep;
 window.startProduceLongVideo = startProduceLongVideo;
 window.updateSceneTextLive = updateSceneTextLive;
-window.openComicModal = openComicModal;
-window.closeComicModal = closeComicModal;
 window.selectScene = selectScene;
 window.updateSceneKenBurns = updateSceneKenBurns;
 window.moveScene = moveScene;
@@ -5286,16 +4332,12 @@ window.updateSceneText = updateSceneText;
 window.updateSceneVisualPrompt = updateSceneVisualPrompt;
 window.updateSceneVisualPromptLive = updateSceneVisualPromptLive;
 window.switchScenePromptTab = switchScenePromptTab;
-window.updateSceneVideoPrompt = updateSceneVideoPrompt;
-window.updateSceneVideoPromptLive = updateSceneVideoPromptLive;
 window.playSceneVoice = playSceneVoice;
 window.togglePlayVoiceSample = togglePlayVoiceSample;
 window.seekSceneAudio = seekSceneAudio;
 window.regenerateSceneVoice = regenerateSceneVoice;
-window.openScriptModal = openScriptModal;
 window.switchProject = switchProject;
 window.openMuseModal = openMuseModal;
-window.closeMuseModal = closeMuseModal;
 window.loadMuseAccountsUI = loadMuseAccountsUI;
 window.setMediaViewMode = setMediaViewMode;
 window.resetSceneImageStatus = resetSceneImageStatus;

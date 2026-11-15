@@ -81,10 +81,10 @@
       return;
     }
     box.innerHTML = yt.selected.map((kw, i) => `
-      <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border ${i === 0 ? 'bg-indigo-50 border-indigo-300 text-indigo-700 font-bold' : 'bg-white border-slate-300 text-slate-700'}">
+      <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border ${i === 0 ? 'bg-slate-50 border-slate-300 text-slate-700 font-bold' : 'bg-white border-slate-300 text-slate-700'}">
         ${i === 0 ? '<i class="fa-solid fa-star"></i>' : ''}${escapeHtml(kw)}
-        ${i === 0 ? '' : `<button type="button" class="yt-seo-make-main text-indigo-600 hover:text-indigo-800" data-index="${escapeHtml(i)}" title="Đặt làm từ khoá chính">↑</button>`}
-        <button type="button" class="yt-seo-unselect text-slate-400 hover:text-rose-600" data-index="${escapeHtml(i)}" title="Bỏ chọn">×</button>
+        ${i === 0 ? '' : `<button type="button" class="yt-seo-make-main text-slate-700 hover:text-slate-800" data-index="${escapeHtml(i)}" title="Đặt làm từ khoá chính">↑</button>`}
+        <button type="button" class="yt-seo-unselect text-slate-400 hover:text-red-600" data-index="${escapeHtml(i)}" title="Bỏ chọn">×</button>
       </span>`).join('');
   }
 
@@ -92,7 +92,7 @@
     const box = el('yt-seo-checks');
     const failed = (checks || []).filter((c) => !c.ok);
     const passed = (checks || []).length - failed.length;
-    box.className = `rounded-lg border p-2 ${failed.length ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`;
+    box.className = `rounded-lg border p-2 ${failed.length ? 'bg-red-50 border-red-200 text-red-600' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`;
     box.innerHTML = failed.length
       ? `<div class="font-bold">Chưa đạt ${escapeHtml(failed.length)} luật (đạt ${escapeHtml(passed)}). Sửa rồi bấm Lưu và kiểm lại:</div>`
         + failed.map((c) => `<div>✗ ${escapeHtml(c.message)}</div>`).join('')
@@ -105,7 +105,7 @@
     if (!pack) return;
     el('yt-seo-title-options').innerHTML = pack.title_options.length > 1
       ? '<div class="text-slate-500">Các tiêu đề AI viết (bấm để chọn):</div>' + pack.title_options.map((t) => `
-        <button type="button" class="yt-seo-title-option block w-full text-left px-2 py-1 rounded-lg border ${t === pack.title ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 bg-white hover:bg-slate-50'}" data-title="${escapeHtml(t)}">${escapeHtml(t)}</button>`).join('')
+        <button type="button" class="yt-seo-title-option block w-full text-left px-2 py-1 rounded-lg border ${t === pack.title ? 'border-slate-300 bg-slate-50' : 'border-slate-200 bg-white hover:bg-slate-50'}" data-title="${escapeHtml(t)}">${escapeHtml(t)}</button>`).join('')
       : '';
     el('input-seo-title').value = pack.title;
     el('textarea-seo-desc').value = pack.description;

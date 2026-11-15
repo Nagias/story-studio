@@ -56,9 +56,12 @@ async def _failure_message(project_id: str, exc: StepFailed) -> str:
 
 
 async def _run_job(job_id: str, project_id: str, language: str, voice: Optional[str]) -> None:
-    """Chạy nền; job luôn kết thúc ở `done` hoặc `failed`, không bao giờ treo ở `running`."""
+    """Chạy nền; job luôn kết thúc ở `done`, `failed` hoặc `cancelled`, không bao giờ treo ở `running`."""
     try:
-        project, rewritten = await create_language_version(project_id, language, voice)
+        project, rewritten = await create_language_version(
+            project_id, language, voice, should_stop=lambda: case_jobs.is_cancel_requested(job_id))
+    except case_jobs.JobCancelled:
+        case_jobs.update_job(job_id, status="cancelled", error="Đã huỷ theo yêu cầu")
     except LanguageVersionError as exc:
         case_jobs.update_job(job_id, status="failed", error=str(exc))
     except StepFailed as exc:
