@@ -1277,9 +1277,9 @@ function renderSceneList() {
             ` : ''}
 
             ${isShowingVideo && currentVideoUrl ? `
-              <video src="${currentVideoUrl}${currentVideoUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(scene.updated_at || Date.now())}" class="w-full h-full object-cover rounded-xl" controls preload="metadata" playsinline></video>
+              <video src="${currentVideoUrl}${currentVideoUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(scene.updated_at || Date.now())}" class="w-full h-full object-cover rounded-xl" data-viewer-src="${escapeHtml(currentVideoUrl)}" data-viewer-kind="video" data-viewer-caption="Cảnh #${escapeHtml(String(idx + 1))}" preload="metadata" playsinline></video>
             ` : (hasImage ? `
-              <img src="${scene.image_url}" alt="Scene #${idx + 1}" class="w-full h-full object-cover" onerror="handleSceneImageError(this, ${idx})">
+              <img src="${scene.image_url}" alt="Scene #${idx + 1}" class="w-full h-full object-cover" data-viewer-src="${escapeHtml(scene.image_url)}" data-viewer-kind="image" data-viewer-caption="Cảnh #${escapeHtml(String(idx + 1))}" onerror="handleSceneImageError(this, ${idx})">
             ` : `
               <div class="w-full h-full bg-slate-100 flex flex-col items-center justify-center text-center p-2">
                 <i class="fa-solid fa-mountain-sun text-2xl text-slate-400 mb-1"></i>
@@ -1306,7 +1306,7 @@ function renderSceneList() {
             </div>
             
             <!-- Hover Action Buttons Overlay -->
-            <div class="absolute inset-0 bg-slate-950/60 opacity-0 group-hover/img:opacity-100 flex items-center justify-center gap-1.5 transition duration-200 z-10">
+            <div class="ws-scene-actions absolute inset-0 bg-slate-950/60 opacity-0 group-hover/img:opacity-100 flex items-center justify-center gap-1.5 transition duration-200 z-10">
               <button onclick="regenerateSceneImage(${idx})" title="Gen lại ảnh AI" class="p-1.5 bg-slate-900 hover:bg-slate-700 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
                 <i class="fa-solid fa-arrows-rotate"></i>
               </button>
@@ -1327,6 +1327,7 @@ function renderSceneList() {
                 <i class="fa-solid fa-file-video"></i>
                 <input type="file" accept="video/*" class="hidden" onchange="uploadCustomSceneVideo(${idx}, this)">
               </label>
+              ${(isShowingVideo && currentVideoUrl) || hasImage ? `<button type="button" data-viewer-src="${escapeHtml(isShowingVideo && currentVideoUrl ? currentVideoUrl : scene.image_url)}" data-viewer-kind="${isShowingVideo && currentVideoUrl ? 'video' : 'image'}" data-viewer-caption="Cảnh #${escapeHtml(String(idx + 1))}" title="Xem lớn" class="p-1.5 bg-slate-900 hover:bg-slate-700 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110"><i class="fa-solid fa-magnifying-glass-plus"></i></button>` : ''}
               <button onclick="selectScene(${idx})" title="Xem trong Studio Player" class="p-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-white text-xs shadow-md transition transform hover:scale-110">
                 <i class="fa-solid fa-play"></i>
               </button>

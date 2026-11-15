@@ -230,6 +230,7 @@
         img.src = url;
         img.alt = `Ảnh 9-grid ${i}`;
         img.style.width = '220px';
+        if (typeof window.bindMediaViewerLink === 'function') window.bindMediaViewerLink(a, 'image', `Ảnh 9-grid ${i}`);
         a.appendChild(img);
         grids.appendChild(a);
       }

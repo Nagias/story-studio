@@ -146,6 +146,7 @@
       const img = node('img', 'w-full rounded-lg border border-slate-200');
       img.src = loc.plate_url;
       img.alt = `Ảnh chuẩn bối cảnh ${loc.name_vi}`;
+      if (typeof window.bindMediaViewerLink === 'function') window.bindMediaViewerLink(a, 'image', `Ảnh chuẩn bối cảnh ${loc.name_vi}`);
       a.appendChild(img);
       right.appendChild(a);
       right.appendChild(node('p', 'text-[10px] text-slate-500 mt-1', `Phiên bản ${loc.versions} — bấm ảnh để xem cỡ thật`));

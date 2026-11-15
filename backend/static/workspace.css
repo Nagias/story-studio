@@ -302,3 +302,16 @@ body[data-ws-page="scenes"] .ws-canvas-inner { padding-top: 16px; padding-bottom
 .focus\:border-slate-700:focus { border-color: #334155; }
 .focus\:ring-red-500:focus { --tw-ring-color: #ef4444; }
 .hover\:bg-slate-900:hover { background-color: #0f172a; }
+
+/* Xem lớn ảnh/video (media_viewer.js) */
+.ws-viewer-backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(9, 9, 11, .88); display: flex; align-items: center; justify-content: center; }
+.ws-viewer-box { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 92vw; }
+.ws-viewer-media { max-width: 92vw; max-height: 86vh; object-fit: contain; border-radius: 8px; background: #09090b; }
+.ws-viewer-caption { color: #d4d4d8; font-size: 12px; }
+.ws-viewer-close { position: absolute; top: 14px; right: 18px; width: 36px; height: 36px; border-radius: 9999px; border: 1px solid #52525b; background: #18181b; color: #fafafa; font-size: 22px; line-height: 1; cursor: pointer; }
+.ws-viewer-close:hover { background: #3f3f46; }
+/* Lớp nút trên thẻ cảnh: vùng trống không bắt chuột để bấm xuyên tới ảnh/video; nút chỉ nhận chuột khi đang hiện */
+.ws-scene-actions { pointer-events: none; }
+.ws-scene-actions > * { pointer-events: none; }
+.group\/img:hover .ws-scene-actions > *, .ws-scene-actions:focus-within > * { pointer-events: auto; }
+[data-viewer-src] { cursor: zoom-in; }
