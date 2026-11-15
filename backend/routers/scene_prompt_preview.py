@@ -9,8 +9,10 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Query
 
 from security import require_safe_id
-from services import project_service
+from services import climax_video, project_service
+from services import dialogue_video as dv
 from services import scene_prompt_preview as spp
+from services.project_service import ProjectUnreadableError
 
 router = APIRouter(prefix="/api", tags=["Scene Muse prompt preview"])
 
@@ -37,5 +39,8 @@ async def muse_prompt(project_id: str, scene_id: str, kind: str = Query("image")
         return await asyncio.to_thread(_preview, project_id, scene_id, kind)
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e)) from None
-    except ValueError as e:   # chưa xem trước được (PromptPreviewError), id dành riêng cho hệ thống (vd _cases)
+    except ProjectUnreadableError as e:   # project.json hỏng: giữ file, báo rõ như API dự án
+        raise HTTPException(status_code=409, detail=str(e)) from None
+    except (ValueError, climax_video.ClimaxVideoError, dv.DialogueVideoError) as e:
+        # chưa xem trước được (PromptPreviewError, danh sách nhân vật/bối cảnh hỏng), id dành riêng (vd _cases)
         raise HTTPException(status_code=400, detail=str(e)) from None

@@ -1365,7 +1365,7 @@ function renderSceneList() {
                     onclick="switchScenePromptTab(${idx}, 'video')" 
                     id="btn-tab-vid-${idx}" 
                     class="px-2.5 py-1 rounded-md text-[10px] font-extrabold ${scene.active_prompt_tab === 'video' ? 'bg-white text-slate-700 shadow-2xs border border-slate-200' : 'text-slate-500 hover:text-slate-800'} transition cursor-pointer flex items-center gap-1.5"
-                    title="Số video, số giây và prompt từng video mà nút Muse Video sẽ gửi (chỉ đọc)"
+                    title="Chỉ đọc: prompt từng video mà nút Muse Video trên thẻ gửi (số video, số giây); cảnh được chọn làm video cao trào thì thêm bản giao việc mà nút làm video cao trào gửi"
                   >
                     <i class="fa-solid fa-film text-slate-500 text-[10px]"></i>
                     <span>Video gửi Muse</span>

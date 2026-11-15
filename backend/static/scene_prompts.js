@@ -1,10 +1,13 @@
 /* Prompt thật gửi Muse trên thẻ cảnh: khối "Prompt đầy đủ gửi Muse" (tab ảnh) và tab "Video gửi Muse".
  * Hỏi GET /api/projects/{project_id}/scenes/{scene_id}/muse-prompt?kind=image|video (routers/scene_prompt_preview.py,
- * không tốn gì), tải lười: khối ảnh khi mở, tab video khi hiện. Chữ từ máy chủ đặt bằng textContent.
+ * không tốn gì), tải lười: khối ảnh khi mở, tab video khi hiện và trang Cảnh đang mở. Chữ từ máy chủ đặt bằng textContent.
  * Nạp sau app.js; dùng AppState, flushProjectSave của app.js. app.js gọi window.loadSceneMusePrompt(index, kind).
+ * Tab video ghi rõ nút nào gửi gì: nút "Muse Video" trên thẻ (video theo lời thoại) và, nếu cảnh được chọn làm video
+ * cao trào, nút làm video cao trào (bản giao việc, hoặc lý do lượt đó sẽ dừng).
  */
 (function () {
-  const CACHE_MS = 60000;
+  // Chỉ gộp các lần hỏi liền nhau (thẻ vẽ lại nhiều lần): khoá nhân vật/bối cảnh có thể vừa đổi ở trang khác
+  const CACHE_MS = 5000;
   const cache = new Map();   // `${scene_id}|${kind}` -> {sig, at, promise}
 
   function project() {
@@ -24,7 +27,10 @@
     const hit = cache.get(key);
     if (hit && hit.sig === sig && Date.now() - hit.at < CACHE_MS) return hit.promise;
     const promise = (async () => {
-      if (typeof flushProjectSave === 'function') await flushProjectSave({ silent: true });   // xem trước theo bản đã lưu
+      // Xem trước theo bản đã lưu: chưa lưu được thì báo, không hiện chữ cũ trên máy chủ như thể là chữ mới
+      if (typeof flushProjectSave === 'function' && !(await flushProjectSave({ silent: true }))) {
+        throw new Error('chưa lưu được chỉnh sửa lên máy chủ nên chữ trên máy chủ có thể đã cũ; lưu xong rồi mở lại');
+      }
       const res = await fetch(`/api/projects/${encodeURIComponent(p.id)}/scenes/${encodeURIComponent(scene.id)}/muse-prompt?kind=${encodeURIComponent(kind)}`);
       let data = null;
       try { data = await res.json(); } catch (e) { console.warn('scene_prompts: máy chủ trả không phải JSON', e); }
@@ -73,20 +79,38 @@
     body.appendChild(block('Chữ Muse nhận', d.prompt));
   }
 
-  function renderVideo(body, d) {
-    if (d.kind === 'climax') {
-      body.appendChild(el('div', 'ws-mp-summary', `Video cao trào · Muse tự chia clip, tổng khoảng ${d.target_seconds} giây`));
-      if (d.needs_grid_first) {
-        body.appendChild(el('div', 'ws-mp-note', `Cảnh này vẽ ${d.grid_count} ảnh lưới 9 ô trước và chờ bạn duyệt, sau đó Muse mới nhận bản giao việc dưới đây.`));
-      }
-      body.appendChild(el('div', 'ws-mp-note', `Mã kết thúc thật sinh lúc chạy; ở đây ghi ${d.done_token_placeholder}.`));
-      body.appendChild(block('Bản giao việc gửi Muse', d.prompt));
+  function renderDialogue(body, d) {
+    body.appendChild(el('div', 'ws-mp-label', 'Nút "Muse Video" trên thẻ gửi:'));
+    if (!d || d.error) {
+      body.appendChild(el('div', 'ws-mp-note', 'Chưa chia được lời kể thành video: ' + ((d && d.error) || 'không rõ lý do')));
       return;
     }
     const segs = d.segments || [];
     body.appendChild(el('div', 'ws-mp-summary', `${d.video_count} video · khoảng ${secs(d.narration_seconds)} giây`
       + (d.estimated ? ' (ước theo số chữ, cảnh chưa có giọng đọc)' : '')));
+    if (d.blocked) body.appendChild(el('div', 'ws-mp-note', 'Bấm lúc này nút sẽ dừng: ' + d.blocked));
     segs.forEach(s => body.appendChild(block(`Video ${s.index}/${segs.length} · khoảng ${secs(s.seconds)} giây lời kể`, s.prompt)));
+  }
+
+  function renderClimax(body, c) {
+    const head = el('div', 'ws-mp-label', 'Lượt làm video cao trào gửi:');
+    head.style.marginTop = '10px';
+    body.appendChild(head);
+    if (c.blocked) {
+      body.appendChild(el('div', 'ws-mp-note', 'Lượt cao trào sẽ dừng: ' + c.blocked));
+      return;
+    }
+    body.appendChild(el('div', 'ws-mp-summary', `Video cao trào · Muse tự chia clip, tổng khoảng ${c.target_seconds} giây`));
+    if (c.needs_grid_first) {
+      body.appendChild(el('div', 'ws-mp-note', `Cảnh này vẽ ${c.grid_count} ảnh lưới 9 ô trước và chờ bạn duyệt, sau đó Muse mới nhận bản giao việc dưới đây.`));
+    }
+    body.appendChild(el('div', 'ws-mp-note', `Mã kết thúc thật sinh lúc chạy; ở đây ghi ${c.done_token_placeholder}.`));
+    body.appendChild(block('Bản giao việc gửi Muse', c.prompt));
+  }
+
+  function renderVideo(body, d) {
+    renderDialogue(body, d.dialogue);
+    if (d.climax) renderClimax(body, d.climax);
   }
 
   async function load(body, kind, index) {
@@ -126,7 +150,7 @@
   function loadVisibleVideoTabs() {
     document.querySelectorAll('[data-muse-prompt-kind="video"][data-muse-prompt-body]').forEach(body => {
       if (body.dataset.museLoaded || body.dataset.museLoad) return;
-      if (body.closest('.hidden')) return;
+      if (body.closest('.hidden') || body.closest('[hidden]')) return;   // tab ẩn hoặc trang Cảnh chưa mở
       load(body, 'video', Number(body.dataset.sceneIndex));
     });
   }
@@ -159,6 +183,8 @@
 
   const container = document.getElementById('scene-list-container');
   if (container) new MutationObserver(loadVisibleVideoTabs).observe(container, { childList: true });
+  const page = document.getElementById('page-scenes');   // mở trang Cảnh thì tải tab video đang hiện
+  if (page) new MutationObserver(loadVisibleVideoTabs).observe(page, { attributes: true, attributeFilter: ['hidden'] });
 
   window.loadSceneMusePrompt = loadSceneMusePrompt;
 })();

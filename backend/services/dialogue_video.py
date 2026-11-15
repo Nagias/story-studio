@@ -357,14 +357,20 @@ def _same_plan(old: list[dict], new: list[dict]) -> bool:
     return [s.get("text") for s in old] == [s.get("text") for s in new]
 
 
-def prepare_run(project_id: str, scene_id: str) -> dict:
-    """Kiểm trước khi chạy (lỗi thì DialogueVideoError, không tốn lượt Muse) và ghi kế hoạch vào trạng thái. Lời kể
-    không đổi thì giữ các video đoạn đã làm (làm tiếp từ đoạn chưa xong)."""
-    project, scene = load_scene(project_id, scene_id)
+def check_ready(project_id: str, scene: Scene) -> None:
+    """Điều kiện trước khi gửi Muse (có giọng đọc, có ảnh cảnh); thiếu thì DialogueVideoError. Bản xem trước prompt trên
+    thẻ cảnh (services/scene_prompt_preview.py) gọi đúng hàm này."""
     if voice_file(scene) is None:
         raise DialogueVideoError("Cảnh chưa có giọng đọc nên chưa biết lời kể dài bao lâu: thu giọng cảnh này trước "
                                  "(số video Muse tính theo độ dài giọng đọc thật)")
     _scene_image(project_id, scene)
+
+
+def prepare_run(project_id: str, scene_id: str) -> dict:
+    """Kiểm trước khi chạy (lỗi thì DialogueVideoError, không tốn lượt Muse) và ghi kế hoạch vào trạng thái. Lời kể
+    không đổi thì giữ các video đoạn đã làm (làm tiếp từ đoạn chưa xong)."""
+    project, scene = load_scene(project_id, scene_id)
+    check_ready(project_id, scene)
     plan = scene_plan(project, scene)
     old = scene_state(scene)
     done = old.get("clips") or []

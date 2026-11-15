@@ -24,6 +24,7 @@ from routers import muse_bridge as mb  # noqa: E402
 from routers import scene_prompt_preview as spp_router  # noqa: E402
 from runners import muse_fleet_runner as runner  # noqa: E402
 from services import character_sheets as cs  # noqa: E402
+from services import climax_video  # noqa: E402
 from services import dialogue_video as dv  # noqa: E402
 from services import image_service, muse_prompt_format, project_service, story_cast  # noqa: E402
 from services import scene_prompt_preview as spp  # noqa: E402
@@ -140,23 +141,50 @@ def test_dialogue_preview_matches_scene_plan(isolated_projects_dir):
     project, scene = _scene()
     got = spp.video_preview(project, scene)
     plan = dv.scene_plan(project, scene)
-    assert got["kind"] == "dialogue" and got["video_count"] == plan["video_count"] == len(got["segments"]) > 1
-    assert got["estimated"] is True                                    # chưa có giọng: ước theo số chữ
-    for k, seg in enumerate(got["segments"], 1):
+    assert got["climax"] is None                                       # cảnh không chọn làm video cao trào
+    d = got["dialogue"]
+    assert d["video_count"] == plan["video_count"] == len(d["segments"]) > 1
+    assert d["estimated"] is True                                      # chưa có giọng: ước theo số chữ
+    assert "chưa có giọng đọc" in d["blocked"]                         # nút Muse Video sẽ dừng như prepare_run
+    for k, seg in enumerate(d["segments"], 1):
         assert seg["prompt"] == dv.segment_prompt(project, scene, plan["segments"], k, None, False)
         assert f"video {k}/{plan['video_count']}" in seg["prompt"]
 
 
-def test_climax_scene_with_cast_returns_scene_brief(isolated_projects_dir):
+def test_climax_scene_shows_both_buttons_and_the_scene_brief(isolated_projects_dir):
+    """Nút "Muse Video" trên thẻ luôn gửi prompt theo lời thoại; nút cao trào gửi bản giao việc: tab hiện cả hai."""
     _project(scene_meta={"climax_video": {"status": "selected"}}, duration=12.0)
-    _with_cast()
+    _with_cast(approve=True)
     project, scene = _scene()
     got = spp.video_preview(project, scene)
-    people = cs.scene_characters(project, cs.peek_cast(project), scene)
-    assert got["kind"] == "climax" and got["brief_kind"] == "cast" and got["needs_grid_first"] is True
-    assert got["target_seconds"] == target_seconds(12.0) == 12
-    assert got["prompt"] == scene_brief(project, scene, people, got["grid_count"], 12.0, spp.DONE_TOKEN_PLACEHOLDER)
-    assert spp.DONE_TOKEN_PLACEHOLDER in got["prompt"]
+    plan = dv.scene_plan(project, scene)
+    assert [s["prompt"] for s in got["dialogue"]["segments"]] == [
+        dv.segment_prompt(project, scene, plan["segments"], k, None, False) for k in range(1, plan["video_count"] + 1)]
+    c = got["climax"]
+    assert c["blocked"] is None and c["brief_kind"] == "cast" and c["needs_grid_first"] is True
+    assert c["target_seconds"] == target_seconds(12.0) == 12
+    people, _pos, _board = climax_video.cast_for(project, scene)
+    assert c["prompt"] == scene_brief(project, scene, people, c["grid_count"], 12.0, spp.DONE_TOKEN_PLACEHOLDER)
+    assert spp.DONE_TOKEN_PLACEHOLDER in c["prompt"]
+
+
+def test_climax_brief_is_not_shown_when_the_real_path_would_refuse(isolated_projects_dir):
+    _project(scene_meta={"climax_video": {"status": "selected"}}, duration=12.0)
+    _with_cast(approve=False)                                          # bảng nhân vật chưa duyệt
+    project, scene = _scene()
+    with pytest.raises(climax_video.ClimaxVideoError) as real:
+        climax_video.cast_for(project, scene)
+    c = spp.video_preview(project, scene)["climax"]
+    assert c["prompt"] is None and c["blocked"] == real.value.message and "chưa" in c["blocked"].lower()
+
+
+def test_climax_approved_grid_that_no_longer_fits_is_blocked(isolated_projects_dir):
+    _project(scene_meta={"climax_video": {"status": "grid_approved", "grid_approved": True, "grid_paths": []}},
+             duration=12.0)
+    _with_cast(approve=True)
+    project, scene = _scene()
+    c = spp.video_preview(project, scene)["climax"]
+    assert c["prompt"] is None and "không khớp" in c["blocked"]
 
 
 def test_climax_scene_without_people_returns_landscape_brief(isolated_projects_dir):
@@ -164,16 +192,22 @@ def test_climax_scene_without_people_returns_landscape_brief(isolated_projects_d
     _with_cast()
     cs.set_scene_cast(PID, "scene_002", [])
     project, scene = _scene()
-    got = spp.video_preview(project, scene)
-    assert got["brief_kind"] == "none" and got["needs_grid_first"] is False
-    assert got["prompt"] == landscape_brief(project, scene, 7.0, spp.DONE_TOKEN_PLACEHOLDER, None, False)
+    c = spp.video_preview(project, scene)["climax"]
+    assert c["brief_kind"] == "none" and c["needs_grid_first"] is False and c["blocked"] is None
+    assert c["prompt"] == landscape_brief(project, scene, 7.0, spp.DONE_TOKEN_PLACEHOLDER, None, False)
 
 
-def test_climax_scene_without_voice_is_a_clear_error(isolated_projects_dir):
+def test_climax_scene_without_voice_is_blocked_with_the_real_message(isolated_projects_dir):
     _project(scene_meta={"climax_video": {"status": "selected"}})
     project, scene = _scene()
-    with pytest.raises(spp.PromptPreviewError, match="giọng đọc"):
-        spp.video_preview(project, scene)
+    c = spp.video_preview(project, scene)["climax"]
+    assert c["prompt"] is None and "giọng đọc" in c["blocked"]
+
+
+def test_old_private_names_still_point_at_the_public_helpers():
+    assert climax_video._prepare is climax_video.prepare_scene
+    assert climax_video._scene_state is climax_video.scene_state
+    assert climax_video._cast_for is climax_video.cast_for
 
 
 # ------------------------------------------------------------------------------------------------------------- API
@@ -198,7 +232,7 @@ def test_api_returns_previews_and_writes_nothing_but_the_board_cache(client, iso
     img = client.get(f"{base}?kind=image")
     vid = client.get(f"{base}?kind=video")
     assert img.status_code == 200 and img.json()["prompt"].startswith("tạo cho tôi 1 hình ảnh 2K")
-    assert vid.status_code == 200 and vid.json()["kind"] == "dialogue"
+    assert vid.status_code == 200 and vid.json()["dialogue"]["video_count"] >= 1
     added = _files(isolated_projects_dir) - before
     assert all(Path(p).name.startswith("board_") and Path(p).suffix == ".jpg" for p in added), added
     assert (isolated_projects_dir / PID / "project.json").read_bytes() == project_json
@@ -212,3 +246,10 @@ def test_api_errors(client):
     assert client.get("/api/projects/proj_khong_co/scenes/scene_001/muse-prompt").status_code == 404
     assert client.get(f"{base}/scene_001/muse-prompt?kind=audio").status_code == 400
     assert client.get(f"{base}/bad..id/muse-prompt?kind=image").status_code in (400, 404)
+
+
+def test_api_unreadable_project_is_409(client, isolated_projects_dir):
+    _project()
+    (isolated_projects_dir / PID / "project.json").write_text("{hỏng", encoding="utf-8")
+    r = client.get(f"/api/projects/{PID}/scenes/scene_001/muse-prompt?kind=image")
+    assert r.status_code == 409 and "không đọc được" in r.json()["detail"]
