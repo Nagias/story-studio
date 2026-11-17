@@ -853,6 +853,11 @@ async def run_scene_clips(project_id: str, scene_id: str, muse_call: MuseCall, a
         raise
 
 
+def release_account(project_id: str, scene_id: str) -> dict:
+    """Tài khoản của cảnh không dùng được nữa: cảnh làm lại từ đầu trên tài khoản khác, chat mới (một cảnh một tài khoản)."""
+    return _merge_climax(project_id, scene_id, {"thread_dirty": True, "account_id": None, "thread_url": None})
+
+
 def redo_scene(project_id: str, scene_id: str) -> dict:
     """"Làm lại cảnh này": cảnh đã có kết quả (xong hoặc lỗi) với grid đã duyệt quay về chờ làm clip, chat mới."""
     _, scene = _load_scene(project_id, scene_id)

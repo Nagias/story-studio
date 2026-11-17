@@ -149,13 +149,17 @@ def muse_quota_message(text_before: str, text_now: str, prompt: str = "") -> Opt
 # tài khoản video cuối cùng chạm hạn mức, trang không hiện thông báo hết lượt, Muse viết "Tổng số đã tạo: 0 video / 0 ảnh
 # mới — lần gọi clip A bị chặn ở cổng hạn mức"; trước đó vp_03 hỏng 12 việc cùng kiểu mà không bị khoá.
 AGENT_LIMIT_WORDS = ("hạn mức", "quota", "rate limit", "rate-limit", "usage limit", "limit reached", "hết lượt")
-_ZERO_VIDEO_RE = re.compile(r"(?<![\d.,])0\s+video", re.IGNORECASE)
+_ZERO_VIDEO_RE = re.compile(r"(?<![\d.,])0\s+video(?!\s*(?:đạt|hợp lệ|pass|ok))", re.IGNORECASE)
+_SOME_VIDEO_RE = re.compile(r"(?<![\d.,])[1-9]\d*\s+video", re.IGNORECASE)
 
 
 def agent_no_video_reason(said: str) -> Optional[str]:
-    """Câu Muse cho biết không tạo được video nào vì hạn mức (dùng khi lượt kết thúc không có video), không thì None."""
+    """Câu Muse cho biết không tạo được video nào vì hạn mức (dùng khi lượt kết thúc không có video), không thì None.
+    Rà soát 18/11/2026: báo cáo chất lượng bình thường ("đã tạo 6 video, 0 video đạt") từng bị đọc thành hết hạn mức và
+    khoá tài khoản 6 giờ. Nay chỉ tính khi Muse nói tới hạn mức, hoặc khai 0 video mà không nhắc đã tạo video nào."""
     low = (said or "").lower()
-    if _ZERO_VIDEO_RE.search(low) or any(w in low for w in AGENT_LIMIT_WORDS):
+    zero_made = bool(_ZERO_VIDEO_RE.search(low)) and not _SOME_VIDEO_RE.search(low)
+    if zero_made or any(w in low for w in AGENT_LIMIT_WORDS):
         return " ".join(said.split())[-400:]
     return None
 
