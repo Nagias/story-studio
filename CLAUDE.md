@@ -65,6 +65,20 @@ Cột câu hỏi do agent viết (tóm tắt câu đã hỏi trong chat). Cột 
 | 23 | (03/11/2026) Sau A/B test giữa có đội agent và không có đội agent (hai bên gần ngang điểm, chi phí tương đương): giữ bản nào? | anh duyệt bản không đội. đội agent thì bỏ đi đỡ nặng máy và dự án. Không cần chạy bộ việc mẫu. Chỉ cần gỡ bỏ đội agent và sửa lại claude.md cho khớp với nội dung là được. |
 | 24 | (29/10/2026, khi nhận xét video vụ án; nhắc lại 06/11/2026 khi video vụ Khang Cúc Hoa không có clip Muse nào) Bao nhiêu phần video là video Muse? | 29/10/2026: "Ít ảnh quá và số lượng chuyển động cũng đang quá ít. Tôi cần 50% video yotuube là video cơ, video luôn giữ chân tốt hơn là ảnh". 06/11/2026: "vẫn chưa tuân thủ nguyên tắc generate video bằng muse tôi đã nói, 50% là video gen từ muse, tạo chuyển động tốt hơn ảnh" |
 
+### 1.2.1 Câu nào đã được câu sau thay — [Đề xuất của agent — chưa duyệt] (18/11/2026)
+
+Rà soát luật chồng chéo: câu cũ vẫn đứng như đang áp dụng nên agent sau dễ làm theo hướng cũ. Nguyên văn ở bảng 1.2 giữ nguyên; bảng này chỉ chỉ ra câu nào thay câu nào, chủ dự án duyệt hoặc sửa.
+
+| Câu cũ | Câu sau | Agent hiểu là đang áp dụng |
+|---|---|---|
+| 3 (làm cả 2 bản Anh và Việt) | 15 (truyện chọn tiếng Anh hoặc tiếng Việt) | câu 15 cho truyện chữ; vụ án vẫn có cả hai bản |
+| 5 (ảnh tĩnh chuyển động nhẹ, video 5s hoặc 10s) | 18, 19 (video dài theo lời thoại), 24 (50% là video Muse) | câu 18, 19, 24 |
+| 9 (làm mô tả, tiêu đề, thumbnail) | 20 (SEO YouTube chưa cần) | gói SEO đã làm từ câu 9 vẫn giữ; chưa làm thêm |
+| 13 (thêm việc khó, đo liên tục bộ việc mẫu) | 23 (không cần chạy bộ việc mẫu) | câu 23 khi không có skill hay agent riêng |
+| 1.3 bước 2 "lựa chọn bê nguyên văn thiếu" | 16 (không bê nguyên văn) | không làm lựa chọn bê nguyên văn |
+| 1.1 "chưa có lựa chọn 40–50 phút" | 14 (không cần nút số phút cố định) | không làm nút 40–50 phút |
+| 4 (làm từng bước) | quyết định 15/11/2026 trong `services/one_pass_visuals.py`: "generate 1 lần ăn ngay", tự duyệt lưới | nút "Tạo hình cho cả dự án" chạy một lượt; nút từng bước vẫn còn |
+
 ### 1.3 Quy trình làm video — [Đề xuất của agent; chủ dự án xác nhận tạm 22/10/2026: "Tạm thời là đúng ý tôi rồi"]
 
 Agent suy ra từ mục 1 và 1.2. Cuối mỗi bước ghi tình trạng code hiện tại (có / thiếu / lệch); chi tiết ở bảng 1.1.
@@ -73,7 +87,7 @@ Agent suy ra từ mục 1 và 1.2. Cuối mỗi bước ghi tình trạng code h
 
 - Nhánh truyện chữ (light novel có thật):
   1. Dán truyện — có.
-  2. Chọn bê nguyên văn hoặc remake (kể kiểu review) — remake có; lựa chọn bê nguyên văn thiếu.
+  2. Kể kiểu review (remake) — có; không làm lựa chọn bê nguyên văn (câu 16 mục 1.2).
   3. Ước độ dài; dưới 15 phút thì cảnh báo và cho chọn ghép chương (ưu tiên) hoặc remake cho dài ra (thêm nhận xét ngoài lề) — thiếu.
 - Nhánh vụ án thật:
   1. Chủ dự án tự tìm vụ, dán bài — có.
@@ -122,7 +136,7 @@ Agent suy ra từ mục 1 và 1.2. Cuối mỗi bước ghi tình trạng code h
 | Chạy app | `run.bat` (hoặc `.venv\Scripts\python.exe run.py`), mở `http://localhost:8000`. Tự bật Fleet Runner |
 | Python | luôn `.venv\Scripts\python.exe` (Python 3.14), không dùng `python` hệ thống; in tiếng Việt thì thêm `-X utf8` |
 | Cài thư viện | `.venv\Scripts\python.exe -m pip install -r backend\requirements-dev.txt` (phiên bản đã ghim); Playwright thêm `.venv\Scripts\python.exe -m playwright install chromium` |
-| Kiểm tra nhanh (hook tự chạy mỗi lần commit) | `.venv\Scripts\python.exe tools\check.py`: Ruff so với mốc, cú pháp JS, test kiến trúc, test FEATURE_MAP, test khoá cứng mục 5.1 và 6.1 (khoảng 15 giây) |
+| Kiểm tra nhanh (hook tự chạy mỗi lần commit) | `.venv\Scripts\python.exe tools\check.py`: Ruff so với mốc, cú pháp JS, test kiến trúc, test FEATURE_MAP, mọi test khoá cứng mục 5.1 và 6.1 (`FAST_TESTS`; `tests/test_guardrail_policy.py` chặn khi thiếu), test luật prompt và luật video (khoảng 40 giây) |
 | Kiểm tra đầy đủ (trước khi gộp `master`) | `.venv\Scripts\python.exe tools\check.py --full`: thêm cả bộ test mặc định |
 | Cài hook git (một lần mỗi bản sao repo, và sau khi `tools/check.py` đổi cách cài hook) | `.venv\Scripts\python.exe tools\check.py --install-hook`: hook pre-commit chặn commit thẳng lên `master`/`main` rồi chạy bản nhanh; hook commit-msg chặn dòng đầu commit sai dạng `<vùng>: <mô tả>`. Không bỏ qua hook bằng `--no-verify` |
 | Test một file | `.venv\Scripts\python.exe -m pytest tests\test_xxx.py -q` |
@@ -193,7 +207,7 @@ Code mới nên theo mẫu của mảng true-crime (mục 4), không theo mảng
 |---|---|---|---|---|
 | 1 | cứng | `tests/test_architecture.py::test_only_project_service_writes_project_json` | 13 | 13 chỗ ghi project.json ngoài `project_service`, gom về một nơi (commit `c116f07`) |
 | 2 | cứng | `tests/test_architecture.py::test_except_does_not_silently_return_empty`, `tools/ruff_baseline.json` (luật S110) | 49 | 1 sự cố (dự án bị ghi đè thành rỗng) + 31 chỗ `except: pass` + 17 chỗ `except` trả rỗng không ghi log (còn 16, chưa rà từng chỗ, có chỗ hợp lệ) |
-| 3 | cứng một phần | `tests/test_architecture.py::test_no_sample_media_links`, `tests/test_architecture.py::test_no_functions_that_only_pass`, `tests/test_clip_motion_and_share.py::test_share_report_counts_video_seconds_and_lists_still_clips`, `tests/test_video_share_gate.py::test_short_clip_counts_only_the_moving_part` | 6 | `get_audio_duration()` đoán 3 giây; nhập truyện tranh gán ảnh không có; màn Render giả kèm video mẫu (commit `34421c9`); chuỗi tạo ảnh báo xong khi lỗi (test `tests/test_no_fake_success_and_motion_render.py`); vụ xưởng sắt báo 65,5% video Muse trong khi clip chỉ lia/zoom ảnh (09–10/11/2026; nay mỗi lần dựng app tự báo tỉ lệ và cảnh có clip gần như đứng hình); tỉ lệ tính đủ thời lượng cảnh cho clip ngắn hơn lời kể dù cuối cảnh là khung đứng yên (13/11/2026, vụ Khang Cúc Hoa cảnh 048: clip 9 giây cho lời kể 18 giây; nay chỉ tính phần clip chạy). Còn mềm: các kiểu "thành công giả" khác máy không nhận ra được |
+| 3 | cứng một phần | `tests/test_architecture.py::test_no_sample_media_links`, `tests/test_architecture.py::test_no_functions_that_only_pass`, `tests/test_clip_motion_and_share.py::test_share_report_counts_video_seconds_and_lists_still_clips`, `tests/test_video_share_gate.py::test_short_clip_counts_only_the_moving_part`, `tests/test_one_pass_visuals.py::test_still_clip_is_not_done_and_next_run_redoes_it` | 7 | `get_audio_duration()` đoán 3 giây; nhập truyện tranh gán ảnh không có; màn Render giả kèm video mẫu (commit `34421c9`); chuỗi tạo ảnh báo xong khi lỗi (test `tests/test_no_fake_success_and_motion_render.py`); vụ xưởng sắt báo 65,5% video Muse trong khi clip chỉ lia/zoom ảnh (09–10/11/2026; nay mỗi lần dựng app tự báo tỉ lệ và cảnh có clip gần như đứng hình); tỉ lệ tính đủ thời lượng cảnh cho clip ngắn hơn lời kể dù cuối cảnh là khung đứng yên (13/11/2026, vụ Khang Cúc Hoa cảnh 048: clip 9 giây cho lời kể 18 giây; nay chỉ tính phần clip chạy); clip đứng hình vẫn ghi "ready" nên "Tạo hình cho cả dự án" không làm lại (vụ xưởng sắt cảnh 063, 14/11/2026; nay `video_share.climax_done`). Còn mềm: các kiểu "thành công giả" khác máy không nhận ra được |
 | 4 | mềm | — | 1 | Muse lỗi tự rơi sang 9router (có ghi lý do, test `tests/test_no_fake_success_and_motion_render.py`) |
 | 5 | cứng | `tests/test_architecture.py::test_no_new_llm_clients` | 3 | 3 client cũ (bộ chia cảnh và storyboard đời cũ) đã chuyển vào `legacy/` 18/11/2026; ngoại lệ còn 0 |
 | 6 | cứng | `tests/test_architecture.py::test_env_read_only_in_config`, `tests/test_architecture.py::test_every_env_var_is_documented_in_env_example` | 1 | `DEFAULT_VOICE` trong `.env` không có tác dụng |
@@ -206,8 +220,8 @@ Code mới nên theo mẫu của mảng true-crime (mục 4), không theo mảng
 | 13 | cứng | `tests/test_architecture.py::test_services_do_not_import_routers` | 1 | `image_service.py` import `routers.muse_bridge` |
 | 14 | cứng | `tests/test_architecture.py::test_no_machine_specific_paths` | 1 | font thumbnail `C:\Windows\Fonts` (đã sửa 22/10/2026) |
 | 15 | cứng | `tests/test_architecture.py::test_narration_writers_check_coverage`, `tests/test_architecture.py::test_one_click_story_goes_through_story_review`, `tests/test_architecture.py::test_story_prompts_never_ask_to_summarize`, `tests/test_architecture.py::test_case_assemble_requires_verified_parts` | 2 | vụ Trạm Dung kể việc phát hiện thi thể hai lần như hai lần khác nhau (29/10/2026); truyện chữ dặn LLM "review và tóm tắt", AI lỗi thì chép nguyên văn truyện. Chủ dự án yêu cầu khoá bằng script (mục 1.2 câu 14). Còn mềm: chất lượng câu chữ (hay, cuốn) máy không chấm được |
-| 16 | cứng | `tests/test_one_flow.py::test_every_scene_image_path_in_routers_passes_both_locks` | 1 | video truyện thử 03/11/2026: nhân vật mỗi ảnh một kiểu vì ảnh cảnh thường không dùng bảng nhân vật (kể cả vụ án) và truyện chữ không có danh sách nhân vật. Còn mềm: Muse có vẽ đúng theo khoá hay không máy không chấm được |
-| 17 | cứng | `tests/test_architecture.py::test_every_final_render_passes_the_video_share_gate`, `tests/test_video_share_gate.py::test_both_render_buttons_refuse_before_queueing` | 4 | Chủ dự án nhắc 29/10, 06/11 (vụ Khang Cúc Hoa 0% rồi 32,9%), hai lần 10/11 (vụ xưởng sắt: clip chỉ lia/zoom, rồi 34/38 clip gần như đứng hình). Từ 11/11/2026: hai nút dựng chặn khi video Muse có cử động dưới 45%; bản nháp ra `story_nhap_duoi_45.mp4`. Còn mềm: máy đo cử động bỏ sót cử động rất nhỏ, chủ dự án phải xem và bấm "Đã xem, có cử động" |
+| 16 | cứng | `tests/test_one_flow.py::test_every_scene_image_path_in_routers_passes_both_locks`, `tests/test_prompt_rules.py::test_no_prompt_carries_two_rules_that_contradict_each_other` | 1 | video truyện thử 03/11/2026: nhân vật mỗi ảnh một kiểu vì ảnh cảnh thường không dùng bảng nhân vật (kể cả vụ án) và truyện chữ không có danh sách nhân vật. Còn mềm: Muse có vẽ đúng theo khoá hay không máy không chấm được |
+| 17 | cứng | `tests/test_architecture.py::test_every_final_render_passes_the_video_share_gate`, `tests/test_video_share_gate.py::test_both_render_buttons_refuse_before_queueing`, `tests/test_video_rules.py::test_every_module_reads_the_same_numbers` | 4 | Chủ dự án nhắc 29/10, 06/11 (vụ Khang Cúc Hoa 0% rồi 32,9%), hai lần 10/11 (vụ xưởng sắt: clip chỉ lia/zoom, rồi 34/38 clip gần như đứng hình). Từ 11/11/2026: hai nút dựng chặn khi video Muse có cử động dưới 45%; bản nháp ra `story_nhap_duoi_45.mp4`. Còn mềm: máy đo cử động bỏ sót cử động rất nhỏ, chủ dự án phải xem và bấm "Đã xem, có cử động" |
 
 ## 6. Quy tắc làm việc của agent
 

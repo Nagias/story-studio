@@ -29,6 +29,15 @@ Dữ liệu mẫu có sẵn (không xoá, không sửa khi thử):
 - Bài vụ án thật dài: `.cache/samples/nhu_co.txt` (61 KB) và script chạy thật `.cache/samples/run_nhu_co.py` (không nằm trong git).
 - Nút mẫu trong giao diện: truyện chữ (`data-sample`), truyện tranh (`#btn-step1-sample-grid`, `#btn-step1-sample-strip`).
 
+## 0.1 Luật dùng chung (từ 18/11/2026, nhánh `sua-luat-goc`)
+
+Mỗi luật một nơi; sửa luật thì sửa ở đây, không chép câu sang file khác (test chặn cặp luật cãi nhau).
+- `services/video_rules.py`: mục tiêu 50%, chặn 45%, clip nhận từ 3 giây, ngưỡng cử động, cách đếm giây video. `video_share.clip_counts()` / `climax_done()` là định nghĩa duy nhất "clip được tính": clip đứng hình không còn là "xong", "Tạo hình cho cả dự án" làm lại. Nút dựng chặn ngay khi bấm (thời lượng ước theo số chữ nếu chưa có giọng), trước khi thu giọng và tạo ảnh.
+- `services/prompt_rules.py`: luật đầu tròn, tóc nữ, máy quay đứng yên, cử động thật, góc trung/xa khi cử động mạnh, không xoay người, không chữ; ảnh, lưới 9 khung, video theo lời thoại và bản giao việc cao trào cùng dùng. Test `tests/test_prompt_rules.py`.
+- Video cao trào: lời kể dài hơn 15 giây chia nhiều việc Muse (`climax_brief.agent_parts`), mỗi việc tối đa 6 video; phần xong được lưu, lượt sau làm tiếp. Lưới đã duyệt tự vẽ lại khi nhân vật, thiết kế hay độ dài lời kể đổi (`climax_video.grid_key`).
+- Tài khoản Muse khoá theo mã lỗi Fleet Runner (`muse_bridge.account_block_for`), không dò chữ; tài khoản nghỉ thì cảnh của nó chuyển cả cảnh sang tài khoản khác.
+- Code đời cũ (chia cảnh vox, podcast light novel, split-script, storyboard 9-grid): `legacy/`, app không nạp.
+
 ## 1. Mở app, server thử, phím tắt, đường dẫn trực tiếp
 
 | Việc | Cách |
