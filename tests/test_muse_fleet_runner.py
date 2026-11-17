@@ -48,7 +48,7 @@ def test_accounts_config_structure():
     assert accounts, "Chưa có tài khoản Muse nào trong cấu hình"
     ids = [a["account_id"] for a in accounts]
     assert len(ids) == len(set(ids)), "Trùng account_id"
-    assert {a["type"] for a in accounts} <= {"image", "video"}, "type chỉ được là image hoặc video"
+    assert {a["type"] for a in accounts} <= {"image", "video", "both"}, "type chỉ được là image, video hoặc both"
 
     # Kiểm tra các trường bắt buộc của mỗi account
     for acc in accounts:

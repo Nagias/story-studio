@@ -24,11 +24,11 @@ def test_fleet_accounts_loaded_with_capabilities_of_their_type():
     assert resp.status_code == 200
     accounts = [a for a in resp.json()["accounts"] if a["account_id"].startswith("muse_acc_")]
     assert accounts, "Không có tài khoản Fleet nào"
-    for acc in accounts:
-        assert acc.get("type") in ("image", "video"), acc["account_id"]
-        if acc["type"] == "image":
+    for acc in accounts:   # "both": nhận cả ảnh lẫn video (chủ dự án 17/11/2026)
+        assert acc.get("type") in ("image", "video", "both"), acc["account_id"]
+        if acc["type"] in ("image", "both"):
             assert "text-to-image" in acc["capabilities"], acc["account_id"]
-        else:
+        if acc["type"] in ("video", "both"):
             assert "image-to-video" in acc["capabilities"], acc["account_id"]
 
 

@@ -20,7 +20,7 @@ Quy ước ghi:
 | 9router ở `127.0.0.1:20128` + `NINEROUTER_API_KEY` trong `.env` | LLM chia cảnh, phân tích vụ án, ảnh Gemini | gọi thử 1 lần nhỏ (`.cache/samples/probe_9router.py`) | chia cảnh rơi về bộ chia offline (prompt ảnh chung chung); phân tích vụ án báo "9router chưa sẵn sàng" |
 | Mạng Internet | Edge-TTS, FontAwesome (CDN), Google Fonts | mở app, xem icon | không có giọng Edge; icon mất |
 | `uv` + model VieNeu (cache trong `.cache/`) | giọng `vieneu-*` | server VieNeu ở `127.0.0.1:5005` (hiện dùng chung với douyin-movie-studio) | tự rơi về Edge-TTS, có ghi lý do |
-| Tài khoản Muse đã đăng nhập: `backend/chrome_profiles/` + `backend/config/muse_fleet_accounts.json` (profile của app khác dùng chung được: khai thư mục trong `STORY_STUDIO_EXTRA_CHROME_PROFILES` rồi trỏ `profile_dir` của tài khoản vào đó; Fleet Runner không mở profile khi app kia đang mở) | ảnh 2K, video 5s bằng Muse | cửa sổ Muse Fleet (`#btn-muse-cloud-status`) | việc Muse nằm chờ trong hàng; ảnh tự rơi sang 9router (tốn ảnh trả phí) |
+| Tài khoản Muse đã đăng nhập: `backend/chrome_profiles/` + `backend/config/muse_fleet_accounts.json` (mỗi tài khoản loại `image`, `video` hoặc `both` nhận cả hai, từ 17/11/2026: `muse_bridge.account_kinds()`, `serves()`, `FleetAccount.serves()`; profile của app khác dùng chung được: khai thư mục trong `STORY_STUDIO_EXTRA_CHROME_PROFILES` rồi trỏ `profile_dir` của tài khoản vào đó; Fleet Runner không mở profile khi app kia đang mở) | ảnh 2K, video 5s bằng Muse | cửa sổ Muse Fleet (`#btn-muse-cloud-status`) | việc Muse nằm chờ trong hàng; ảnh tự rơi sang 9router (tốn ảnh trả phí) |
 | Chrome hoặc Edge | Fleet Runner điều khiển Muse | — | Fleet Runner không chạy |
 
 Dữ liệu mẫu có sẵn (không xoá, không sửa khi thử):

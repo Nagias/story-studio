@@ -28,6 +28,8 @@ from services.muse_prompt_format import format_image_prompt, task_attachments  #
 from tests.test_climax_video import FakeMuse, _save_project, _scene, _scene_now  # noqa: E402
 
 PID = "proj_crime_onepass"
+# Hàm đếm thật, giữ trước khi fixture tự động thay nó bằng `lambda: 1`
+REAL_USABLE_VIDEO_ACCOUNTS = op_router.usable_video_accounts
 
 
 @pytest.fixture(autouse=True)
@@ -174,10 +176,10 @@ def test_no_usable_video_account_moves_climax_to_missing_and_run_makes_images_on
 
 def test_usable_video_accounts_counts_only_available_video_accounts(monkeypatch):
     accounts = [{"account_id": "a", "type": "video"}, {"account_id": "b", "type": "video"},
-                {"account_id": "c", "type": "image"}]
+                {"account_id": "c", "type": "image"}, {"account_id": "d", "type": "both"}]
     monkeypatch.setattr(op_router.muse_bridge, "muse_accounts", accounts)
     monkeypatch.setattr(op_router.muse_bridge, "is_account_available", lambda a: a["account_id"] != "b")
-    assert op_router.usable_video_accounts() == 1
+    assert REAL_USABLE_VIDEO_ACCOUNTS() == 2      # a và d (nhận cả ảnh lẫn video); b bị khoá
 
 
 # ------------------------------------------------------------------------------------------------------------ chạy

@@ -209,19 +209,37 @@ def validate_thread_fields(task: Dict[str, Any]) -> None:
         raise ValueError("avoid_accounts phải là danh sách id tài khoản")
 
 
-def account_kind(acc: Optional[Dict[str, Any]]) -> Optional[str]:
-    """Loại tài khoản: ưu tiên trường 'type', nếu thiếu thì suy ra từ capabilities (phải rõ ràng 1 loại)."""
+MUSE_KINDS = ("image", "video")
+
+
+def account_kinds(acc: Optional[Dict[str, Any]]) -> tuple:
+    """Các loại việc tài khoản nhận: trường 'type' ("image", "video" hoặc "both"), thiếu thì suy từ capabilities.
+    Chủ dự án 17/11/2026: tài khoản Muse làm được cả ảnh và video, "nên dùng cả đi" (type "both")."""
     if not acc:
-        return None
+        return ()
     t = str(acc.get("type", "")).lower()
-    if t in ("image", "video"):
-        return t
+    if t == "both":
+        return MUSE_KINDS
+    if t in MUSE_KINDS:
+        return (t,)
     caps = acc.get("capabilities") or []
     has_video = any(c in caps for c in VIDEO_CAPABILITIES)
     has_image = "text-to-image" in caps
-    if has_video != has_image:
-        return "video" if has_video else "image"
-    return None
+    return tuple(k for k, ok in (("image", has_image), ("video", has_video)) if ok)
+
+
+def account_kind(acc: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Nhãn loại tài khoản: "image", "video", "both" (nhận cả hai) hoặc None khi không rõ. So loại việc thì dùng
+    serves(), không so chuỗi này."""
+    kinds = account_kinds(acc)
+    if len(kinds) == 2:
+        return "both"
+    return kinds[0] if kinds else None
+
+
+def serves(acc: Optional[Dict[str, Any]], kind: Optional[str]) -> bool:
+    """Tài khoản nhận được việc loại `kind` ("image"/"video")."""
+    return kind in account_kinds(acc)
 
 
 def _read_fleet_file() -> Dict[str, Any]:
@@ -344,7 +362,7 @@ def is_account_available(acc: Optional[Dict[str, Any]]) -> bool:
 def is_kind_online(kind: str) -> bool:
     """Có ít nhất 1 tài khoản đúng loại đang online và dùng được."""
     return any(
-        account_kind(a) == kind and is_account_available(a) and is_account_online(a["account_id"])
+        serves(a, kind) and is_account_available(a) and is_account_online(a["account_id"])
         for a in muse_accounts
     )
 
@@ -352,7 +370,7 @@ def is_kind_online(kind: str) -> bool:
 def usable_online_accounts(kind: str) -> List[str]:
     """Id các tài khoản đúng loại đang online và dùng được (không khoá, còn đăng nhập), theo thứ tự id."""
     return sorted(a["account_id"] for a in muse_accounts
-                  if account_kind(a) == kind and is_account_available(a) and is_account_online(a["account_id"]))
+                  if serves(a, kind) and is_account_available(a) and is_account_online(a["account_id"]))
 
 
 def get_enriched_accounts() -> List[Dict[str, Any]]:
@@ -396,7 +414,7 @@ def get_active_account(mode: str = "image") -> Optional[Dict[str, Any]]:
     """Tài khoản đang được chọn cho loại task (chỉ trong đúng loại image/video)."""
     kind = task_kind(mode)
     active_key = "is_active_for_video" if kind == "video" else "is_active_for_image"
-    same_kind = [a for a in muse_accounts if account_kind(a) == kind]
+    same_kind = [a for a in muse_accounts if serves(a, kind)]
     usable = [a for a in same_kind if is_account_available(a)]
     for pool in (usable, same_kind):
         for acc in pool:
@@ -432,7 +450,7 @@ def assign_task_account(task: Dict[str, Any]) -> Dict[str, Any]:
     selected = None
     if req_acc_id and req_acc_id not in LEGACY_ALIAS_ACCOUNTS:
         acc = find_account(req_acc_id)
-        if acc and account_kind(acc) == kind and (is_account_available(acc) or task.get("pin_account")):
+        if acc and serves(acc, kind) and (is_account_available(acc) or task.get("pin_account")):
             selected = acc   # task ghim (side chat của tài khoản này) giữ đúng tài khoản; dùng được không thì người gọi báo lỗi
         elif acc:
             logger.warning(
@@ -443,7 +461,7 @@ def assign_task_account(task: Dict[str, Any]) -> Dict[str, Any]:
     avoid = set(task.get("avoid_accounts") or [])
     if selected is None and avoid:
         selected = next((a for a in sorted(muse_accounts, key=lambda a: (not is_account_online(a["account_id"]), a["account_id"]))
-                         if account_kind(a) == kind and a["account_id"] not in avoid and is_account_available(a)), None)
+                         if serves(a, kind) and a["account_id"] not in avoid and is_account_available(a)), None)
     _set_task_account(task, selected or get_active_account(kind))
     return task
 
@@ -465,7 +483,7 @@ def pick_fallback_account(kind: str, exclude: Optional[str] = None,
     skip = set(avoid or [])
     candidates = [
         a for a in muse_accounts
-        if account_kind(a) == kind and a["account_id"] != exclude and a["account_id"] not in skip
+        if serves(a, kind) and a["account_id"] != exclude and a["account_id"] not in skip
         and is_account_available(a)
     ]
     candidates.sort(key=lambda a: (not is_account_online(a["account_id"]), a["account_id"]))
@@ -476,17 +494,19 @@ def block_account(account_id: str, reason: str, seconds: float = ACCOUNT_BLOCK_S
     """Khóa tài khoản `seconds` giây (mặc định 15 phút: hết quota / mất phiên) và chuyển cờ active sang tài khoản khác
     cùng loại."""
     acc = find_account(account_id)
-    kind = account_kind(acc)
-    if not acc or not kind:
+    kinds = account_kinds(acc)
+    if not acc or not kinds:
         return
     acc["blocked_until"] = time.time() + seconds
     acc["block_reason"] = reason[:200]
-    active_key = "is_active_for_video" if kind == "video" else "is_active_for_image"
-    if acc.get(active_key):
+    for kind in kinds:   # hạn mức Muse tính chung cả tài khoản: khoá thì chuyển cờ active của mọi loại nó nhận
+        active_key = "is_active_for_video" if kind == "video" else "is_active_for_image"
+        if not acc.get(active_key):
+            continue
         nxt = pick_fallback_account(kind, exclude=account_id)
         if nxt:
             for a in muse_accounts:
-                if account_kind(a) == kind:
+                if serves(a, kind):
                     a[active_key] = a["account_id"] == nxt["account_id"]
             logger.info(f"[AUTO-FAILOVER] Tài khoản {kind} active chuyển từ {account_id} sang {nxt['account_id']}")
     save_muse_accounts(muse_accounts)
@@ -675,14 +695,14 @@ async def enqueue_and_wait_muse_task(task_dict: Dict[str, Any], timeout: Optiona
         )
     avoid = set(task_dict.get("avoid_accounts") or [])
     if avoid and not task_dict.get("pin_account") and not any(
-            account_kind(a) == route and a["account_id"] not in avoid and is_account_available(a)
+            serves(a, route) and a["account_id"] not in avoid and is_account_available(a)
             and is_account_online(a["account_id"]) for a in muse_accounts):
         raise RuntimeError(f"Mọi tài khoản Muse {route} đang online đều vừa lỗi với việc này "
                            f"({', '.join(sorted(avoid))}): chờ lúc khác hoặc thêm tài khoản")
     if task_dict.get("pin_account"):
         owner = task_dict.get("assigned_account")
         acc = find_account(owner)
-        if not (acc and account_kind(acc) == route and is_account_available(acc) and is_account_online(owner)):
+        if not (acc and serves(acc, route) and is_account_available(acc) and is_account_online(owner)):
             raise RuntimeError(f"Tài khoản {owner} của side chat này không dùng được (offline, bị khoá hoặc mất "
                                f"đăng nhập): mở chat mới trên tài khoản khác")
 
@@ -887,7 +907,7 @@ async def switch_muse_account(req: AccountSwitchRequest):
     target_acc = find_account(req.account_id)
     if not target_acc:
         raise HTTPException(status_code=404, detail=f"Không tìm thấy tài khoản '{req.account_id}'")
-    if account_kind(target_acc) != mode:
+    if not serves(target_acc, mode):
         raise HTTPException(
             status_code=400,
             detail=f"Tài khoản '{req.account_id}' là tài khoản {account_kind(target_acc) or 'chưa rõ loại'}, không dùng cho {mode}",
@@ -895,7 +915,7 @@ async def switch_muse_account(req: AccountSwitchRequest):
 
     active_key = "is_active_for_image" if mode == "image" else "is_active_for_video"
     for acc in muse_accounts:
-        if account_kind(acc) == mode:
+        if serves(acc, mode):
             acc[active_key] = acc["account_id"] == req.account_id
     save_muse_accounts(muse_accounts)
     logger.info(f"Switched active Muse {mode} account to {req.account_id} ({target_acc.get('label')})")
@@ -912,7 +932,7 @@ async def switch_muse_account(req: AccountSwitchRequest):
 
 @router.post("/accounts/add")
 async def add_or_update_muse_account(req: AccountCreateUpdateRequest):
-    """Thêm mới hoặc cập nhật cấu hình tài khoản Fleet (mỗi tài khoản chỉ 1 loại: image hoặc video)."""
+    """Thêm mới hoặc cập nhật cấu hình tài khoản Fleet (loại image, video, hoặc both khi có cả hai khả năng)."""
     require_safe_id(req.account_id, "account_id")
     if req.account_id in LEGACY_ALIAS_ACCOUNTS:
         raise HTTPException(status_code=400, detail="ID trạm VM cũ không còn dùng được")
@@ -926,7 +946,7 @@ async def add_or_update_muse_account(req: AccountCreateUpdateRequest):
     if kind is None:
         raise HTTPException(
             status_code=400,
-            detail="capabilities phải là của tài khoản ảnh (text-to-image) HOẶC tài khoản video (image-to-video/text-to-video), không trộn lẫn",
+            detail="capabilities phải có text-to-image (ảnh) và/hoặc image-to-video, text-to-video (video)",
         )
 
     acc = find_account(req.account_id)
@@ -944,12 +964,12 @@ async def add_or_update_muse_account(req: AccountCreateUpdateRequest):
     acc["capabilities"] = list(req.capabilities)
     if req.profile_dir is not None:
         acc["profile_dir"] = req.profile_dir
-    active_flag = req.is_active_for_image if kind == "image" else req.is_active_for_video
-    if active_flag:
-        active_key = "is_active_for_image" if kind == "image" else "is_active_for_video"
-        for a in muse_accounts:
-            if account_kind(a) == kind:
-                a[active_key] = a["account_id"] == req.account_id
+    for k in account_kinds(acc):
+        if req.is_active_for_image if k == "image" else req.is_active_for_video:
+            active_key = "is_active_for_image" if k == "image" else "is_active_for_video"
+            for a in muse_accounts:
+                if serves(a, k):
+                    a[active_key] = a["account_id"] == req.account_id
 
     save_muse_accounts(muse_accounts)
     return {
@@ -1003,13 +1023,16 @@ async def worker_heartbeat(req: WorkerHeartbeatRequest):
     _touch_worker(req.worker_id, req.account_id, req.hardware)
     return {"success": True, "server_time": int(time.time()), "account_id": req.account_id}
 
-def _pick_task_for_account(account_id: str, kind: str) -> int:
-    """Chọn task trong hàng đợi cho tài khoản: đúng loại, ưu tiên task gán cho chính nó."""
+def _pick_task_for_account(account_id: str, kinds) -> int:
+    """Chọn task trong hàng đợi cho tài khoản: loại việc tài khoản nhận (`kinds`: một loại hoặc tuple), ưu tiên task
+    gán cho chính nó."""
+    kinds = (kinds,) if isinstance(kinds, str) else tuple(kinds)
     now = time.time()
     fallback_idx = -1
     for idx, t in enumerate(pending_tasks):
-        if routing_kind(t) != kind:
-            continue  # Rào chắn tuyệt đối: tài khoản ảnh không nhận video và ngược lại
+        kind = routing_kind(t)
+        if kind not in kinds:
+            continue  # Rào chắn tuyệt đối: tài khoản chỉ nhận ảnh không nhận video và ngược lại
         if account_id in (t.get("avoid_accounts") or []):
             continue  # tài khoản vừa lỗi với việc này (vd Muse quá tải): không nhận lại, kể cả nhận thay
         assigned = t.get("assigned_account")
@@ -1023,7 +1046,7 @@ def _pick_task_for_account(account_id: str, kind: str) -> int:
         other = find_account(assigned)
         waited = now - t.get("queued_at", t.get("created_at", now))
         # Nhận thay khi tài khoản được gán không dùng được, offline, hoặc task đã chờ quá lâu
-        if (account_kind(other) != kind or not is_account_available(other)
+        if (not serves(other, kind) or not is_account_available(other)
                 or not is_account_online(assigned) or waited > REASSIGN_AFTER_SEC):
             fallback_idx = idx
     return fallback_idx
@@ -1041,9 +1064,10 @@ async def poll_task(
     if not account_id:
         raise HTTPException(status_code=400, detail="account_id is required")
     acc = find_account(account_id)
-    kind = account_kind(acc)
+    kinds = account_kinds(acc)
+    kind = account_kind(acc)   # nhãn cho log
     _touch_worker(worker_id, account_id)
-    if acc is None or kind is None:
+    if acc is None or not kinds:
         logger.warning(f"Poll từ tài khoản không hợp lệ '{account_id}' (không có trong cấu hình hoặc không rõ loại)")
         return {"task": None}
     if is_account_blocked(acc):
@@ -1052,7 +1076,7 @@ async def poll_task(
     timeout = max(1, min(int(timeout), 30))
     start_wait = time.time()
     while time.time() - start_wait < timeout:
-        chosen_idx = _pick_task_for_account(account_id, kind)
+        chosen_idx = _pick_task_for_account(account_id, kinds)
         if chosen_idx != -1:
             task = pending_tasks.pop(chosen_idx)
             if task.get("assigned_account") != account_id:
