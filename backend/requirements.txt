@@ -13,6 +13,8 @@ opencv-python-headless==5.0.0.93
 numpy==2.5.3
 python-dotenv==1.2.4        # config.py
 playwright==1.64.0          # runners/muse_fleet_runner.py (sau khi cài: python -m playwright install chromium)
+pysubs2==1.9.1              # phụ đề SRT (video_service.merge_srt_files), MIT, không kéo theo thư viện khác
+filelock==4.2.11            # khoá file muse_fleet_accounts.json giữa backend và Fleet Runner, MIT
 
 # Tuỳ chọn (code tự bỏ qua nếu chưa cài):
 # openai              # services/image_service.py

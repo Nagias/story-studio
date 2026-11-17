@@ -74,10 +74,8 @@ def test_only_project_service_writes_project_json():
 
 
 # --- Đường cấm 5: không thêm client gọi LLM riêng --------------------------------------------------------------------
-ALLOWED_LLM_CLIENTS = {
-    "backend/services/script_splitter.py": 2,  # 9router + OpenRouter
-    "backend/services/storyboard_engine.py": 1,
-}
+# 18/11/2026: 3 client cũ (script_splitter.py, storyboard_engine.py) đã chuyển vào legacy/ cùng các route chỉ dùng chúng
+ALLOWED_LLM_CLIENTS: dict[str, int] = {}
 
 
 def test_no_new_llm_clients():
@@ -562,3 +560,13 @@ def test_every_final_render_passes_the_video_share_gate():
                     f"{rel}:{ln} ({fn.name}) dựng video bằng assemble_full_video() mà không qua require_gate() trước: "
                     "video dưới 45% video Muse sẽ ra như thành phẩm (đường cấm 17)")
     assert found, "không tìm thấy chỗ nào gọi assemble_full_video(): test này đang không kiểm gì"
+
+
+def test_app_never_imports_legacy_code():
+    """Code đã gỡ (legacy/, 18/11/2026) không được nạp lại vào app: bộ chia cảnh cũ dặn AI "tóm tắt", chèn "KA-BOOM"."""
+    for rel, tree in _trees():
+        for node in ast.walk(tree):
+            names = ([a.name for a in node.names] if isinstance(node, ast.Import)
+                     else [node.module or ""] if isinstance(node, ast.ImportFrom) else [])
+            for name in names:
+                assert not any(k in name for k in ("script_splitter", "storyboard_engine", "legacy")), f"{rel}: {name}"

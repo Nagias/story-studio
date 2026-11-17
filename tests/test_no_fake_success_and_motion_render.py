@@ -193,54 +193,6 @@ def test_gen_image_route_reports_fallback_provider(api_client, monkeypatch):
 
 # ----------------------------------------------------------------------------- việc 1: chia cảnh
 
-@pytest.mark.asyncio
-async def test_scene_analysis_reports_why_it_fell_back_offline(monkeypatch):
-    """9router lỗi (vd key sai → 401) thì kết quả offline phải mang lý do, không im lặng."""
-    from services import script_splitter
-
-    async def failing_llm(self, *args, **kwargs):
-        self.last_error = '9router HTTP 401: {"error":{"message":"Invalid API key"}}'
-        return None
-
-    monkeypatch.setattr(script_splitter.SemanticStoryAnalyzer, "call_9router_semantic_analyzer", failing_llm)
-    monkeypatch.setattr(script_splitter, "NINEROUTER_API_KEY", "dummy-key-for-test")
-    res = await script_splitter.analyze_vox_script_async(full_text="Đêm mưa. Một chiếc taxi dừng lại.", provider="9router")
-
-    assert res["scenes"]
-    assert "401" in res["fallback_reason"]
-
-
-@pytest.mark.asyncio
-async def test_storyboard_llm_request_disables_streaming(monkeypatch):
-    """Thiếu stream:false thì 9router trả body không phải JSON, storyboard luôn rơi về offline."""
-    from services import storyboard_engine
-    sent = {}
-
-    class FakeResp:
-        status_code = 500
-        text = "stop here"
-
-    class FakeClient:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *exc):
-            return False
-
-        async def post(self, url, json=None, headers=None):
-            sent["payload"] = json
-            return FakeResp()
-
-    monkeypatch.setattr(storyboard_engine.httpx, "AsyncClient", FakeClient)
-    await storyboard_engine.deconstruct_script_async(
-        "Đêm mưa. Một chiếc taxi dừng lại.", api_key="test-key", base_url="http://127.0.0.1:9/v1")
-
-    assert sent["payload"]["stream"] is False
-
-
 def test_create_from_script_reports_llm_error_instead_of_copying_raw_text(api_client, monkeypatch):
     """Trước 02/11/2026: 9router lỗi thì chia offline, chép nguyên văn truyện làm lời kể (chủ dự án: không bê nguyên
     văn, câu 16). Nay báo lỗi rõ, không tạo dự án."""

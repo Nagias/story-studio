@@ -206,13 +206,13 @@ Phong cách đầu tròn (`horror_cartoon_2d`): được biểu cảm bằng né
 
 Dùng được qua `/docs` (Swagger) hoặc test; sửa tới thì nhớ không có nút để bấm thử.
 - `GET /api/styles`, `GET /api/characters/presets`, `GET /api/characters/presets/{char_id}`, `GET /api/bgm/{filename}`
-- `GET /api/vox/pacing-presets`, `POST /api/vox/analyze-script` (**LLM**), `POST /api/projects/{project_id}/vox-script`, `POST /api/novel/ingest-chapter` (**LLM**)
+- Chia cảnh đời cũ (vox, podcast light novel, split-script, storyboard 9-grid): gỡ khỏi app 18/11/2026, giữ trong `legacy/` (xem `legacy/README.md`)
 - `POST /api/projects/create-1click-pipeline` (bí danh của create-from-script)
 - Cảnh lẻ: `POST /api/projects/{project_id}/scenes`, `PUT /api/projects/{project_id}/scenes/{scene_id}`, `DELETE /api/projects/{project_id}/scenes/{scene_id}`, `POST /api/projects/{project_id}/scenes/reorder`, `POST /api/gen-image`
 - `DELETE /api/projects/{project_id}` (**xoá vĩnh viễn** bằng `shutil.rmtree`, giao diện không có nút xoá dự án)
 - `POST /api/projects/{project_id}/render` (đường dựng cũ, chỉ test dùng; đường thật là produce-long-video)
 - `POST /api/true-crime/render-board-scene/{scene_id}`, `GET /api/muse-bridge/reference-file` (runner tải ảnh tham chiếu), `GET /api/muse-bridge/download/{task_id}`, `POST /api/muse-bridge/accounts/add`
-- Giao diện đã gỡ ngày 15/11/2026, API giữ nguyên: `POST /api/storyboard/deconstruct` (**LLM**, cửa sổ 9-Grid Spec cũ), `POST /api/storyboard/import` (tạo dự án mới từ storyboard), `POST /api/projects/{project_id}/split-script` và `POST /api/split-script` (chia kịch bản offline theo luật, nối thêm cảnh; cửa sổ Kịch bản AI cũ), `POST /api/comic/slice` (cắt truyện tranh khi chưa có dự án; trang Ý tưởng luôn gửi kèm dự án nên dùng `POST /api/projects/{project_id}/comic/slice`)
+- Giao diện đã gỡ ngày 15/11/2026, API giữ nguyên: `POST /api/storyboard/import` (tạo dự án mới từ storyboard), `POST /api/comic/slice` (cắt truyện tranh khi chưa có dự án; trang Ý tưởng luôn gửi kèm dự án nên dùng `POST /api/projects/{project_id}/comic/slice`)
 - `GET /api/health` (giao diện hỏi 8 s/lần; `run.py` dùng để biết Story Studio đã chạy chưa)
 
 ## 5. Tiến trình nền, cổng, nơi chứa dữ liệu
@@ -233,12 +233,10 @@ Dùng được qua `/docs` (Swagger) hoặc test; sửa tới thì nhớ không 
 | Tính năng | File test |
 |---|---|
 | Dự án, đồng bộ, lưu, file hỏng | `tests/test_api.py`, `tests/test_project_sync.py`, `tests/test_project_service_safety.py`, `tests/test_default_voice.py` |
-| Chia cảnh (LLM, offline, bài dài) | `tests/test_script_splitter_long_text.py`, `tests/test_scene_analysis_fallback_reason.py`, `tests/test_vox_narrative.py` |
 | Ảnh, nhân vật | `tests/test_image.py`, `tests/test_character_consistency.py` |
 | Giọng | `tests/test_tts.py` (6 test gắn cờ `live`: Edge-TTS thật, một test bật VieNeu), `tests/test_ui_scan_fixes.py` |
 | Dựng video | `tests/test_video.py`, `tests/test_no_fake_success_and_motion_render.py`, `tests/test_youtube_studio_v2_improvements.py`, `tests/test_adversarial_qa.py` |
 | Truyện tranh | `tests/test_comic.py` (test gọi produce-long-video thật gắn cờ `live`: **LLM**, **Ảnh trả phí**), `tests/test_comic_import_errors.py` |
-| 9-Grid / Master Storyboard | `tests/test_youtube_storyboard_spec.py` |
 | Video cảnh cao trào (bảng nhân vật → 9-grid → duyệt → giao Muse một việc nhiều bước → kiểm → thay ảnh cảnh), side chat Muse, giữ khung cuối khi dựng, `duration_sec` của Muse, tóc nhân vật nữ phong cách đầu tròn | `tests/test_climax_video.py`, `tests/test_climax_agent_phase.py` (Muse giả, ffmpeg thật, khoảng 2 phút), `tests/test_climax_brief.py`, `tests/test_muse_agent_turn.py`, `tests/test_muse_agent_bridge.py`, `tests/test_female_hair_rule.py`, `tests/test_character_sheets.py`, `tests/test_muse_threads.py` |
 | Khoá bối cảnh, biểu cảm đầu tròn | `tests/test_location_sheets.py` |
 | Vẽ tất cả / duyệt tất cả bảng nhân vật và ảnh chuẩn bối cảnh | `tests/test_look_batch.py` |

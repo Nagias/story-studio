@@ -48,6 +48,8 @@ import urllib.parse
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from filelock import FileLock
+
 # Third-party dependencies
 try:
     from playwright.async_api import async_playwright, BrowserContext, Page, Playwright
@@ -949,19 +951,21 @@ class MuseFleetRunner:
                 del self.accounts[aid]
 
     def save_accounts_config(self) -> None:
-        """Ghi trạng thái chạy (status, cooldown, thống kê) vào file, không đụng các trường do backend quản lý."""
+        """Ghi trạng thái chạy (status, cooldown, thống kê) vào file, không đụng các trường do backend quản lý. Đọc-sửa-ghi
+        trong khoá file chung với backend (filelock, như routers/muse_bridge.save_muse_accounts)."""
         try:
-            data = self._read_config()
-            if not data.get("accounts"):
-                return
-            for item in data["accounts"]:
-                acc = self.accounts.get(item.get("account_id"))
-                if acc:
-                    item.update(acc.runtime_state())
-            data.setdefault("concurrency_limit", self.concurrency_limit)
-            data.setdefault("max_memory_mb", self.max_memory_mb)
-            data["loopback_url"] = self.loopback_url
-            self._write_config(data)
+            with FileLock(str(ACCOUNTS_CONFIG_PATH) + ".lock", timeout=10):
+                data = self._read_config()
+                if not data.get("accounts"):
+                    return
+                for item in data["accounts"]:
+                    acc = self.accounts.get(item.get("account_id"))
+                    if acc:
+                        item.update(acc.runtime_state())
+                data.setdefault("concurrency_limit", self.concurrency_limit)
+                data.setdefault("max_memory_mb", self.max_memory_mb)
+                data["loopback_url"] = self.loopback_url
+                self._write_config(data)
         except Exception as e:
             logger.warning(f"Không thể lưu accounts config: {e}")
 

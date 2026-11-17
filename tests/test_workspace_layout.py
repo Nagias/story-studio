@@ -186,7 +186,7 @@ def test_startup_restore_skips_projects_gallery_accounts():
 PLACEMENT |= {"idea-genre-cards": "idea", "idea-style-cards": "idea", "step1-content-kind": "idea",
               "step1-script-textarea": "idea", "step1-style-select": "idea", "step1-language-select": "idea",
               "step1-case-duration": "idea", "btn-step1-process-script": "idea", "step1-comic-dropzone": "idea",
-              "btn-step1-process-comic": "idea", "step1-pacing-select": "idea", "btn-idea-options": "idea"}
+              "btn-step1-process-comic": "idea", "btn-idea-options": "idea"}
 
 
 def test_genres_declare_three_live_templates():
@@ -200,8 +200,9 @@ def test_idea_page_engine_select_is_in_hidden_store():
     assert inside(INDEX_HTML, "step1-engine-select", HIDDEN_STORE)
 
 
-def test_idea_page_options_drawer_holds_pacing():
-    assert inside(INDEX_HTML, "step1-pacing-select", "idea-options-block")
+def test_idea_page_options_drawer_has_no_dead_pacing_select():
+    # ô nhịp cảnh gỡ 18/11/2026: máy chủ không đọc giá trị đó (cảnh truyện dài theo lời kể)
+    assert 'id="step1-pacing-select"' not in INDEX_HTML and 'id="idea-options-block"' in INDEX_HTML
 
 
 def test_genres_loaded_between_app_and_true_crime_and_shipped():

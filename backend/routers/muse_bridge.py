@@ -12,6 +12,8 @@ import uuid
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
+from filelock import FileLock
+
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query, Request, Depends
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -290,32 +292,39 @@ def load_muse_accounts() -> List[Dict[str, Any]]:
 
 
 def save_muse_accounts(accounts: List[Dict[str, Any]]) -> None:
-    """Ghi các trường do backend quản lý vào muse_fleet_accounts.json, giữ nguyên trạng thái do runner ghi."""
+    """Ghi các trường do backend quản lý vào muse_fleet_accounts.json, giữ nguyên trạng thái do runner ghi.
+    Đọc-sửa-ghi trong khoá file (filelock) chung với Fleet Runner: hai tiến trình cùng ghi file này, không khoá thì bên
+    ghi sau xoá mất thay đổi của bên kia (vd giờ khoá tài khoản hết lượt). Rà soát 18/11/2026."""
     try:
-        data = _read_fleet_file()
-        on_disk = {a.get("account_id"): a for a in data.get("accounts", []) if isinstance(a, dict)}
-        merged = []
-        for acc in accounts:
-            aid = acc["account_id"]
-            if aid in LEGACY_ALIAS_ACCOUNTS:
-                continue
-            item = dict(on_disk.get(aid) or acc)
-            for key in BACKEND_OWNED_FIELDS:
-                if key in acc:
-                    item[key] = acc[key]
-            item["account_id"] = aid
-            merged.append(item)
-        data["accounts"] = merged
-        data.setdefault("concurrency_limit", 2)
-        # Fleet Runner là tiến trình riêng, không đọc .env: chuyển danh sách thư mục profile ngoài qua file này
-        data["extra_profiles_dirs"] = [str(p) for p in EXTRA_CHROME_PROFILES_DIRS]
-        MUSE_FLEET_ACCOUNTS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        tmp = MUSE_FLEET_ACCOUNTS_FILE.with_suffix(".json.tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        os.replace(tmp, MUSE_FLEET_ACCOUNTS_FILE)
+        with FileLock(str(MUSE_FLEET_ACCOUNTS_FILE) + ".lock", timeout=10):
+            _save_muse_accounts_locked(accounts)
     except Exception as e:
         logger.error(f"Error saving muse_fleet_accounts.json: {e}")
+
+
+def _save_muse_accounts_locked(accounts: List[Dict[str, Any]]) -> None:
+    data = _read_fleet_file()
+    on_disk = {a.get("account_id"): a for a in data.get("accounts", []) if isinstance(a, dict)}
+    merged = []
+    for acc in accounts:
+        aid = acc["account_id"]
+        if aid in LEGACY_ALIAS_ACCOUNTS:
+            continue
+        item = dict(on_disk.get(aid) or acc)
+        for key in BACKEND_OWNED_FIELDS:
+            if key in acc:
+                item[key] = acc[key]
+        item["account_id"] = aid
+        merged.append(item)
+    data["accounts"] = merged
+    data.setdefault("concurrency_limit", 2)
+    # Fleet Runner là tiến trình riêng, không đọc .env: chuyển danh sách thư mục profile ngoài qua file này
+    data["extra_profiles_dirs"] = [str(p) for p in EXTRA_CHROME_PROFILES_DIRS]
+    MUSE_FLEET_ACCOUNTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = MUSE_FLEET_ACCOUNTS_FILE.with_suffix(".json.tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, MUSE_FLEET_ACCOUNTS_FILE)
 
 
 muse_accounts: List[Dict[str, Any]] = load_muse_accounts()

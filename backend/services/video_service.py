@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable
 
 import config
+import pysubs2
+from pysubs2.formats.subrip import SubripFormat
 from services.tts_service import MediaDurationError, get_audio_duration
 from services.video_rules import MAX_CLIP_STRETCH, clip_stretch, moving_seconds  # noqa: F401
 
@@ -47,71 +49,40 @@ CAMERA_MOTIONS = [
 ]
 
 def parse_srt_time(ts_str: str) -> float:
-    """Parse SRT timestamp '00:00:01,234' into seconds."""
-    ts_str = ts_str.strip().replace(",", ".")
-    parts = ts_str.split(":")
-    hours = float(parts[0])
-    minutes = float(parts[1])
-    seconds = float(parts[2])
-    return hours * 3600.0 + minutes * 60.0 + seconds
+    """Mốc giờ SRT '00:00:01,234' ra giây (đọc bằng pysubs2)."""
+    m = pysubs2.time.TIMESTAMP.match(ts_str.strip())
+    if not m:
+        raise ValueError(f"Mốc giờ SRT không đúng dạng: {ts_str!r}")
+    return pysubs2.time.timestamp_to_ms(m.groups()) / 1000.0
+
 
 def format_srt_time(sec: float) -> str:
-    """Format seconds into SRT timestamp '00:00:01,234'."""
-    total_ms = max(0, int(round(sec * 1000)))
-    hours = total_ms // 3600000
-    minutes = (total_ms % 3600000) // 60000
-    secs = (total_ms % 60000) // 1000
-    ms = total_ms % 1000
-    return f"{hours:02d}:{minutes:02d}:{secs:02d},{ms:03d}"
+    """Giây ra mốc giờ SRT '00:00:01,234' (ghi bằng pysubs2)."""
+    return SubripFormat.ms_to_timestamp(max(0, int(round(sec * 1000))))
+
 
 def merge_srt_files(scenes_srt_list: List[Dict[str, Any]], output_srt_path: str) -> str:
-    """
-    Merge multiple SRT files sequentially by applying cumulative duration offsets.
-    scenes_srt_list: [{"srt_path": "...", "duration": 3.5}, ...]
-    """
-    merged_cues: List[str] = []
-    cue_index = 1
-    current_offset = 0.0
-
+    """Ghép phụ đề các cảnh thành một file, dời mỗi cảnh theo tổng thời lượng các cảnh trước.
+    scenes_srt_list: [{"srt_path": "...", "duration": 3.5}, ...]. Đọc, dời, ghi bằng pysubs2 (thư viện MIT, có từ
+    2014). Rà soát 18/11/2026: bản tự viết trước đây bỏ âm thầm dòng phụ đề đọc lỗi (`except Exception: pass`);
+    nay file phụ đề hỏng thì báo lỗi rõ."""
+    merged = pysubs2.SSAFile()
+    offset_ms = 0
     for item in scenes_srt_list:
         srt_file = item.get("srt_path")
-        duration = float(item.get("duration", 3.0))
-
         if srt_file and os.path.exists(srt_file):
-            with open(srt_file, "r", encoding="utf-8", errors="ignore") as f:
-                content = f.read().strip()
-
-            blocks = content.split("\n\n")
-            for block in blocks:
-                lines = [line.strip() for line in block.split("\n") if line.strip()]
-                time_line_idx = -1
-                for idx, l in enumerate(lines):
-                    if "-->" in l:
-                        time_line_idx = idx
-                        break
-
-                if time_line_idx != -1:
-                    time_parts = lines[time_line_idx].split("-->")
-                    try:
-                        start_t = parse_srt_time(time_parts[0]) + current_offset
-                        end_t = parse_srt_time(time_parts[1]) + current_offset
-                        text_lines = "\n".join(lines[time_line_idx + 1:])
-                        if text_lines.strip():
-                            merged_cues.append(
-                                f"{cue_index}\n{format_srt_time(start_t)} --> {format_srt_time(end_t)}\n{text_lines}\n"
-                            )
-                            cue_index += 1
-                    except Exception:
-                        pass
-
-        current_offset += duration
-
+            try:
+                subs = pysubs2.load(srt_file, encoding="utf-8", format_="srt")
+            except (pysubs2.Pysubs2Error, UnicodeDecodeError, ValueError) as e:
+                raise RuntimeError(f"Không đọc được phụ đề {Path(srt_file).name}: {e}") from e
+            subs.shift(ms=offset_ms)
+            merged.events.extend(ev for ev in subs if ev.plaintext.strip())
+        offset_ms += int(round(float(item.get("duration", 3.0)) * 1000))
     out_p = Path(output_srt_path)
     out_p.parent.mkdir(parents=True, exist_ok=True)
-    with open(out_p, "w", encoding="utf-8") as f:
-        f.write("\n".join(merged_cues) + "\n")
-
+    merged.save(str(out_p), encoding="utf-8", format_="srt")
     return str(out_p)
+
 
 def build_zoompan_filter(
     camera_motion: str,

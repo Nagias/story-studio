@@ -514,13 +514,9 @@ def normalize_narration_text(text: str) -> str:
     return cleaned
 
 def format_srt_timestamp(seconds: float) -> str:
-    """Format float seconds to SRT timestamp 00:00:00,000."""
-    total_ms = int(max(0.0, seconds) * 1000)
-    hours = total_ms // 3600000
-    minutes = (total_ms % 3600000) // 60000
-    secs = (total_ms % 60000) // 1000
-    ms = total_ms % 1000
-    return f"{hours:02d}:{minutes:02d}:{secs:02d},{ms:03d}"
+    """Giây ra mốc giờ SRT 00:00:00,000 (một chỗ: video_service.format_srt_time, dùng pysubs2)."""
+    from services.video_service import format_srt_time   # nạp muộn: video_service nạp tts_service
+    return format_srt_time(seconds)
 
 def create_fallback_srt(text: str, duration: float) -> str:
     """Generate a single-cue SRT subtitle spanning the whole duration."""

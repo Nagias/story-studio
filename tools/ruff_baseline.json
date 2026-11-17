@@ -29,7 +29,7 @@
  "backend/services/video_service.py": {
   "ASYNC221": 1,
   "ASYNC230": 1,
-  "S110": 2
+  "S110": 1
  },
  "backend/services/vieneu_server.py": {
   "S110": 1
@@ -41,7 +41,7 @@
   "S110": 3
  },
  "tests/test_adversarial_qa.py": {
-  "ASYNC230": 2,
+  "ASYNC230": 1,
   "F841": 2
  },
  "tests/test_api.py": {
