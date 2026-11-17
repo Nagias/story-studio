@@ -94,7 +94,7 @@ from services import (
 )
 from services.case_project_builder import previous_scene_frame, redraw_board_images
 from services.dialogue_video import render_seconds
-from services.video_share import (DRAFT_VIDEO_NAME, GATE_CODE, VideoShareTooLow, gate_problem, has_all_durations,
+from services.video_share import (DRAFT_VIDEO_NAME, GATE_CODE, VideoShareTooLow, estimated_share, gate_problem,
                                   project_share, report_lines, require_gate, share_report)
 from services.render_inputs import (resolve_studio_path as _resolve_studio_path,  # noqa: F401
                                     scene_motion_clip as _scene_motion_clip,
@@ -1195,13 +1195,16 @@ async def generate_standalone_image(req: ImageGenRequest):
 # ----------------- FULL VIDEO RENDER & WEBSOCKET -----------------
 
 async def _preflight_video_share(project: Optional[Project], draft: bool) -> None:
-    """Kiểm tỉ lệ video Muse ngay khi bấm dựng (services/video_share.py): mọi cảnh đã có giọng mà dưới 45% thì trả 409
-    mã VIDEO_SHARE_LOW, chưa xếp việc dựng. Chưa đủ giọng thì để chốt cuối trong lúc dựng quyết định."""
-    if draft or not project or not has_all_durations(project):
+    """Kiểm tỉ lệ video Muse ngay khi bấm dựng (services/video_share.py), trước khi thu giọng hay tạo ảnh: dưới 45% thì
+    trả 409 mã VIDEO_SHARE_LOW, chưa xếp việc dựng, chưa tốn quota. Cảnh chưa có giọng thì ước thời lượng theo số chữ
+    (rà soát 18/11/2026: trước đây bỏ qua khi thiếu giọng, app thu giọng và tạo ảnh xong mới chặn)."""
+    if draft or not project or not project.scenes:
         return
-    report = await asyncio.to_thread(project_share, project)
+    report = await asyncio.to_thread(estimated_share, project)
     problem = gate_problem(report)
     if problem:
+        if report.get("estimated"):
+            problem += " (Tính theo thời lượng ước từ số chữ vì còn cảnh chưa thu giọng.)"
         raise HTTPException(status_code=409, detail={"code": GATE_CODE, "message": problem, "report": report})
 
 
@@ -1336,7 +1339,8 @@ async def execute_full_render(project_id: str, render_id: str, options: RenderRe
                 image_path=input_media,
                 audio_path=str(media["audio"]) if media["audio"].exists() else None,
                 output_path=str(media["video"]),
-                duration=scene.duration,
+                # cùng thời lượng cảnh với nút Sản xuất video dài (video theo lời thoại dài hơn lời: không cắt)
+                duration=render_seconds(scene) or scene.duration,
                 camera_motion=motion,
                 resolution=options.resolution or project.resolution,
                 fps=options.fps or project.fps,

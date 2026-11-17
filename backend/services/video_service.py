@@ -461,6 +461,12 @@ async def render_scene_video(
         "resolution": f"{w}x{h}",
     }
 
+def xfade_overlap(durations: List[float], trans_dur: float = 0.45) -> float:
+    """Số giây hai cảnh liền nhau chồng lên nhau khi chuyển cảnh xfade (video ngắn đi chừng này mỗi chỗ nối)."""
+    min_dur = min(durations) if durations else 3.0
+    return min(trans_dur, max(0.2, min_dur * 0.25))
+
+
 async def build_xfade_video(
     scene_video_paths: List[str],
     durations: List[float],
@@ -475,8 +481,7 @@ async def build_xfade_video(
         return False
 
     n = len(scene_video_paths)
-    min_dur = min(durations) if durations else 3.0
-    safe_trans_dur = min(trans_dur, max(0.2, min_dur * 0.25))
+    safe_trans_dur = xfade_overlap(durations, trans_dur)
 
     offsets = []
     cur_off = durations[0] - safe_trans_dur
@@ -595,6 +600,12 @@ async def assemble_full_video(
             except Exception as e:
                 logger.warning(f"Xfade transition failed ({e}), falling back to concat demuxer.")
                 xfade_ok = False
+            if xfade_ok:
+                # Mỗi chỗ nối xfade làm video ngắn đi một đoạn chồng: phụ đề phải trừ đúng đoạn đó, không thì lệch dần
+                # (rà soát 18/11/2026: lệch khoảng 0,45 giây × số chỗ nối, ~45 giây ở cuối video 100 cảnh)
+                overlap = xfade_overlap(durs, 0.45)
+                scene_srt_infos = [{**it, "duration": max(0.1, float(it.get("duration") or 0) - overlap)}
+                                   if k < len(scene_srt_infos) - 1 else it for k, it in enumerate(scene_srt_infos)]
 
         if not xfade_ok:
             # Standard fast concat demuxer (supports dip_to_black baked into segments)

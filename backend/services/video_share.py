@@ -190,6 +190,27 @@ def project_share(project: Project) -> dict:
     return share_report(project_entries(project))
 
 
+def estimated_share(project: Project) -> dict:
+    """Như project_share nhưng cảnh chưa có giọng thì ước thời lượng theo số chữ (dialogue_video.narration_seconds).
+    Dùng để chặn TRƯỚC khi thu giọng và tạo ảnh: nút dựng không tạo video Muse, nên thiếu clip lúc này thì sau khi tốn
+    quota giọng và ảnh vẫn bị chặn (rà soát 18/11/2026)."""
+    from services.dialogue_video import DialogueVideoError, narration_seconds
+    entries = []
+    for scene in project.scenes:
+        media = project_service.get_scene_media_paths(project.id, scene.id)
+        seconds = render_seconds(scene) or scene.duration
+        if not seconds:
+            try:
+                seconds = narration_seconds(project, scene)[0]
+            except DialogueVideoError as e:   # file giọng hỏng: coi như chưa biết, cảnh không góp vào tổng
+                logger.warning(f"Không ước được thời lượng cảnh {scene.id}: {e}")
+                seconds = 0
+        entries.append((scene, seconds, scene_render_input(scene, media)))
+    report = share_report(entries)
+    report["estimated"] = not has_all_durations(project)
+    return report
+
+
 # ----------------------------------------------------------------------------------------------------------- chốt
 def _vi(x: float) -> str:
     return f"{x:.1f}".replace(".", ",")
