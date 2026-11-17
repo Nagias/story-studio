@@ -17,12 +17,13 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from models.schemas import Project, Scene
-from services import clip_motion, project_service
-from services.climax_video import CLIMAX_RATIO, GATE_MIN
-from services.dialogue_video import render_seconds
+from services import clip_motion, project_service, video_rules
+from services.climax_video import scene_state as climax_state
+from services.dialogue_video import render_seconds, running_seconds
 from services.render_inputs import scene_render_input
 from services.tts_service import MediaDurationError, get_audio_duration
-from services.video_service import moving_seconds
+from services.video_rules import GATE_SHARE as GATE_MIN
+from services.video_rules import TARGET_SHARE as CLIMAX_RATIO
 
 logger = logging.getLogger("story_studio.video_share")
 
@@ -103,6 +104,33 @@ def _score(path: Path) -> Optional[float]:
         return None
 
 
+def clip_counts(scene: Scene, clip: Path) -> tuple[bool, Optional[float]]:
+    """(clip có được tính là video Muse không, điểm cử động). Nơi duy nhất quyết định: chốt dựng, kế hoạch "Tạo hình
+    cho cả dự án" và thẻ cảnh cùng hỏi hàm này. Được tính khi chủ dự án đã duyệt đúng file clip, hoặc máy đo thấy cử động."""
+    if review_valid(scene, clip):
+        return True, None
+    score = _score(clip)
+    return video_rules.has_real_motion(score), score
+
+
+def climax_done(project_id: str, scene: Scene) -> bool:
+    """Cảnh cao trào đã xong thật: trạng thái "ready" VÀ clip đang dùng được tính là video. Clip đứng hình (vụ xưởng
+    sắt 14/11/2026: cảnh 063 điểm 0,0 vẫn ghi "ready") thì chưa xong: "Tạo hình cho cả dự án" làm lại."""
+    if climax_state(scene).get("status") != "ready":
+        return False
+    source = scene_render_input(scene, project_service.get_scene_media_paths(project_id, scene.id))
+    if not source or Path(source).suffix.lower() not in VIDEO_EXTS or not Path(source).is_file():
+        return False
+    return clip_counts(scene, Path(source))[0]
+
+
+def _running(scene: Scene, path: Path) -> Optional[float]:
+    """Phần clip có hình chạy thật: video theo lời thoại ghép có chèn khung đứng yên thì lấy phần chạy thật đã lưu."""
+    length = _clip_seconds(path)
+    real = running_seconds(scene, path)
+    return min(length, real) if length is not None and real is not None else length
+
+
 # --------------------------------------------------------------------------------------------------------- báo cáo
 def share_report(entries: Iterable[tuple[Scene, float, Optional[str]]]) -> dict:
     """`entries`: (cảnh, số giây cảnh trong video, file đầu vào khi dựng: clip hay ảnh, None nếu chưa có)."""
@@ -119,21 +147,19 @@ def share_report(entries: Iterable[tuple[Scene, float, Optional[str]]]) -> dict:
         path = Path(source)
         clips += seconds
         order = scene.order
-        if review_valid(scene, path):
-            ok = True
+        ok, score = clip_counts(scene, path)
+        if ok and score is None:
             reviewed.append(order)
-        else:
-            score = _score(path)
-            ok = score is not None and clip_motion.has_real_motion(score)
-            if score is None:
-                unmeasured.append(order)
-            elif not ok:
-                still.append(order)
+        elif score is None:
+            unmeasured.append(order)
+        elif not ok:
+            still.append(order)
         if not ok:
             continue
         # Clip ngắn hơn lời kể: lúc dựng chỉ kéo chậm có giới hạn rồi giữ khung cuối đứng yên. Phần đứng yên không phải
-        # video (gặp 13/11/2026: Muse trả clip 9 giây cho lời kể 18 giây, cách đếm cũ tính đủ 18 giây).
-        moved = moving_seconds(_clip_seconds(path), seconds)
+        # video (gặp 13/11/2026: Muse trả clip 9 giây cho lời kể 18 giây, cách đếm cũ tính đủ 18 giây). Video theo lời
+        # thoại ghép có chèn khung đứng yên giữa các đoạn: chỉ đếm phần chạy thật (services/dialogue_video.py).
+        moved = video_rules.moving_seconds(_running(scene, path), seconds)
         counted += moved
         if seconds - moved > SHORT_CLIP_TOLERANCE_S:
             short.append(order)

@@ -37,7 +37,7 @@ from config import MUSE_AGENT_WAIT_MIN, PROJECTS_DIR, STATIC_DIR
 from models.schemas import Project, Scene
 from security import is_within
 from services import character_sheets as cs
-from services import clip_border, clip_motion, project_service
+from services import clip_border, clip_motion, project_service, video_rules
 from services.climax_brief import (AGENT_REPLY_MAX_CHARS, AGENT_VIDEO_MODE, NEW_SCENE_IMAGE_TAG, crowd_brief,
                                    landscape_brief,
                                    scene_brief, target_seconds)
@@ -45,19 +45,15 @@ from services.tts_service import MediaDurationError, get_audio_duration
 
 logger = logging.getLogger("story_studio.climax_video")
 
-# Phần thời lượng video TỐI THIỂU làm bằng video Muse (chủ dự án, CLAUDE.md mục 1.2 câu 24: "50% video youtube là
-# video"). Là mức sàn tính theo số giây lời kể của cả video, không phải mức trần theo số cảnh.
-CLIMAX_RATIO = 0.5
-# Dưới mức này không dựng được video thành phẩm (chủ dự án 11/11/2026: "Khoảng 50%, chặn dưới 45%"); chốt ở
-# services/video_share.py. CLIMAX_RATIO vẫn là mục tiêu khi chọn cảnh.
-GATE_MIN = 0.45
+# Mục tiêu và mức chặn tỉ lệ video Muse: services/video_rules.py (một nơi). Tên cũ giữ cho code đang dùng.
+CLIMAX_RATIO = video_rules.TARGET_SHARE
+GATE_MIN = video_rules.GATE_SHARE
 REAL_PHOTO_KEY = "real_photo"   # scene.metadata: cảnh dùng ảnh thật của vụ án, không làm video Muse
 CLIP_SECONDS = 5          # một ô lưới ứng với ~5 giây lời kể (số ô, số lưới); Muse tự quyết độ dài từng clip
 PANELS_PER_GRID = 9
 SCENE_IMAGE_MIN_SIMILARITY = 0.45   # ảnh Muse gửi kèm phải giống ảnh cảnh cũ chừng này mới thay (ảnh góc sau thì không)
 SCENE_IMAGE_RATIO_TOL = 0.03
 BACKUP_SUFFIX = ".truoc_sua_toc.jpg"
-MIN_AGENT_VIDEO_SEC = 5.0
 
 STYLE_LOCK_EN = (
     "Keep exactly the same art style as the attached image: the same drawing style, the same line work and outlines, "
@@ -357,7 +353,9 @@ def _run_media(cmd: list[str], what: str) -> subprocess.CompletedProcess:
 
 
 def check_agent_video(path: Path, target: int) -> float:
-    """Video cuối của Muse: có hình, dài 5 giây tới 2 × mục tiêu + 1. Trả số giây; sai thì ClimaxVideoError."""
+    """Video cuối của Muse: có hình, độ dài trong khoảng video_rules nhận. Trả số giây; sai thì ClimaxVideoError.
+    Clip ngắn hơn lời kể vẫn nhận (bản giao việc cho phép "video ngắn hơn cũng được"): phần thiếu không được đếm là
+    video (video_rules.moving_seconds), không bỏ phí lượt Muse đã tốn."""
     try:
         proc = _run_media(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
                            "stream=codec_type:format=duration", "-of", "default=nw=1", str(path)], "đo video của Muse")
@@ -370,8 +368,9 @@ def check_agent_video(path: Path, target: int) -> float:
         seconds = float(next(line.split("=", 1)[1] for line in out.splitlines() if line.startswith("duration=")))
     except (StopIteration, ValueError) as e:
         raise ClimaxVideoError("Không đo được độ dài video Muse gửi") from e
-    if not MIN_AGENT_VIDEO_SEC <= seconds <= 2 * target + 1:
-        raise ClimaxVideoError(f"Video Muse gửi dài {seconds:.1f} giây, cần {MIN_AGENT_VIDEO_SEC:.0f}–{2 * target + 1} giây")
+    if not video_rules.clip_length_ok(seconds, target):
+        raise ClimaxVideoError(f"Video Muse gửi dài {seconds:.1f} giây, cần {video_rules.MIN_CLIP_SEC:.0f}–"
+                               f"{video_rules.max_clip_seconds(target):.0f} giây")
     return seconds
 
 

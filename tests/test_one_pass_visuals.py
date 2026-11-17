@@ -21,6 +21,7 @@ if str(BACKEND_DIR) not in sys.path:
 from routers import climax_video as climax_router  # noqa: E402
 from routers import one_pass_visuals as op_router  # noqa: E402
 from services import climax_video as cv  # noqa: E402
+from services import clip_motion  # noqa: E402
 from services import one_pass_visuals as op  # noqa: E402
 from services import project_service  # noqa: E402
 from services import scene_prompt_preview as spp  # noqa: E402
@@ -28,6 +29,7 @@ from services.muse_prompt_format import format_image_prompt, task_attachments  #
 from tests.test_climax_video import FakeMuse, _save_project, _scene, _scene_now  # noqa: E402
 
 PID = "proj_crime_onepass"
+MOVING, STILL = 5.0, 0.0
 # Hàm đếm thật, giữ trước khi fixture tự động thay nó bằng `lambda: 1`
 REAL_USABLE_VIDEO_ACCOUNTS = op_router.usable_video_accounts
 
@@ -38,6 +40,8 @@ def _no_pacing(monkeypatch):
     monkeypatch.setattr(op, "PACE_SEC", 0)
     # tài khoản video thật của máy không được quyết định kết quả test: mặc định coi như có 1 tài khoản dùng được
     monkeypatch.setattr(op_router, "usable_video_accounts", lambda: 1)
+    # clip giả của FakeMuse: mặc định coi như có cử động (test clip đứng hình tự đặt điểm thấp)
+    monkeypatch.setattr(clip_motion, "motion_score", lambda p: MOVING)
     yield
     op._jobs.clear()
     op._starting.clear()
@@ -336,3 +340,26 @@ def test_run_refuses_when_nothing_to_do_and_bad_ids(client):
     assert client.get("/api/projects/proj_khong_co/one-pass/plan").status_code == 404
     assert client.get("/api/projects/bad.id/one-pass/plan").status_code in (400, 404)
     assert client.get(f"/api/projects/{PID}/one-pass/status").json()["running"] is False
+
+
+def test_still_clip_is_not_done_and_next_run_redoes_it(client, monkeypatch):
+    """Vụ xưởng sắt 14/11/2026: cảnh 063 điểm cử động 0,0 vẫn ghi "ready", "Tạo hình cho cả dự án" bỏ qua, chốt dựng chặn.
+    Nay một định nghĩa (video_share.climax_done): clip đứng hình thì cảnh chưa xong, lượt chạy báo lỗi rõ và lượt sau làm lại."""
+    _project()
+    muse = FakeMuse(PID, "scene_003")
+    # clip của lượt đầu đứng hình; Muse làm lại (việc clip thứ hai) thì có cử động
+    monkeypatch.setattr(clip_motion, "motion_score",
+                        lambda p: MOVING if sum(t.get("mode") == "agent-video" for t in muse.tasks) >= 2 else STILL)
+    monkeypatch.setattr(climax_router, "enqueue_and_wait_muse_task", FakeFleet(muse))
+    assert client.post(f"/api/projects/{PID}/one-pass/run").status_code == 200
+    s = _wait(client)
+    assert s["videos_done"] == [] and [f["scene_id"] for f in s["failed"]] == ["scene_003"]
+    assert "đứng hình" in s["failed"][0]["error"]
+    assert cv.scene_state(_scene_now(PID, "scene_003"))["status"] == "ready"   # clip vẫn giữ để chủ dự án xem
+    plan = client.get(f"/api/projects/{PID}/one-pass/plan").json()
+    assert plan["climax_scene_ids"] == ["scene_003"] and plan["climax_ready"] == 0
+    r = client.post(f"/api/projects/{PID}/one-pass/run")
+    assert r.status_code == 200, r.text
+    s = _wait(client)
+    assert s["videos_done"] == ["scene_003"]
+    assert client.get(f"/api/projects/{PID}/one-pass/plan").json()["climax_ready"] == 1

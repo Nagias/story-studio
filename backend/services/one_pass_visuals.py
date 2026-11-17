@@ -33,7 +33,7 @@ from models.schemas import Project, Scene
 from security import is_within
 from services import character_sheets as cs
 from services import climax_video as cv
-from services import project_service, scene_prompt_preview
+from services import project_service, scene_prompt_preview, video_share
 
 logger = logging.getLogger("story_studio.one_pass_visuals")
 
@@ -99,13 +99,14 @@ NO_VIDEO_ACCOUNT_REASON = ("Không có tài khoản Muse video nào dùng đư�
 
 
 def plan(project: Project, video_accounts_usable: Optional[int] = None) -> dict:
-    """Kế hoạch của một lượt (không tốn gì). Cảnh cao trào = cảnh có `metadata.climax_video.status` mà chưa "ready".
+    """Kế hoạch của một lượt (không tốn gì). Cảnh cao trào cần làm = cảnh có `metadata.climax_video.status` mà chưa
+    xong thật (`video_share.climax_done`: "ready" và clip được tính là video; clip đứng hình thì làm lại).
 
     `video_accounts_usable`: số tài khoản Muse video dùng được (router đếm, module này không import routers/). Bằng 0
     thì mọi cảnh cao trào vào `missing` với lý do NO_VIDEO_ACCOUNT_REASON: chạy thật 15/11/2026, mọi tài khoản video hết
     hạn mức tuần, lượt chạy vẫn giao Muse rồi chờ tới 75 phút mỗi cảnh để nhận lỗi. None là không kiểm (test cũ)."""
     eligible = [s for s in project.scenes if cv.is_eligible(s)]
-    climax = [s for s in eligible if cv.scene_state(s).get("status") and cv.scene_state(s).get("status") != "ready"]
+    climax = [s for s in eligible if cv.scene_state(s).get("status") and not video_share.climax_done(project.id, s)]
     climax_ids = {s.id for s in climax}
     kinds = cv.scene_people_kinds(project, climax) if climax else {}
     need_image = [s for s in eligible if not has_image(project.id, s)]
@@ -134,7 +135,7 @@ def plan(project: Project, video_accounts_usable: Optional[int] = None) -> dict:
         "image_scene_ids": [s.id for s in need_image],
         "climax_total": len(climax), "climax_videos": len(runnable),
         "climax_scene_ids": [r["scene_id"] for r in runnable],
-        "climax_ready": sum(1 for s in eligible if cv.scene_state(s).get("status") == "ready"),
+        "climax_ready": sum(1 for s in eligible if video_share.climax_done(project.id, s)),
         "grid_turns": grid_turns,
         # ảnh: 1 lượt / cảnh; cao trào: lưới (trừ phong cảnh, đám đông, lưới đã có) + 1 việc agent-video
         "muse_turns": len(need_image) + grid_turns + len(runnable),
@@ -339,7 +340,7 @@ def _climax_blocker(project_id: str, scene_id: str) -> Optional[str]:
     st = cv.scene_state(scene).get("status")
     if not st:
         return "Cảnh đã bị tắt khỏi danh sách làm video"
-    if st == "ready":
+    if st == "ready" and video_share.climax_done(project_id, scene):
         return "Cảnh đã có video cao trào"
     problem, _ = _climax_check(project, scene, cv.scene_people_kind(project, scene))
     if problem:
@@ -347,6 +348,18 @@ def _climax_blocker(project_id: str, scene_id: str) -> Optional[str]:
     if not has_image(project_id, scene):
         return "Cảnh chưa có ảnh (tạo ảnh ở bước trước bị lỗi) nên chưa làm video được"
     return None
+
+
+def _counted(project_id: str, scene_id: str) -> bool:
+    scene = _scene(_reload(project_id), scene_id)
+    return scene is not None and video_share.climax_done(project_id, scene)
+
+
+def _reopen_still_clip(project_id: str, scene_id: str) -> None:
+    """Cảnh "ready" mà clip không được tính (đứng hình): đưa về chờ làm clip, chat mới (như nút "Làm lại cảnh này")."""
+    scene = _scene(_reload(project_id), scene_id)
+    if scene is not None and cv.scene_state(scene).get("status") == "ready":
+        cv.redo_scene(project_id, scene_id)
 
 
 async def _climax_phase(job: OnePassJob, project_id: str, items: list[tuple[str, str]], run_climax: RunClimax,
@@ -362,10 +375,14 @@ async def _climax_phase(job: OnePassJob, project_id: str, items: list[tuple[str,
             if reason:
                 job.skipped.append({"scene_id": scene_id, "label": label, "step": "climax", "reason": reason})
                 continue
+            await asyncio.to_thread(_reopen_still_clip, project_id, scene_id)
             used_muse = True
             state = await run_climax(scene_id) or {}
             if state.get("status") != "ready":
                 error = str(state.get("error") or f"Cảnh dừng ở trạng thái {state.get('status') or 'không rõ'}")
+            elif not await asyncio.to_thread(_counted, project_id, scene_id):
+                error = ("Muse gửi video nhưng clip gần như đứng hình nên không được tính là video: xem clip trên thẻ "
+                         "cảnh, có cử động thật thì bấm \"Đã xem, có cử động\", không thì lượt sau tự làm lại")
         except Exception as e:   # lỗi ngoài dự kiến: cảnh đã được ghi "failed" ở climax_video; ghi lại, đi tiếp
             logger.exception(f"Tạo hình cả dự án {project_id}: video {scene_id} lỗi ngoài dự kiến")
             error = f"Lỗi ngoài dự kiến: {type(e).__name__}: {e}"

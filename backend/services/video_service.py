@@ -9,6 +9,7 @@ from typing import List, Dict, Any, Optional, Callable
 
 import config
 from services.tts_service import MediaDurationError, get_audio_duration
+from services.video_rules import MAX_CLIP_STRETCH, clip_stretch, moving_seconds  # noqa: F401
 
 logger = logging.getLogger("story_studio.video_service")
 
@@ -273,25 +274,7 @@ def ensure_speedlines_asset(asset_path: Optional[str] = None, dark: bool = False
     img.save(p, "PNG")
     return str(p)
 
-# Clip ngắn hơn lời kể thì kéo chậm tối đa chừng này lần trước khi giữ khung cuối. Bản Anh vụ Khang Cúc Hoa (10/11/2026):
-# 14/23 clip ngắn hơn lời Anh, đứng hình tới 3,2 giây; cần kéo nhiều nhất 1,18 lần. Chậm 1,25 lần khó nhận ra.
-MAX_CLIP_STRETCH = 1.25
-
-
-def clip_stretch(clip_seconds: Optional[float], scene_seconds: Optional[float]) -> float:
-    """Hệ số kéo chậm clip cho vừa cảnh: 1 khi clip đủ dài (lệch dưới 0,05 giây) hoặc không đo được clip."""
-    if not clip_seconds or not scene_seconds or clip_seconds <= 0 or scene_seconds <= clip_seconds + 0.05:
-        return 1.0
-    return min(MAX_CLIP_STRETCH, scene_seconds / clip_seconds)
-
-
-def moving_seconds(clip_seconds: Optional[float], scene_seconds: Optional[float]) -> float:
-    """Số giây của cảnh mà clip thật sự chạy khi dựng (kéo chậm tối đa MAX_CLIP_STRETCH, phần còn lại là khung cuối
-    đứng yên). Không đo được clip: 0 (không tính bừa là video)."""
-    scene = float(scene_seconds or 0)
-    if not clip_seconds or clip_seconds <= 0 or scene <= 0:
-        return 0.0
-    return min(scene, clip_seconds * clip_stretch(clip_seconds, scene))
+# Kéo chậm clip ngắn và số giây clip thật sự chạy: services/video_rules.py (một nơi cho dựng và chốt tỉ lệ video).
 
 
 def _media_seconds(path: str) -> Optional[float]:

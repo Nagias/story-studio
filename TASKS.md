@@ -746,3 +746,15 @@ Chủ dự án: giữ 4 tài khoản (`muse_acc_vid_01`, `vid_03`, `vid_05`, `vp
 - [x] `check.py --full` đạt 1200 test
 - [x] Chạy thật trên `proj_ea5b04db`, cùng một tài khoản `muse_acc_vid_01`: video cảnh 3 (23:21–23:32, người chạy xuống dốc, độ cử động 27,1), ảnh cảnh 2 (44 giây, 2048x1152), ảnh cảnh 4 (32 giây), video cảnh 4 (23:40–23:47, khói và ánh sáng chuyển, người gần như đứng yên, độ cử động 3,0). Muse báo đã tạo 6 video để chọn 1 clip cho cảnh 3. Ảnh cũ cảnh 2, 4 ở `.cache/muse_live_1117/images/`
 - Số lần gọi dịch vụ: Muse 4 việc (2 ảnh, 2 việc video cao trào), khoảng 33 phút; ảnh trả phí 0
+
+## Sửa luật tận gốc (18/11/2026, nhánh `sua-luat-goc`)
+Kế hoạch chủ dự án đã duyệt: rà luật chồng chéo sau hai video Khang Cúc Hoa và Vương Nghĩa Tường; mỗi khái niệm một nơi định nghĩa; repo có sẵn chỉ dùng `pysubs2`, `filelock`; code cũ vào `legacy/`. Mốc trước khi sửa: `check.py --full` đạt 1200 test (5 phút 49 giây).
+- [x] GĐ1: `services/video_rules.py` là nơi duy nhất của mục tiêu 50%, chặn 45%, độ dài clip nhận (từ 3 giây, như Fleet Runner), ngưỡng cử động, kéo chậm và số giây đếm. `video_share.clip_counts()` / `climax_done()` là định nghĩa duy nhất "clip được tính": clip đứng hình không còn là "xong", "Tạo hình cho cả dự án" báo lỗi rõ và lượt sau tự làm lại. Video theo lời thoại lưu phần chạy thật (không đếm khung đứng yên chèn thêm) và đo cử động khi tạo. Test `tests/test_video_rules.py`, `test_still_clip_is_not_done_and_next_run_redoes_it`
+- [ ] GĐ2: tài khoản và quota đọc mã lỗi
+- [ ] GĐ3: luật prompt về một chỗ, chia việc cao trào theo đoạn 12–15 giây, góc trung/xa khi cử động
+- [ ] GĐ4: trạng thái duyệt tự xoá đúng lúc
+- [ ] GĐ5: luật viết lời kể
+- [ ] GĐ6: dựng video
+- [ ] GĐ7: `legacy/`, `pysubs2`, `filelock`
+- [ ] GĐ8: tài liệu và khoá cứng
+- [ ] Kiểm chứng offline và chạy thật 6 cảnh xưởng sắt

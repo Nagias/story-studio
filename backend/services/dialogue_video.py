@@ -28,7 +28,7 @@ from typing import Awaitable, Callable, Optional
 from config import PROJECTS_DIR, STATIC_DIR
 from models.schemas import Project, Scene
 from security import is_within
-from services import location_sheets, project_service
+from services import location_sheets, project_service, video_rules
 from services.case_adaptation_checks import EN_WORDS_PER_MINUTE, VI_WORDS_PER_MINUTE
 from services.muse_motion import REAL_MOTION_RULES_VI
 from services.tts_service import MediaDurationError, get_audio_duration
@@ -263,6 +263,27 @@ def clip_windows(segments: list[dict], clip_seconds: list[float]) -> list[float]
     return out
 
 
+def running_part(segments: list[dict], clip_seconds: list[float]) -> float:
+    """Số giây video ghép có hình chạy thật: mỗi video chiếm khung `clip_windows`, ngắn hơn khung thì phần còn lại là
+    khung cuối đứng yên (tpad) — phần đó không phải video, không được đếm (services/video_rules.py)."""
+    windows = clip_windows(segments, clip_seconds)
+    return sum(min(w, float(c)) for w, c in zip(windows, clip_seconds))
+
+
+def running_seconds(scene: Scene, clip: Path) -> Optional[float]:
+    """Phần chạy thật của video theo lời thoại nếu `clip` đúng là video ghép đã lưu của cảnh; None: không phải."""
+    state = (scene.metadata or {}).get(STATE_KEY)
+    if not isinstance(state, dict) or state.get("status") != "ready" or state.get("running_seconds") is None:
+        return None
+    try:
+        if Path(clip).resolve() != Path(state.get("video_path") or "").resolve():
+            return None
+    except OSError as e:   # không đối chiếu được file: không tính phần chạy thật đã lưu (đếm theo độ dài file)
+        logger.warning(f"Không đối chiếu được video theo lời thoại {Path(clip).name}: {e}")
+        return None
+    return float(state["running_seconds"])
+
+
 def assemble(clips: list[Path], segments: list[dict], out: Path) -> float:
     """Ghép video các đoạn thành video của cảnh; trả số giây. Một video: chép nguyên, không cắt."""
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -386,6 +407,16 @@ def prepare_run(project_id: str, scene_id: str) -> dict:
     return state
 
 
+def _motion_or_none(video: Path) -> Optional[float]:
+    """Điểm cử động của video ghép; đo lỗi thì ghi log và trả None (video không được tính cho tới khi duyệt tay)."""
+    from services import clip_motion   # nạp muộn: OpenCV nặng
+    try:
+        return clip_motion.motion_score(video)
+    except clip_motion.ClipMotionError as e:
+        logger.warning(f"Không đo được cử động của {video.name}: {e}")
+        return None
+
+
 def _dirty(err: BaseException) -> bool:
     text = str(err)
     return isinstance(err, TimeoutError) or any(c in text for c in (
@@ -464,10 +495,19 @@ async def _run(project_id: str, scene_id: str, muse_call: MuseCall) -> dict:
                                 {"clips": list(clips), "thread_url": thread_url, "account_id": account})
     final = project_service.get_scene_media_paths(project_id, scene_id)["motion_video"]
     seconds = await asyncio.to_thread(assemble, [Path(c) for c in clips], segments, final)
+    lengths = [await asyncio.to_thread(video_seconds, Path(c)) for c in clips]
+    running = seconds if len(clips) == 1 else min(seconds, running_part(segments, lengths))
+    motion = await asyncio.to_thread(_motion_or_none, final)
+    warnings = [] if motion is None or video_rules.has_real_motion(motion) else [
+        f"Video gần như đứng hình (điểm cử động {motion:.1f}, cần từ {video_rules.REAL_MOTION_MIN:.0f}): người hầu "
+        "như không cử động hoặc chỉ có máy quay lia/zoom. Không được tính là video Muse cho tới khi xem và bấm "
+        "\"Đã xem, có cử động\"; không thì làm lại."]
 
     def ready(s: Scene) -> None:
         state = scene_state(s)
-        state.update(status="ready", error=None, current=None, video_path=str(final), video_seconds=round(seconds, 3))
+        state.update(status="ready", error=None, current=None, video_path=str(final), video_seconds=round(seconds, 3),
+                     running_seconds=round(running, 3), motion_score=None if motion is None else round(motion, 2),
+                     warnings=warnings)
         s.metadata = dict(s.metadata or {})
         s.metadata[STATE_KEY] = state
         s.motion_video_path = str(final)
