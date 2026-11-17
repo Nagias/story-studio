@@ -29,6 +29,7 @@ from runners.muse_fleet_runner import (
     MusePromptFormatter,
     clean_singleton_locks,
     MuseFleetRunner,
+    FleetAccount,
     ACCOUNTS_CONFIG_PATH,
 )
 
@@ -47,7 +48,7 @@ def test_accounts_config_structure():
     assert accounts, "Chưa có tài khoản Muse nào trong cấu hình"
     ids = [a["account_id"] for a in accounts]
     assert len(ids) == len(set(ids)), "Trùng account_id"
-    assert {a["type"] for a in accounts} <= {"image", "video"}, "type chỉ được là image hoặc video"
+    assert {a["type"] for a in accounts} <= {"image", "video", "both"}, "type chỉ được là image, video hoặc both"
 
     # Kiểm tra các trường bắt buộc của mỗi account
     for acc in accounts:
@@ -140,6 +141,10 @@ def test_prompt_formatter_video():
 def test_account_lru_and_cooldown_selection():
     """Kiểm tra lựa chọn tài khoản theo Round-Robin / LRU và kiểm soát Cooldown."""
     runner = MuseFleetRunner()
+    # Danh sách tài khoản giả: không phụ thuộc file tài khoản thật trên máy (chủ dự án thêm bớt tài khoản tuỳ lúc)
+    runner.accounts = {a.account_id: a for a in (
+        FleetAccount({"account_id": f"t_img_{i}", "type": "image"}) for i in (1, 2, 3))}
+    runner.accounts["t_vid_1"] = FleetAccount({"account_id": "t_vid_1", "type": "video"})
     for acc in runner.accounts.values():
         acc.status = "ready"
 

@@ -781,11 +781,15 @@ class FleetAccount:
         self.label: str = raw.get("label", self.account_id)
         self.capabilities: List[str] = list(raw.get("capabilities", []) or [])
         t = str(raw.get("type", "")).lower()
-        if t not in ("image", "video"):
-            t = "video" if any(c in self.capabilities for c in ("image-to-video", "text-to-video")) else "image"
+        if t not in ("image", "video", "both"):
+            has_video = any(c in self.capabilities for c in ("image-to-video", "text-to-video"))
+            has_image = "text-to-image" in self.capabilities
+            t = "both" if (has_video and has_image) else ("video" if has_video else "image")
+        # "both": chủ dự án 17/11/2026, tài khoản Muse làm được cả ảnh và video, "nên dùng cả đi"
         self.type: str = t
         if not self.capabilities:
-            self.capabilities = ["text-to-image", "image-upscale-2k"] if t == "image" else ["image-to-video", "text-to-video"]
+            image_caps, video_caps = ["text-to-image", "image-upscale-2k"], ["image-to-video", "text-to-video"]
+            self.capabilities = {"image": image_caps, "video": video_caps}.get(t, image_caps + video_caps)
         self.is_active_for_image: bool = bool(raw.get("is_active_for_image", False))
         self.is_active_for_video: bool = bool(raw.get("is_active_for_video", False))
 
@@ -803,7 +807,13 @@ class FleetAccount:
 
     @property
     def is_active(self) -> bool:
+        if self.type == "both":
+            return self.is_active_for_video or self.is_active_for_image
         return self.is_active_for_video if self.type == "video" else self.is_active_for_image
+
+    def serves(self, kind: str) -> bool:
+        """Tài khoản nhận được việc loại `kind` ("image"/"video")."""
+        return self.type == "both" or self.type == kind
 
     def is_logged_in(self) -> bool:
         """Profile đã có phiên đăng nhập Muse trên đĩa (cookie / IndexedDB)."""
@@ -977,9 +987,10 @@ class MuseFleetRunner:
         })
 
     def select_available_account(self, mode: str, require_login: bool = True) -> Optional[FleetAccount]:
-        """Tài khoản rảnh đúng loại (ưu tiên active, rồi dùng lâu nhất chưa dùng) - không bao giờ chéo loại."""
+        """Tài khoản rảnh nhận được loại việc này (ưu tiên active, rồi dùng lâu nhất chưa dùng); tài khoản chỉ một loại
+        không bao giờ nhận loại kia."""
         target_type = "video" if "video" in mode.lower() else "image"
-        candidates = [a for a in self.accounts.values() if a.type == target_type and a.is_ready(require_login=require_login)]
+        candidates = [a for a in self.accounts.values() if a.serves(target_type) and a.is_ready(require_login=require_login)]
         if not candidates:
             return None
         now = time.time()
@@ -1402,7 +1413,7 @@ class MuseFleetRunner:
         # Bảo vệ định tuyến nghiêm ngặt: tài khoản ảnh không xử lý video và ngược lại (route_kind cho phép tài khoản
         # video vẽ ảnh grid trong side chat của cảnh)
         route = task.get("route_kind") if task.get("route_kind") in ("image", "video") else kind
-        if acc.type != route:
+        if not acc.serves(route):
             err = f"ROUTING: tài khoản {acc.type} '{acc.account_id}' không được xử lý task {kind} '{task_id}'"
             logger.error(err)
             return False, None, err

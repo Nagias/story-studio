@@ -314,10 +314,14 @@ def test_switch_enforces_kind(fleet):
     assert r.json()["active_image_account"] == "muse_acc_img_01"
 
 
-def test_add_account_rejects_mixed_capabilities(fleet):
+def test_add_account_with_both_capabilities_is_type_both(fleet):
+    """Chủ dự án 17/11/2026: tài khoản Muse làm được cả ảnh và video, "nên dùng cả đi". Trước đó trộn hai loại bị từ chối."""
     c = fleet["client"]
     r = c.post("/api/muse-bridge/accounts/add", json={"account_id": "muse_acc_mix_01", "label": "mix", "capabilities": IMG_CAPS + VID_CAPS})
-    assert r.status_code == 400
+    assert r.status_code == 200
+    assert mb.account_kind(mb.find_account("muse_acc_mix_01")) == "both"
+    r = c.post("/api/muse-bridge/accounts/add", json={"account_id": "muse_acc_none_01", "label": "x", "capabilities": ["upscale"]})
+    assert r.status_code == 400                       # không có khả năng ảnh hay video nào thì vẫn từ chối
 
 
 def test_status_has_no_vm_fields(fleet):

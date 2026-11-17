@@ -6,6 +6,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 from starlette.testclient import TestClient
 from main import app
+from routers import muse_bridge
 from routers.muse_bridge import (
     is_local_fleet_runner_active,
     is_muse_worker_online,
@@ -23,11 +24,11 @@ def test_fleet_accounts_loaded_with_capabilities_of_their_type():
     assert resp.status_code == 200
     accounts = [a for a in resp.json()["accounts"] if a["account_id"].startswith("muse_acc_")]
     assert accounts, "Không có tài khoản Fleet nào"
-    for acc in accounts:
-        assert acc.get("type") in ("image", "video"), acc["account_id"]
-        if acc["type"] == "image":
+    for acc in accounts:   # "both": nhận cả ảnh lẫn video (chủ dự án 17/11/2026)
+        assert acc.get("type") in ("image", "video", "both"), acc["account_id"]
+        if acc["type"] in ("image", "both"):
             assert "text-to-image" in acc["capabilities"], acc["account_id"]
-        else:
+        if acc["type"] in ("video", "both"):
             assert "image-to-video" in acc["capabilities"], acc["account_id"]
 
 
@@ -86,7 +87,12 @@ def test_video_payload_separation():
     assert task["parameters"]["action_cues"] == "Warrior unsheathing katana with lightning sparks"
 
 
-def test_local_fleet_runner_detection_and_task_polling():
+def test_local_fleet_runner_detection_and_task_polling(monkeypatch):
+    # Tài khoản ảnh giả: không phụ thuộc file tài khoản thật trên máy (17/11/2026 chủ dự án gỡ muse_acc_img_01)
+    monkeypatch.setattr(muse_bridge, "muse_accounts", [
+        {"account_id": "muse_acc_img_01", "type": "image", "capabilities": ["text-to-image", "image-upscale-2k"],
+         "profile_dir": "chrome_profiles/muse_acc_img_01", "is_active_for_image": True}])
+    monkeypatch.setattr(muse_bridge, "is_account_profile_installed", lambda acc: True)
     client = TestClient(app, base_url="http://127.0.0.1:8000", client=("127.0.0.1", 50000))
 
     # Register local fleet runner worker

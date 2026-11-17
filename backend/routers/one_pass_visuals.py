@@ -51,7 +51,7 @@ def usable_video_accounts() -> int:
     """Số tài khoản Muse video dùng được: rõ loại, đã đăng nhập, không bị khoá hạn mức (không đòi đang online, vì
     muse_call_starting_runner tự bật Fleet Runner)."""
     return sum(1 for a in muse_bridge.muse_accounts
-               if muse_bridge.account_kind(a) == "video" and muse_bridge.is_account_available(a))
+               if muse_bridge.serves(a, "video") and muse_bridge.is_account_available(a))
 
 
 async def run_climax_scene(project_id: str, scene_id: str) -> dict:

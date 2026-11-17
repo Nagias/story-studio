@@ -738,3 +738,11 @@ Chủ dự án xem giao diện mới, góp ý 9 điểm (chọn cảnh cao trào
   - Dòng ghi chú ô xác nhận không còn nói "vẽ lưới 9 khung" khi kế hoạch có 0 lượt lưới (`one_pass.js?v=1.1.1`)
 - [ ] Chưa chạy thật "vẽ tất cả" nhân vật/bối cảnh với Muse
 - Số lần gọi dịch vụ: LLM 1 lượt (Gemini chọn cảnh); Muse 4 lượt (2 ảnh xong, 2 việc video thất bại), 81 phút; ảnh trả phí 0
+
+## Tài khoản Muse nhận cả ảnh lẫn video (17/11/2026, nhánh `muse-tai-khoan-ca-hai`)
+Chủ dự án: giữ 4 tài khoản (`muse_acc_vid_01`, `vid_03`, `vid_05`, `vp_04`), xoá profile khác (vào Thùng rác, cấu hình cũ ở `.cache/muse_accounts_1117/`); "Mấy tài khoản anh để lại generate được cả video và img nên dùng cả đi".
+- [x] Loại tài khoản `both`: `muse_bridge.account_kinds()`, `serves()`; `FleetAccount.serves()`; giao diện xếp tài khoản vào cả nhóm ảnh và nhóm video; khoá hết lượt khoá cả tài khoản. 4 tài khoản đổi sang `both`
+- [x] Hai test Fleet Runner dùng tài khoản giả, không đọc danh sách thật; test đếm tài khoản video của "Tạo hình cho cả dự án" trước luôn đạt vì gọi nhầm bản giả, nay gọi hàm thật
+- [x] `check.py --full` đạt 1200 test
+- [x] Chạy thật trên `proj_ea5b04db`, cùng một tài khoản `muse_acc_vid_01`: video cảnh 3 (23:21–23:32, người chạy xuống dốc, độ cử động 27,1), ảnh cảnh 2 (44 giây, 2048x1152), ảnh cảnh 4 (32 giây), video cảnh 4 (23:40–23:47, khói và ánh sáng chuyển, người gần như đứng yên, độ cử động 3,0). Muse báo đã tạo 6 video để chọn 1 clip cho cảnh 3. Ảnh cũ cảnh 2, 4 ở `.cache/muse_live_1117/images/`
+- Số lần gọi dịch vụ: Muse 4 việc (2 ảnh, 2 việc video cao trào), khoảng 33 phút; ảnh trả phí 0

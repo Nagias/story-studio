@@ -3704,7 +3704,13 @@ async function copyTextToClipboard(text) {
 // ---- Muse Fleet accounts helpers ----
 function museAccountKind(acc) {
   const t = acc && (acc.type || acc.kind);
-  return (t === 'image' || t === 'video') ? t : null;
+  return (t === 'image' || t === 'video' || t === 'both') ? t : null;
+}
+
+// Tài khoản nhận được việc loại kind ('image' | 'video'); 'both' nhận cả hai (chủ dự án 17/11/2026)
+function museAccountServes(acc, kind) {
+  const t = museAccountKind(acc);
+  return t === 'both' || t === kind;
 }
 
 // Active account id of the given kind ('image' | 'video'), or null when none is set.
@@ -3712,10 +3718,10 @@ function getActiveMuseAccountId(kind) {
   const fromState = kind === 'video' ? museFleetState.activeVideoAccount : museFleetState.activeImageAccount;
   if (fromState) {
     const acc = (cachedMuseAccounts || []).find(a => a.account_id === fromState);
-    if (!acc || museAccountKind(acc) === kind) return fromState;
+    if (!acc || museAccountServes(acc, kind)) return fromState;
   }
   const flag = kind === 'video' ? 'is_active_for_video' : 'is_active_for_image';
-  const acc = (cachedMuseAccounts || []).find(a => museAccountKind(a) === kind && a[flag]);
+  const acc = (cachedMuseAccounts || []).find(a => museAccountServes(a, kind) && a[flag]);
   return acc ? acc.account_id : null;
 }
 
@@ -3744,7 +3750,7 @@ function museKindOnline(kind) {
   const flag = kind === 'video' ? museFleetState.videoOnline : museFleetState.imageOnline;
   if (typeof flag === 'boolean') return flag;
   if (!cachedMuseAccounts.length) return null;
-  return cachedMuseAccounts.some(a => museAccountKind(a) === kind && a.online);
+  return cachedMuseAccounts.some(a => museAccountServes(a, kind) && a.online);
 }
 
 function museFleetKindSummary() {
@@ -3849,8 +3855,7 @@ function renderMuseFleetAccounts(force = false) {
 
   const groups = { image: [], video: [] };
   (cachedMuseAccounts || []).forEach(acc => {
-    const kind = museAccountKind(acc);
-    if (kind) groups[kind].push(acc);
+    ['image', 'video'].forEach(kind => { if (museAccountServes(acc, kind)) groups[kind].push(acc); });
   });
 
   ['image', 'video'].forEach(kind => {
@@ -3913,7 +3918,7 @@ async function handleMuseFleetAccountClick(e) {
   if (mode !== 'image' && mode !== 'video') return;
   const kindLabel = mode === 'video' ? 'video' : 'ảnh';
   const acc = cachedMuseAccounts.find(a => a.account_id === aid);
-  if (acc && museAccountKind(acc) !== mode) {
+  if (acc && !museAccountServes(acc, mode)) {
     showToast(`${escapeHtml(aid)} không phải tài khoản ${kindLabel}.`, "error");
     return;
   }
