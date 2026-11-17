@@ -1,4 +1,4 @@
-"""Việc làm video gửi Muse phải đòi cử động thật và giữ máy quay đứng yên (services/muse_motion.py).
+"""Việc làm video gửi Muse phải đòi cử động thật và giữ máy quay đứng yên (services/prompt_rules.py).
 
 Gặp 10/11/2026 (vụ xưởng sắt): 48 clip "Muse Video theo lời thoại" chỉ lia/zoom ảnh tĩnh; việc video mặc định xin
 "cinematic slow tracking pan" và prompt không đòi người cử động."""
@@ -14,7 +14,7 @@ if str(BACKEND_DIR) not in sys.path:
 from main import app  # noqa: E402
 from models.schemas import Project, Scene  # noqa: E402
 from services import dialogue_video as dv  # noqa: E402
-from services.muse_motion import LOCKED_CAMERA_EN, REAL_MOTION_RULES_VI  # noqa: E402
+from services.prompt_rules import LOCKED_CAMERA_EN, video_rules_vi  # noqa: E402
 
 TEXT = "Người thám tử bước vào xưởng, ngồi xổm xuống cạnh vũng nước. Ông cầm đèn pin soi vào góc tường."
 
@@ -30,7 +30,7 @@ def test_dialogue_video_prompt_demands_body_motion_and_still_camera():
     segments = dv.plan_segments(scene.text, 9.0)
     for k in range(1, len(segments) + 1):
         prompt = dv.segment_prompt(project, scene, segments, k, None, False)
-        for rule in REAL_MOTION_RULES_VI:
+        for rule in video_rules_vi(project):
             assert rule in prompt
         assert "lia máy" not in prompt.lower() or "không lia" in prompt.lower()
 

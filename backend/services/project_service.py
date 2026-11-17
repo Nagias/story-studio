@@ -15,7 +15,7 @@ from urllib.parse import quote
 
 from pydantic import ValidationError
 
-from config import DEFAULT_VOICE, PROJECTS_DIR
+from config import DEFAULT_STYLE, DEFAULT_VOICE, PROJECTS_DIR
 from models.schemas import (
     Project,
     Scene,
@@ -196,7 +196,7 @@ def create_project(data: ProjectCreateRequest) -> Project:
         name=data.name,
         description=data.description or "",
         voice=data.voice or DEFAULT_VOICE,
-        style_preset=data.style_preset or "cinematic_realistic",
+        style_preset=data.style_preset or DEFAULT_STYLE,
         character_anchor=anchor,
         character=char_obj,
         character_reference_image=data.character_reference_image,
@@ -227,7 +227,7 @@ def update_project(project_id: str, data: ProjectUpdateRequest) -> Optional[Proj
             name=data.name or "Dự án Story Studio",
             description=data.description or "",
             voice=data.voice or DEFAULT_VOICE,
-            style_preset=data.style_preset or "cinematic_realistic",
+            style_preset=data.style_preset or DEFAULT_STYLE,
             character_anchor=anchor,
             character=char_obj,
             character_reference_image=data.character_reference_image,

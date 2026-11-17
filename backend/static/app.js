@@ -4,6 +4,9 @@
  */
 
 // ================= GLOBAL STATE =================
+// Phong cách mặc định duy nhất: trùng config.DEFAULT_STYLE của máy chủ (tests/test_prompt_rules.py kiểm hai bên khớp)
+const DEFAULT_STYLE_PRESET = 'horror_cartoon_2d';
+
 const AppState = {
   currentProject: null,
   projectsList: [],
@@ -209,7 +212,7 @@ const DEFAULT_PROJECT = {
   aspect_ratio: "16:9",
   resolution: "1080p",
   image_provider: "meta_muse_cloud",
-  style_preset: "cinematic_realistic",
+  style_preset: DEFAULT_STYLE_PRESET,
   created_at: new Date().toISOString(),
   character: {
     name: "Lâm (Chiến binh áo lam)",
@@ -1607,7 +1610,7 @@ function renderSettings() {
   if (DOM.selectSubtitleStyle) DOM.selectSubtitleStyle.value = settings?.subtitle_style || project.subtitle_style || "kinetic_pop";
 
   if (DOM.selectProjectStyle && project) {
-    DOM.selectProjectStyle.value = project.style_preset || "cinematic_realistic";
+    DOM.selectProjectStyle.value = project.style_preset || DEFAULT_STYLE_PRESET;
     if (typeof window.renderLookStyleLine === "function") window.renderLookStyleLine(); // đặt .value không bắn sự kiện change nên dòng phong cách ở trang Hình mẫu phải vẽ lại tay
   }
 
@@ -2166,10 +2169,7 @@ async function regenerateSceneImageInner(project, scene, index) {
 
   // Build combined prompt with Character Consistency
   let finalPrompt = scene.visual_prompt || scene.image_prompt || scene.text || "";
-  // Máy chủ tự ghép character_anchor; chỉ thêm mô tả nhân vật khi nó khác anchor (tránh lặp hai lần)
-  if (char && char.prompt && char.prompt !== project.character_anchor) {
-    finalPrompt = `${char.prompt}, ${finalPrompt}`;
-  }
+  // Nhân vật do máy chủ khoá theo cảnh (services/scene_locks.py); không ghép mô tả nhân vật chung vào prompt
 
   let result = null;
   if (AppState.serverOnline) {
@@ -3311,7 +3311,7 @@ async function startProduceLongVideo(opts) {
   try {
     const produceReq = {
       pacing: "fast",
-      style_preset: DOM.selectProjectStyle?.value || project.style_preset || "cinematic_realistic",
+      style_preset: DOM.selectProjectStyle?.value || project.style_preset || DEFAULT_STYLE_PRESET,
       image_provider: DOM.selectImageProvider?.value || project.image_provider || "meta_muse_cloud",
       character_anchor: project.character_anchor || (project.character?.prompt || ""),
       character_reference_image: project.character_reference_image || project.character?.reference_image || undefined,
@@ -4215,20 +4215,18 @@ async function generateSceneWithMuse(index, mode = 'image') {
   renderSceneList();
 
   try {
-    const stylePreset = DOM.selectProjectStyle?.value || project.style_preset || 'spartan_epic_mythology';
+    const stylePreset = project.style_preset || DOM.selectProjectStyle?.value || DEFAULT_STYLE_PRESET;
     let promptText = "";
     if (isVideo) {
       if (!scene.video_prompt || scene.video_prompt.trim() === '') {
         const rawImgPrompt = scene.image_prompt || scene.visual_prompt || scene.text || "";
-        scene.video_prompt = `${rawImgPrompt}, cinematic continuous human walking motion, person moving forward through the scene, natural dynamic character movement, camera tracking front shot, fluid realistic motion`;
+        scene.video_prompt = rawImgPrompt;   // luật chuyển động và máy quay do máy chủ ghép (services/prompt_rules.py)
         saveStateToLocal();
       }
       promptText = scene.video_prompt;
     } else {
+      // Khoá nhân vật theo cảnh do máy chủ ghép (services/scene_locks.py); không ghép nhân vật chính chung cũ
       promptText = scene.image_prompt || scene.visual_prompt || scene.text || "";
-      if (project.character_anchor && !promptText.includes(project.character_anchor)) {
-        promptText = `${project.character_anchor}, ${promptText}`;
-      }
     }
 
     const taskPayload = withMuseAccount({
@@ -4239,7 +4237,7 @@ async function generateSceneWithMuse(index, mode = 'image') {
       action_prompt: promptText,
       negative_prompt: scene.negative_prompt || "",
       input_image_url: isVideo ? (scene.image_url || null) : null,
-      // Máy quay do máy chủ đặt (đứng yên, services/muse_motion.py); chuyển động Ken Burns của ảnh không gửi cho Muse
+      // Máy quay do máy chủ đặt (đứng yên, services/prompt_rules.py); chuyển động Ken Burns của ảnh không gửi cho Muse
       parameters: {
         resolution: "2K",
         aspect_ratio: "16:9",

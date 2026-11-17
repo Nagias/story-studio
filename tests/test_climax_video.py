@@ -203,9 +203,12 @@ def test_constants_match_contract():
     assert (cv.CLIMAX_RATIO, cv.CLIP_SECONDS, cv.PANELS_PER_GRID) == (0.5, 5, 9)
     assert (cv.SCENE_IMAGE_MIN_SIMILARITY, cv.BACKUP_SUFFIX) == (0.45, ".truoc_sua_toc.jpg")
     lock = cv.STYLE_LOCK_EN.lower()
-    for word in ("style", "line", "palette", "face", "dot eyes", "clothing", "setting", "lighting", "no text",
-                 "no blood", "no scene cuts"):
+    for word in ("style", "line", "palette", "character designs", "clothing", "setting", "lighting", "no text",
+                 "no blood", "new people"):
         assert word in lock, word
+    # Rà soát 18/11/2026: lưới không còn cấm cắt cảnh hay dặn cử động nhẹ (bản giao việc dùng ô làm khung đầu/cuối
+    # của clip, đòi cử động thật và cắt giữa hai clip); luật đầu tròn thêm từ services/prompt_rules.py
+    assert "no scene cuts" not in lock and "gentle" not in lock
 
 
 def test_scene_score_counts_each_signal():
@@ -292,7 +295,7 @@ def test_prompts_are_english_templates_with_style_lock():
     first = cv.grid_prompt(scene, project, first_grid=True)
     later = cv.grid_prompt(scene, project, first_grid=False)
     for p in (first, later):
-        assert "3x3" in p and "nine consecutive frames" in p and "white borders" in p
+        assert "3x3" in p and "nine key moments" in p and "white borders" in p and "gentle" not in p
         assert "No text, no numbers" in p and scene.image_prompt in p and cv.STYLE_LOCK_EN in p
     assert "Panel 1 (top left) is exactly the attached image" in first and "previous segment" not in first
     assert "last frame of the previous segment" in later and "exactly the attached image;" not in later
@@ -382,9 +385,14 @@ def test_long_narration_draws_second_grid_and_sends_both_to_muse(isolated_projec
     assert Path(grids[1]["attachments"][0]).name == f"{sid}_grid1_o9.jpg"
     assert "last frame of the previous segment" in grids[1]["prompt"]
     assert grids[1]["thread_url"] == THREAD                                      # grid 2 cùng chat với grid 1
+    # Chủ dự án 18/11/2026: lời kể 50 giây chia thành các việc ≤ 15 giây (ngân sách 6 video mỗi việc còn lượt làm lại);
+    # mỗi việc chỉ đính kèm lưới chứa ô của phần đó, phần sau mở đầu từ khung cuối phần trước
     agent = [t for t in muse.tasks if t["mode"] == "agent-video"]
-    assert len(agent) == 1 and [Path(x).name for x in agent[0]["attachments"][2:]] ==         [f"{sid}_grid1_v1.jpg", f"{sid}_grid2_v1.jpg"]
-    assert agent[0]["agent"]["target_seconds"] == 24 and "Ảnh 4" in agent[0]["prompt"]
+    parts = cv.agent_parts(_scene_now(pid, sid), 50.0)              # lời kể thử 3 chữ: mỗi chữ một phần
+    assert len(agent) == len(parts) == 3
+    assert [Path(x).name for x in agent[0]["attachments"][2:]] == [f"{sid}_grid1_v1.jpg"]
+    assert f"{sid}_grid2_v1.jpg" in [Path(x).name for x in agent[-1]["attachments"][2:]]   # ô 10 nằm ở lưới 2
+    assert Path(agent[1]["attachments"][0]).name.endswith("_p1_cuoi.jpg") and "PHẦN 2/3" in agent[1]["prompt"]
 
 
 def test_run_scene_fails_cleanly_when_grid_or_voice_missing(isolated_projects_dir):

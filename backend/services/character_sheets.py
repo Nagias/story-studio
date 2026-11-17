@@ -35,12 +35,8 @@ logger = logging.getLogger("story_studio.character_sheets")
 SheetStatus = Literal["draft", "drawing", "review", "approved", "failed"]
 MuseCall = Callable[[dict], Awaitable[dict]]
 
-ANGLE_RULE_EN = (
-    "The head shape, face, hairstyle, clothes, shoes and colours described above are FIXED: draw them identically in "
-    "every view. Decide once exactly where the hair grows on the head (hairline, top of the head, parting, length) and "
-    "keep that exactly the same from the front, the sides, the back and the top: the hair must never cover the head in "
-    "one view and leave it bare in another."
-)
+from services.prompt_rules import ANGLE_RULE_EN, FEMALE_HAIR_RULE_EN, ROUND_HEAD_STYLES  # noqa: E402
+
 SHEET_LAYOUT_EN = (
     "Layout on a plain light grey background, no text, no labels: row 1 = full body FRONT, LEFT SIDE, BACK, RIGHT SIDE; "
     "row 2 = head close-ups FRONT, LEFT SIDE, BACK, RIGHT SIDE, TOP. Same proportions in every view. Before answering, "
@@ -301,14 +297,12 @@ def reference_image(project: Project, cast: ProjectCast, entity_id: str) -> Opti
 # ------------------------------------------------------------------------------------------------- vẽ, duyệt
 def prompt_design(project: Project, design_en: str) -> str:
     """Thiết kế dùng trong prompt gửi Muse: phong cách đầu tròn thì bỏ vế tả mặt (without_face_details)."""
-    from services.image_service import ROUND_HEAD_STYLES   # nạp muộn như hair_rule_for
     return without_face_details(design_en) if project.style_preset in ROUND_HEAD_STYLES else (design_en or "")
 
 
 def hair_rule_for(project: Project, entity_id: str) -> str:
     """Câu quy tắc tóc nếu người này là nữ và dự án dùng phong cách đầu tròn; không thì chuỗi rỗng.
     Ghép lúc dựng prompt (không ghi vào design_en đã lưu) để thiết kế cũ, kể cả đã duyệt, cũng nhận quy tắc."""
-    from services.image_service import FEMALE_HAIR_RULE_EN, ROUND_HEAD_STYLES   # nạp muộn như default_design
     if project.style_preset not in ROUND_HEAD_STYLES:
         return ""
     person = next((e for e in case_people(project) if e.id == entity_id), None)

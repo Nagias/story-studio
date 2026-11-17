@@ -44,7 +44,9 @@ PORT = int(os.getenv("STORY_STUDIO_PORT", "8000"))
 
 # Defaults (US Podcast & Murata/Spartan Manga Art)
 DEFAULT_VOICE = os.getenv("DEFAULT_VOICE", "vi-VN-NamMinhNeural")  # giọng của dự án mới
-DEFAULT_STYLE = os.getenv("DEFAULT_STYLE", "manga_murata_battle")
+# Phong cách mặc định duy nhất của app (CLAUDE.md: mặc định đầu tròn). Mọi nơi khác đọc từ đây; app.js giữ cùng
+# giá trị ở DEFAULT_STYLE_PRESET (test_prompt_rules kiểm hai bên khớp).
+DEFAULT_STYLE = os.getenv("DEFAULT_STYLE", "horror_cartoon_2d")
 DEFAULT_IMAGE_PROVIDER = os.getenv("DEFAULT_IMAGE_PROVIDER", "meta_muse_cloud")
 
 

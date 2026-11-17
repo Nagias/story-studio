@@ -65,8 +65,9 @@ def has_image(project_id: str, scene: Scene) -> bool:
     return cv.find_scene_image(scene, project_id) is not None
 
 
-def _climax_check(project: Project, scene: Scene, kind: str) -> tuple[Optional[dict], int]:
-    """(điều kiện còn thiếu hoặc None, số lượt Muse vẽ lưới cần cho cảnh). Cùng thứ tự kiểm như run_scene_climax_video."""
+def _climax_check(project: Project, scene: Scene, kind: str) -> tuple[Optional[dict], int, int]:
+    """(điều kiện còn thiếu hoặc None, số lượt Muse vẽ lưới, số việc Muse làm clip) của cảnh. Cùng thứ tự kiểm như
+    run_scene_climax_video. Lời kể dài chia nhiều việc (climax_brief.AGENT_PART_MAX_SEC, chủ dự án 18/11/2026)."""
     state = cv.scene_state(scene)
     approved = bool(state.get("grid_approved"))
     has_grid = approved or (state.get("status") == cv.GRID_REVIEW and bool(state.get("grid_paths")))
@@ -79,18 +80,18 @@ def _climax_check(project: Project, scene: Scene, kind: str) -> tuple[Optional[d
         seconds = cv.scene_seconds(scene)
     except cv.ClimaxVideoError as e:
         return {"scene_id": scene.id, "label": label, "reason": e.message, "page": PAGE_SCRIPT[0],
-                "page_label": PAGE_SCRIPT[1]}, 0
+                "page_label": PAGE_SCRIPT[1]}, 0, 0
     if needs_cast:
         try:
             cv.cast_for(project, scene)
         except cv.ClimaxVideoError as e:
             return {"scene_id": scene.id, "label": label, "reason": e.message, "page": PAGE_LOOK[0],
-                    "page_label": PAGE_LOOK[1]}, 0
+                    "page_label": PAGE_LOOK[1]}, 0, 0
         except (cs.CastError, ValueError) as e:   # danh sách nhân vật hỏng: đường thật cũng dừng ở đây
             return {"scene_id": scene.id, "label": label, "reason": str(e), "page": PAGE_LOOK[0],
-                    "page_label": PAGE_LOOK[1]}, 0
+                    "page_label": PAGE_LOOK[1]}, 0, 0
     grids = 0 if (has_grid or not needs_cast) else len(cv.grid_plan(cv.clip_count(seconds)))
-    return None, grids
+    return None, grids, len(cv.agent_parts(scene, seconds))
 
 
 PAGE_ACCOUNTS = ("accounts", "Tài khoản và kết nối")
@@ -113,9 +114,9 @@ def plan(project: Project, video_accounts_usable: Optional[int] = None) -> dict:
     runnable: list[dict] = []
     missing: list[dict] = []
     pending_review: list[dict] = []
-    grid_turns = 0
+    grid_turns = clip_turns = 0
     for s in climax:
-        problem, grids = _climax_check(project, s, kinds.get(s.id, "cast"))
+        problem, grids, jobs = _climax_check(project, s, kinds.get(s.id, "cast"))
         if not problem and video_accounts_usable == 0:
             problem = {"scene_id": s.id, "label": scene_label(project, s), "reason": NO_VIDEO_ACCOUNT_REASON,
                        "page": PAGE_ACCOUNTS[0], "page_label": PAGE_ACCOUNTS[1]}
@@ -123,6 +124,7 @@ def plan(project: Project, video_accounts_usable: Optional[int] = None) -> dict:
             missing.append(problem)
             continue
         grid_turns += grids
+        clip_turns += jobs
         state = cv.scene_state(s)
         if state.get("status") == cv.GRID_REVIEW and state.get("grid_paths"):
             pending_review.append({"scene_id": s.id, "label": scene_label(project, s)})
@@ -138,7 +140,8 @@ def plan(project: Project, video_accounts_usable: Optional[int] = None) -> dict:
         "climax_ready": sum(1 for s in eligible if video_share.climax_done(project.id, s)),
         "grid_turns": grid_turns,
         # ảnh: 1 lượt / cảnh; cao trào: lưới (trừ phong cảnh, đám đông, lưới đã có) + 1 việc agent-video
-        "muse_turns": len(need_image) + grid_turns + len(runnable),
+        "clip_turns": clip_turns,
+        "muse_turns": len(need_image) + grid_turns + clip_turns,
         "missing": missing,
         "missing_groups": group_missing(project, missing),
         # lưới đang chờ chủ dự án duyệt: lượt này tự duyệt rồi làm clip luôn (giao diện nêu tên trước khi chạy)
@@ -342,7 +345,7 @@ def _climax_blocker(project_id: str, scene_id: str) -> Optional[str]:
         return "Cảnh đã bị tắt khỏi danh sách làm video"
     if st == "ready" and video_share.climax_done(project_id, scene):
         return "Cảnh đã có video cao trào"
-    problem, _ = _climax_check(project, scene, cv.scene_people_kind(project, scene))
+    problem, _, _ = _climax_check(project, scene, cv.scene_people_kind(project, scene))
     if problem:
         return problem["reason"]
     if not has_image(project_id, scene):

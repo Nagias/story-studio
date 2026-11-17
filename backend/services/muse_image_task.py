@@ -7,6 +7,7 @@
 from typing import Any, Optional
 
 from services.image_service import with_style
+from services.prompt_rules import negative_for
 
 
 def image_task_fields(prompt: str, params: dict, *, aspect_ratio: Optional[str] = None,
@@ -25,7 +26,8 @@ def image_task_fields(prompt: str, params: dict, *, aspect_ratio: Optional[str] 
         "mode": "text-to-image",
         # câu mô tả phong cách như mọi đường tạo ảnh khác (Muse không hiểu mã phong cách trần)
         "prompt": with_style(prompt, params.get("style_preset")),
-        "negative_prompt": negative_prompt,
+        # danh sách cấm của phong cách được gửi (trước 18/11/2026 viết sẵn trong STYLE_PRESETS mà không bao giờ gửi)
+        "negative_prompt": negative_prompt or negative_for(params.get("style_preset")) or None,
         "parameters": params,
         "reference_image": reference_image,
         "reference_image_url": reference_image_url,

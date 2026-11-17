@@ -15,6 +15,8 @@ Sự thật mỗi phần đã kể dồn vào "bảng sự thật" gửi kèm c�
 from __future__ import annotations
 
 import logging
+
+from config import DEFAULT_STYLE
 import re
 from typing import Any, Callable, Optional
 
@@ -292,7 +294,7 @@ async def review_part(part: str, *, lang: str, src_lang: str, index: int, total:
                            f"{coverage_guard.feedback_for_writer(result, dict(points))[:600]}")
 
 
-async def review_story(text: str, *, language: Optional[str] = None, style_preset: str = "cinematic_realistic",
+async def review_story(text: str, *, language: Optional[str] = None, style_preset: str = DEFAULT_STYLE,
                        job_id: Optional[str] = None, llm: Optional[Callable[..., Any]] = None) -> dict:
     """Cả truyện: {"scenes": [...], "language": ..., "coverage": [...]}. Mỗi cảnh đã qua kiểm đủ ý."""
     src_lang = detect_text_language(text)

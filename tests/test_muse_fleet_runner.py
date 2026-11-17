@@ -108,7 +108,7 @@ def test_prompt_formatter_image():
     formatted = MusePromptFormatter.format_image_prompt(task)
 
     assert "Character Anchor: detective_k" in formatted
-    assert "Style: manga_murata_battle" in formatted
+    assert "Style: manga_murata_battle" not in formatted   # mã phong cách trần không gửi
     assert "Scene Details: Cyberpunk detective inspecting evidence" in formatted
     assert "Atmosphere: cyan and magenta volumetric neon" in formatted
     assert "16:9 widescreen" in formatted

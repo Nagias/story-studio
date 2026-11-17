@@ -28,9 +28,9 @@ from typing import Awaitable, Callable, Optional
 from config import PROJECTS_DIR, STATIC_DIR
 from models.schemas import Project, Scene
 from security import is_within
-from services import location_sheets, project_service, video_rules
+from services import location_sheets, project_service, scene_locks, video_rules
 from services.case_adaptation_checks import EN_WORDS_PER_MINUTE, VI_WORDS_PER_MINUTE
-from services.muse_motion import REAL_MOTION_RULES_VI
+from services.prompt_rules import video_rules_vi
 from services.tts_service import MediaDurationError, get_audio_duration
 
 logger = logging.getLogger("story_studio.dialogue_video")
@@ -60,20 +60,20 @@ def _word_count(text: str) -> int:
     return len(text.split())
 
 
-def _pieces(text: str, total_words: int, seconds: float) -> list[str]:
-    """Cắt lời kể thành mẩu nhỏ nhất theo thứ tự ưu tiên: câu, vế câu (dấu phẩy...), nhóm chữ. Mỗi mẩu ≤ SEGMENT_MAX_SEC."""
+def _pieces(text: str, total_words: int, seconds: float, max_sec: float = SEGMENT_MAX_SEC) -> list[str]:
+    """Cắt lời kể thành mẩu nhỏ nhất theo thứ tự ưu tiên: câu, vế câu (dấu phẩy...), nhóm chữ. Mỗi mẩu ≤ max_sec."""
     per_word = seconds / max(1, total_words)
     out: list[str] = []
     for sentence in [s for s in _SENTENCE.split(text.strip()) if s.strip()]:
-        if _word_count(sentence) * per_word <= SEGMENT_MAX_SEC:
+        if _word_count(sentence) * per_word <= max_sec:
             out.append(sentence.strip())
             continue
         for clause in [c for c in _CLAUSE.split(sentence) if c.strip()]:
             words = clause.split()
-            if len(words) * per_word <= SEGMENT_MAX_SEC:
+            if len(words) * per_word <= max_sec:
                 out.append(clause.strip())
                 continue
-            step = max(1, int(SEGMENT_MAX_SEC / per_word))
+            step = max(1, int(max_sec / per_word))
             out.extend(" ".join(words[i:i + step]) for i in range(0, len(words), step))
     return out
 
@@ -102,24 +102,25 @@ def _best_partition(weights: list[float], groups: int) -> list[int]:
     return list(reversed(starts))
 
 
-def plan_segments(text: str, seconds: float) -> list[dict]:
-    """Các đoạn lời kể liền nhau, mỗi đoạn một video Muse: [{index, text, start, end, seconds}]. Thời gian chia theo
-    số chữ của từng đoạn trên tổng thời lượng lời kể."""
+def plan_segments(text: str, seconds: float, max_sec: float = SEGMENT_MAX_SEC) -> list[dict]:
+    """Các đoạn lời kể liền nhau, mỗi đoạn dài tối đa `max_sec` giây đọc: [{index, text, start, end, seconds}]. Thời
+    gian chia theo số chữ của từng đoạn trên tổng thời lượng lời kể. Video theo lời thoại: một đoạn một video Muse (8
+    giây); video cao trào: một đoạn một việc giao Muse (services/climax_brief.AGENT_PART_MAX_SEC)."""
     text = " ".join((text or "").split())
     if not text:
         raise DialogueVideoError("Cảnh chưa có lời kể để chia thành video")
     seconds = max(float(seconds or 0), 0.1)
     total_words = _word_count(text)
-    if seconds <= SEGMENT_MAX_SEC:
+    if seconds <= max_sec:
         groups = [text]
     else:
-        pieces = _pieces(text, total_words, seconds)
+        pieces = _pieces(text, total_words, seconds, max_sec)
         weights = [_word_count(p) * seconds / total_words for p in pieces]
         groups = pieces
-        for k in range(max(1, math.ceil(seconds / SEGMENT_MAX_SEC)), len(pieces) + 1):
+        for k in range(max(1, math.ceil(seconds / max_sec)), len(pieces) + 1):
             starts = _best_partition(weights, k)
             bounds = starts + [len(pieces)]
-            if max(sum(weights[bounds[g]:bounds[g + 1]]) for g in range(k)) <= SEGMENT_MAX_SEC + 1e-6:
+            if max(sum(weights[bounds[g]:bounds[g + 1]]) for g in range(k)) <= max_sec + 1e-6:
                 groups = [" ".join(pieces[bounds[g]:bounds[g + 1]]) for g in range(k)]
                 break
     if len(groups) > MAX_SEGMENTS:
@@ -170,17 +171,14 @@ def scene_plan(project: Project, scene: Scene) -> dict:
 
 
 # ------------------------------------------------------------------------------------------------ prompt Muse
-def _style_rules(project: Project) -> list[str]:
-    from services.image_service import FEMALE_HAIR_RULE_EN, ROUND_HEAD_EXPRESSION_RULE_EN, ROUND_HEAD_STYLES  # nạp muộn
-    if project.style_preset not in ROUND_HEAD_STYLES:
-        return []
-    return ["- Nhân vật đầu tròn: đầu luôn là quả bóng tròn trắng to, mặt phẳng, chấm mắt. " + ROUND_HEAD_EXPRESSION_RULE_EN,
-            "- " + FEMALE_HAIR_RULE_EN]
-
-
 def segment_prompt(project: Project, scene: Scene, segments: list[dict], k: int, lock: Optional[dict],
-                   has_plate: bool) -> str:
-    """Prompt nguyên văn gửi Muse cho đoạn thứ k (đếm từ 1)."""
+                   has_plate: bool, characters: Optional[dict] = None) -> str:
+    """Prompt nguyên văn gửi Muse cho đoạn thứ k (đếm từ 1). Luật vẽ và luật chuyển động: services/prompt_rules.py.
+
+    Rà soát 18/11/2026: prompt cũ vừa bảo khung cuối video trước là chỗ "bắt đầu, đổi góc máy" vừa bảo "máy quay đứng
+    yên", và không gửi bảng nhân vật. Nay: cùng nơi cùng việc thì tiếp diễn từ khung cuối, máy đứng yên; khác nơi hoặc
+    khác việc thì là một cảnh mới (một cú cắt giữa hai video), không bao giờ bằng chuyển động máy quay. `characters`:
+    khoá nhân vật của cảnh (services/scene_locks.character_lock), có bảng đã duyệt thì đính kèm."""
     seg = segments[k - 1]
     n = len(segments)
     target = max(int(MUSE_MIN_SEC), min(10, math.ceil(seg["seconds"] - 1e-9)))
@@ -194,29 +192,54 @@ def segment_prompt(project: Project, scene: Scene, segments: list[dict], k: int,
         if k < n:
             lines.append(f"Đoạn ngay sau (video sau sẽ làm, đừng làm trước): \"{segments[k]['text']}\"")
     lines.append(f"Hình của cảnh (mô tả ảnh cảnh): {' '.join((scene.image_prompt or '').split()) or '(không có)'}")
+    if characters and characters.get("prompt_line"):
+        lines.append(characters["prompt_line"])
     if lock:
-        # Bối cảnh khoá là nơi chính của cảnh: chỉ áp khi đoạn này diễn ra ở đó (lời kể chuyển nơi thì luật đổi cảnh thắng)
+        # Bối cảnh khoá là nơi chính của cảnh: chỉ áp khi đoạn này diễn ra ở đó (lời kể chuyển nơi thì là cảnh mới)
         lines.append(f"Nơi chính của cảnh — chỉ áp dụng khi đoạn này diễn ra ở nơi đó: {lock['prompt_line']}")
     lines.append("Ảnh đính kèm, theo thứ tự:")
-    if k == 1:
-        lines.append("- Ảnh 1 — ẢNH CẢNH: dùng làm khung hình mở đầu của video.")
-    else:
-        lines.append("- Ảnh 1 — KHUNG CUỐI CỦA VIDEO TRƯỚC: nếu đoạn này vẫn ở cùng nơi và cùng việc thì bắt đầu từ khung "
-                     "này, đổi góc máy, hành động tiếp diễn.")
-        lines.append("- Ảnh 2 — ẢNH CẢNH: chuẩn về nhân vật (gương mặt, tóc, quần áo) và nét vẽ.")
-    if has_plate:
-        lines.append(f"- Ảnh {2 if k == 1 else 3} — ẢNH CHUẨN CỦA BỐI CẢNH: khi đoạn này diễn ra ở nơi đó, vẽ đúng nơi này.")
+    for i, (_path, role) in enumerate(segment_attachments(Path("."), Path("."), k, characters, has_plate), 1):
+        lines.append(f"- Ảnh {i} — {ATTACHMENT_TEXT[role]}")
+    people = bool(characters) or cs_people_words(scene)
     lines += [
         "Luật:",
-        "- Lời kể đoạn này chuyển sang NƠI KHÁC hoặc VIỆC KHÁC so với ảnh cảnh hay đoạn trước thì ĐỔI CẢNH theo lời kể "
-        "(nơi chốn, hành động, đồ vật mới mà lời kể nói tới), không được chỉ đổi góc máy trên cùng một khung cảnh.",
-        *REAL_MOTION_RULES_VI,
+        "- Đoạn này vẫn CÙNG NƠI và CÙNG VIỆC với khung mở đầu: hành động tiếp diễn từ khung đó. Đoạn này chuyển sang "
+        "NƠI KHÁC hoặc VIỆC KHÁC: video là một cảnh mới đúng lời kể (nơi chốn, hành động, đồ vật mới mà lời kể nói tới), "
+        "giữ nhân vật như ảnh cảnh; không làm bằng cách lia hay zoom máy quay trên khung cũ.",
+        *video_rules_vi(project, people=people),
         "- Giữ đúng phong cách vẽ và nhân vật như ảnh cảnh; không thêm người mà lời kể không nói tới.",
-        *_style_rules(project),
-        "- Không chữ, không phụ đề, không logo, không máu, không vết thương.",
         "Chỉ gửi lại đúng một video kết quả.",
     ]
     return "\n".join(lines)
+
+
+ATTACHMENT_TEXT = {
+    "scene_start": "ẢNH CẢNH: khung hình mở đầu của video.",
+    "previous_last": "KHUNG CUỐI CỦA VIDEO TRƯỚC: khung mở đầu khi đoạn này vẫn cùng nơi và cùng việc (hành động tiếp "
+                     "diễn, máy quay đứng yên); khác nơi hoặc khác việc thì không dùng làm khung mở đầu.",
+    "scene_ref": "ẢNH CẢNH: chuẩn về nhân vật (gương mặt, tóc, quần áo) và nét vẽ.",
+    "characters": "BẢNG NHÂN VẬT đã duyệt: chuẩn dáng đầu, mái tóc, quần áo của từng người ở mọi góc; không chép bố cục "
+                  "của bảng vào video.",
+    "location": "ẢNH CHUẨN CỦA BỐI CẢNH: khi đoạn này diễn ra ở nơi đó, vẽ đúng nơi này.",
+}
+
+
+def segment_attachments(image: Path, frame: Optional[Path], k: int, characters: Optional[dict],
+                        plate: Optional[str]) -> list[tuple[str, str]]:
+    """(đường dẫn, vai) các ảnh đính kèm của đoạn k, đúng thứ tự prompt kể. Nơi duy nhất xếp ảnh của video thoại."""
+    out = [(str(image), "scene_start")] if k == 1 else [(str(frame), "previous_last"), (str(image), "scene_ref")]
+    board = (characters or {}).get("board_path")
+    if board:
+        out.append((str(board), "characters"))
+    if plate:
+        out.append((str(plate), "location"))
+    return out
+
+
+def cs_people_words(scene: Scene) -> bool:
+    """Cảnh có người (theo mô tả ảnh) khi chưa có khoá nhân vật: dùng luật cử động của người."""
+    from services.climax_video import PERSON_WORDS_RE   # nạp muộn: climax_video nặng
+    return bool(PERSON_WORDS_RE.search(scene.image_prompt or "")) or not (scene.image_prompt or "").strip()
 
 
 # --------------------------------------------------------------------------------------------- ffmpeg, ffprobe
@@ -458,21 +481,18 @@ async def _run(project_id: str, scene_id: str, muse_call: MuseCall) -> dict:
     image = await asyncio.to_thread(_scene_image, project_id, scene)
     lock = await asyncio.to_thread(location_sheets.scene_lock, project_id, scene_id, scene.image_prompt or "")
     plate = lock.get("plate_path") if lock else None
+    characters = await asyncio.to_thread(scene_locks.character_lock, project_id, scene_id)
     work = await asyncio.to_thread(_work_dir, project_id)
     thread_url, account = state.get("thread_url"), state.get("account_id")
     calls = int(state.get("muse_calls") or 0)
     for k in range(len(clips) + 1, len(segments) + 1):
         await asyncio.to_thread(_merge_state, project_id, scene_id, {"status": "running", "current": k})
-        if k == 1:
-            attachments = [str(image)]
-        else:
-            frame = await asyncio.to_thread(last_frame, Path(clips[-1]), work / f"{scene_id}_seg{k - 1}_cuoi.jpg")
-            attachments = [str(frame), str(image)]
-        if plate:
-            attachments.append(plate)
+        frame = None if k == 1 else await asyncio.to_thread(last_frame, Path(clips[-1]),
+                                                             work / f"{scene_id}_seg{k - 1}_cuoi.jpg")
+        attachments = [p for p, _ in segment_attachments(image, frame, k, characters, plate)]
         out = work / f"{scene_id}_seg{k}.mp4"
         task = {"mode": "image-to-video", "raw_prompt": True,
-                "prompt": segment_prompt(project, scene, segments, k, lock, bool(plate)),
+                "prompt": segment_prompt(project, scene, segments, k, lock, bool(plate), characters),
                 "attachments": attachments, "input_image_url": attachments[0], "duration": REQUEST_DURATION,
                 "parameters": {"duration": REQUEST_DURATION, "aspect_ratio": "16:9"}, "output_path": str(out)}
         if thread_url and account:

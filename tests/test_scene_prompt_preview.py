@@ -93,7 +93,8 @@ def test_image_preview_equals_real_path_without_locks(isolated_projects_dir, mon
     assert got["prompt"] == _real_image_prompt(monkeypatch, project, scene)
     assert got["prompt"].startswith("tạo cho tôi 1 hình ảnh 2K tỉ lệ 16:9: ")
     assert image_service.STYLE_PRESETS["horror_cartoon_2d"]["prompt_suffix"] in got["prompt"]
-    assert "an old samurai with a red cape" in got["prompt"]          # character_anchor chèn như app.js
+    # Rà soát 18/11/2026: "nhân vật chính chung" cũ không còn ghép vào prompt (app.js cũng bỏ); khoá theo cảnh thay nó
+    assert "an old samurai with a red cape" not in got["prompt"]
     assert got["attachments"] == [] and got["locks"] == {"characters": [], "location": None}
 
 
@@ -118,7 +119,8 @@ def test_runner_still_builds_the_old_image_text():
     text = runner.MusePromptFormatter.build_prompt(t, has_attachment=True)
     assert text == muse_prompt_format.format_image_prompt(t, has_reference=True)
     assert text.startswith("tạo cho tôi 1 hình ảnh 2K tỉ lệ 16:9: Ảnh đính kèm đầu tiên là BẢNG NHÂN VẬT")
-    assert text.endswith(", Character Anchor: anc, Style: st, Scene Details: p, Atmosphere: li, "
+    # không ghi mã phong cách trần ("Style: st"): Muse không hiểu mã, câu mô tả phong cách đã ở trong prompt
+    assert text.endswith(", Character Anchor: anc, Scene Details: p, Atmosphere: li, "
                          "16:9 widescreen cinematic, Avoid: ng")
     old = runner.MusePromptFormatter.build_prompt({"mode": "text-to-image", "prompt": "q",
                                                    "reference_image_path": "a.jpg",

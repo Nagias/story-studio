@@ -139,7 +139,8 @@ def test_long_scene_makes_one_muse_video_per_segment_and_assembles(isolated_proj
     for k, t in enumerate(muse.tasks, 1):
         assert t["mode"] == "image-to-video" and t["raw_prompt"]
         assert f"video {k}/4" in t["prompt"] and f"\"{segs[k - 1]['text']}\"" in t["prompt"]
-        assert "ĐỔI CẢNH" in t["prompt"] and "không được chỉ đổi góc máy" in t["prompt"]
+        assert "NƠI KHÁC hoặc VIỆC KHÁC" in t["prompt"] and "là một cảnh mới" in t["prompt"]
+        assert "đổi góc máy" not in t["prompt"] and "MÁY QUAY ĐỨNG YÊN" in t["prompt"]  # không còn hai lệnh cãi nhau
         assert "realistic human face" in t["prompt"]                            # luật mặt đầu tròn
     assert muse.tasks[0]["attachments"] == [str(project_service.get_scene_media_paths(PID, "scene_005")["image"])]
     assert muse.tasks[1]["attachments"][0].endswith("scene_005_seg1_cuoi.jpg")  # khung cuối video trước

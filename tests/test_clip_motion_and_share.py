@@ -137,7 +137,7 @@ def test_climax_brief_demands_body_motion_and_never_asks_to_reduce_it(isolated_p
     scene = next(s for s in project.scenes if s.id == "scene_003")
     brief = scene_brief(project, scene, [], 1, 12.0, "XONG-1")
     assert "cử động ít" not in brief and "giảm cử động" not in brief and "lia rất chậm" not in brief
-    assert "không phải ảnh chuyển động" in brief and "không lia, không zoom" in brief
+    assert "CHUYỂN ĐỘNG THẬT" in brief and "không lia, không zoom" in brief and "GÓC MÁY THEO CỬ ĐỘNG" in brief
     assert "không được sửa bằng cách bớt cử động" in brief
     assert "CẤM tự dựng clip" in brief and "khung CUỐI" in brief      # thử thật 11/11: Muse tự dựng clip giả từ ảnh tĩnh
 

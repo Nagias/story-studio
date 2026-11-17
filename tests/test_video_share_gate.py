@@ -308,7 +308,7 @@ def test_scene_with_unnamed_people_keeps_them_instead_of_landscape_brief(isolate
     assert [t["mode"] for t in muse.tasks] == ["agent-video"]                 # không lưới 9 ô, không bảng diễn viên
     prompt = muse.tasks[0]["prompt"]
     assert "những người có trong Ảnh 1" in prompt and "Không thêm người mới" in prompt
-    assert "không có nhân vật" not in prompt and "quả bóng tròn" in prompt
+    assert "không có nhân vật" not in prompt and "round white ball" in prompt
     assert cv.redo_scene(pid, sid)["status"] == "selected"
 
 

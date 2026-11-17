@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks, WebSocket, Upload
 from fastapi.responses import FileResponse
 
 from config import (
+    DEFAULT_STYLE,
     PROJECTS_DIR,
     BGM_DIR,
     COMIC_SLICES_DIR,
@@ -450,7 +451,7 @@ async def analyze_vox_script(req: VoxScriptAnalysisRequest):
             full_text=req.text,
             pacing=req.pacing or "fast",
             max_words_per_scene=req.max_words_per_scene,
-            style_preset=req.style_preset or "cinematic_realistic",
+            style_preset=req.style_preset or DEFAULT_STYLE,
             character_anchor=req.character_anchor,
             gemini_api_key=req.api_key if req.provider in ("gemini", "auto") else None,
             openrouter_api_key=req.api_key if req.provider in ("openrouter", "auto") else None,
@@ -471,7 +472,7 @@ async def import_vox_script_to_project(project_id: str, req: VoxProjectScriptReq
     if not project:
         raise HTTPException(status_code=404, detail="Project not found.")
 
-    style_preset = req.style_preset or project.style_preset or "cinematic_realistic"
+    style_preset = req.style_preset or project.style_preset or DEFAULT_STYLE
     character_anchor = req.character_anchor or project.character_anchor or None
 
     try:
@@ -542,7 +543,7 @@ async def ingest_novel_chapter(req: NovelIngestRequest):
     if not clean_text:
         raise HTTPException(status_code=400, detail="Novel text cannot be empty.")
 
-    style_preset = req.style_preset or "manga_murata_battle"
+    style_preset = req.style_preset or DEFAULT_STYLE
     pacing = req.pacing or "fast"
     voice = req.voice or "en-US-GuyNeural"
 
@@ -610,7 +611,7 @@ async def split_script(req: SplitScriptRequest):
         max_words_per_scene=req.max_words_per_scene or 30,
         language=req.language or "vi",
         pacing=req.pacing or "fast",
-        style_preset=req.style_preset or "cinematic_realistic",
+        style_preset=req.style_preset or DEFAULT_STYLE,
         character_anchor=req.character_anchor,
     )
     return {"scenes": scenes, "count": len(scenes)}
@@ -686,7 +687,7 @@ async def create_project_from_script(req: CreateProjectFromScriptRequest):
         require_safe_id(req.progress_id, "progress_id")
     try:
         review = await story_review.review_story(req.text, language=out_lang,
-                                                 style_preset=req.style_preset or "manga_murata_battle",
+                                                 style_preset=req.style_preset or DEFAULT_STYLE,
                                                  job_id=req.progress_id)
     except story_review.StoryReviewError as exc:
         raise HTTPException(status_code=502, detail=f"Chưa viết được lời review: {exc.user_message}") from exc
@@ -706,7 +707,7 @@ async def create_project_from_script(req: CreateProjectFromScriptRequest):
 
     p_req = ProjectCreateRequest(
         name=clean_title,
-        style_preset=req.style_preset or "manga_murata_battle",
+        style_preset=req.style_preset or DEFAULT_STYLE,
         character_preset_id=req.character_preset_id,
         character_anchor=req.character_anchor or "",
         character_reference_image=req.character_reference_image,
@@ -1160,7 +1161,7 @@ async def generate_standalone_image(req: ImageGenRequest):
     media_paths = get_scene_media_paths(p_id, s_id)
     
     prompt = req.prompt or "Cinematic scene still"
-    style = req.style or "manga_murata_battle"
+    style = req.style or DEFAULT_STYLE
     provider = req.provider or DEFAULT_IMAGE_PROVIDER or "meta_muse_cloud"
     order = req.scene_index or 1
 

@@ -2,8 +2,14 @@
 
 Đo thật 28/10/2026: gửi Muse từng prompt clip rồi lấy video đầu tiên thì 14/14 clip vẽ lại đầu tròn sau ~1 giây;
 giao một việc nhiều bước (Muse tự tạo, tự trích khung kiểm, tự làm lại) với ảnh góc sau vẽ riêng cho đoạn quay lưng
-thì đạt suốt 12 giây (`.cache/thu-muse-28-lan2/`). Khung chữ dưới đây theo bản giao việc của lần đạt đó.
-Thiết kế: docs/superpowers/specs/2026-10-28-video-cao-trao-giao-viec-muse-design.md.
+thì đạt suốt 12 giây (`.cache/thu-muse-28-lan2/`). Thiết kế: docs/superpowers/specs/2026-10-28-video-cao-trao-giao-viec-muse-design.md.
+
+Chia phần (chủ dự án chốt 18/11/2026): mỗi việc giao Muse tối đa AGENT_MAX_VIDEOS video. Mỗi clip 3–6 giây, cảnh dài
+tới 24 giây cần khoảng 5 clip, không còn lượt làm lại: vụ Khang Cúc Hoa và Vương Nghĩa Tường có 18 báo cáo Muse "KHÔNG
+ĐẠT" vì hết ngân sách. Nay lời kể dài hơn AGENT_PART_MAX_SEC chia thành các phần liền nhau theo ranh giới câu, mỗi phần
+một việc (còn 2–3 lượt làm lại), phần sau nối từ khung cuối phần trước, cùng tài khoản và cùng chat.
+
+Luật vẽ và luật chuyển động lấy từ services/prompt_rules.py (một nơi), không viết lại ở đây.
 """
 from __future__ import annotations
 
@@ -11,69 +17,81 @@ import math
 from typing import Optional
 
 from models.schemas import Project, Scene
-from services.character_sheets import CharacterSheet, hair_rule_for
+from services.character_sheets import CharacterSheet, hair_rule_for, hair_rule_line, look_text
 from services.character_sheets import prompt_design as cs_prompt_design
-from services.image_service import FEMALE_HAIR_RULE_EN, ROUND_HEAD_STYLES
+from services.prompt_rules import FEMALE_HAIR_RULE_EN, is_round_head, video_rules_vi
 
 AGENT_MAX_VIDEOS = 6        # giới hạn của Muse cho một yêu cầu (Muse tự khai 28/10/2026)
 AGENT_MAX_IMAGES = 4
-AGENT_MAX_SECONDS = 24      # 6 video ~10 giây mà còn chừa lượt làm lại; lời kể dài hơn: giữ khung cuối khi dựng
+AGENT_PART_MAX_SEC = 15     # một việc giao Muse phủ tối đa chừng này giây lời kể (3–4 clip, còn 2–3 lượt làm lại)
 AGENT_MIN_SECONDS = 5
-DESIGN_MAX_CHARS = 1500       # thiết kế đã duyệt thật dài 920–1340 ký tự (đo 28/10/2026): giữ đủ phần quần áo, luật FIXED
+PANEL_SECONDS = 5           # một ô storyboard ứng với ~5 giây lời kể (như climax_video.CLIP_SECONDS)
 NEW_SCENE_IMAGE_TAG = "ANH_CANH_MOI"
 AGENT_VIDEO_MODE = "agent-video"   # chế độ việc giao nhiều bước (Fleet Runner nhận ra theo tên này)
 AGENT_REPLY_MAX_CHARS = 8000        # báo cáo của Muse giữ lại tối đa chừng này ký tự
+BRIEF_MAX_CHARS = 7000      # bản giao việc dài hơn thì Muse dễ bỏ qua phần cuối (test chặn)
 
 
 def target_seconds(narration_sec: float) -> int:
-    """Độ dài video xin Muse: bằng lời kể (làm tròn lên), trong khoảng [5, 24] giây."""
-    return max(AGENT_MIN_SECONDS, min(AGENT_MAX_SECONDS, math.ceil(narration_sec - 1e-9)))
+    """Độ dài video xin Muse cho MỘT phần: bằng lời kể của phần (làm tròn lên), ít nhất AGENT_MIN_SECONDS."""
+    return max(AGENT_MIN_SECONDS, math.ceil(narration_sec - 1e-9))
 
 
-def _attachment_lines(grid_count: int) -> list[str]:
-    lines = [
-        "- Ảnh 1 — KHUNG CẢNH ĐÃ DUYỆT: chuẩn về bố cục, bối cảnh, ánh sáng, nét vẽ 2D, quần áo của cảnh.",
-        "- Ảnh 2 — BẢNG DIỄN VIÊN: mỗi nhân vật của cảnh đủ các góc (trước, nghiêng, sau, đỉnh đầu). Đây là chuẩn của "
-        "dáng đầu, mái tóc và quần áo ở mọi góc.",
-    ]
-    for g in range(1, grid_count + 1):
-        lines.append(f"- Ảnh {g + 2} — STORYBOARD 3x3 đã duyệt" + (f" (phần {g}/{grid_count} của lời kể)" if grid_count > 1 else "")
-                     + ", đọc trái sang phải, trên xuống dưới.")
+def agent_parts(scene: Scene, seconds: float) -> list[dict]:
+    """Các phần lời kể của cảnh, mỗi phần một việc Muse: [{index, text, start, end, seconds}]."""
+    from services.dialogue_video import plan_segments   # nạp muộn: dialogue_video nạp location_sheets
+    return plan_segments(scene.text or "", seconds, max_sec=AGENT_PART_MAX_SEC)
+
+
+def part_panels(part: dict) -> tuple[int, int]:
+    """(ô đầu, ô cuối) của storyboard ứng với phần lời kể, đánh số liền qua các lưới (lưới 2 bắt đầu ở ô 10)."""
+    first = int(part["start"] // PANEL_SECONDS) + 1
+    last = max(first, math.ceil(part["end"] / PANEL_SECONDS - 1e-9))
+    return first, last
+
+
+# ------------------------------------------------------------------------------------------------------------ khối chung
+def _header() -> list[str]:
+    return ["Làm video cho một cảnh của phần mềm của mình. Tự làm trọn từ đầu tới cuối trong yêu cầu này, không hỏi lại "
+            f"giữa chừng. Ngân sách: tối đa {AGENT_MAX_VIDEOS} video và tối đa {AGENT_MAX_IMAGES} ảnh."]
+
+
+def _narration_lines(scene: Scene, part: Optional[dict], n_parts: int, target: int) -> list[str]:
+    whole = " ".join((scene.text or "").split())
+    if not part or n_parts <= 1:
+        return [f"Lời kể của cảnh (video cần dài khoảng {target} giây): \"{whole}\""]
+    lines = [f"Cảnh này chia {n_parts} phần, mỗi phần một yêu cầu riêng nối tiếp nhau. Đây là PHẦN {part['index']}/{n_parts}.",
+             f"Lời kể của ĐÚNG PHẦN NÀY (video cần dài khoảng {target} giây): \"{part['text']}\"",
+             f"Toàn bộ lời kể của cảnh, để hiểu mạch (phần khác làm ở yêu cầu khác, đừng làm trước): \"{whole}\""]
     return lines
 
 
-def _cast_lines(project: Project, people: list[CharacterSheet]) -> list[str]:
-    lines = []
-    for p in people:
-        rule = hair_rule_for(project, p.entity_id)
-        # Câu quy tắc có thể nằm sẵn trong thiết kế (thiết kế mặc định chép phong cách vẽ), ở sau chỗ cắt: bỏ khỏi thiết
-        # kế rồi luôn ghi một dòng riêng, để cắt bao nhiêu cũng không rơi mất (giám khảo 28/10/2026)
-        design = cs_prompt_design(project, p.design_en)
-        design = design.replace(rule, " ") if rule else design
-        lines.append(f"- {p.name_vi}: {' '.join(design.split())[:DESIGN_MAX_CHARS]}")
-        if rule:
-            lines.append("  This hair rule overrides any other hair placement in the design: "
-                         "the female hair rule below.")
-    return lines
+def _start_frame_line(part: Optional[dict], what: str) -> str:
+    if part and part["index"] > 1:
+        return ("- Ảnh 1 — KHUNG CUỐI CỦA PHẦN TRƯỚC (đã làm trong chat này): khung mở đầu của phần này, hành động tiếp "
+                f"diễn từ đó; chuẩn về {what}.")
+    return f"- Ảnh 1 — KHUNG CẢNH ĐÃ DUYỆT: khung mở đầu; chuẩn về {what}."
 
 
 def _female_hair_lines(project: Project) -> list[str]:
     """Phong cách đầu tròn: quy tắc tóc cho MỌI nhân vật nữ trong cảnh, kể cả người chưa có bảng nhân vật (cảnh 41,
     29/10/2026: cô gái không có bảng nên ảnh cảnh vẫn đầu trọc mà bản giao việc không nhắc)."""
-    if project.style_preset not in ROUND_HEAD_STYLES:
+    if not is_round_head(project):
         return []
-    return ["", "Quy tắc tóc cho mọi nhân vật nữ trong cảnh, kể cả người không có trong bảng diễn viên: "
-            f"{FEMALE_HAIR_RULE_EN}"]
+    return ["Quy tắc tóc trên áp cho mọi nhân vật nữ trong cảnh, kể cả người không có trong bảng diễn viên."]
 
 
-ROUND_HEAD_GOAL = (
-    "Mục tiêu (không cần hoàn hảo): phong cách đồng bộ từ đầu tới cuối. Nhân vật đầu tròn luôn là quả bóng tròn "
-    "trắng RẤT TO, mặt trắng phẳng, hai chấm mắt và một nét miệng, KHÔNG BAO GIỜ thành mặt người hay mặt anime "
-    "(không mũi, không mắt có tròng, không lông mi, không môi chi tiết). Được biểu cảm bằng nét đơn giản cùng kiểu "
-    "vẽ: lông mày một nét nhíu hoặc nhướn, nước mắt, giọt mồ hôi, miệng há, nửa mặt tô xám khi sợ. Quần áo, màu sắc, "
-    "bối cảnh giữ như ảnh đã duyệt. Đổi sang mặt người thì không bao giờ đạt. Người già, người gầy cũng chỉ là quả bóng "
-    "tròn phẳng như vậy: tuổi thể hiện bằng tóc bạc, dáng người, quần áo; không nếp nhăn, không má hóp, không mũi, kể "
-    "cả lúc khóc hay sợ (đo thật 13/11/2026: mặt ông già hay bị vẽ nhăn chi tiết đúng lúc khóc).")
+def _cast_lines(project: Project, people: list[CharacterSheet]) -> list[str]:
+    """Mỗi người một dòng: chỉ phần ngoại hình đã duyệt (không chép lại nét vẽ, luật đã có ở phần Luật), không cắt.
+    Trước 18/11/2026 thiết kế chép cả đoạn phong cách cho từng người rồi cắt ở 1.500 ký tự: luật tóc mọi góc bị cắt cụt."""
+    lines = []
+    for p in people:
+        lines.append(f"- {p.name_vi}: {look_text(cs_prompt_design(project, p.design_en))}")
+        # look_text bỏ dòng nét vẽ (có câu quy tắc tóc của thiết kế mặc định): luôn ghi dòng "thắng" cho người nữ
+        if hair_rule_for(project, p.entity_id):
+            lines.append("  " + hair_rule_line("", FEMALE_HAIR_RULE_EN).replace(FEMALE_HAIR_RULE_EN,
+                                                                                "the female hair rule below."))
+    return lines
 
 
 # Thử thật 11/11/2026 (vụ xưởng sắt cảnh 7): clip AI méo đầu ở giây 3, Muse bỏ rồi TỰ DỰNG 3 clip bằng công cụ trên máy
@@ -86,176 +104,143 @@ AI_CLIPS_ONLY = (
     "- Hết ngân sách mà không đủ clip AI đạt thì ghép những phần AI đạt được, video ngắn hơn cũng được, và báo KHÔNG "
     "ĐẠT ở phần thiếu; không lấp chỗ thiếu bằng ảnh tĩnh chuyển động.",
 )
+REJECT_RULE = ("Sau mỗi clip: trích khung mỗi giây và khung cuối, tự so với ảnh khởi đầu{board}. Loại nếu có bất kỳ khung "
+               "nào: mặt người hay mặt anime, đầu nhỏ lại hoặc méo, nhân vật nữ mất tóc trên đỉnh đầu, đĩa trắng sau tóc, "
+               "đổi quần áo, thêm người, đổi nét vẽ, cắt cảnh trong clip, máy quay lia hoặc zoom; hoặc so các khung cách "
+               "nhau một giây mà người gần như đứng im. Đầu bắt đầu méo từ giây nào thì cắt bỏ từ giây đó, giữ phần trước "
+               "(ít nhất 2 giây). Bị loại thì tạo lại (viết prompt khác, hành động ngắn hơn, góc trung hoặc xa khi cử động "
+               "mạnh), trong ngân sách; không được sửa bằng cách bớt cử động.")
 
 
-def landscape_brief(project: Project, scene: Scene, seconds: float, done_token: str,
-                    location_line: Optional[str], has_plate: bool) -> str:
-    """Bản giao việc cho cảnh vẽ không có nhân vật (phong cảnh, căn phòng, đồ vật): chuyển động đến từ vật trong cảnh, máy
-    quay đứng yên, không thêm người. Chủ dự án 11/11/2026: cảnh phong cảnh được làm video và được tính vào tỉ lệ video
-    Muse (services/video_share.py). Đính kèm: ảnh cảnh, rồi ảnh chuẩn bối cảnh nếu nơi đó đã khoá."""
-    target = target_seconds(seconds)
-    attachments = ["- Ảnh 1 — KHUNG CẢNH ĐÃ DUYỆT: khung hình mở đầu; chuẩn về bố cục, ánh sáng, nét vẽ 2D, màu sắc."]
+def _delivery(done_token: str, may_redraw: bool, target: int) -> list[str]:
+    redraw = (f"- Nếu đã vẽ lại Ảnh 1: gửi kèm đúng một ảnh đó (cùng khung với Ảnh 1) và ghi một dòng "
+              f"\"{NEW_SCENE_IMAGE_TAG}: có\"; không vẽ lại thì ghi \"{NEW_SCENE_IMAGE_TAG}: không\"." if may_redraw
+              else f"- Ghi một dòng \"{NEW_SCENE_IMAGE_TAG}: không\".")
+    return [
+        f"Ghép các đoạn tốt nhất thành một video khoảng {target} giây, chỉnh màu các đoạn cho khớp nhau.",
+        "",
+        "GIAO KẾT QUẢ trong tin nhắn cuối (gửi file trong chat để mình tải về):",
+        "- Đúng chỉ một video: video cuối đã ghép (16:9, càng nét càng tốt). Không gửi kèm clip nháp trong tin cuối.",
+        redraw,
+        "- Báo cáo ngắn: danh sách clip đã lập; tổng số video và ảnh đã tạo; mỗi video đạt hay bị loại ở khung nào, vì "
+        "sao; kết quả cuối ĐẠT hay KHÔNG ĐẠT.",
+        "",
+        f"Dòng cuối cùng của tin nhắn cuối cùng ghi đúng nguyên văn: {done_token}",
+    ]
+
+
+# ------------------------------------------------------------------------------------------------------- ba loại cảnh
+def landscape_brief(project: Project, scene: Scene, seconds: float, done_token: str, location_line: Optional[str],
+                    has_plate: bool, part: Optional[dict] = None, n_parts: int = 1) -> str:
+    """Cảnh vẽ không có nhân vật (phong cảnh, căn phòng, đồ vật): chuyển động đến từ vật trong cảnh, máy quay đứng yên,
+    không thêm người. Chủ dự án 11/11/2026: cảnh phong cảnh được làm video và được tính vào tỉ lệ video Muse.
+    Đính kèm: khung mở đầu, rồi ảnh chuẩn bối cảnh nếu nơi đó đã khoá."""
+    target = target_seconds(part["seconds"] if part else seconds)
+    attachments = [_start_frame_line(part, "bố cục, ánh sáng, nét vẽ 2D, màu sắc")]
     if has_plate:
         attachments.append("- Ảnh 2 — ẢNH CHUẨN CỦA BỐI CẢNH: nơi này phải giữ đúng kiến trúc, đồ vật cố định, màu sắc.")
     parts = [
-        "Làm video cho một cảnh của phần mềm của mình. Tự làm trọn từ đầu tới cuối trong yêu cầu này, không hỏi lại "
-        f"giữa chừng. Ngân sách: tối đa {AGENT_MAX_VIDEOS} video và tối đa {AGENT_MAX_IMAGES} ảnh.",
-        "",
-        "Ảnh đính kèm, theo thứ tự:",
-        *attachments,
-        "",
-        f"Lời kể của cảnh (video cần dài khoảng {target} giây): \"{scene.text.strip()}\"",
+        *_header(), "", "Ảnh đính kèm, theo thứ tự:", *attachments, "",
+        *_narration_lines(scene, part, n_parts, target),
         f"Mô tả hình của cảnh: {' '.join((scene.image_prompt or '').split()) or '(xem Ảnh 1)'}",
         *([f"Nơi chốn cố định: {location_line}"] if location_line else []),
         "",
-        "Đây là VIDEO, không phải ảnh chuyển động: cảnh này không có nhân vật, nên chuyển động phải đến từ chính vật "
-        "trong cảnh và hợp với lời kể (gió lay cây, cỏ, lá ngô; mưa rơi; khói, sương trôi; nước chảy, gợn; đèn chập "
-        "chờn; cửa, rèm đung đưa; bụi bay). Chuyển động thấy rõ ở nhiều chỗ trong khung hình.",
-        "",
+        "Cảnh này không có nhân vật.",
         "Luật bắt buộc:",
-        "- Máy quay đứng yên như đặt trên chân máy: không lia, không zoom. Chỉ máy quay lia/zoom trên một khung đứng "
-        "im là KHÔNG ĐẠT.",
-        "- Không thêm người, không thêm con vật, không thêm chữ, phụ đề, logo.",
+        *video_rules_vi(project, people=False),
         *AI_CLIPS_ONLY,
         "- Giữ đúng nét vẽ 2D, bố cục, màu sắc và ánh sáng của Ảnh 1 suốt video; không đổi sang ảnh thật.",
         "",
         "Các bước:",
         "1. Tự lập danh sách clip (mỗi clip một kiểu chuyển động rõ, dùng Ảnh 1 làm khung đầu). Ghi danh sách vào báo cáo.",
-        "2. Làm từng clip. Sau mỗi clip: trích khung mỗi giây và khung cuối, tự so với Ảnh 1. Loại nếu: so các khung "
-        "cách nhau một giây mà gần như không có gì chuyển động; chỉ có máy quay lia/zoom; có người, con vật hay chữ "
-        "xuất hiện; đổi nét vẽ, đổi màu, đổi nơi chốn. Bị loại thì tạo lại (viết prompt khác, chuyển động rõ hơn), "
-        "trong ngân sách.",
-        f"3. Ghép các đoạn tốt nhất thành một video khoảng {target} giây.",
-        "",
-        "GIAO KẾT QUẢ trong tin nhắn cuối (gửi file trong chat để mình tải về):",
-        "- Đúng chỉ một video: video cuối đã ghép (16:9, càng nét càng tốt). Không gửi kèm clip nháp trong tin cuối.",
-        f"- Ghi một dòng \"{NEW_SCENE_IMAGE_TAG}: không\".",
-        "- Báo cáo ngắn: danh sách clip đã lập; tổng số video và ảnh đã tạo; mỗi video đạt hay bị loại ở khung nào, vì "
-        "sao; kết quả cuối ĐẠT hay KHÔNG ĐẠT.",
-        "",
-        f"Dòng cuối cùng của tin nhắn cuối cùng ghi đúng nguyên văn: {done_token}",
+        "2. Làm từng clip. " + REJECT_RULE.format(board=""),
+        "3. " + _delivery(done_token, False, target)[0],
+        *_delivery(done_token, False, target)[1:],
     ]
     return "\n".join(parts)
 
 
-def crowd_brief(project: Project, scene: Scene, seconds: float, done_token: str,
-                location_line: Optional[str], has_plate: bool) -> str:
-    """Bản giao việc cho cảnh vẽ có người nhưng không ai trong bảng nhân vật (cảnh sát, dân làng, quan toà không tên):
-    giữ đúng những người trong ảnh cảnh, đầu tròn, cử động thật; không lưới 9 ô, không bảng diễn viên. Gặp 13/11/2026:
-    các cảnh này bị coi là phong cảnh và nhận bản giao việc "không có người, không thêm người" dù ảnh có người."""
-    target = target_seconds(seconds)
-    attachments = ["- Ảnh 1 — KHUNG CẢNH ĐÃ DUYỆT: khung hình mở đầu; chuẩn về số người, dáng người, quần áo, bố cục, "
-                   "ánh sáng, nét vẽ 2D, màu sắc."]
+def crowd_brief(project: Project, scene: Scene, seconds: float, done_token: str, location_line: Optional[str],
+                has_plate: bool, part: Optional[dict] = None, n_parts: int = 1) -> str:
+    """Cảnh vẽ có người nhưng không ai trong bảng nhân vật (cảnh sát, dân làng, quan toà không tên): giữ đúng những người
+    trong ảnh cảnh, cử động thật; không lưới 9 ô, không bảng diễn viên. Gặp 13/11/2026: các cảnh này bị coi là phong cảnh
+    và nhận bản giao việc "không có người" dù ảnh có người."""
+    target = target_seconds(part["seconds"] if part else seconds)
+    attachments = [_start_frame_line(part, "số người, dáng người, quần áo, bố cục, ánh sáng, nét vẽ 2D, màu sắc")]
     if has_plate:
         attachments.append("- Ảnh 2 — ẢNH CHUẨN CỦA BỐI CẢNH: nơi này phải giữ đúng kiến trúc, đồ vật cố định, màu sắc.")
     parts = [
-        "Làm video cho một cảnh của phần mềm của mình. Tự làm trọn từ đầu tới cuối trong yêu cầu này, không hỏi lại "
-        f"giữa chừng. Ngân sách: tối đa {AGENT_MAX_VIDEOS} video và tối đa {AGENT_MAX_IMAGES} ảnh.",
-        "",
-        "Ảnh đính kèm, theo thứ tự:",
-        *attachments,
-        "",
-        f"Lời kể của cảnh (video cần dài khoảng {target} giây): \"{scene.text.strip()}\"",
+        *_header(), "", "Ảnh đính kèm, theo thứ tự:", *attachments, "",
+        *_narration_lines(scene, part, n_parts, target),
         f"Mô tả hình của cảnh: {' '.join((scene.image_prompt or '').split()) or '(xem Ảnh 1)'}",
         *([f"Nơi chốn cố định: {location_line}"] if location_line else []),
-        *_female_hair_lines(project),
         "",
         "Những người trong cảnh là những người có trong Ảnh 1: giữ đúng số người, quần áo, màu sắc và dáng của họ như "
         "Ảnh 1 suốt video.",
-        ROUND_HEAD_GOAL,
-        "",
-        "Đây là VIDEO, không phải ảnh chuyển động: người trong cảnh phải làm hành động hợp lời kể bằng cơ thể (đi, bước "
-        "tới, quay đầu, cúi xuống, giơ tay, chỉ tay, cầm nắm đồ vật, run rẩy), thấy rõ trong khung hình; vật trong cảnh "
-        "cũng có thể chuyển động (gió, mưa, khói, đèn). Chỉ đổi nét mặt, chỉ chớp mắt, hay chỉ máy quay lia/zoom trên một "
-        "khung đứng im đều KHÔNG ĐẠT.",
+        *_female_hair_lines(project),
         "",
         "Luật bắt buộc:",
-        "- Máy quay đứng yên như đặt trên chân máy: không lia, không zoom.",
-        "- Không clip nào để người xoay từ trước ra sau (hoặc từ sau ra trước): sau tóc sẽ mọc một đĩa trắng.",
-        "- Không thêm người mới, không thêm con vật, không thêm chữ, phụ đề, logo.",
+        *video_rules_vi(project, people=True),
         *AI_CLIPS_ONLY,
-        "- Giữ đúng nét vẽ 2D, bố cục, màu sắc và ánh sáng của Ảnh 1 suốt video; không đổi sang ảnh thật.",
+        "- Không thêm người mới, không thêm con vật. Giữ đúng nét vẽ 2D, bố cục, màu sắc và ánh sáng của Ảnh 1; không "
+        "đổi sang ảnh thật.",
         "",
         "Các bước:",
         "1. Tự lập danh sách clip (mỗi clip MỘT hành động đơn giản 3–6 giây, dùng Ảnh 1 hoặc khung cuối của clip trước "
         "làm khung đầu). Ghi danh sách vào báo cáo.",
-        "2. Làm từng clip. Sau mỗi clip: trích khung mỗi giây và khung cuối, tự so với Ảnh 1. Loại nếu có bất kỳ khung "
-        "nào: mặt người hay mặt anime, đầu nhỏ lại hoặc méo, đĩa trắng sau tóc, đổi quần áo, thêm người, đổi nét vẽ, cắt "
-        "cảnh trong clip; hoặc so các khung cách nhau một giây mà người gần như đứng im. Đầu bắt đầu méo từ giây nào thì "
-        "cắt bỏ từ giây đó, giữ phần trước (ít nhất 2 giây). Bị loại thì tạo lại (prompt khác, hành động ngắn hơn), "
-        "trong ngân sách; không được sửa bằng cách bớt cử động.",
-        f"3. Ghép các đoạn tốt nhất thành một video khoảng {target} giây, chỉnh màu các đoạn cho khớp nhau.",
-        "",
-        "GIAO KẾT QUẢ trong tin nhắn cuối (gửi file trong chat để mình tải về):",
-        "- Đúng chỉ một video: video cuối đã ghép (16:9, càng nét càng tốt). Không gửi kèm clip nháp trong tin cuối.",
-        f"- Ghi một dòng \"{NEW_SCENE_IMAGE_TAG}: không\".",
-        "- Báo cáo ngắn: danh sách clip đã lập; tổng số video và ảnh đã tạo; mỗi video đạt hay bị loại ở khung nào, vì "
-        "sao; kết quả cuối ĐẠT hay KHÔNG ĐẠT.",
-        "",
-        f"Dòng cuối cùng của tin nhắn cuối cùng ghi đúng nguyên văn: {done_token}",
+        "2. Làm từng clip. " + REJECT_RULE.format(board=""),
+        "3. " + _delivery(done_token, False, target)[0],
+        *_delivery(done_token, False, target)[1:],
     ]
     return "\n".join(parts)
 
 
 def scene_brief(project: Project, scene: Scene, people: list[CharacterSheet], grid_count: int, seconds: float,
-                done_token: str) -> str:
-    """Bản giao việc tiếng Việt gửi nguyên văn cho Muse; đính kèm theo thứ tự: ảnh cảnh, bảng diễn viên, các lưới."""
-    target = target_seconds(seconds)
+                done_token: str, part: Optional[dict] = None, n_parts: int = 1,
+                panels: Optional[tuple[int, int]] = None) -> str:
+    """Bản giao việc tiếng Việt gửi nguyên văn cho Muse; đính kèm theo thứ tự: khung mở đầu (ảnh cảnh, hoặc khung cuối
+    phần trước), bảng diễn viên, các lưới storyboard của phần này."""
+    target = target_seconds(part["seconds"] if part else seconds)
+    first_part = not part or part["index"] == 1
+    attachments = [
+        _start_frame_line(part, "bố cục, bối cảnh, ánh sáng, nét vẽ 2D, quần áo của cảnh"),
+        "- Ảnh 2 — BẢNG DIỄN VIÊN: mỗi nhân vật của cảnh đủ các góc (trước, nghiêng, sau, đỉnh đầu). Đây là chuẩn của "
+        "dáng đầu, mái tóc và quần áo ở mọi góc.",
+    ]
+    for g in range(1, grid_count + 1):
+        attachments.append(f"- Ảnh {g + 2} — STORYBOARD 3x3 đã duyệt" + (f" (lưới {g}/{grid_count})" if grid_count > 1
+                                                                         else "") + ", đọc trái sang phải, trên xuống dưới.")
+    if panels:
+        attachments.append(f"Phần này ứng với các ô storyboard {panels[0]}–{panels[1]} (đếm liền qua các lưới, lưới 2 bắt "
+                           "đầu ở ô 10).")
+    redraw = ("- Ảnh 1 khác Ảnh 2 ở dáng đầu hay mái tóc, hoặc có nhân vật nữ đầu trọc (tóc chỉ là một chỏm sau gáy), "
+              "thì vẽ lại Ảnh 1 trước (giữ nguyên mọi thứ khác, chỉ sửa dáng đầu, mái tóc cho đúng), rồi dùng ảnh đã "
+              "sửa làm khung đầu.")
     parts = [
-        "Làm video cho một cảnh của phần mềm của mình. Tự làm trọn từ đầu tới cuối trong yêu cầu này, không hỏi lại "
-        f"giữa chừng. Ngân sách: tối đa {AGENT_MAX_VIDEOS} video và tối đa {AGENT_MAX_IMAGES} ảnh.",
+        *_header(), "", "Ảnh đính kèm, theo thứ tự:", *attachments, "",
+        *_narration_lines(scene, part, n_parts, target),
         "",
-        "Ảnh đính kèm, theo thứ tự:",
-        *_attachment_lines(grid_count),
-        "",
-        f"Lời kể của cảnh (video cần dài khoảng {target} giây): \"{scene.text.strip()}\"",
-        "",
-        "Nhân vật của cảnh (thiết kế đã duyệt):",
+        "Nhân vật của cảnh (thiết kế đã duyệt, chỉ ngoại hình; nét vẽ theo Ảnh 1 và luật dưới):",
         *_cast_lines(project, people),
-        *_female_hair_lines(project),
-        "",
-        ROUND_HEAD_GOAL,
-        "",
-        # 11/11/2026: câu cũ "nhân vật cử động ít hoặc chạy tại chỗ vẫn đạt" + "bị loại thì giảm cử động" làm 34/38 clip
-        # vụ xưởng sắt gần như đứng hình (chủ dự án 10/11: "phải di chuyển bình thường chứ, đây là ảnh chuyển động rồi").
-        # Thử 10/11: ép cử động + khoá máy quay vẫn giữ đầu tròn (cảnh 20).
-        "Đây là VIDEO, không phải ảnh chuyển động: mỗi clip nhân vật phải làm đúng hành động trong lời kể bằng cơ thể "
-        "(đi, bước vào, quay đầu, cúi xuống, ngồi xuống, giơ tay, cầm nắm đồ vật, ôm mặt khóc, run rẩy), thấy rõ trong "
-        "khung hình. Chỉ đổi nét mặt, chỉ chớp mắt, hay chỉ máy quay lia/zoom trên một khung đứng im đều KHÔNG ĐẠT.",
         "",
         "Luật bắt buộc (đo thật: video hỏng ở đúng các chỗ này):",
-        "- Tuyệt đối không clip nào được để nhân vật xoay người từ trước ra sau (hoặc từ sau ra trước): sau tóc sẽ mọc một đĩa "
-        "trắng như vầng hào quang. Chỗ đổi hướng là một cú cắt cảnh giữa hai clip.",
+        *video_rules_vi(project, people=True),
+        *_female_hair_lines(project),
         "- Đoạn nhân vật quay lưng phải bắt đầu từ một ảnh góc sau vẽ riêng (cùng nhân vật, cùng phong cách, chỉ thấy "
         "tóc phủ kín đầu, không chút màu trắng nào của đầu), dùng ảnh đó làm khung đầu của clip.",
-        "- Máy quay đứng yên như đặt trên chân máy: không lia, không zoom; chuyển động đến từ nhân vật và vật trong cảnh.",
         *AI_CLIPS_ONLY,
-        "- Ảnh 1 khác Ảnh 2 ở dáng đầu hay mái tóc, hoặc có nhân vật nữ đầu trọc (tóc chỉ là một chỏm sau gáy), thì vẽ "
-        "lại Ảnh 1 trước (giữ nguyên mọi thứ khác, chỉ sửa dáng đầu, mái tóc cho đúng), rồi dùng ảnh đã sửa làm khung "
-        "đầu.",
+        *([redraw] if first_part else []),
         "",
         "Các bước:",
         "1. Tự lập danh sách clip từ lời kể và storyboard: ô nào góc trước/nghiêng, ô nào góc sau, mỗi clip làm gì, cắt "
-        "cảnh ở đâu. Ghi danh sách clip đó vào báo cáo.",
-        "2. Vẽ các ảnh khởi đầu cần thiết (ảnh cảnh đã sửa, ảnh góc sau) và tự kiểm với Ảnh 2.",
+        "giữa clip nào. Ghi danh sách clip đó vào báo cáo.",
+        "2. Vẽ các ảnh khởi đầu cần thiết (ảnh góc sau" + (", ảnh cảnh đã sửa" if first_part else "") +
+        ") và tự kiểm với Ảnh 2.",
         "3. Làm từng clip bằng Muse Video, mỗi clip MỘT hành động đơn giản dài 3–6 giây: đưa ô storyboard của lúc bắt "
         "đầu hành động làm khung ĐẦU và ô của lúc hành động xong làm khung CUỐI (ghi rõ trong prompt: ảnh thứ nhất là "
-        "khung đầu, ảnh thứ hai là khung cuối), kèm câu khoá: giữ đầu tròn trắng to, chấm mắt, tóc, quần áo như Ảnh 2; "
-        "clip sau nối từ khung cuối của clip trước (dùng resume_from_snapshot_id khi được). Đầu bắt đầu méo từ giây nào "
-        "thì cắt bỏ từ giây đó, giữ phần trước (ít nhất 2 giây) rồi làm clip tiếp từ khung cuối của phần giữ. Sau mỗi clip: trích khung mỗi giây và khung cuối, tự so với ảnh khởi "
-        "đầu và Ảnh 2. Loại nếu có bất kỳ khung nào: mặt người hay mặt anime, đầu nhỏ lại hoặc méo, nhân vật nữ mất tóc "
-        "trên đỉnh đầu, đĩa trắng sau tóc, đổi màu quần áo, thêm người, cắt cảnh trong clip; hoặc so các khung cách "
-        "nhau một giây mà nhân vật gần như đứng im. Bị loại thì tạo lại (viết prompt khác, chia hành động thành clip "
-        "ngắn hơn, mỗi clip một hành động rõ), trong ngân sách; không được sửa bằng cách bớt cử động.",
-        f"4. Ghép các đoạn tốt nhất thành một video khoảng {target} giây, chỉnh màu các đoạn cho khớp nhau.",
-        "",
-        "GIAO KẾT QUẢ trong tin nhắn cuối (gửi file trong chat để mình tải về):",
-        "- Đúng chỉ một video: video cuối đã ghép (16:9, càng nét càng tốt). Không gửi kèm clip nháp trong tin cuối.",
-        f"- Nếu đã vẽ lại Ảnh 1: gửi kèm đúng một ảnh đó (cùng khung với Ảnh 1) và ghi một dòng "
-        f"\"{NEW_SCENE_IMAGE_TAG}: có\"; không vẽ lại thì ghi \"{NEW_SCENE_IMAGE_TAG}: không\".",
-        "- Báo cáo ngắn: danh sách clip đã lập; tổng số video và ảnh đã tạo; mỗi video đạt hay bị loại ở khung nào, vì "
-        "sao; kết quả cuối ĐẠT hay KHÔNG ĐẠT theo mục tiêu trên.",
-        "",
-        f"Dòng cuối cùng của tin nhắn cuối cùng ghi đúng nguyên văn: {done_token}",
+        "khung đầu, ảnh thứ hai là khung cuối), kèm câu khoá: giữ đầu, tóc, quần áo như Ảnh 2; clip sau nối từ khung "
+        "cuối của clip trước (dùng resume_from_snapshot_id khi được). " + REJECT_RULE.format(board=" và Ảnh 2"),
+        "4. " + _delivery(done_token, first_part, target)[0],
+        *_delivery(done_token, first_part, target)[1:],
     ]
     return "\n".join(parts)

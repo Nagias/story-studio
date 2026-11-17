@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from config import EXTRA_CHROME_PROFILES_DIRS, MUSE_AGENT_WAIT_MIN, PROJECTS_DIR, STATIC_DIR
 from services.climax_brief import AGENT_REPLY_MAX_CHARS, AGENT_VIDEO_MODE
 from services import muse_image_task, scene_locks
-from services.muse_motion import LOCKED_CAMERA_EN
+from services.prompt_rules import LOCKED_CAMERA_EN
 from security import (
     MEDIA_EXTS,
     MAX_UPLOAD_BYTES,

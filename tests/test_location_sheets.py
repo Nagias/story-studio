@@ -378,4 +378,4 @@ def test_round_head_style_allows_expressions_but_never_real_or_anime_faces():
     from services.climax_brief import scene_brief
     project = Project(id="p", name="p", style_preset="horror_cartoon_2d")
     brief = scene_brief(project, Scene(id="s", order=1, text="t"), [], 1, 6, "XONG-1")
-    assert "không lông mày" not in brief and "lông mày một nét" in brief and "KHÔNG BAO GIỜ thành mặt người" in brief
+    assert "short line eyebrows" in brief and "never a realistic human face and never an anime face" in brief
