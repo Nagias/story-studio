@@ -321,7 +321,6 @@ const DOM = {
   step1ScriptTextarea: document.getElementById('step1-script-textarea'),
   step1WordCount: document.getElementById('step1-word-count'),
   step1EngineSelect: document.getElementById('step1-engine-select'),
-  step1PacingSelect: document.getElementById('step1-pacing-select'),
   step1LanguageSelect: document.getElementById('step1-language-select'),
   step1StyleSelect: document.getElementById('step1-style-select'),
   step1ContentKind: document.getElementById('step1-content-kind'),
@@ -2995,7 +2994,6 @@ async function handleStep1ProcessScript() {
     return;
   }
 
-  const pacing = DOM.step1PacingSelect?.value || 'fast';
   const style = DOM.step1StyleSelect?.value || 'horror_cartoon_2d';
   const imageProvider = DOM.step1EngineSelect?.value || DOM.selectImageProvider?.value || 'meta_muse_cloud';
 
@@ -3028,7 +3026,6 @@ async function handleStep1ProcessScript() {
       createdProject = await API.createProjectFromScript({
         name: text.split('\n')[0].substring(0, 45).trim() || "Câu Chuyện Mới",
         text: text,
-        pacing: pacing,
         style_preset: style,
         voice: autoVoice,
         image_provider: imageProvider,

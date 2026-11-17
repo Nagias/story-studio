@@ -327,14 +327,8 @@
 
         <!-- Khối Tuỳ chọn: nằm sẵn ở đây (ẩn), openDrawer() dời vào ngăn kéo khi bấm "Tuỳ chọn" và trả lại khi đóng -->
         <div id="idea-options-block" class="ws-drawer-src">
-          <div data-step1-kind="story" class="ws-idea-field">
-            <span>Nhịp độ cắt cảnh</span>
-            <select id="step1-pacing-select" class="ws-select">
-              <option value="fast" selected>Nhanh (3-4 giây mỗi cảnh)</option>
-              <option value="balanced">Cân bằng (5 giây mỗi cảnh)</option>
-              <option value="narrative">Tự sự (7 giây mỗi cảnh)</option>
-            </select>
-          </div>
+          <!-- Ô "Nhịp độ cắt cảnh" đã gỡ 18/11/2026: máy chủ không đọc giá trị này (cảnh truyện dài theo lời kể) -->
+          <p data-step1-kind="story" class="ws-note">Độ dài mỗi cảnh theo lời kể, không cần chọn.</p>
           <p data-step1-kind="case" class="ws-note hidden">Thể loại này chưa có tuỳ chọn nào thêm.</p>
         </div>
       </div>

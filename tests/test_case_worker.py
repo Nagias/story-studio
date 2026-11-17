@@ -46,8 +46,9 @@ DOSSIER = (FIXTURES_DIR / "dossier.txt").read_text(encoding="utf-8")
 STYLE = "cinematic noir"
 FULL_ORDER = [
     "EXTRACT 0", "EXTRACT 1", "CLUSTER", "ALIASES", "DEDUPE", "OUTLINE",
-    "WRITE_VI p1", "kiem_loi_ke", "WRITE_EN p1", "PROMPTS p1", "WRITE_VI p2", "kiem_loi_ke", "WRITE_EN p2", "PROMPTS p2",
-]   # kiem_loi_ke: bước kiểm đủ ý sau mỗi lời Việt, cùng việc write_vi (coverage_guard, 02/11/2026)
+    "WRITE_VI p1", "kiem_loi_ke", "WRITE_EN p1", "kiem_loi_ke", "PROMPTS p1", "WRITE_VI p2", "kiem_loi_ke",
+    "WRITE_EN p2", "kiem_loi_ke", "PROMPTS p2",
+]   # kiem_loi_ke: bước kiểm đủ ý sau mỗi lời Việt và (từ 18/11/2026) mỗi lời Anh, cùng việc write_vi (coverage_guard, 02/11/2026)
 ALL_LABELS = [
     "Đang đọc đoạn 1/2", "Đang đọc đoạn 2/2", "Đang gộp tên nhân vật", "Đang đặt tên hư cấu", "Đang lọc sự việc trùng",
     "Đang lên dàn ý",
@@ -206,8 +207,9 @@ def test_progress_label_for_every_step_kind(isolated_projects_dir):
         approve_outline(case_id)
 
     assert labels[:-1] == ALL_LABELS[:6] + [REVIEW_LABEL] + ALL_LABELS[6:]
-    # mỗi lần gọi LLM ghi nhãn việc đang chạy; việc lời Việt gọi 2 lần (viết + kiểm), assemble không gọi LLM
-    per_call = [lab for lab in ALL_LABELS[:-1] for _ in range(2 if "lời Việt" in lab else 1)]
+    # mỗi lần gọi LLM ghi nhãn việc đang chạy; việc lời Việt và lời Anh gọi 2 lần (viết + kiểm đủ ý), assemble không
+    # gọi LLM
+    per_call = [lab for lab in ALL_LABELS[:-1] for _ in range(2 if ("lời Việt" in lab or "lời Anh" in lab) else 1)]
     assert [label for _id, _n, label in seen_running] == per_call
     assert all(n == 1 for _id, n, _label in seen_running)
     done = _progress(case_id)
@@ -499,7 +501,7 @@ def test_one_llm_call_at_a_time(isolated_projects_dir, monkeypatch):
     assert state["peak"] == 1
     # Vụ cũ chạy tới dàn ý rồi chờ duyệt; trong lúc đó vụ mới chạy tiếp tới dàn ý. Duyệt cả hai thì vụ cũ viết xong
     # hẳn rồi mới tới vụ mới.
-    assert owners == [older] * 6 + [newer] * 6 + [older] * 8 + [newer] * 8
+    assert owners == [older] * 6 + [newer] * 6 + [older] * 10 + [newer] * 10   # lời Anh có thêm lượt kiểm đủ ý
     assert calls == FULL_ORDER[:6] * 2 + FULL_ORDER[6:] * 2
     for case_id in (older, newer):
         assert _pipeline(case_id).status == "done"
