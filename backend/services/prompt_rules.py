@@ -18,12 +18,11 @@ ROUND_HEAD_STYLES = ("horror_cartoon_2d",)
 # Chủ dự án 29/10/2026 (câu 12 mục 1.2): được biểu cảm như video mẫu. Đo 13/11/2026: mặt ông già hay bị vẽ nhăn chi tiết
 # đúng lúc khóc, nên tuổi chỉ thể hiện bằng tóc, dáng, quần áo.
 ROUND_HEAD_RULE_EN = (
-    "Round-head characters: the head is always a big, flat, perfectly round white ball with two dot eyes and a simple "
-    "line mouth, never a realistic human face and never an anime face (no nose, no eyes with irises or pupils, no "
-    "eyelashes, no detailed lips, no realistic skin, no wrinkles, no hollow cheeks). Facial expressions are allowed and "
-    "encouraged, drawn with the same simple flat lines: short line eyebrows that frown, furrow or rise, tears and tear "
-    "streaks, sweat drops, a wide open or trembling line mouth, and when a character is afraid, half of the round white "
-    "face shaded grey. Age is shown only by hair colour, body shape and clothes, even when crying or afraid."
+    "Round-head characters: the head is always a big flat round white ball with two dot eyes and a line mouth, never "
+    "a realistic human face and never an anime face (no nose, no irises, no eyelashes, no detailed lips, no wrinkles, "
+    "no hollow cheeks). Expressions use simple flat lines: short line eyebrows that frown or rise, tears, sweat drops, "
+    "an open or trembling mouth, and half of the round white face shaded grey when afraid. Age is shown only by hair "
+    "colour, body shape and clothes, even when crying."
 )
 # Chủ dự án 28/10/2026: tóc nhân vật nữ "phủ nhiều trên đầu thay vì chỉ có chút tóc ở phần gáy"
 FEMALE_HAIR_RULE_EN = (
@@ -45,20 +44,18 @@ NO_TEXT_VI = "- Không chữ, không phụ đề, không logo, không máu, khô
 # hay đổi góc nhìn là một cú cắt sang clip/video sau, không bao giờ bằng chuyển động máy quay.
 LOCKED_CAMERA_EN = ("locked-off static camera on a tripod: no pan, no zoom, no dolly, no camera shake; all motion comes "
                     "from the characters and things inside the scene")
-CAMERA_VI = ("- MÁY QUAY ĐỨNG YÊN như đặt trên chân máy trong suốt mỗi clip: không lia, không zoom, không trượt máy. Đổi "
-             "nơi hay đổi góc nhìn chỉ bằng một cú cắt sang clip sau, không bằng chuyển động máy quay. Clip chỉ có máy "
-             "quay lia hoặc zoom trên một khung đứng im là KHÔNG ĐẠT.")
-MOTION_VI = ("- CHUYỂN ĐỘNG THẬT: người trong cảnh làm đúng hành động trong lời kể bằng cơ thể (đi, bước tới, quay đầu, "
-             "cúi xuống, ngồi xuống, giơ tay, chỉ tay, cầm nắm đồ vật, ôm mặt khóc, run rẩy), thấy rõ trong khung hình. "
-             "Biểu cảm đi kèm hành động thì tốt, nhưng chỉ đổi nét mặt hay chỉ chớp mắt là KHÔNG ĐẠT.")
+CAMERA_VI = ("- MÁY QUAY ĐỨNG YÊN suốt mỗi clip: không lia, không zoom, không trượt máy; đổi nơi hay đổi góc nhìn là một "
+             "cú cắt sang clip sau. Clip chỉ có máy quay lia hoặc zoom trên khung đứng im là KHÔNG ĐẠT.")
+MOTION_VI = ("- CHUYỂN ĐỘNG THẬT: người trong cảnh làm đúng hành động của lời kể bằng cơ thể (đi, quay đầu, cúi xuống, "
+             "ngồi, giơ tay, cầm nắm đồ vật, ôm mặt khóc, run rẩy), thấy rõ trong khung. Chỉ đổi nét mặt hay chỉ chớp mắt "
+             "là KHÔNG ĐẠT.")
 SCENERY_MOTION_VI = ("- CHUYỂN ĐỘNG THẬT: cảnh không có người nên chuyển động đến từ chính vật trong cảnh và hợp với lời "
                      "kể (gió lay cây, cỏ, lá; mưa rơi; khói, sương trôi; nước chảy; đèn chập chờn; cửa, rèm đung đưa; "
                      "bụi bay), thấy rõ ở nhiều chỗ trong khung hình. Không thêm người, không thêm con vật.")
-SHOT_SIZE_VI = ("- GÓC MÁY THEO CỬ ĐỘNG: hành động lớn của cơ thể (đi, chạy, cúi, ngồi, giơ tay) quay ở góc trung hoặc "
-                "góc xa, thấy cả người, mặt nhỏ trong khung. Cận mặt chỉ dùng cho biểu cảm, khi đó người chỉ cử động "
-                "nhẹ (thở, run, rơi nước mắt).")
-NO_TURN_VI = ("- Không clip nào để người xoay từ trước ra sau hoặc từ sau ra trước (sau tóc sẽ mọc một đĩa trắng như vầng "
-              "hào quang): đổi hướng là một cú cắt giữa hai clip.")
+SHOT_SIZE_VI = ("- GÓC MÁY THEO CỬ ĐỘNG: hành động lớn (đi, chạy, cúi, ngồi, giơ tay) quay góc trung hoặc xa, thấy cả "
+                "người, mặt nhỏ trong khung; cận mặt chỉ cho biểu cảm, khi đó người chỉ cử động nhẹ.")
+NO_TURN_VI = ("- Không clip nào để người xoay từ trước ra sau hoặc ngược lại (sau tóc sẽ mọc đĩa trắng): đổi hướng là "
+              "một cú cắt giữa hai clip.")
 # Cùng ý cho prompt tiếng Anh (lưới 9 khung)
 MOTION_EN = ("The characters' body action follows the narration and progresses clearly from panel to panel (walking, "
              "turning the head, bending down, sitting, raising or pointing a hand, holding objects, trembling); "

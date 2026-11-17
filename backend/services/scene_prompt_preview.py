@@ -146,10 +146,11 @@ def dialogue_preview(project: Project, scene: Scene) -> dict:
     segments = plan["segments"]
     lock = location_sheets.scene_lock(project.id, scene.id, scene.image_prompt or "")
     has_plate = bool((lock or {}).get("plate_path"))
+    characters = scene_locks.character_lock(project.id, scene.id)   # như dialogue_video._run: khoá nhân vật, bảng
     return {"video_count": len(segments), "narration_seconds": plan["narration_seconds"],
             "estimated": plan["estimated"], "blocked": blocked, "error": None,
             "segments": [{"index": seg["index"], "seconds": seg["seconds"], "text": seg["text"],
-                          "prompt": dv.segment_prompt(project, scene, segments, k, lock, has_plate)}
+                          "prompt": dv.segment_prompt(project, scene, segments, k, lock, has_plate, characters)}
                          for k, seg in enumerate(segments, 1)]}
 
 
