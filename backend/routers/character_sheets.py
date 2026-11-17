@@ -240,7 +240,7 @@ async def draw_all(project_id: str):
         raise HTTPException(status_code=409, detail=str(e)) from None
     try:
         cast = await _call(cs.load_cast, project_id)
-        items = [(s.entity_id, s.name_vi) for s in cs.batch_targets(cast)
+        items = [(s.entity_id, s.name_vi) for s in cs.batch_targets(cast, project_id)
                  if not _is_drawing(project_id, s.entity_id)]
         if not items:
             raise HTTPException(status_code=400, detail="Không còn nhân vật nào cần vẽ bảng")

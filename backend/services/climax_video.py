@@ -663,6 +663,33 @@ def cast_for(project: Project, scene: Scene) -> tuple[list, list[str], Path]:
 _cast_for = cast_for
 
 
+def grid_key(project: Project, scene: Scene, seconds: float) -> Optional[str]:
+    """Dấu của những gì lưới được vẽ theo: nhân vật của cảnh, thiết kế của họ, số ô (theo độ dài lời kể). Đổi một trong
+    số đó thì lưới đã duyệt không còn đúng. Rà soát 18/11/2026: trước đây cờ grid_approved không bao giờ bị huỷ, nên
+    đổi nhân vật hay thu lại giọng thì app cứ gửi lưới cũ (kèm bảng diễn viên mới) hoặc báo "vẽ lại grid" mãi."""
+    import hashlib
+    cast = cs.peek_cast(project)
+    if cast is None:
+        return None
+    people = cs.scene_characters(project, cast, scene)
+    raw = "|".join([*(f"{p.entity_id}:{p.design_en}" for p in people), str(clip_count(seconds))])
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def stale_grid_reason(project: Project, scene: Scene, state: dict) -> Optional[str]:
+    """Lý do lưới đã duyệt của cảnh không còn dùng được (None: còn dùng được, hoặc lưới cũ chưa có dấu)."""
+    saved = state.get("grid_key")
+    if not state.get("grid_approved") or not saved:
+        return None
+    try:
+        seconds = _scene_seconds(scene)
+    except ClimaxVideoError as e:   # chưa có giọng: đường chạy dừng ở bước sau với lời nhắn rõ, không xét lưới ở đây
+        logger.info(f"Chưa kiểm được lưới của cảnh {scene.id}: {e.message}")
+        return None
+    return None if grid_key(project, scene, seconds) == saved else (
+        "Nhân vật, thiết kế nhân vật hoặc độ dài lời kể của cảnh đã đổi sau khi duyệt lưới: vẽ lại lưới")
+
+
 def approved_grid_files(project_id: str, scene_id: str, state: dict, seconds: float) -> list[Path]:
     """Ảnh grid đã duyệt của cảnh, đúng thư mục và khớp độ dài lời kể hiện tại; không thì ClimaxVideoError."""
     work = project_service.get_scene_media_paths(project_id, scene_id)["video"].parent / "climax"
@@ -712,9 +739,10 @@ async def run_scene_grid(project_id: str, scene_id: str, muse_call: MuseCall, ac
                 raise ClimaxVideoError(f"Muse không vẽ được ảnh 9-grid {g}: {e}") from e
             grids.append(str(grid_file))
             reference = panels[PANELS_PER_GRID - 1]
+        key = await asyncio.to_thread(grid_key, project, scene, seconds)
         state = await asyncio.to_thread(_merge_climax, project_id, scene_id, {
             "status": GRID_REVIEW, "grids": len(plan), "grid": None, "grid_paths": grids, "grid_version": version,
-            "error": None, **thread.state()})
+            "grid_key": key, "error": None, **thread.state()})
         logger.info(f"Grid cao trào {project_id}/{scene_id}: {len(grids)} grid, chờ duyệt")
         return state
     except ClimaxVideoError as e:
@@ -734,7 +762,7 @@ def approve_grid(project_id: str, scene_id: str) -> dict:
     if state.get("status") != GRID_REVIEW or not state.get("grid_paths"):
         raise ClimaxVideoError("Cảnh không có ảnh grid đang chờ duyệt")
     return _merge_climax(project_id, scene_id, {"status": GRID_APPROVED, "grid_approved": True,
-                                                "grid_approved_by": "manual", "error": None})
+                                                "grid_approved_by": "manual", "error": None, "grid_feedback": None})
 
 
 def _auto_approve_grid(project_id: str, scene_id: str) -> dict:
@@ -939,6 +967,12 @@ async def run_scene_climax_video(project_id: str, scene_id: str, muse_call: Muse
     """
     project, scene = await asyncio.to_thread(_load_scene, project_id, scene_id)
     state = _scene_state(scene)
+    stale = await asyncio.to_thread(stale_grid_reason, project, scene, state)
+    if stale:   # lưới cũ không còn đúng: vẽ lại ngay trong lượt này, không gửi lưới cũ hay báo lỗi lặp lại
+        logger.info(f"Cảnh {project_id}/{scene_id}: {stale}")
+        state = await asyncio.to_thread(_merge_climax, project_id, scene_id, {
+            "status": "selected", "grid_approved": None, "grid_approved_by": None, "grid_paths": None,
+            "grid_key": None, "grid_feedback": None, "parts_done": None})
     if state.get("grid_approved"):
         return await run_scene_clips(project_id, scene_id, muse_call, account)
     if auto_approve_grid and state.get("status") == GRID_REVIEW and state.get("grid_paths"):

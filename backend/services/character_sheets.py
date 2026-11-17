@@ -72,6 +72,8 @@ class ProjectCast(BaseModel):
     characters: dict[str, CharacterSheet] = Field(default_factory=dict)
     # nhân vật từng cảnh đã chốt (chủ dự án chỉnh tay, hoặc LLM tìm nhân vật của truyện chữ ghi): ghi đè đoán tự động
     scene_cast: dict[str, list[str]] = Field(default_factory=dict)
+    # cảnh chủ dự án đã chọn nhân vật bằng tay: lần tìm nhân vật sau (services/story_cast.py) không ghi đè
+    manual_scene_ids: list[str] = Field(default_factory=list)
     analyzed_at: Optional[str] = None
     analysis_error: Optional[str] = None
 
@@ -279,6 +281,8 @@ def set_scene_cast(project_id: str, scene_id: str, entity_ids: list[str]) -> lis
         if unknown:
             raise CastError(f"Không có nhân vật: {', '.join(unknown)}")
         cast.scene_cast[scene_id] = list(dict.fromkeys(entity_ids))
+        if scene_id not in cast.manual_scene_ids:
+            cast.manual_scene_ids.append(scene_id)
         save_cast(project_id, cast)
         return cast.scene_cast[scene_id]
 
@@ -368,6 +372,7 @@ async def draw_sheet(project_id: str, entity_id: str, muse_call: MuseCall,
     if sheet.thread_url and sheet.account_id:
         task.update(thread_url=sheet.thread_url, assigned_account=sheet.account_id, pin_account=True)
     await asyncio.to_thread(_update, project_id, entity_id, lambda s: setattr(s, "status", "drawing"))
+    _active_draws.add((project_id, entity_id))
     try:
         result = await muse_call(task)
         got = Path(result.get("output_path") or "") if isinstance(result, dict) else Path()
@@ -386,6 +391,8 @@ async def draw_sheet(project_id: str, entity_id: str, muse_call: MuseCall,
         sheet = await asyncio.to_thread(_update, project_id, entity_id, failed)
         logger.warning(f"Bảng nhân vật {project_id}/{entity_id} lỗi: {err}")
         return sheet
+    finally:
+        _active_draws.discard((project_id, entity_id))
 
     def done(s: CharacterSheet) -> None:
         s.status, s.error = "review", None
@@ -396,11 +403,27 @@ async def draw_sheet(project_id: str, entity_id: str, muse_call: MuseCall,
     return await asyncio.to_thread(_update, project_id, entity_id, done)
 
 
+# Lượt vẽ đang chạy trong tiến trình này. Trạng thái "drawing" đã lưu mà không có lượt nào chạy là còn sót lại sau khi
+# server tắt giữa chừng: coi như "failed" (vẽ lại được, sửa được), không kẹt mãi (rà soát 18/11/2026).
+_active_draws: set[tuple[str, str]] = set()
+
+
+def drawing_now(project_id: str, entity_id: str) -> bool:
+    return (project_id, entity_id) in _active_draws
+
+
+def _effective_status(project_id: str, s: CharacterSheet) -> str:
+    return "failed" if s.status == "drawing" and not drawing_now(project_id, s.entity_id) else s.status
+
+
 def approve_sheet(project_id: str, entity_id: str) -> CharacterSheet:
     def change(s: CharacterSheet) -> None:
+        if drawing_now(project_id, entity_id):
+            raise CastError(f"Muse đang vẽ lại bảng của {s.name_vi}, chờ xong rồi duyệt")
         if not (s.sheet_path and Path(s.sheet_path).is_file()):
             raise CastError(f"{s.name_vi} chưa có bảng nhân vật để duyệt")
         s.status, s.error = "approved", None
+        s.feedback = []   # góp ý cũ là cho các bản trước: không gửi lại mãi trong các lần vẽ sau
     return _update(project_id, entity_id, change)
 
 
@@ -422,8 +445,8 @@ def reject_sheet(project_id: str, entity_id: str, feedback: str) -> CharacterShe
 BATCH_DRAW_STATUSES = ("draft", "failed")
 
 
-def batch_targets(cast: ProjectCast) -> list[CharacterSheet]:
-    return [s for s in cast.characters.values() if s.status in BATCH_DRAW_STATUSES]
+def batch_targets(cast: ProjectCast, project_id: str = "") -> list[CharacterSheet]:
+    return [s for s in cast.characters.values() if _effective_status(project_id, s) in BATCH_DRAW_STATUSES]
 
 
 def review_ids(cast: ProjectCast) -> list[str]:
@@ -465,9 +488,14 @@ def set_design(project_id: str, entity_id: str, design_en: str) -> CharacterShee
         raise CastError("Thiết kế nhân vật không được để trống")
 
     def change(s: CharacterSheet) -> None:
-        s.design_en = text
-        if s.status == "approved":
-            s.status = "draft"   # đổi thiết kế thì bảng cũ không còn đúng
+        if drawing_now(project_id, entity_id):
+            raise CastError(f"Muse đang vẽ bảng của {s.name_vi}, chờ xong rồi sửa thiết kế")
+        if text != s.design_en:
+            s.design_en = text
+            # đổi thiết kế thì bảng cũ (đã duyệt hay đang chờ duyệt) không còn đúng; góp ý cũ cũng hết hiệu lực
+            if s.status in ("approved", "review", "drawing"):
+                s.status = "draft"
+            s.feedback = []
     return _update(project_id, entity_id, change)
 
 

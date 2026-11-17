@@ -2368,7 +2368,8 @@ async function runSceneBatch(button, runOne, labels) {
 async function handleAutoGenAll() {
   await runSceneBatch(DOM.btnAutoGenAll, async (s, i) => {
     let errors = 0;
-    if (!s.image_url || s.status_image !== 'ready') {
+    // Thiếu ảnh = cảnh chưa có ảnh (như "Tạo hình cho cả dự án"); ảnh đã có mà trạng thái cũ ghi lỗi thì không vẽ lại
+    if (!s.image_url) {
       if (await regenerateSceneImage(i) === false) errors++;
     }
     if ((!s.audio_url && !s.voice_audio_url) || s.status_voice !== 'ready') {
