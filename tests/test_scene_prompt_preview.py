@@ -26,6 +26,7 @@ from runners import muse_fleet_runner as runner  # noqa: E402
 from services import character_sheets as cs  # noqa: E402
 from services import climax_video  # noqa: E402
 from services import dialogue_video as dv  # noqa: E402
+from services import scene_locks  # noqa: E402
 from services import image_service, muse_prompt_format, project_service, story_cast  # noqa: E402
 from services import scene_prompt_preview as spp  # noqa: E402
 from services.climax_brief import landscape_brief, scene_brief, target_seconds  # noqa: E402
@@ -93,7 +94,8 @@ def test_image_preview_equals_real_path_without_locks(isolated_projects_dir, mon
     assert got["prompt"] == _real_image_prompt(monkeypatch, project, scene)
     assert got["prompt"].startswith("tạo cho tôi 1 hình ảnh 2K tỉ lệ 16:9: ")
     assert image_service.STYLE_PRESETS["horror_cartoon_2d"]["prompt_suffix"] in got["prompt"]
-    assert "an old samurai with a red cape" in got["prompt"]          # character_anchor chèn như app.js
+    # Rà soát 18/11/2026: "nhân vật chính chung" cũ không còn ghép vào prompt (app.js cũng bỏ); khoá theo cảnh thay nó
+    assert "an old samurai with a red cape" not in got["prompt"]
     assert got["attachments"] == [] and got["locks"] == {"characters": [], "location": None}
 
 
@@ -118,7 +120,8 @@ def test_runner_still_builds_the_old_image_text():
     text = runner.MusePromptFormatter.build_prompt(t, has_attachment=True)
     assert text == muse_prompt_format.format_image_prompt(t, has_reference=True)
     assert text.startswith("tạo cho tôi 1 hình ảnh 2K tỉ lệ 16:9: Ảnh đính kèm đầu tiên là BẢNG NHÂN VẬT")
-    assert text.endswith(", Character Anchor: anc, Style: st, Scene Details: p, Atmosphere: li, "
+    # không ghi mã phong cách trần ("Style: st"): Muse không hiểu mã, câu mô tả phong cách đã ở trong prompt
+    assert text.endswith(", Character Anchor: anc, Scene Details: p, Atmosphere: li, "
                          "16:9 widescreen cinematic, Avoid: ng")
     old = runner.MusePromptFormatter.build_prompt({"mode": "text-to-image", "prompt": "q",
                                                    "reference_image_path": "a.jpg",
@@ -159,7 +162,9 @@ def test_climax_scene_shows_both_buttons_and_the_scene_brief(isolated_projects_d
     got = spp.video_preview(project, scene)
     plan = dv.scene_plan(project, scene)
     assert [s["prompt"] for s in got["dialogue"]["segments"]] == [
-        dv.segment_prompt(project, scene, plan["segments"], k, None, False) for k in range(1, plan["video_count"] + 1)]
+        dv.segment_prompt(project, scene, plan["segments"], k, None, False,
+                          scene_locks.character_lock(project.id, scene.id))   # như đường thật: kèm khoá nhân vật
+        for k in range(1, plan["video_count"] + 1)]
     c = got["climax"]
     assert c["blocked"] is None and c["brief_kind"] == "cast" and c["needs_grid_first"] is True
     assert c["target_seconds"] == target_seconds(12.0) == 12

@@ -274,7 +274,7 @@ def test_run_stops_when_no_video_account_is_left(monkeypatch):
 def test_short_clip_counts_only_the_moving_part(isolated_projects_dir, monkeypatch):
     """Gặp 13/11/2026 (vụ Khang Cúc Hoa cảnh 048): lời kể 18,1 giây, Muse trả clip 9 giây. Lúc dựng clip kéo chậm tối đa
     1,25 lần (11,25 giây) rồi giữ khung cuối đứng yên: cách đếm cũ tính đủ 18,1 giây là video."""
-    from services.video_service import MAX_CLIP_STRETCH
+    from services.video_rules import MAX_CLIP_STRETCH
     _project([18.1, 21.9], {1: "scene_001_muse.mp4"})
     monkeypatch.setattr(video_share, "_clip_seconds", lambda p: 9.0)
     rep = _share()
@@ -308,7 +308,7 @@ def test_scene_with_unnamed_people_keeps_them_instead_of_landscape_brief(isolate
     assert [t["mode"] for t in muse.tasks] == ["agent-video"]                 # không lưới 9 ô, không bảng diễn viên
     prompt = muse.tasks[0]["prompt"]
     assert "những người có trong Ảnh 1" in prompt and "Không thêm người mới" in prompt
-    assert "không có nhân vật" not in prompt and "quả bóng tròn" in prompt
+    assert "không có nhân vật" not in prompt and "round white ball" in prompt
     assert cv.redo_scene(pid, sid)["status"] == "selected"
 
 

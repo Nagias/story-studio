@@ -370,7 +370,7 @@ async function tcAnalyze() {
     const body = {
       raw_report: raw,
       target_minutes: parseInt(tcEl('tc-duration-select')?.value || '8', 10),
-      visual_style: tcEl('tc-visual-style')?.value || 'neo_noir_silhouette'
+      visual_style: tcEl('tc-visual-style')?.value || undefined   // thiếu thì máy chủ điền config.DEFAULT_STYLE
     };
     try {
       const res = await tcFetch(`${TC_API}/analyze`, { method: 'POST', body });
@@ -1473,7 +1473,7 @@ async function tcCreateVietnameseProject() {
       language: 'vi',
       voice: voiceVi,
       voices,
-      visual_style: tcEl('tc-visual-style')?.value || current.visual_style || 'neo_noir_silhouette',
+      visual_style: tcEl('tc-visual-style')?.value || current.visual_style || undefined,   // thiếu thì máy chủ điền config.DEFAULT_STYLE
       image_provider: tcEl('tc-vision-engine')?.value || 'meta_muse_cloud'
     };
     let result;

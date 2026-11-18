@@ -5,16 +5,17 @@ Gặp 09–10/11/2026 (vụ xưởng sắt): app báo 65,5% video là clip Muse,
 chuyển động máy quay giữa hai khung liền nhau (dịch, xoay, phóng to), bù nó đi rồi đo phần còn khác (điểm 0–255,
 bỏ viền). Ảnh tĩnh zoom còn lại nhiễu nét vẽ; người đi, quay đầu, giơ tay thì còn lại nhiều hơn.
 
-Điểm thấp chỉ là cảnh báo "nên xem lại", không loại clip: cử động rất nhỏ (người ôm đầu lắc nhẹ) có thể ra 0.
+Clip điểm thấp không được tính là video (services/video_share.py) cho tới khi chủ dự án xem và bấm "Đã xem, có cử
+động": cử động rất nhỏ (người ôm đầu lắc nhẹ) có thể ra 0. Ngưỡng ở services/video_rules.py.
 
 Điểm lưu cạnh clip (`<clip>.motion.json`, theo cỡ và giờ sửa file) để lần dựng sau không đo lại."""
 import json
 import logging
 from pathlib import Path
-from typing import Optional
 
 import cv2
 import numpy as np
+
 
 logger = logging.getLogger("story_studio.clip_motion")
 
@@ -27,8 +28,7 @@ CUT_PERCENT = 40.0      # cặp khung đổi hơn chừng này phần trăm ản
 # Điểm = phần trăm ảnh đổi thật ở cặp khung "động" thứ 90 (bách phân vị 90): clip chỉ lia/zoom hay đứng hình ra 0.
 # Đo 11/11/2026: 48 clip lời thoại cũ vụ xưởng sắt và ảnh tĩnh zoom/lia đều dưới ngưỡng; clip người cử động rõ (ép cử
 # động cảnh 20: 7,7; Khang Cúc Hoa cảnh 11: 10,6) trên ngưỡng. Cử động rất nhỏ (người ôm đầu lắc nhẹ) có thể ra 0, nên
-# điểm thấp chỉ là "nên xem lại", không loại clip.
-REAL_MOTION_MIN = 1.0
+# điểm thấp thì clip chỉ được tính khi chủ dự án duyệt tay. Ngưỡng: services/video_rules.py.
 CACHE_VERSION = 2
 
 
@@ -111,6 +111,3 @@ def motion_score(path: Path) -> float:
         logger.warning(f"Không ghi được {cache.name}: {e}")
     return score
 
-
-def has_real_motion(score: Optional[float]) -> bool:
-    return score is not None and score >= REAL_MOTION_MIN

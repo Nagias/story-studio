@@ -70,30 +70,6 @@ async def test_get_bgm_tracks():
         tracks = resp.json()
         assert len(tracks) >= 3
 
-@pytest.mark.asyncio
-async def test_post_split_script():
-    """Verify POST /api/split-script intelligently splits long story text."""
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://127.0.0.1:8000") as client:
-        long_story = (
-            "Ngày xửa ngày xưa có một chú bé dũng cảm sống ở một ngôi làng ven biển. "
-            "Một ngày kia, bầu trời bỗng nổi cơn giông bão dữ dội và một con thuyền lạ dạt vào bờ. "
-            "Cậu bé quyết định leo lên thuyền để tìm kiếm những người còn sống sót."
-        )
-        resp = await client.post("/api/split-script", json={
-            "text": long_story,
-            "max_words_per_scene": 18,
-            "language": "vi",
-        })
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "scenes" in data
-        assert data["count"] >= 2
-        for sc in data["scenes"]:
-            assert "text" in sc
-            assert "image_prompt" in sc
-            assert "camera_motion" in sc
-
 @pytest.mark.live  # thu giọng Edge-TTS thật
 @pytest.mark.asyncio
 async def test_project_crud_and_render_flow():

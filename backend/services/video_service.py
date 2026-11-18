@@ -8,7 +8,10 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable
 
 import config
+import pysubs2
+from pysubs2.formats.subrip import SubripFormat
 from services.tts_service import MediaDurationError, get_audio_duration
+from services.video_rules import clip_stretch
 
 logger = logging.getLogger("story_studio.video_service")
 
@@ -46,71 +49,40 @@ CAMERA_MOTIONS = [
 ]
 
 def parse_srt_time(ts_str: str) -> float:
-    """Parse SRT timestamp '00:00:01,234' into seconds."""
-    ts_str = ts_str.strip().replace(",", ".")
-    parts = ts_str.split(":")
-    hours = float(parts[0])
-    minutes = float(parts[1])
-    seconds = float(parts[2])
-    return hours * 3600.0 + minutes * 60.0 + seconds
+    """Mốc giờ SRT '00:00:01,234' ra giây (đọc bằng pysubs2)."""
+    m = pysubs2.time.TIMESTAMP.match(ts_str.strip())
+    if not m:
+        raise ValueError(f"Mốc giờ SRT không đúng dạng: {ts_str!r}")
+    return pysubs2.time.timestamp_to_ms(m.groups()) / 1000.0
+
 
 def format_srt_time(sec: float) -> str:
-    """Format seconds into SRT timestamp '00:00:01,234'."""
-    total_ms = max(0, int(round(sec * 1000)))
-    hours = total_ms // 3600000
-    minutes = (total_ms % 3600000) // 60000
-    secs = (total_ms % 60000) // 1000
-    ms = total_ms % 1000
-    return f"{hours:02d}:{minutes:02d}:{secs:02d},{ms:03d}"
+    """Giây ra mốc giờ SRT '00:00:01,234' (ghi bằng pysubs2)."""
+    return SubripFormat.ms_to_timestamp(max(0, int(round(sec * 1000))))
+
 
 def merge_srt_files(scenes_srt_list: List[Dict[str, Any]], output_srt_path: str) -> str:
-    """
-    Merge multiple SRT files sequentially by applying cumulative duration offsets.
-    scenes_srt_list: [{"srt_path": "...", "duration": 3.5}, ...]
-    """
-    merged_cues: List[str] = []
-    cue_index = 1
-    current_offset = 0.0
-
+    """Ghép phụ đề các cảnh thành một file, dời mỗi cảnh theo tổng thời lượng các cảnh trước.
+    scenes_srt_list: [{"srt_path": "...", "duration": 3.5}, ...]. Đọc, dời, ghi bằng pysubs2 (thư viện MIT, có từ
+    2014). Rà soát 18/11/2026: bản tự viết trước đây bỏ âm thầm dòng phụ đề đọc lỗi (`except Exception: pass`);
+    nay file phụ đề hỏng thì báo lỗi rõ."""
+    merged = pysubs2.SSAFile()
+    offset_ms = 0
     for item in scenes_srt_list:
         srt_file = item.get("srt_path")
-        duration = float(item.get("duration", 3.0))
-
         if srt_file and os.path.exists(srt_file):
-            with open(srt_file, "r", encoding="utf-8", errors="ignore") as f:
-                content = f.read().strip()
-
-            blocks = content.split("\n\n")
-            for block in blocks:
-                lines = [line.strip() for line in block.split("\n") if line.strip()]
-                time_line_idx = -1
-                for idx, l in enumerate(lines):
-                    if "-->" in l:
-                        time_line_idx = idx
-                        break
-
-                if time_line_idx != -1:
-                    time_parts = lines[time_line_idx].split("-->")
-                    try:
-                        start_t = parse_srt_time(time_parts[0]) + current_offset
-                        end_t = parse_srt_time(time_parts[1]) + current_offset
-                        text_lines = "\n".join(lines[time_line_idx + 1:])
-                        if text_lines.strip():
-                            merged_cues.append(
-                                f"{cue_index}\n{format_srt_time(start_t)} --> {format_srt_time(end_t)}\n{text_lines}\n"
-                            )
-                            cue_index += 1
-                    except Exception:
-                        pass
-
-        current_offset += duration
-
+            try:
+                subs = pysubs2.load(srt_file, encoding="utf-8", format_="srt")
+            except (pysubs2.Pysubs2Error, UnicodeDecodeError, ValueError) as e:
+                raise RuntimeError(f"Không đọc được phụ đề {Path(srt_file).name}: {e}") from e
+            subs.shift(ms=offset_ms)
+            merged.events.extend(ev for ev in subs if ev.plaintext.strip())
+        offset_ms += int(round(float(item.get("duration", 3.0)) * 1000))
     out_p = Path(output_srt_path)
     out_p.parent.mkdir(parents=True, exist_ok=True)
-    with open(out_p, "w", encoding="utf-8") as f:
-        f.write("\n".join(merged_cues) + "\n")
-
+    merged.save(str(out_p), encoding="utf-8", format_="srt")
     return str(out_p)
+
 
 def build_zoompan_filter(
     camera_motion: str,
@@ -273,25 +245,7 @@ def ensure_speedlines_asset(asset_path: Optional[str] = None, dark: bool = False
     img.save(p, "PNG")
     return str(p)
 
-# Clip ngắn hơn lời kể thì kéo chậm tối đa chừng này lần trước khi giữ khung cuối. Bản Anh vụ Khang Cúc Hoa (10/11/2026):
-# 14/23 clip ngắn hơn lời Anh, đứng hình tới 3,2 giây; cần kéo nhiều nhất 1,18 lần. Chậm 1,25 lần khó nhận ra.
-MAX_CLIP_STRETCH = 1.25
-
-
-def clip_stretch(clip_seconds: Optional[float], scene_seconds: Optional[float]) -> float:
-    """Hệ số kéo chậm clip cho vừa cảnh: 1 khi clip đủ dài (lệch dưới 0,05 giây) hoặc không đo được clip."""
-    if not clip_seconds or not scene_seconds or clip_seconds <= 0 or scene_seconds <= clip_seconds + 0.05:
-        return 1.0
-    return min(MAX_CLIP_STRETCH, scene_seconds / clip_seconds)
-
-
-def moving_seconds(clip_seconds: Optional[float], scene_seconds: Optional[float]) -> float:
-    """Số giây của cảnh mà clip thật sự chạy khi dựng (kéo chậm tối đa MAX_CLIP_STRETCH, phần còn lại là khung cuối
-    đứng yên). Không đo được clip: 0 (không tính bừa là video)."""
-    scene = float(scene_seconds or 0)
-    if not clip_seconds or clip_seconds <= 0 or scene <= 0:
-        return 0.0
-    return min(scene, clip_seconds * clip_stretch(clip_seconds, scene))
+# Kéo chậm clip ngắn và số giây clip thật sự chạy: services/video_rules.py (một nơi cho dựng và chốt tỉ lệ video).
 
 
 def _media_seconds(path: str) -> Optional[float]:
@@ -478,6 +432,12 @@ async def render_scene_video(
         "resolution": f"{w}x{h}",
     }
 
+def xfade_overlap(durations: List[float], trans_dur: float = 0.45) -> float:
+    """Số giây hai cảnh liền nhau chồng lên nhau khi chuyển cảnh xfade (video ngắn đi chừng này mỗi chỗ nối)."""
+    min_dur = min(durations) if durations else 3.0
+    return min(trans_dur, max(0.2, min_dur * 0.25))
+
+
 async def build_xfade_video(
     scene_video_paths: List[str],
     durations: List[float],
@@ -492,8 +452,7 @@ async def build_xfade_video(
         return False
 
     n = len(scene_video_paths)
-    min_dur = min(durations) if durations else 3.0
-    safe_trans_dur = min(trans_dur, max(0.2, min_dur * 0.25))
+    safe_trans_dur = xfade_overlap(durations, trans_dur)
 
     offsets = []
     cur_off = durations[0] - safe_trans_dur
@@ -612,6 +571,12 @@ async def assemble_full_video(
             except Exception as e:
                 logger.warning(f"Xfade transition failed ({e}), falling back to concat demuxer.")
                 xfade_ok = False
+            if xfade_ok:
+                # Mỗi chỗ nối xfade làm video ngắn đi một đoạn chồng: phụ đề phải trừ đúng đoạn đó, không thì lệch dần
+                # (rà soát 18/11/2026: lệch khoảng 0,45 giây × số chỗ nối, ~45 giây ở cuối video 100 cảnh)
+                overlap = xfade_overlap(durs, 0.45)
+                scene_srt_infos = [{**it, "duration": max(0.1, float(it.get("duration") or 0) - overlap)}
+                                   if k < len(scene_srt_infos) - 1 else it for k, it in enumerate(scene_srt_infos)]
 
         if not xfade_ok:
             # Standard fast concat demuxer (supports dip_to_black baked into segments)

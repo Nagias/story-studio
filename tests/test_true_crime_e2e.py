@@ -27,6 +27,7 @@ BACKEND_DIR = PROJECT_DIR / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+import config  # noqa: E402
 from main import app
 from models.case_adaptation_schemas import DISCLAIMER, CaseAdaptationPlan
 from services import case_store, project_service
@@ -115,7 +116,7 @@ def test_vi_project_structure_and_images_stay_in_the_project_folder(flow):
     plan = flow.plan
 
     assert project.voice == VI_VOICE
-    assert project.style_preset == "neo_noir_silhouette"
+    assert project.style_preset == config.DEFAULT_STYLE      # một phong cách mặc định cho cả app (18/11/2026)
     assert project.bgm_overall_genre == "mysterious_dark"
     assert project.target_aspect_ratio == "16:9"
     assert project.name == plan["bible"]["title_vi"]

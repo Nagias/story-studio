@@ -41,23 +41,8 @@ MASTER_NEGATIVE_PROMPT: str = (
     "jpeg artifacts, signature, watermark, username, inconsistent clothing, modern artifacts in historical scene"
 )
 
-# Chủ dự án 28/10/2026: tóc nhân vật nữ "phủ nhiều trên đầu thay vì chỉ có chút tóc ở phần gáy". Chỉ phong cách đầu tròn
-# (đầu là quả bóng trắng nên Muse hay quên vẽ tóc lên đỉnh); các phong cách khác vẽ đầu người bình thường.
-FEMALE_HAIR_RULE_EN = (
-    "Female characters always have thick, full hair covering most of the top of the head: a generous mass of hair on "
-    "the crown that frames the white face, then falls to the length given in the design; never a bald round head with "
-    "only a little hair at the nape."
-)
-ROUND_HEAD_STYLES = ("horror_cartoon_2d",)
-# Chủ dự án 29/10/2026 (câu 12 mục 1.2): nới quy tắc biểu cảm cho nhân vật đầu tròn như video mẫu (lông mày, nước mắt,
-# nửa mặt tô xám khi sợ); vẫn cấm tuyệt đối mặt người thật / mặt anime.
-ROUND_HEAD_EXPRESSION_RULE_EN = (
-    "Facial expressions are allowed and encouraged, drawn with the same simple flat lines: short line eyebrows that "
-    "frown, furrow or rise, tears and tear streaks, sweat drops, a wide open or trembling line mouth, and when a "
-    "character is afraid, half of the round white face shaded grey. The head always stays a big flat round white ball "
-    "with dot eyes: never a realistic human face and never an anime face (no nose, no eyes with irises or pupils, no "
-    "eyelashes, no detailed lips, no realistic skin)."
-)
+# Luật đầu tròn, tóc nữ: services/prompt_rules.py (một nơi cho ảnh, bảng nhân vật, lưới, video).
+from services.prompt_rules import FEMALE_HAIR_RULE_EN, ROUND_HEAD_RULE_EN, negative_for  # noqa: E402
 
 STYLE_PRESETS: Dict[str, Dict[str, Any]] = {
     # 0a. HOẠT HÌNH 2D RÙNG RỢN: chủ dự án 26/10/2026 thích kiểu kênh "Thế Giới Kì Quái" hơn ảnh noir; thử thật trên Muse
@@ -69,8 +54,7 @@ STYLE_PRESETS: Dict[str, Dict[str, Any]] = {
             "2D Chinese horror web-cartoon style, flat simple character design: characters have big perfectly round "
             "white heads, tiny dot eyes, simple line mouth, thin simple bodies, thick clean outlines; backgrounds are "
             "detailed dark painted illustrations with muted desaturated colors, cold blue-green night lighting, eerie "
-            "quiet mood, cinematic 16:9 frame, no text, no watermark. " + ROUND_HEAD_EXPRESSION_RULE_EN + " "
-            + FEMALE_HAIR_RULE_EN
+            "quiet mood, no text, no watermark. " + ROUND_HEAD_RULE_EN + " " + FEMALE_HAIR_RULE_EN
         ),
         "negative_prompt": ("photorealistic, realistic skin, realistic human face, nose, eyes with irises, 3d render, "
                             "anime face, anime big eyes, chibi, bright cheerful colors, blood, gore"),
@@ -240,7 +224,7 @@ def get_available_styles() -> List[Dict[str, Any]]:
 
 def build_character_anchored_prompt(
     scene_prompt: str,
-    style_preset: str = "cinematic_realistic",
+    style_preset: str = DEFAULT_STYLE,
     character: Optional[Any] = None,
     character_anchor_override: Optional[str] = None,
 ) -> str:
@@ -331,7 +315,7 @@ def with_style(prompt: str, style_preset: Optional[str]) -> str:
 
 def build_consistent_prompt(
     scene_prompt: str,
-    style_preset: str = "cinematic_realistic",
+    style_preset: str = DEFAULT_STYLE,
     character_anchor: str = "",
     character: Optional[Any] = None,
 ) -> str:
@@ -614,7 +598,7 @@ async def generate_openai_dalle(prompt: str, output_path: str) -> str:
 
 async def generate_image(
     prompt: str,
-    style_preset: str = "manga_murata_battle",
+    style_preset: str = DEFAULT_STYLE,
     character_anchor: str = "",
     character: Optional[Any] = None,
     provider: Optional[str] = None,
@@ -715,7 +699,9 @@ async def generate_image(
             task_dict = {
                 "mode": "text-to-image",
                 "prompt": full_prompt,
-                "negative_prompt": MASTER_NEGATIVE_PROMPT,
+                # danh sách cấm của phong cách (đầu tròn: cấm mũi, mắt có tròng, mặt anime); phong cách không có thì
+                # danh sách chung về giải phẫu người thật
+                "negative_prompt": negative_for(style_preset) or MASTER_NEGATIVE_PROMPT,
                 "output_path": str(out),
                 "scene_index": scene_index,
                 "reference_image": ref_img,
@@ -733,7 +719,6 @@ async def generate_image(
                     # "previous_scene": ảnh đính kèm là cảnh ngay trước (vẽ nối tiếp), không phải ảnh nhân vật mẫu
                     "reference_role": reference_role,
                     "visual_details": prompt,
-                    "lighting": "cinematic lighting, volumetric atmosphere, 8k resolution",
                 },
             }
             # Bảng nhân vật, ảnh tham chiếu/cảnh trước, ảnh chuẩn bối cảnh: thứ tự và vai trò do scene_locks xếp

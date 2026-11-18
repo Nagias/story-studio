@@ -75,3 +75,24 @@ def test_working_rules_table_is_numbered():
 def test_rules_violated_three_times_are_hard_locks():
     problems = _check_table("### 5.1 ") + _check_table("### 6.1 ")
     assert not problems, "CLAUDE.md mục 2.4 (khoá cứng/mềm):\n" + "\n".join("  " + p for p in problems)
+
+
+def test_every_hard_lock_test_runs_on_each_commit():
+    """Khoá cứng = "có lệnh chạy tự động mỗi lần commit" (CLAUDE.md 5.1). Rà soát 18/11/2026: test khoá cứng của đường
+    cấm 16 và 17 chỉ chạy ở --full, nên sửa sai vẫn commit được. Mọi file test mà dòng cứng trỏ tới phải nằm trong
+    FAST_TESTS của tools/check.py (hook pre-commit chạy)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("check_tool", ROOT / "tools" / "check.py")
+    check = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(check)
+    missing = []
+    for heading in ("### 5.1 ", "### 6.1 "):
+        for cells in _table_after(heading):
+            lock, checker = cells[1], cells[2]
+            if lock == "mềm":
+                continue
+            for ref in re.findall(r"`([^`]+)`", checker):
+                path = ref.partition("::")[0]
+                if path.startswith("tests/test_") and path not in check.FAST_TESTS:
+                    missing.append(f"{heading.strip()} {cells[0]}: {path}")
+    assert not missing, "Test khoá cứng không chạy khi commit:\n  " + "\n  ".join(missing)

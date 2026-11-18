@@ -237,7 +237,7 @@ async def draw_all(project_id: str):
         raise HTTPException(status_code=409, detail=str(e)) from None
     try:
         data = await _call(ls.load_locations, project_id)
-        items = [(v.location_id, v.name_vi) for v in ls.batch_targets(data)
+        items = [(v.location_id, v.name_vi) for v in ls.batch_targets(data, project_id)
                  if not _is_drawing(project_id, v.location_id)]
         if not items:
             raise HTTPException(status_code=400, detail="Không còn bối cảnh nào cần vẽ ảnh chuẩn")

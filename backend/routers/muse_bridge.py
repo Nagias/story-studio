@@ -12,6 +12,8 @@ import uuid
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
+from filelock import FileLock
+
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query, Request, Depends
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -19,7 +21,7 @@ from pydantic import BaseModel, Field
 from config import EXTRA_CHROME_PROFILES_DIRS, MUSE_AGENT_WAIT_MIN, PROJECTS_DIR, STATIC_DIR
 from services.climax_brief import AGENT_REPLY_MAX_CHARS, AGENT_VIDEO_MODE
 from services import muse_image_task, scene_locks
-from services.muse_motion import LOCKED_CAMERA_EN
+from services.prompt_rules import LOCKED_CAMERA_EN
 from security import (
     MEDIA_EXTS,
     MAX_UPLOAD_BYTES,
@@ -92,11 +94,34 @@ MAX_TASK_RETRIES = 2
 # ID của 2 trạm VM cũ (đã ngừng dùng). Client cũ còn gửi thì coi như "không chỉ định tài khoản".
 LEGACY_ALIAS_ACCOUNTS = {"muse_acc_image", "muse_acc_video"}
 
-QUOTA_ERROR_KEYWORDS = (
-    "quota", "rate limit", "429", "exceeded", "upgrade", "out of credits",
-    "region block", "not_available", "not available in your",
-)
-SESSION_ERROR_KEYWORDS = ("session_expired", "login required", "đăng nhập lại")
+# Khoá tài khoản theo MÃ LỖI Fleet Runner gửi về ("MÃ: lời nhắn"), không dò chữ trong cả câu lỗi. Rà soát 18/11/2026:
+# dò chữ "exceeded" khiến lỗi trình duyệt quá giờ ("Timeout 90000ms exceeded") bị coi là hết quota và khoá tài khoản;
+# câu Muse kể lại (nối sau "| Muse nói:") cũng bị dò. Chỉ lời Muse báo lỗi (MUSE_REPLIED_ERROR) mới dò cụm hạn mức rõ ràng.
+QUOTA_CODES = ("QUOTA_EXCEEDED",)
+SESSION_CODES = ("SESSION_EXPIRED",)
+MUSE_REPLY_LIMIT_WORDS = ("quota", "rate limit", "usage limit", "out of credits", "upgrade to", "region block",
+                          "not_available", "not available in your")
+_ERROR_CODE_RE = re.compile(r"^\s*([A-Z][A-Z_]{2,}):")
+
+
+def error_code(error: str) -> Optional[str]:
+    """Mã lỗi đầu câu ("QUOTA_EXCEEDED: ..." → "QUOTA_EXCEEDED"); None nếu câu không mở đầu bằng mã."""
+    m = _ERROR_CODE_RE.match(str(error or ""))
+    return m.group(1) if m else None
+
+
+def account_block_for(error: str) -> Optional[tuple[str, float]]:
+    """(lý do, số giây khoá) nếu lỗi cho biết tài khoản không dùng được; None: lỗi của riêng việc, không khoá."""
+    code = error_code(error)
+    if code in SESSION_CODES:
+        return f"Mất phiên đăng nhập: {error}", ACCOUNT_BLOCK_SEC
+    if code in QUOTA_CODES:
+        return f"Hết lượt dùng Muse: {error}", block_seconds_for(error)
+    if code == "MUSE_REPLIED_ERROR":
+        said = str(error).split(":", 1)[1].lower()
+        if any(w in said for w in MUSE_REPLY_LIMIT_WORDS):
+            return f"Muse báo tài khoản bị chặn hoặc hết lượt: {error}", block_seconds_for(error)
+    return None
 
 # -------------------------------------------------------------
 # In-Memory State & Task Queue
@@ -267,32 +292,39 @@ def load_muse_accounts() -> List[Dict[str, Any]]:
 
 
 def save_muse_accounts(accounts: List[Dict[str, Any]]) -> None:
-    """Ghi các trường do backend quản lý vào muse_fleet_accounts.json, giữ nguyên trạng thái do runner ghi."""
+    """Ghi các trường do backend quản lý vào muse_fleet_accounts.json, giữ nguyên trạng thái do runner ghi.
+    Đọc-sửa-ghi trong khoá file (filelock) chung với Fleet Runner: hai tiến trình cùng ghi file này, không khoá thì bên
+    ghi sau xoá mất thay đổi của bên kia (vd giờ khoá tài khoản hết lượt). Rà soát 18/11/2026."""
     try:
-        data = _read_fleet_file()
-        on_disk = {a.get("account_id"): a for a in data.get("accounts", []) if isinstance(a, dict)}
-        merged = []
-        for acc in accounts:
-            aid = acc["account_id"]
-            if aid in LEGACY_ALIAS_ACCOUNTS:
-                continue
-            item = dict(on_disk.get(aid) or acc)
-            for key in BACKEND_OWNED_FIELDS:
-                if key in acc:
-                    item[key] = acc[key]
-            item["account_id"] = aid
-            merged.append(item)
-        data["accounts"] = merged
-        data.setdefault("concurrency_limit", 2)
-        # Fleet Runner là tiến trình riêng, không đọc .env: chuyển danh sách thư mục profile ngoài qua file này
-        data["extra_profiles_dirs"] = [str(p) for p in EXTRA_CHROME_PROFILES_DIRS]
-        MUSE_FLEET_ACCOUNTS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        tmp = MUSE_FLEET_ACCOUNTS_FILE.with_suffix(".json.tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        os.replace(tmp, MUSE_FLEET_ACCOUNTS_FILE)
+        with FileLock(str(MUSE_FLEET_ACCOUNTS_FILE) + ".lock", timeout=10):
+            _save_muse_accounts_locked(accounts)
     except Exception as e:
         logger.error(f"Error saving muse_fleet_accounts.json: {e}")
+
+
+def _save_muse_accounts_locked(accounts: List[Dict[str, Any]]) -> None:
+    data = _read_fleet_file()
+    on_disk = {a.get("account_id"): a for a in data.get("accounts", []) if isinstance(a, dict)}
+    merged = []
+    for acc in accounts:
+        aid = acc["account_id"]
+        if aid in LEGACY_ALIAS_ACCOUNTS:
+            continue
+        item = dict(on_disk.get(aid) or acc)
+        for key in BACKEND_OWNED_FIELDS:
+            if key in acc:
+                item[key] = acc[key]
+        item["account_id"] = aid
+        merged.append(item)
+    data["accounts"] = merged
+    data.setdefault("concurrency_limit", 2)
+    # Fleet Runner là tiến trình riêng, không đọc .env: chuyển danh sách thư mục profile ngoài qua file này
+    data["extra_profiles_dirs"] = [str(p) for p in EXTRA_CHROME_PROFILES_DIRS]
+    MUSE_FLEET_ACCOUNTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = MUSE_FLEET_ACCOUNTS_FILE.with_suffix(".json.tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, MUSE_FLEET_ACCOUNTS_FILE)
 
 
 muse_accounts: List[Dict[str, Any]] = load_muse_accounts()
@@ -591,9 +623,16 @@ def is_muse_worker_online(account_id: Optional[str] = None) -> bool:
     return is_local_fleet_runner_active()
 
 
+# Việc nhiều bước: Fleet Runner chờ MUSE_AGENT_WAIT_MIN tính từ lúc gửi prompt, cộng phần mở trình duyệt, đính kèm, chờ
+# dòng kết thúc ổn định và tải video (TASK_OVERHEAD_SEC 600 + AGENT_STABLE_SEC 90 của runner). Server phải chờ lâu hơn
+# runner, không thì bỏ cuộc trước khi runner xong và video Muse đã làm chỉ vào bộ sưu tập (rà soát 18/11/2026).
+AGENT_TASK_EXTRA_SEC = 900
+PENDING_GRACE_SEC = 600   # việc từ nút trên thẻ: chờ thêm chừng này sau timeout_sec rồi mới bỏ khỏi hàng
+
+
 def _task_timeout(task: Dict[str, Any]) -> float:
     if task.get("mode") == AGENT_VIDEO_MODE:
-        return MUSE_AGENT_WAIT_MIN * 60 + 120
+        return MUSE_AGENT_WAIT_MIN * 60 + AGENT_TASK_EXTRA_SEC
     return VIDEO_TASK_TIMEOUT_SEC if task_kind(task.get("mode")) == "video" else IMAGE_TASK_TIMEOUT_SEC
 
 
@@ -631,6 +670,12 @@ def get_worker_status_string() -> str:
     ]
     for tid in stale_ids:
         abandon_task(tid, "Task timed out (stale active task)")
+    # Việc tạo từ nút trên thẻ (/tasks/create) không có ai chờ phía server: nằm hàng quá hạn thì bỏ, để kết quả muộn
+    # không ghi đè ảnh/video mới hơn của cảnh (rà soát 18/11/2026: timeout_sec trước đây ghi mà không dùng).
+    expired = [t["task_id"] for t in list(pending_tasks)
+               if t.get("timeout_sec") and now - t.get("created_at", now) > float(t["timeout_sec"]) + PENDING_GRACE_SEC]
+    for tid in expired:
+        abandon_task(tid, "Nằm hàng chờ quá hạn của nút đã gửi việc")
     if current_worker.get("active_task_id") or len(active_tasks) > 0:
         return "busy"
     return "online"
@@ -1440,12 +1485,10 @@ async def fail_task(task_id: str, req: TaskFailRequest):
         raise HTTPException(status_code=404, detail="Task not found")
 
     kind = routing_kind(task)
-    err_str = str(req.error).lower()
     failed_acc = task.get("assigned_account")
-    if failed_acc and any(kw in err_str for kw in SESSION_ERROR_KEYWORDS):
-        block_account(failed_acc, f"Mất phiên đăng nhập: {req.error}")
-    elif failed_acc and any(kw in err_str for kw in QUOTA_ERROR_KEYWORDS):
-        block_account(failed_acc, f"Hết quota / bị chặn: {req.error}", block_seconds_for(req.error))
+    block = account_block_for(req.error)
+    if failed_acc and block:
+        block_account(failed_acc, *block)
 
     if current_worker.get("active_task_id") == task_id:
         current_worker["active_task_id"] = None

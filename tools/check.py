@@ -48,8 +48,13 @@ HOOKS = {
                   'exec ".venv/Scripts/python.exe" -X utf8 tools/check.py --commit-msg "$1"\n',
 }
 JS_FILES = sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "backend" / "static").glob("*.js"))
+# Mọi test được bảng khoá cứng (CLAUDE.md 5.1, 6.1) trỏ tới phải chạy mỗi lần commit (tests/test_guardrail_policy.py
+# kiểm). Rà soát 18/11/2026: khoá cứng đường cấm 16 và 17 chỉ chạy ở --full; thêm test hành vi luật prompt, luật video.
 FAST_TESTS = ["tests/test_architecture.py", "tests/test_feature_map.py", "tests/test_working_rules.py",
-              "tests/test_git_guards.py", "tests/test_guardrail_policy.py"]
+              "tests/test_git_guards.py", "tests/test_guardrail_policy.py", "tests/test_one_flow.py",
+              "tests/test_video_share_gate.py", "tests/test_clip_motion_and_share.py", "tests/test_test_isolation.py",
+              "tests/test_prompt_rules.py", "tests/test_video_rules.py", "tests/test_account_errors.py",
+              "tests/test_one_pass_visuals.py"]
 ENV = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
 _SUBJECT_OK = re.compile(r"^[^\s:][^:\n]{0,39}: \S")
 _SUBJECT_GIT = re.compile(r"^(Merge |Revert |fixup! |squash! |amend! )")

@@ -14,7 +14,8 @@ from models.schemas import Project  # noqa: E402
 from services import case_store, project_service  # noqa: E402
 from services import character_sheets as cs  # noqa: E402
 from services.character_sheets import CharacterSheet  # noqa: E402
-from services.image_service import FEMALE_HAIR_RULE_EN, ROUND_HEAD_STYLES, STYLE_PRESETS  # noqa: E402
+from services.image_service import STYLE_PRESETS
+from services.prompt_rules import FEMALE_HAIR_RULE_EN, ROUND_HEAD_STYLES  # noqa: E402
 
 OLD_DESIGN = ("Appearance: a slender young woman.\nHAIR: dark wavy hair covers the WHOLE BACK HALF of the head, "
               "starting at the crown.")

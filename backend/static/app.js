@@ -54,7 +54,7 @@ const AppState = {
 // ================= OFFLINE & VECTOR VISUAL GENERATOR =================
 function generateSceneVisualSvg(scene, project, index) {
   const idx = (index !== undefined ? index : (scene?.order ? scene.order - 1 : 0)) + 1;
-  const style = (scene?.style_override || project?.style_preset || project?.character?.style || 'cinematic_realistic');
+  const style = (scene?.style_override || project?.style_preset || project?.character?.style || '');   // chỉ để chọn màu ảnh giữ chỗ
   const textRaw = scene?.visual_prompt || scene?.image_prompt || scene?.text || "Khung cảnh điện ảnh sắc nét 4K";
   const cleanText = escapeHtml(textRaw.length > 115 ? textRaw.substring(0, 112) + '...' : textRaw);
 
@@ -209,7 +209,7 @@ const DEFAULT_PROJECT = {
   aspect_ratio: "16:9",
   resolution: "1080p",
   image_provider: "meta_muse_cloud",
-  style_preset: "cinematic_realistic",
+  style_preset: undefined,   // máy chủ điền phong cách mặc định (config.DEFAULT_STYLE)
   created_at: new Date().toISOString(),
   character: {
     name: "Lâm (Chiến binh áo lam)",
@@ -318,7 +318,6 @@ const DOM = {
   step1ScriptTextarea: document.getElementById('step1-script-textarea'),
   step1WordCount: document.getElementById('step1-word-count'),
   step1EngineSelect: document.getElementById('step1-engine-select'),
-  step1PacingSelect: document.getElementById('step1-pacing-select'),
   step1LanguageSelect: document.getElementById('step1-language-select'),
   step1StyleSelect: document.getElementById('step1-style-select'),
   step1ContentKind: document.getElementById('step1-content-kind'),
@@ -1607,7 +1606,7 @@ function renderSettings() {
   if (DOM.selectSubtitleStyle) DOM.selectSubtitleStyle.value = settings?.subtitle_style || project.subtitle_style || "kinetic_pop";
 
   if (DOM.selectProjectStyle && project) {
-    DOM.selectProjectStyle.value = project.style_preset || "cinematic_realistic";
+    if (project.style_preset) DOM.selectProjectStyle.value = project.style_preset;
     if (typeof window.renderLookStyleLine === "function") window.renderLookStyleLine(); // đặt .value không bắn sự kiện change nên dòng phong cách ở trang Hình mẫu phải vẽ lại tay
   }
 
@@ -2166,10 +2165,7 @@ async function regenerateSceneImageInner(project, scene, index) {
 
   // Build combined prompt with Character Consistency
   let finalPrompt = scene.visual_prompt || scene.image_prompt || scene.text || "";
-  // Máy chủ tự ghép character_anchor; chỉ thêm mô tả nhân vật khi nó khác anchor (tránh lặp hai lần)
-  if (char && char.prompt && char.prompt !== project.character_anchor) {
-    finalPrompt = `${char.prompt}, ${finalPrompt}`;
-  }
+  // Nhân vật do máy chủ khoá theo cảnh (services/scene_locks.py); không ghép mô tả nhân vật chung vào prompt
 
   let result = null;
   if (AppState.serverOnline) {
@@ -2368,7 +2364,8 @@ async function runSceneBatch(button, runOne, labels) {
 async function handleAutoGenAll() {
   await runSceneBatch(DOM.btnAutoGenAll, async (s, i) => {
     let errors = 0;
-    if (!s.image_url || s.status_image !== 'ready') {
+    // Thiếu ảnh = cảnh chưa có ảnh (như "Tạo hình cho cả dự án"); ảnh đã có mà trạng thái cũ ghi lỗi thì không vẽ lại
+    if (!s.image_url) {
       if (await regenerateSceneImage(i) === false) errors++;
     }
     if ((!s.audio_url && !s.voice_audio_url) || s.status_voice !== 'ready') {
@@ -2983,7 +2980,7 @@ async function handleStep1ProcessScript() {
     await window.tcStartFromStep1({
       text: caseText,
       minutes: parseInt(DOM.step1CaseDuration?.value || '20', 10),
-      style: DOM.step1StyleSelect?.value || 'horror_cartoon_2d',
+      style: DOM.step1StyleSelect?.value || undefined,   // thiếu thì máy chủ điền config.DEFAULT_STYLE
     });
     return;
   }
@@ -2994,8 +2991,7 @@ async function handleStep1ProcessScript() {
     return;
   }
 
-  const pacing = DOM.step1PacingSelect?.value || 'fast';
-  const style = DOM.step1StyleSelect?.value || 'horror_cartoon_2d';
+  const style = DOM.step1StyleSelect?.value || undefined;   // thiếu thì máy chủ điền config.DEFAULT_STYLE
   const imageProvider = DOM.step1EngineSelect?.value || DOM.selectImageProvider?.value || 'meta_muse_cloud';
 
   const isEnglish = !(/[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđĐ]/i.test(text));
@@ -3027,7 +3023,6 @@ async function handleStep1ProcessScript() {
       createdProject = await API.createProjectFromScript({
         name: text.split('\n')[0].substring(0, 45).trim() || "Câu Chuyện Mới",
         text: text,
-        pacing: pacing,
         style_preset: style,
         voice: autoVoice,
         image_provider: imageProvider,
@@ -3311,7 +3306,7 @@ async function startProduceLongVideo(opts) {
   try {
     const produceReq = {
       pacing: "fast",
-      style_preset: DOM.selectProjectStyle?.value || project.style_preset || "cinematic_realistic",
+      style_preset: DOM.selectProjectStyle?.value || project.style_preset || undefined,
       image_provider: DOM.selectImageProvider?.value || project.image_provider || "meta_muse_cloud",
       character_anchor: project.character_anchor || (project.character?.prompt || ""),
       character_reference_image: project.character_reference_image || project.character?.reference_image || undefined,
@@ -4215,20 +4210,18 @@ async function generateSceneWithMuse(index, mode = 'image') {
   renderSceneList();
 
   try {
-    const stylePreset = DOM.selectProjectStyle?.value || project.style_preset || 'spartan_epic_mythology';
+    const stylePreset = project.style_preset || DOM.selectProjectStyle?.value || undefined;
     let promptText = "";
     if (isVideo) {
       if (!scene.video_prompt || scene.video_prompt.trim() === '') {
         const rawImgPrompt = scene.image_prompt || scene.visual_prompt || scene.text || "";
-        scene.video_prompt = `${rawImgPrompt}, cinematic continuous human walking motion, person moving forward through the scene, natural dynamic character movement, camera tracking front shot, fluid realistic motion`;
+        scene.video_prompt = rawImgPrompt;   // luật chuyển động và máy quay do máy chủ ghép (services/prompt_rules.py)
         saveStateToLocal();
       }
       promptText = scene.video_prompt;
     } else {
+      // Khoá nhân vật theo cảnh do máy chủ ghép (services/scene_locks.py); không ghép nhân vật chính chung cũ
       promptText = scene.image_prompt || scene.visual_prompt || scene.text || "";
-      if (project.character_anchor && !promptText.includes(project.character_anchor)) {
-        promptText = `${project.character_anchor}, ${promptText}`;
-      }
     }
 
     const taskPayload = withMuseAccount({
@@ -4239,7 +4232,7 @@ async function generateSceneWithMuse(index, mode = 'image') {
       action_prompt: promptText,
       negative_prompt: scene.negative_prompt || "",
       input_image_url: isVideo ? (scene.image_url || null) : null,
-      // Máy quay do máy chủ đặt (đứng yên, services/muse_motion.py); chuyển động Ken Burns của ảnh không gửi cho Muse
+      // Máy quay do máy chủ đặt (đứng yên, services/prompt_rules.py); chuyển động Ken Burns của ảnh không gửi cho Muse
       parameters: {
         resolution: "2K",
         aspect_ratio: "16:9",

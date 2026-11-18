@@ -45,3 +45,6 @@ backend/config/*.tmp
 
 # Nhạc nền người dùng tự tải lên (nút tải nhạc ở Bước 2)
 backend/assets/bgm/custom_*.mp3
+
+# khoá file tài khoản Muse (filelock)
+backend/config/muse_fleet_accounts.json.lock

@@ -43,8 +43,10 @@ def test_account_that_hits_limit_stops_other_continues(monkeypatch):
     monkeypatch.setattr(climax_router.climax_video, "run_scene_climax_video", fake_run)
     asyncio.run(climax_router._run_all("proj_x", ["s1", "s2", "s3", "s4"]))
     assert [s for s, a in log if a == "acc_a"] == ["s1"]               # hết lượt: nghỉ ngay, không lấy cảnh mới
-    assert sorted(s for s, a in log if a == "acc_b") == ["s2", "s3", "s4"]
-    assert len(log) == 4                                              # cảnh lỗi không bị chuyển sang tài khoản kia
+    # Rà soát 18/11/2026: cảnh hỏng vì tài khoản hết lượt không bị bỏ lại; cả cảnh làm lại từ đầu trên tài khoản còn
+    # lại (chat mới), không chia một cảnh cho hai tài khoản
+    assert sorted(s for s, a in log if a == "acc_b") == ["s1", "s2", "s3", "s4"]
+    assert len(log) == 5
 
 
 def test_scene_thread_pins_given_account_and_drops_other_accounts_chat():

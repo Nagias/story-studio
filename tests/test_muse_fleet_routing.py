@@ -202,7 +202,7 @@ def test_quota_error_blocks_account_and_retries_same_kind(fleet):
     got = poll(c, "muse_acc_vid_01")["task"]
     assert got["task_id"] == t["task_id"]
 
-    r = c.post(f"/api/muse-bridge/tasks/{t['task_id']}/fail", json={"task_id": t["task_id"], "error": "Rate limit exceeded (429)"})
+    r = c.post(f"/api/muse-bridge/tasks/{t['task_id']}/fail", json={"task_id": t["task_id"], "error": "MUSE_REPLIED_ERROR: Rate limit exceeded (429)"})
     body = r.json()
     assert body["switched_to"] == "muse_acc_vid_02"
     assert mb.is_account_blocked(mb.find_account("muse_acc_vid_01"))

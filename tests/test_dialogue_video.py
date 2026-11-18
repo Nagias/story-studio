@@ -139,7 +139,8 @@ def test_long_scene_makes_one_muse_video_per_segment_and_assembles(isolated_proj
     for k, t in enumerate(muse.tasks, 1):
         assert t["mode"] == "image-to-video" and t["raw_prompt"]
         assert f"video {k}/4" in t["prompt"] and f"\"{segs[k - 1]['text']}\"" in t["prompt"]
-        assert "ĐỔI CẢNH" in t["prompt"] and "không được chỉ đổi góc máy" in t["prompt"]
+        assert "NƠI KHÁC hoặc VIỆC KHÁC" in t["prompt"] and "là một cảnh mới" in t["prompt"]
+        assert "đổi góc máy" not in t["prompt"] and "MÁY QUAY ĐỨNG YÊN" in t["prompt"]  # không còn hai lệnh cãi nhau
         assert "realistic human face" in t["prompt"]                            # luật mặt đầu tròn
     assert muse.tasks[0]["attachments"] == [str(project_service.get_scene_media_paths(PID, "scene_005")["image"])]
     assert muse.tasks[1]["attachments"][0].endswith("scene_005_seg1_cuoi.jpg")  # khung cuối video trước
@@ -276,3 +277,12 @@ def test_autosave_from_ui_keeps_server_owned_video_state(isolated_projects_dir):
     stale[0].metadata.pop(dv.STATE_KEY)
     _keep_server_media(existing, stale)
     assert stale[0].metadata[dv.STATE_KEY]["status"] == "ready"
+
+
+def test_missing_segment_files_are_not_counted_as_done(isolated_projects_dir):
+    """Chạy thật 18/11/2026: trạng thái ghi 3 video đã xong nhưng file không còn: báo đúng số lượt Muse sẽ tốn."""
+    _make_project(voice_sec=20.0)
+    state = dv.prepare_run(PID, "scene_005")
+    dv._merge_state(PID, "scene_005", {"clips": ["D:/khong_co/seg1.mp4", "D:/khong_co/seg2.mp4"]})
+    again = dv.prepare_run(PID, "scene_005")
+    assert again["clips"] == [] and again["video_count"] == state["video_count"]

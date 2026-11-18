@@ -3,7 +3,7 @@ features", "sunken cheeks") lấy từ bài báo; với phong cách đầu tròn
 vụ. Lúc ghép prompt (ảnh cảnh, lưới 9 ô, bản giao việc video) bỏ các vế tả mặt; thiết kế đã lưu không bị sửa."""
 from models.schemas import Project
 from services import character_sheets as cs
-from services.climax_brief import ROUND_HEAD_GOAL
+from services.prompt_rules import ROUND_HEAD_RULE_EN
 
 MINH = ("Appearance: An East Asian man in his early 60s with thinning graying hair, deep sun-etched wrinkles, a stooped "
         "posture, wearing a faded blue cotton worker shirt and dark trousers.\n"
@@ -37,5 +37,7 @@ def test_only_round_head_styles_are_stripped():
     assert cs.prompt_design(other_p, MINH) == MINH
 
 
-def test_round_head_goal_covers_old_people_crying():
-    assert "Người già" in ROUND_HEAD_GOAL and "không nếp nhăn" in ROUND_HEAD_GOAL and "lúc khóc" in ROUND_HEAD_GOAL
+def test_round_head_rule_covers_old_people_crying():
+    # một luật đầu tròn duy nhất (services/prompt_rules.py) cho ảnh, lưới, video: tuổi chỉ bằng tóc, dáng, quần áo
+    assert "no wrinkles" in ROUND_HEAD_RULE_EN and "Age is shown only by hair" in ROUND_HEAD_RULE_EN
+    assert "even when crying" in ROUND_HEAD_RULE_EN

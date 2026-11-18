@@ -1,6 +1,8 @@
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
+from config import DEFAULT_STYLE
+
 from models.youtube_seo import YoutubeSeoState
 
 class Scene(BaseModel):
@@ -158,7 +160,7 @@ class Project(BaseModel):
     voice: str = "vi-VN-HoaiMyNeural"
     voice_rate: str = "+0%"
     voice_pitch: str = "+0Hz"
-    style_preset: str = "cinematic_realistic"
+    style_preset: str = DEFAULT_STYLE
     character_anchor: str = ""
     character: Optional[Character] = None
     character_reference_image: Optional[str] = None
@@ -199,7 +201,7 @@ class ProjectCreateRequest(BaseModel):
     name: str
     description: Optional[str] = ""
     voice: Optional[str] = None  # None: dùng config.DEFAULT_VOICE
-    style_preset: Optional[str] = "manga_murata_battle"
+    style_preset: Optional[str] = DEFAULT_STYLE
     character_anchor: Optional[str] = ""
     character: Optional[Character] = None
     character_preset_id: Optional[str] = None
@@ -268,7 +270,7 @@ class SplitScriptRequest(BaseModel):
     max_words_per_scene: Optional[int] = 30
     language: Optional[str] = "vi"
     pacing: Optional[str] = "fast"  # fast (3-4s/vox), balanced (5-6s), deep_story (7-8s)
-    style_preset: Optional[str] = "cinematic_realistic"
+    style_preset: Optional[str] = DEFAULT_STYLE
     character_anchor: Optional[str] = None
     character: Optional[Character] = None
     character_preset_id: Optional[str] = None
@@ -293,7 +295,7 @@ class VoxScriptAnalysisRequest(BaseModel):
     text: str
     pacing: Optional[str] = "fast"  # fast (3-4s), balanced (5-6s), deep_story (7-8s)
     max_words_per_scene: Optional[int] = None
-    style_preset: Optional[str] = "cinematic_realistic"
+    style_preset: Optional[str] = DEFAULT_STYLE
     character_anchor: Optional[str] = None
     character: Optional[Character] = None
     character_preset_id: Optional[str] = None
@@ -349,7 +351,7 @@ class ImageGenRequest(BaseModel):
 class NovelIngestRequest(BaseModel):
     novel_text: str
     pacing: Optional[str] = "fast"
-    style_preset: Optional[str] = "manga_murata_battle"
+    style_preset: Optional[str] = DEFAULT_STYLE
     voice: Optional[str] = "en-US-GuyNeural"
     target_character: Optional[str] = None
     project_id: Optional[str] = None
@@ -454,7 +456,7 @@ class CreateProjectFromScriptRequest(BaseModel):
     name: Optional[str] = None
     text: str
     pacing: Optional[str] = "fast"
-    style_preset: Optional[str] = "manga_murata_battle"
+    style_preset: Optional[str] = DEFAULT_STYLE
     character_preset_id: Optional[str] = None
     character_anchor: Optional[str] = ""
     character_reference_image: Optional[str] = None

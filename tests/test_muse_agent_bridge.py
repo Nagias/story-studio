@@ -31,7 +31,7 @@ def mp4_bytes(tmp_path: Path, seconds: float = 2.0) -> bytes:
 
 def test_agent_task_timeout_uses_config():
     assert config.MUSE_AGENT_WAIT_MIN == 75
-    assert mb._task_timeout({"mode": "agent-video"}) == config.MUSE_AGENT_WAIT_MIN * 60 + 120
+    assert mb._task_timeout({"mode": "agent-video"}) == config.MUSE_AGENT_WAIT_MIN * 60 + mb.AGENT_TASK_EXTRA_SEC
     assert mb._task_timeout({"mode": "image-to-video"}) == mb.VIDEO_TASK_TIMEOUT_SEC
 
 

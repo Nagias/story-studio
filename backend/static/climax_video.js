@@ -10,7 +10,7 @@
   const POLL_MS = 4000;
   const PICK_POLL_MS = 2000;
   const TARGET_PERCENT = 50;
-  const LOST_PICK_MESSAGE = 'Lượt chọn bị gián đoạn, bấm lại';   // như routers/climax_video.LOST_PICK_MESSAGE   // services/climax_video.CLIMAX_RATIO: mức sàn thời lượng làm bằng video Muse
+  const LOST_PICK_MESSAGE = 'Lượt chọn bị gián đoạn, bấm lại';   // như routers/climax_video.LOST_PICK_MESSAGE   // services/video_rules.TARGET_SHARE: mức sàn thời lượng làm bằng video Muse
   // picking: AI (Gemini qua 9router) đang chấm cảnh; pickError: lỗi lượt AI gần nhất (hiện trong dải tổng kết);
   // filter: bộ lọc thẻ cảnh 'all' | 'video' | 'image' (ẩn thẻ bằng lớp CSS trên #scene-list-container)
   const cx = { polling: null, running: false, lastSignature: '', cast: null, share: null,

@@ -37,36 +37,26 @@ from config import MUSE_AGENT_WAIT_MIN, PROJECTS_DIR, STATIC_DIR
 from models.schemas import Project, Scene
 from security import is_within
 from services import character_sheets as cs
-from services import clip_border, clip_motion, project_service
-from services.climax_brief import (AGENT_REPLY_MAX_CHARS, AGENT_VIDEO_MODE, NEW_SCENE_IMAGE_TAG, crowd_brief,
-                                   landscape_brief,
-                                   scene_brief, target_seconds)
+from services import clip_border, clip_motion, project_service, prompt_rules, video_rules
+from services.climax_brief import (AGENT_REPLY_MAX_CHARS, AGENT_VIDEO_MODE, NEW_SCENE_IMAGE_TAG, agent_parts,
+                                   crowd_brief, landscape_brief, part_panels, scene_brief, target_seconds)
 from services.tts_service import MediaDurationError, get_audio_duration
 
 logger = logging.getLogger("story_studio.climax_video")
 
-# Phần thời lượng video TỐI THIỂU làm bằng video Muse (chủ dự án, CLAUDE.md mục 1.2 câu 24: "50% video youtube là
-# video"). Là mức sàn tính theo số giây lời kể của cả video, không phải mức trần theo số cảnh.
-CLIMAX_RATIO = 0.5
-# Dưới mức này không dựng được video thành phẩm (chủ dự án 11/11/2026: "Khoảng 50%, chặn dưới 45%"); chốt ở
-# services/video_share.py. CLIMAX_RATIO vẫn là mục tiêu khi chọn cảnh.
-GATE_MIN = 0.45
 REAL_PHOTO_KEY = "real_photo"   # scene.metadata: cảnh dùng ảnh thật của vụ án, không làm video Muse
 CLIP_SECONDS = 5          # một ô lưới ứng với ~5 giây lời kể (số ô, số lưới); Muse tự quyết độ dài từng clip
 PANELS_PER_GRID = 9
 SCENE_IMAGE_MIN_SIMILARITY = 0.45   # ảnh Muse gửi kèm phải giống ảnh cảnh cũ chừng này mới thay (ảnh góc sau thì không)
 SCENE_IMAGE_RATIO_TOL = 0.03
 BACKUP_SUFFIX = ".truoc_sua_toc.jpg"
-MIN_AGENT_VIDEO_SEC = 5.0
 
-STYLE_LOCK_EN = (
-    "Keep exactly the same art style as the attached image: the same drawing style, the same line work and outlines, "
-    "the same color palette, and the same character faces exactly as drawn in the attached image (if a character has "
-    "a round white face with dot eyes, keep that round white face with dot eyes, never turn it into a realistic or "
-    "anime face; simple line expressions such as frowning eyebrows, tears or a grey-shaded half face are fine). "
-    "Same clothing, same setting, same lighting. Do not add any new people, no scene cuts, no text, "
-    "no blood."
-)
+# Lưới 9 khung: cùng luật cử động và luật đầu tròn với bản giao việc (services/prompt_rules.py). Trước 18/11/2026 khoá
+# này dặn "no scene cuts" và lưới dặn "only gentle movement", trong khi bản giao việc dùng các ô làm khung đầu/cuối của
+# clip và đòi cử động mạnh, cắt giữa hai clip: lưới cử động nhẹ kìm luôn cử động của clip.
+STYLE_LOCK_EN = ("Keep exactly the same art style as the attached image: the same drawing style, line work, outlines, "
+                 "colour palette, character designs, clothing, setting and lighting. Do not add any new people. "
+                 "No blood. " + prompt_rules.NO_TEXT_EN)
 # Muse: nghỉ giữa hai lượt gọi để khỏi dồn tài khoản (chủ dự án 28/10: "cứ gọi từ từ thôi kẻo chết tài khoản")
 MUSE_PACE_SEC = 15
 # Trạng thái metadata["climax_video"]["status"]
@@ -140,9 +130,9 @@ def _scenes_with_people(project: Project) -> Optional[set[str]]:
 
 
 def pick_climax_scenes(project: Project) -> list[str]:
-    """Id các cảnh nên làm video, đủ để lời kể của chúng chiếm ít nhất CLIMAX_RATIO tổng thời lượng lời kể cả video.
+    """Id các cảnh nên làm video, đủ để lời kể của chúng chiếm ít nhất video_rules.TARGET_SHARE tổng thời lượng lời kể cả video.
     Chỉ cảnh hợp lệ có nhân vật; điểm cao trước, bằng điểm thì cảnh đứng trước; trả theo thứ tự cảnh trong dự án.
-    Chưa có giọng đọc (không biết thời lượng) thì lấy CLIMAX_RATIO số cảnh dùng được, làm tròn lên."""
+    Chưa có giọng đọc (không biết thời lượng) thì lấy video_rules.TARGET_SHARE số cảnh dùng được, làm tròn lên."""
     people = _scenes_with_people(project)
     usable = [(scene_score(s), i, s) for i, s in enumerate(project.scenes)
               if is_eligible(s) and (people is None or s.id in people)]
@@ -157,12 +147,12 @@ def pick_climax_scenes(project: Project) -> list[str]:
     if total > 0:
         covered = 0.0
         for _, _, s in [*ranked, *scenery]:
-            if covered >= CLIMAX_RATIO * total:
+            if covered >= video_rules.TARGET_SHARE * total:
                 break
             chosen.add(s.id)
             covered += s.duration or 0
     else:
-        chosen = {s.id for _, _, s in ranked[:math.ceil(CLIMAX_RATIO * len(ranked))]}
+        chosen = {s.id for _, _, s in ranked[:math.ceil(video_rules.TARGET_SHARE * len(ranked))]}
     return [s.id for s in project.scenes if s.id in chosen]
 
 
@@ -207,21 +197,21 @@ def needs_no_grid(project: Project, scene: Scene) -> bool:
 
 def coverage(project: Project, scene_ids: list[str]) -> dict:
     """Lời kể của các cảnh `scene_ids` chiếm bao nhiêu phần thời lượng lời kể cả video. `enough` sai khi chưa đạt
-    CLIMAX_RATIO (bản Anh vụ Khang Cúc Hoa 11/11/2026: cảnh có người chỉ đủ 49,2%, nút chọn cảnh không báo gì).
+    video_rules.TARGET_SHARE (bản Anh vụ Khang Cúc Hoa 11/11/2026: cảnh có người chỉ đủ 49,2%, nút chọn cảnh không báo gì).
     Chưa có giọng đọc thì không biết: percent None, enough None."""
     total = sum(s.duration or 0 for s in project.scenes)
     ids = set(scene_ids)
     covered = sum(s.duration or 0 for s in project.scenes if s.id in ids)
-    targets = {"target_percent": round(CLIMAX_RATIO * 100), "gate_percent": round(GATE_MIN * 100)}
+    targets = {"target_percent": round(video_rules.TARGET_SHARE * 100), "gate_percent": round(video_rules.GATE_SHARE * 100)}
     if total <= 0:
         return {"seconds": None, "total_seconds": None, "percent": None, "enough": None, "gate_ok": None, **targets}
     return {"seconds": round(covered, 1), "total_seconds": round(total, 1), "percent": round(100 * covered / total, 1),
-            "enough": covered >= CLIMAX_RATIO * total - 1e-6, "gate_ok": covered >= GATE_MIN * total - 1e-6,
+            "enough": covered >= video_rules.TARGET_SHARE * total - 1e-6, "gate_ok": covered >= video_rules.GATE_SHARE * total - 1e-6,
             **targets}
 
 
 def climax_limit(project: Project) -> int:
-    """Số cảnh cần làm video để đạt CLIMAX_RATIO thời lượng (số cảnh `pick_climax_scenes()` chọn)."""
+    """Số cảnh cần làm video để đạt video_rules.TARGET_SHARE thời lượng (số cảnh `pick_climax_scenes()` chọn)."""
     return len(pick_climax_scenes(project))
 
 
@@ -268,8 +258,8 @@ def grid_prompt(scene: Scene, project: Project, first_grid: bool, cast: Optional
     if cast:
         parts.append("tạo cho tôi 1 hình ảnh 2K tỉ lệ 16:9:")
     parts += [
-        "A 3x3 storyboard grid: nine consecutive frames of one continuous shot of the same scene, read left to right, "
-        "top to bottom, each frame a small moment later than the previous one with only gentle movement.",
+        "A 3x3 storyboard grid: nine key moments of this scene in story order, read left to right, top to bottom, "
+        "same characters, setting and lighting in every panel. " + prompt_rules.MOTION_EN,
         "The nine frames are separated by thin, perfectly straight white borders. No text, no numbers, no captions, "
         "no labels anywhere in the image.",
     ]
@@ -281,14 +271,13 @@ def grid_prompt(scene: Scene, project: Project, first_grid: bool, cast: Optional
                      f"exactly where the {which} ends.")
     if scene.image_prompt:
         parts.append(f"Scene: {scene.image_prompt.strip()}")
-    if (project.character_anchor or "").strip():
-        parts.append(f"Characters: {project.character_anchor.strip()}")
     if cast:
         parts.append("CHARACTER LOCK — the second attached image is the approved character reference board. Every "
                      "character below must match their sheet exactly in all nine panels, from whatever angle they are "
                      "seen (head shape, face, hair, clothes, shoes, colours):")
         parts += _cast_lines(project, cast, positions)
     parts.append(STYLE_LOCK_EN)
+    parts += prompt_rules.round_head_rules_en(project)
     for fb in feedback or []:
         parts.append(f"Bản grid trước SAI: {fb.strip()} — sửa đúng chỗ này.")
     return "\n".join(parts)
@@ -357,7 +346,9 @@ def _run_media(cmd: list[str], what: str) -> subprocess.CompletedProcess:
 
 
 def check_agent_video(path: Path, target: int) -> float:
-    """Video cuối của Muse: có hình, dài 5 giây tới 2 × mục tiêu + 1. Trả số giây; sai thì ClimaxVideoError."""
+    """Video cuối của Muse: có hình, độ dài trong khoảng video_rules nhận. Trả số giây; sai thì ClimaxVideoError.
+    Clip ngắn hơn lời kể vẫn nhận (bản giao việc cho phép "video ngắn hơn cũng được"): phần thiếu không được đếm là
+    video (video_rules.moving_seconds), không bỏ phí lượt Muse đã tốn."""
     try:
         proc = _run_media(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
                            "stream=codec_type:format=duration", "-of", "default=nw=1", str(path)], "đo video của Muse")
@@ -370,8 +361,9 @@ def check_agent_video(path: Path, target: int) -> float:
         seconds = float(next(line.split("=", 1)[1] for line in out.splitlines() if line.startswith("duration=")))
     except (StopIteration, ValueError) as e:
         raise ClimaxVideoError("Không đo được độ dài video Muse gửi") from e
-    if not MIN_AGENT_VIDEO_SEC <= seconds <= 2 * target + 1:
-        raise ClimaxVideoError(f"Video Muse gửi dài {seconds:.1f} giây, cần {MIN_AGENT_VIDEO_SEC:.0f}–{2 * target + 1} giây")
+    if not video_rules.clip_length_ok(seconds, target):
+        raise ClimaxVideoError(f"Video Muse gửi dài {seconds:.1f} giây, cần {video_rules.MIN_CLIP_SEC:.0f}–"
+                               f"{video_rules.max_clip_seconds(target):.0f} giây")
     return seconds
 
 
@@ -460,7 +452,7 @@ def _mark_ready(project_id: str, scene_id: str, video: Path, state: dict) -> Non
 
 
 def still_clip_warning(score: float) -> str:
-    return (f"Clip gần như đứng hình (điểm cử động {score:.1f}, cần từ {clip_motion.REAL_MOTION_MIN:.0f}): nhân vật "
+    return (f"Clip gần như đứng hình (điểm cử động {score:.1f}, cần từ {video_rules.REAL_MOTION_MIN:.0f}): nhân vật "
             "hầu như không cử động hoặc chỉ có máy quay lia/zoom. Xem clip; đúng vậy thì bấm \"Làm lại cảnh này\".")
 
 
@@ -668,6 +660,33 @@ def cast_for(project: Project, scene: Scene) -> tuple[list, list[str], Path]:
 _cast_for = cast_for
 
 
+def grid_key(project: Project, scene: Scene, seconds: float) -> Optional[str]:
+    """Dấu của những gì lưới được vẽ theo: nhân vật của cảnh, thiết kế của họ, số ô (theo độ dài lời kể). Đổi một trong
+    số đó thì lưới đã duyệt không còn đúng. Rà soát 18/11/2026: trước đây cờ grid_approved không bao giờ bị huỷ, nên
+    đổi nhân vật hay thu lại giọng thì app cứ gửi lưới cũ (kèm bảng diễn viên mới) hoặc báo "vẽ lại grid" mãi."""
+    import hashlib
+    cast = cs.peek_cast(project)
+    if cast is None:
+        return None
+    people = cs.scene_characters(project, cast, scene)
+    raw = "|".join([*(f"{p.entity_id}:{p.design_en}" for p in people), str(clip_count(seconds))])
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def stale_grid_reason(project: Project, scene: Scene, state: dict) -> Optional[str]:
+    """Lý do lưới đã duyệt của cảnh không còn dùng được (None: còn dùng được, hoặc lưới cũ chưa có dấu)."""
+    saved = state.get("grid_key")
+    if not state.get("grid_approved") or not saved:
+        return None
+    try:
+        seconds = _scene_seconds(scene)
+    except ClimaxVideoError as e:   # chưa có giọng: đường chạy dừng ở bước sau với lời nhắn rõ, không xét lưới ở đây
+        logger.info(f"Chưa kiểm được lưới của cảnh {scene.id}: {e.message}")
+        return None
+    return None if grid_key(project, scene, seconds) == saved else (
+        "Nhân vật, thiết kế nhân vật hoặc độ dài lời kể của cảnh đã đổi sau khi duyệt lưới: vẽ lại lưới")
+
+
 def approved_grid_files(project_id: str, scene_id: str, state: dict, seconds: float) -> list[Path]:
     """Ảnh grid đã duyệt của cảnh, đúng thư mục và khớp độ dài lời kể hiện tại; không thì ClimaxVideoError."""
     work = project_service.get_scene_media_paths(project_id, scene_id)["video"].parent / "climax"
@@ -717,9 +736,10 @@ async def run_scene_grid(project_id: str, scene_id: str, muse_call: MuseCall, ac
                 raise ClimaxVideoError(f"Muse không vẽ được ảnh 9-grid {g}: {e}") from e
             grids.append(str(grid_file))
             reference = panels[PANELS_PER_GRID - 1]
+        key = await asyncio.to_thread(grid_key, project, scene, seconds)
         state = await asyncio.to_thread(_merge_climax, project_id, scene_id, {
             "status": GRID_REVIEW, "grids": len(plan), "grid": None, "grid_paths": grids, "grid_version": version,
-            "error": None, **thread.state()})
+            "grid_key": key, "error": None, **thread.state()})
         logger.info(f"Grid cao trào {project_id}/{scene_id}: {len(grids)} grid, chờ duyệt")
         return state
     except ClimaxVideoError as e:
@@ -739,7 +759,7 @@ def approve_grid(project_id: str, scene_id: str) -> dict:
     if state.get("status") != GRID_REVIEW or not state.get("grid_paths"):
         raise ClimaxVideoError("Cảnh không có ảnh grid đang chờ duyệt")
     return _merge_climax(project_id, scene_id, {"status": GRID_APPROVED, "grid_approved": True,
-                                                "grid_approved_by": "manual", "error": None})
+                                                "grid_approved_by": "manual", "error": None, "grid_feedback": None})
 
 
 def _auto_approve_grid(project_id: str, scene_id: str) -> dict:
@@ -763,10 +783,35 @@ def reject_grid(project_id: str, scene_id: str, feedback: str) -> dict:
                                                 "grid_feedback": list(state.get("grid_feedback") or []) + [fb]})
 
 
+def _grids_for(grid_files: list[Path], panels: tuple[int, int]) -> tuple[list[Path], tuple[int, int]]:
+    """Lưới chứa các ô của một phần, và số ô đếm lại trong các lưới đó (lưới thứ hai của phần bắt đầu ở ô 10)."""
+    first_g = (panels[0] - 1) // PANELS_PER_GRID
+    last_g = min(len(grid_files) - 1, (panels[1] - 1) // PANELS_PER_GRID)
+    shift = first_g * PANELS_PER_GRID
+    last_panel = min(panels[1] - shift, PANELS_PER_GRID * (last_g - first_g + 1))
+    return grid_files[first_g:last_g + 1], (panels[0] - shift, last_panel)
+
+
+def _same_parts(old: dict, parts: list[dict], account: Optional[str]) -> bool:
+    """Phần đã làm ở lượt trước còn dùng được: cùng cách chia lời kể và cùng tài khoản (một cảnh một tài khoản)."""
+    return ([p.get("text") for p in old.get("parts_plan") or []] == [p["text"] for p in parts]
+            and bool(account) and old.get("parts_account") == account)
+
+
+def _video_seconds(path: Path) -> float:
+    try:
+        return float(get_audio_duration(str(path)))
+    except MediaDurationError as e:
+        raise ClimaxVideoError(f"Không đo được độ dài video Muse gửi: {e}") from e
+
+
 async def run_scene_clips(project_id: str, scene_id: str, muse_call: MuseCall, account: Optional[str] = None) -> dict:
-    """Pha 2 (sau khi duyệt grid): MỘT việc giao nhiều bước cho Muse trong side chat của cảnh (services/climax_brief.py):
-    Muse tự chia đoạn, tự trích khung kiểm, tự làm lại, gửi một video cuối và ảnh cảnh đã sửa tóc (nếu có). App kiểm
-    video, gắn làm clip của cảnh, thay ảnh cảnh (giữ bản cũ). Lỗi: giữ ảnh, bỏ chat (lần sau chat mới), không tự thử lại."""
+    """Pha 2 (sau khi duyệt grid): giao Muse làm video của cảnh trong side chat của cảnh (services/climax_brief.py),
+    MỘT việc nhiều bước cho mỗi phần lời kể (lời kể dài hơn climax_brief.AGENT_PART_MAX_SEC chia nhiều phần, chủ dự án
+    18/11/2026). Phần sau nối từ khung cuối phần trước, cùng tài khoản, cùng chat. App kiểm từng video, ghép các phần,
+    gắn làm clip của cảnh, thay ảnh cảnh nếu phần 1 vẽ lại (giữ bản cũ). Phần đã xong được lưu: lần sau làm tiếp từ phần
+    còn thiếu (cùng tài khoản, cùng chat). Lỗi: giữ ảnh, bỏ chat (lần sau chat mới), không tự thử lại."""
+    from services.dialogue_video import assemble, last_frame, running_part   # nạp muộn: dialogue_video nạp location
     project, scene = await asyncio.to_thread(_load_scene, project_id, scene_id)
     old = _scene_state(scene)
     crowd = old.get("crowd") is True
@@ -778,47 +823,83 @@ async def run_scene_clips(project_id: str, scene_id: str, muse_call: MuseCall, a
     called = False
     try:
         seconds, image = await asyncio.to_thread(_prepare, scene, project_id)
-        target = target_seconds(seconds)
-        token = f"XONG-{uuid.uuid4().hex[:8]}"
-        version = int(old.get("clip_version") or 0) + 1
-        out = work / f"{scene_id}_agent_v{version}.mp4"
+        parts = agent_parts(scene, seconds)
+        n = len(parts)
+        keep = bool(thread.url) and _same_parts(old, parts, thread.account)
+        done: list[str] = [p for p in (old.get("parts_done") or []) if Path(p).is_file()] if keep else []
+        version = int(old.get("clip_version") or 0) + (0 if done else 1)
+        lock, plate, people, board, grid_files = None, None, [], None, []
         if landscape:
             from services import location_sheets   # nạp muộn: location_sheets nạp image_service
             lock = await asyncio.to_thread(location_sheets.scene_lock, project_id, scene_id, scene.image_prompt or "")
             plate = (lock or {}).get("plate_path")
-            grid_files: list[Path] = []
-            brief = crowd_brief if crowd else landscape_brief
-            prompt = brief(project, scene, seconds, token, (lock or {}).get("prompt_line"), bool(plate))
-            attachments = [str(image), *([str(plate)] if plate else [])]
         else:
             people, _positions, board = await asyncio.to_thread(_cast_for, project, scene)
             grid_files = await asyncio.to_thread(approved_grid_files, project_id, scene_id, old, seconds)
-            prompt = scene_brief(project, scene, people, len(grid_files), seconds, token)
-            attachments = [str(image), str(board), *(str(p) for p in grid_files)]
-        task = {"mode": AGENT_VIDEO_MODE, "route_kind": "video", "raw_prompt": True, "prompt": prompt,
-                "attachments": attachments,
-                "agent": {"done_token": token, "wait_sec": MUSE_AGENT_WAIT_MIN * 60, "target_seconds": target},
-                "output_path": str(out)}
-        await asyncio.to_thread(_merge_climax, project_id, scene_id,
-                                {"status": "clips", "error": None, **thread.state()})
-        called = True
-        try:
-            result = await _muse(muse_call, thread, task)
-        except (RuntimeError, TimeoutError, OSError, ValueError) as e:
-            raise ClimaxVideoError(f"Muse chưa làm xong video của cảnh: {e}") from e
-        got = await asyncio.to_thread(_keep_copy, _result_file(result, "video"), out)
-        length = await asyncio.to_thread(check_agent_video, got, target)
+        await asyncio.to_thread(_merge_climax, project_id, scene_id, {
+            "status": "clips", "error": None, "parts": n, "parts_plan": [{"text": p["text"]} for p in parts],
+            "parts_done": done, "clip_version": version, **thread.state()})
+        result: dict = {}
+        first_result: dict = {}
+        reports: list[str] = []
+        for k in range(len(done) + 1, n + 1):
+            part = parts[k - 1]
+            target = target_seconds(part["seconds"])
+            token = f"XONG-{uuid.uuid4().hex[:8]}"
+            if k == 1:
+                start = image
+            else:
+                start = await asyncio.to_thread(last_frame, Path(done[-1]),
+                                                work / f"{scene_id}_agent_v{version}_p{k - 1}_cuoi.jpg")
+            if landscape:
+                brief = crowd_brief if crowd else landscape_brief
+                prompt = brief(project, scene, seconds, token, (lock or {}).get("prompt_line"), bool(plate),
+                               part=part, n_parts=n)
+                attachments = [str(start), *([str(plate)] if plate else [])]
+            else:
+                grids, panels = _grids_for(grid_files, part_panels(part))
+                prompt = scene_brief(project, scene, people, len(grids), seconds, token, part=part, n_parts=n,
+                                     panels=panels if n > 1 else None)
+                attachments = [str(start), str(board), *(str(p) for p in grids)]
+            out = work / (f"{scene_id}_agent_v{version}_p{k}.mp4" if n > 1 else f"{scene_id}_agent_v{version}.mp4")
+            task = {"mode": AGENT_VIDEO_MODE, "route_kind": "video", "raw_prompt": True, "prompt": prompt,
+                    "attachments": attachments,
+                    "agent": {"done_token": token, "wait_sec": MUSE_AGENT_WAIT_MIN * 60, "target_seconds": target},
+                    "output_path": str(out)}
+            if k > 1:
+                await _pace()
+            called = True
+            try:
+                result = await _muse(muse_call, thread, task)
+            except (RuntimeError, TimeoutError, OSError, ValueError) as e:
+                where = f" (phần {k}/{n})" if n > 1 else ""
+                raise ClimaxVideoError(f"Muse chưa làm xong video của cảnh{where}: {e}") from e
+            got = await asyncio.to_thread(_keep_copy, _result_file(result, "video"), out)
+            await asyncio.to_thread(check_agent_video, got, target)
+            done.append(str(got))
+            reports.append(str(result.get("muse_reply") or ""))
+            if k == 1:
+                first_result = result
+            await asyncio.to_thread(_merge_climax, project_id, scene_id,
+                                    {"parts_done": list(done), "parts_account": thread.account, **thread.state()})
         await asyncio.to_thread(_merge_climax, project_id, scene_id, {"status": "checking"})
         final = project_service.get_scene_media_paths(project_id, scene_id)["motion_video"]
-        await asyncio.to_thread(_keep_copy, got, final)
-        extras = [Path(x) for x in (result.get("extra_images") or []) if isinstance(x, str)]
+        clips = [Path(p) for p in done]
+        lengths = [await asyncio.to_thread(_video_seconds, c) for c in clips]
+        if n == 1:
+            await asyncio.to_thread(_keep_copy, clips[0], final)
+            length = running = lengths[0]
+        else:
+            length = await asyncio.to_thread(assemble, clips, parts, final)
+            running = min(length, running_part(parts, lengths))
+        extras = [Path(x) for x in (first_result.get("extra_images") or []) if isinstance(x, str)]
         chosen = None
-        if extras and not landscape and muse_redrew_scene(str(result.get("muse_reply") or "")):
-            frame = await asyncio.to_thread(video_frame_size, got)
+        if extras and not landscape and muse_redrew_scene(str(first_result.get("muse_reply") or "")):
+            frame = await asyncio.to_thread(video_frame_size, clips[0])
             chosen = await asyncio.to_thread(choose_scene_image, image, extras, frame)
         backup = await asyncio.to_thread(replace_scene_image, project_id, scene_id, chosen) if chosen else None
         warnings = list(result.get("warnings") or [])
-        # Viền trắng Muse để lại khi tự ghép đoạn: cắt ở bản dùng để dựng (bản gốc vẫn là `got` trong thư mục climax)
+        # Viền trắng Muse để lại khi tự ghép đoạn: cắt ở bản dùng để dựng (bản gốc vẫn ở thư mục climax)
         try:
             trimmed = await asyncio.to_thread(clip_border.trim_in_place, final)
         except clip_border.ClipBorderError as e:
@@ -828,18 +909,19 @@ async def run_scene_clips(project_id: str, scene_id: str, muse_call: MuseCall, a
             if trimmed:
                 warnings.append(f"Đã cắt viền sáng ở mép clip (trên/dưới/trái/phải {list(trimmed)} điểm ảnh)")
         motion = await asyncio.to_thread(_motion_or_none, final)
-        if motion is not None and not clip_motion.has_real_motion(motion):
+        if motion is not None and not video_rules.has_real_motion(motion):
             warnings.append(still_clip_warning(motion))
-        state = {**old, **thread.state(), "status": "ready", "clips": 1, "grids": len(grid_files), "attempts": 1,
-                 "clip_version": version, "video_seconds": round(length, 1),
-                 "motion_score": None if motion is None else round(motion, 2),
-                 "muse_report": str(result.get("muse_reply") or "")[-AGENT_REPLY_MAX_CHARS:],
+        state = {**old, **thread.state(), "status": "ready", "clips": n, "grids": len(grid_files), "attempts": n,
+                 "clip_version": version, "video_seconds": round(length, 1), "running_seconds": round(running, 2),
+                 "video_path": str(final), "motion_score": None if motion is None else round(motion, 2),
+                 "muse_report": "\n\n".join(r for r in reports if r)[-AGENT_REPLY_MAX_CHARS:],
                  "media_count": result.get("media_count"), "warnings": warnings,
                  "scene_image_updated": chosen is not None, "backup_image": str(backup) if backup else None,
+                 "parts_done": None, "parts_plan": None, "parts_account": None,
                  "grid": None, "done": None, "error": None}
         state = {k: v for k, v in state.items() if v is not None}
         await asyncio.to_thread(_mark_ready, project_id, scene_id, final, state)
-        logger.info(f"Video cao trào {project_id}/{scene_id}: {length:.1f} s, thay ảnh cảnh: {chosen is not None}")
+        logger.info(f"Video cao trào {project_id}/{scene_id}: {n} phần, {length:.1f} s, thay ảnh cảnh: {chosen is not None}")
         return state
     except ClimaxVideoError as e:
         if called:
@@ -852,6 +934,11 @@ async def run_scene_clips(project_id: str, scene_id: str, muse_call: MuseCall, a
         await asyncio.to_thread(_merge_climax, project_id, scene_id,
                                 {"status": "failed", "error": f"Lỗi ngoài dự kiến: {type(e).__name__}: {e}"})
         raise
+
+
+def release_account(project_id: str, scene_id: str) -> dict:
+    """Tài khoản của cảnh không dùng được nữa: cảnh làm lại từ đầu trên tài khoản khác, chat mới (một cảnh một tài khoản)."""
+    return _merge_climax(project_id, scene_id, {"thread_dirty": True, "account_id": None, "thread_url": None})
 
 
 def redo_scene(project_id: str, scene_id: str) -> dict:
@@ -877,6 +964,12 @@ async def run_scene_climax_video(project_id: str, scene_id: str, muse_call: Muse
     """
     project, scene = await asyncio.to_thread(_load_scene, project_id, scene_id)
     state = _scene_state(scene)
+    stale = await asyncio.to_thread(stale_grid_reason, project, scene, state)
+    if stale:   # lưới cũ không còn đúng: vẽ lại ngay trong lượt này, không gửi lưới cũ hay báo lỗi lặp lại
+        logger.info(f"Cảnh {project_id}/{scene_id}: {stale}")
+        state = await asyncio.to_thread(_merge_climax, project_id, scene_id, {
+            "status": "selected", "grid_approved": None, "grid_approved_by": None, "grid_paths": None,
+            "grid_key": None, "grid_feedback": None, "parts_done": None})
     if state.get("grid_approved"):
         return await run_scene_clips(project_id, scene_id, muse_call, account)
     if auto_approve_grid and state.get("status") == GRID_REVIEW and state.get("grid_paths"):

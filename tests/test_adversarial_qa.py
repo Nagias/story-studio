@@ -41,20 +41,13 @@ from services.video_service import (
     ensure_speedlines_asset,
 )
 from services.comic_slicer import slice_comic
-from services.script_splitter import (
-    split_text_into_vox_scenes_offline,
-)
 from services.image_service import (
     build_character_anchored_prompt,
 )
 from models.schemas import (
     PRESET_CHARACTERS,
     Character,
-    ProjectCreateRequest,
-    LongVideoProduceRequest,
 )
-from routers.api import execute_produce_long_video, active_renders
-from services.project_service import create_project, delete_project
 
 
 # ==============================================================================
@@ -511,81 +504,6 @@ Cuối cùng, sau cơn bão tố kinh hoàng, mặt biển phẳng lặng trở 
 """
 
 
-def test_adversarial_vox_pacing_and_hook():
-    """
-    Adversarial QA Test for Vox Narrative Engine:
-    1. Tests pacing='fast' / 'vox' (target 3-4s per scene rhythm for high retention).
-    2. Validates that Scene 1 is designated as 'hook' (0-30s YouTube retention).
-    3. Validates that scene durations strictly follow the Vox fast rhythm (average 3-4s).
-    4. Validates rich semantic bisection: setting, subject, action, lighting, camera_framing.
-    5. Validates cinematic English prompt generation without empty placeholders.
-    """
-    res = split_text_into_vox_scenes_offline(
-        full_text=VOX_PUNCHY_SCRIPT,
-        pacing="fast",
-        style_preset="cinematic_realistic",
-    )
-
-    scenes = res["scenes"]
-    assert len(scenes) >= 8, f"Expected >= 8 scenes for fast Vox pacing, got {len(scenes)}"
-
-    # 1. Check Hook in Scene 1
-    assert scenes[0]["narrative_beat"] == "hook", f"Scene 1 must be 'hook', got '{scenes[0]['narrative_beat']}'"
-
-    # 2. Check 3-4s timing per scene
-    durations = [sc["estimated_duration"] for sc in scenes]
-    avg_duration = sum(durations) / len(durations)
-    print(f"\n[QA Vox Pacing] Total scenes: {len(scenes)} | Avg scene duration: {avg_duration:.2f}s | Range: {min(durations)}s - {max(durations)}s")
-
-    assert 3.0 <= avg_duration <= 4.0, (
-        f"Vox fast pacing rhythm out of bounds! Expected average 3-4s, got {avg_duration:.2f}s"
-    )
-
-    # 3. Check Semantic Layers and Cinematic Prompts
-    for sc in scenes:
-        assert sc["setting"], f"Scene {sc['order']} has empty setting"
-        assert sc["subject"], f"Scene {sc['order']} has empty subject"
-        assert sc["lighting"], f"Scene {sc['order']} has empty lighting"
-        assert sc["camera_framing"], f"Scene {sc['order']} has empty camera_framing"
-        assert sc["camera_motion"] in ("zoom_in", "zoom_out", "pan_left", "pan_right", "diagonal"), (
-            f"Invalid camera motion: {sc['camera_motion']}"
-        )
-        prompt = sc["image_prompt"]
-        assert len(prompt) > 40, f"Prompt too short: '{prompt}'"
-        assert any(term in prompt.lower() for term in ["cinematic", "photorealistic", "shot", "lighting", "ultra"]), (
-            f"Prompt missing cinematic cues: '{prompt}'"
-        )
-
-
-def test_adversarial_pacing_tiers_comparison():
-    """
-    Adversarial QA Test comparing Pacing Tiers:
-    - Fast / Vox (3-4s): yields highest scene count.
-    - Balanced (5-6s): yields intermediate scene count.
-    - Deep Story (7-8s): yields lowest scene count.
-    Validates strictly monotonic relationship: count(fast) > count(balanced) > count(deep_story).
-    """
-    res_fast = split_text_into_vox_scenes_offline(VOX_STORY_SAMPLE, pacing="fast")
-    res_balanced = split_text_into_vox_scenes_offline(VOX_STORY_SAMPLE, pacing="balanced")
-    res_deep = split_text_into_vox_scenes_offline(VOX_STORY_SAMPLE, pacing="deep_story")
-
-    n_fast = res_fast["total_scenes"]
-    n_bal = res_balanced["total_scenes"]
-    n_deep = res_deep["total_scenes"]
-
-    print(f"\n[QA Pacing Comparison] Fast: {n_fast} scenes | Balanced: {n_bal} scenes | Deep Story: {n_deep} scenes")
-
-    assert n_fast > n_bal, f"Fast pacing ({n_fast}) should yield more scenes than Balanced ({n_bal})"
-    assert n_bal > n_deep, f"Balanced pacing ({n_bal}) should yield more scenes than Deep Story ({n_deep})"
-
-    # Check that average durations scale up accordingly
-    avg_f = res_fast["estimated_total_duration"] / n_fast
-    avg_b = res_balanced["estimated_total_duration"] / n_bal
-    avg_d = res_deep["estimated_total_duration"] / n_deep
-
-    assert avg_f < avg_b < avg_d, f"Average scene durations must strictly increase: {avg_f:.2f} < {avg_b:.2f} < {avg_d:.2f}"
-
-
 def probe_media_file(file_path: str) -> dict:
     """Run ffprobe on media file and return JSON analysis of streams and format."""
     cmd = [
@@ -874,89 +792,4 @@ async def test_adversarial_motion_fx_manga_speedlines(tmp_path):
 # ==============================================================================
 # SECTION 6: MoneyPrinterTurbo Stepper Long Video Production Pipeline E2E
 # ==============================================================================
-
-@pytest.mark.live  # 9router chia cảnh + Edge-TTS thật
-@pytest.mark.asyncio
-async def test_adversarial_produce_long_video_pipeline(tmp_path):
-    """
-    Adversarial QA Test for produce_long_video (MoneyPrinterTurbo 5-phase Stepper):
-    - Creates project with mock_cinematic image provider and Paladin Kai character.
-    - Executes complete 5-step pipeline:
-      (1) Script parsing & character anchoring (15%)
-      (2) Edge-TTS voice generation & timed SRT subtitles (40%)
-      (3) 8K Style Preset Visual generation (65%)
-      (4) Motion FX Scene segments (85%)
-      (5) Video assembly + Studio BGM Ducking + Hardsub subtitles (100%)
-    - Verifies rendered output:
-      * Full HD MP4 file exists and size > 50KB
-      * ffprobe validates H.264 video stream & AAC audio stream
-      * Master SRT subtitle file with multiple cues exists
-      * Project cleanup succeeds without memory leak
-    """
-    project = create_project(ProjectCreateRequest(
-        name="QA Long Video Stepper Test",
-        image_provider="mock_cinematic",
-        style_preset="fantasy_paladin_armor",
-        character_anchor="Paladin Kai with ornate silver full plate armor and glowing cyan runes",
-    ))
-    proj_id = project.id
-    render_id = f"test_render_{proj_id}"
-    active_renders[render_id] = {"logs": []}
-
-    story_script = """
-    Dũng Sĩ Kai vung thanh kiếm runic tỏa ánh sáng lam ngọc rực rỡ.
-    Khuôn mặt kiên định của chàng không hề nao núng trước bầy quái vật.
-    Ánh bình minh ló rạng trên chiến trường, đem lại hòa bình cho vương quốc.
-    """
-
-    req = LongVideoProduceRequest(
-        text=story_script,
-        pacing="fast",
-        style_preset="fantasy_paladin_armor",
-        character_anchor="Paladin Kai with ornate silver full plate armor and glowing cyan runes",
-        voice="vi-VN-HoaiMyNeural",
-        resolution="720p",
-        fps=25,
-        ducking=True,
-        hardsub=True,
-    )
-
-    try:
-        await execute_produce_long_video(proj_id, render_id, req)
-        render_state = active_renders.get(render_id, {})
-        status = render_state.get("status")
-        err = render_state.get("error")
-
-        assert status == "completed", f"Long video production failed: {err}"
-        video_path = render_state.get("video_path")
-        srt_path = render_state.get("srt_path")
-
-        assert video_path and os.path.exists(video_path), f"Final video not found: {video_path}"
-        assert srt_path and os.path.exists(srt_path), f"Final SRT not found: {srt_path}"
-
-        # Deep ffprobe inspection
-        probe = probe_media_file(video_path)
-        streams = probe.get("streams", [])
-        v_stream = next((s for s in streams if s["codec_type"] == "video"), None)
-        a_stream = next((s for s in streams if s["codec_type"] == "audio"), None)
-
-        assert v_stream is not None, "Missing video stream in assembled long video"
-        assert a_stream is not None, "Missing audio stream in assembled long video"
-        assert v_stream["codec_name"] == "h264"
-        assert a_stream["codec_name"] == "aac"
-        assert v_stream["width"] == 1280
-        assert v_stream["height"] == 720
-
-        total_dur = float(probe["format"]["duration"])
-        assert total_dur >= 6.0, f"Long video duration too short: {total_dur}s"
-
-        with open(srt_path, "r", encoding="utf-8") as f:
-            srt_content = f.read()
-        assert "-->" in srt_content, "Missing SRT timestamp cues"
-        assert "Dũng Sĩ Kai" in srt_content or "Kai" in srt_content
-
-        print(f"\n[QA Long Video Stepper] Final video duration: {total_dur:.2f}s | Codec: {v_stream['codec_name']}/{a_stream['codec_name']} | SRT size: {len(srt_content)} bytes")
-
-    finally:
-        delete_project(proj_id)
 

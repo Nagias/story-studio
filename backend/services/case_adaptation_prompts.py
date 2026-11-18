@@ -459,7 +459,7 @@ BẰNG CHỨNG VÀ QUAN HỆ TRONG HỒ SƠ:
 THỜI LƯỢNG VÀ SỐ CẢNH
 1. "supported_minutes": số phút (số nguyên, ít nhất 1) mà bài này đủ chất liệu để kể hấp dẫn mà không phải bịa thêm; tính khoảng {SCENES_PER_MINUTE} cảnh cho mỗi phút, mỗi sự việc đủ cho 1–{MAX_SCENES_PER_EVENT} cảnh. Ước trung thực theo lượng sự việc giữ lại (không tính sự việc trong "dropped"), không theo thời lượng người dùng chọn: không nâng lên cho bằng {target_minutes} phút, không hạ xuống để viết ít.
 2. Video luôn có thêm 1 cảnh miễn trừ ở đầu, đã tính vào các mức dưới đây. Tổng số cảnh của dàn ý (cộng "scene_count" của mọi nhịp):
-   - nếu "supported_minutes" ≥ {target_minutes}: từ {lo - 1} đến {hi - 1} cảnh (video có {lo}–{hi} cảnh, kể cả cảnh miễn trừ); ít hơn {lo - 1} cảnh là thiếu và sẽ bị trả lại;
+   - nếu "supported_minutes" ≥ {target_minutes}: ít nhất {lo - 1} cảnh (video có từ {lo} cảnh, kể cả cảnh miễn trừ), nhiều hơn khi chất liệu cần; ít hơn {lo - 1} cảnh là thiếu và sẽ bị trả lại;
    - nếu "supported_minutes" < {target_minutes}: vừa với chất liệu, khoảng "supported_minutes" × {SCENES_PER_MINUTE} cảnh và không quá "supported_minutes" × {SCENES_PER_MINUTE * MAX_SCENE_OVERSHOOT:g} cảnh (làm tròn xuống; ví dụ {example_minutes} phút: khoảng {example_minutes * SCENES_PER_MINUTE} cảnh, tối đa {supported_scene_cap(example_minutes)} cảnh). Không kéo dài cho đủ số cảnh;
    - bài nhiều tư liệu hơn {target_minutes} phút thì cứ lập đủ cảnh cho mọi sự việc (video dài hơn cũng được): số phút đã chọn là mức tối thiểu, không phải giới hạn, không gọt bớt sự việc cho vừa.
 
@@ -648,7 +648,7 @@ def _en_writing_rules(count_rule: str, budget: Optional[WordBudget] = None) -> s
     budget = budget or word_budget()
     lo, hi = budget.en_limit
     return f"""CÁCH VIẾT
-1. Mỗi cảnh có "narration_en" dài khoảng {_span(budget.en_aim)} từ tiếng Anh (khoảng {round(budget.seconds)} giây đọc, để video ra đúng thời lượng đã chọn); bắt buộc từ {lo} đến {hi} từ, dài hơn {hi} từ sẽ bị trả lại: viết gọn hơn bản Việt, giữ ý chính và chi tiết then chốt. Cảnh "video" ngắn hơn, khoảng {_span(budget.en_video_aim)} từ.
+1. Mỗi cảnh có "narration_en" dài khoảng {_span(budget.en_aim)} từ tiếng Anh (khoảng {round(budget.seconds)} giây đọc, để video ra đúng thời lượng đã chọn); bắt buộc từ {lo} đến {hi} từ, dài hơn {hi} từ sẽ bị trả lại. Kể ĐỦ mọi ý và chi tiết của cảnh tiếng Việt (tiếng Anh vốn ít từ hơn nên số từ thấp hơn là bình thường); không bỏ ý cho ngắn: bản Anh được kiểm đủ ý như bản Việt. Cảnh "video" ngắn hơn, khoảng {_span(budget.en_video_aim)} từ.
 2. {count_rule}
 3. Văn phong người dẫn chuyện phim tài liệu true-crime Mỹ: câu rõ, nhịp tự nhiên khi đọc to; viết lại cho tự nhiên chứ không dịch sát từng chữ. Lời trích trong ngoặc kép chỉ có khi bản Việt có (dịch đúng câu đó); không thêm lời thoại hay suy nghĩ của nhân vật. Cảnh tiếng Việt kết bằng câu hỏi thì cảnh tiếng Anh tương ứng cũng kết bằng câu hỏi đó.
 4. Tên: chỉ dùng tên ở phần "lời Anh dùng" trong bảng tên; không dùng tên thật, không dùng dạng tên tiếng Việt khi hai dạng khác nhau. Bỏ danh xưng tiếng Việt ("ông", "bà", "anh", "chị"); gọi bằng tên hoặc "he", "she".
@@ -719,7 +719,7 @@ CÁC CẢNH:
 YÊU CẦU CHO TỪNG CẢNH
 1. "image_prompt": tiếng Anh, khoảng 40–80 từ, ít nhất {MIN_IMAGE_PROMPT_WORDS} từ (ngắn hơn sẽ bị trả lại). Gồm: khung hình (wide shot, medium shot, close-up...), chủ thể (tả bằng ngoại hình ở trên), hành động, bối cảnh lấy từ bối cảnh chung, ánh sáng, và phong cách "{visual_style}". Không ghi tên người hay tên địa danh; không có chữ, logo, biển số đọc được trong hình.
    - Cảnh "board": tả một bảng điều tra (corkboard) với ảnh, ghi chú, vật chứng và sợi chỉ đỏ nối các manh mối mà cảnh đó nói tới.
-2. "video_prompt": tiếng Anh, 15–40 từ, tả chuyển động của máy quay và của chủ thể trong 5 giây. Bắt buộc với cảnh "video" (ít nhất {MIN_VIDEO_PROMPT_WORDS} từ); cảnh khác để "".
+2. "video_prompt": để "" (app tự làm video theo lời kể và luật chuyển động riêng, không dùng trường này).
 3. "camera_motion": một trong {motions}.
 4. "narrative_beat": một trong {beats}.
 5. "sfx_cue": 0–2 tiếng động hợp bối cảnh của cảnh (thời tiết, nơi chốn, hành động) để tạo không khí; CHỈ chọn trong danh sách: {", ".join(SFX_CUES)}. Cảnh trong nhà ban đêm có thể dùng tiếng nền như "clock_ticking", "fluorescent_hum", "dark_drone"; khoảnh khắc căng thì "heartbeat", "impact_hit". Không hợp tiếng nào thì [].

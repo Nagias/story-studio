@@ -15,6 +15,8 @@ Sự thật mỗi phần đã kể dồn vào "bảng sự thật" gửi kèm c�
 from __future__ import annotations
 
 import logging
+
+from config import DEFAULT_STYLE
 import re
 from typing import Any, Callable, Optional
 
@@ -279,7 +281,12 @@ async def review_part(part: str, *, lang: str, src_lang: str, index: int, total:
             lambda raw: check_written(raw, ids, part, lang, src_lang),
             llm=llm, temperature=0.5, step_label=f"viết review {label}")
         narr = [s["text"] for s in scenes]
-        result = await ask_validated(coverage_guard.verify_prompt(points, narr, facts, part),
+        # Phần đầu được dặn mở bằng khoảnh khắc căng nhất rồi kể theo thứ tự (write_prompt): nhắc trước rồi kể đầy đủ
+        # sau không phải lỗi. Rà soát 18/11/2026: không có ghi chú này thì bước kiểm có thể bắt lỗi kể lặp, viết lại
+        # mãi rồi dừng cả truyện.
+        note = ("Phần đầu được mở bằng khoảnh khắc gây tò mò nhất rồi mới kể theo thứ tự: câu mở đầu nhắc trước một "
+                "sự việc rồi kể đầy đủ sau KHÔNG phải lỗi kể lặp hay kể trái." if index == 1 else "")
+        result = await ask_validated(coverage_guard.verify_prompt(points, narr, facts, part, note=note),
                                      _verify_validator(ids, narr), llm=llm, temperature=0.1,
                                      step_label=f"kiểm lời kể {label}")
         if not result["missing"] and not result["issues"]:
@@ -292,7 +299,7 @@ async def review_part(part: str, *, lang: str, src_lang: str, index: int, total:
                            f"{coverage_guard.feedback_for_writer(result, dict(points))[:600]}")
 
 
-async def review_story(text: str, *, language: Optional[str] = None, style_preset: str = "cinematic_realistic",
+async def review_story(text: str, *, language: Optional[str] = None, style_preset: str = DEFAULT_STYLE,
                        job_id: Optional[str] = None, llm: Optional[Callable[..., Any]] = None) -> dict:
     """Cả truyện: {"scenes": [...], "language": ..., "coverage": [...]}. Mỗi cảnh đã qua kiểm đủ ý."""
     src_lang = detect_text_language(text)

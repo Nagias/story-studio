@@ -1,6 +1,6 @@
 """API video cho cảnh cao trào (dự án vụ án). Xử lý ở services/climax_video.py.
 
-- POST /api/projects/{project_id}/climax-video/pick?mode=ai|score   chọn cảnh đủ CLIMAX_RATIO thời lượng video: "ai" (mặc
+- POST /api/projects/{project_id}/climax-video/pick?mode=ai|score   chọn cảnh đủ video_rules.TARGET_SHARE thời lượng video: "ai" (mặc
                                                                      định, chạy nền, services/climax_ai_pick.py) hoặc
                                                                      "score" (chấm theo nhãn kịch bản, trả ngay)
 - GET  /api/projects/{project_id}/climax-video/pick-status          lượt AI chọn cảnh gần nhất (idle/running/done/failed)
@@ -255,8 +255,9 @@ STOP_RUN_WORDS = ("Không có tài khoản Muse video nào đang online",)
 
 # Lỗi cho biết riêng tài khoản đang làm không dùng được nữa (hết lượt, mất đăng nhập, bị khoá): người làm của tài khoản
 # đó nghỉ, tài khoản khác làm tiếp các cảnh còn lại.
-ACCOUNT_DOWN_WORDS = ("không dùng được (offline, bị khoá hoặc mất", "QUOTA_EXCEEDED", "SESSION_EXPIRED", "hạn mức",
-                      "usage limit")
+# Chỉ theo mã lỗi của Fleet Runner và câu của cầu nối Muse, không dò chữ trong báo cáo Muse (rà soát 18/11/2026: báo
+# cáo có chữ "hạn mức" làm tài khoản nghỉ giữa chừng).
+ACCOUNT_DOWN_WORDS = ("không dùng được (offline, bị khoá hoặc mất", "QUOTA_EXCEEDED", "SESSION_EXPIRED")
 
 
 def _scene_owners(project_id: str, scene_ids: list[str], accounts: list[str]) -> dict[str, Optional[str]]:
@@ -269,6 +270,14 @@ def _scene_owners(project_id: str, scene_ids: list[str], accounts: list[str]) ->
             acc = _state(scene).get("account_id")
             out[scene.id] = acc if acc in accounts else None
     return out
+
+
+def _release_scene(project_id: str, scene_id: str) -> None:
+    """Cảnh hỏng vì tài khoản không dùng được: bỏ chat và tài khoản cũ để tài khoản khác làm lại cả cảnh."""
+    try:
+        climax_video.release_account(project_id, scene_id)
+    except (climax_video.ClimaxVideoError, LookupError) as e:   # dự án/cảnh vừa bị xoá: tài khoản khác sẽ báo lỗi rõ
+        logger.warning(f"Không gỡ được tài khoản cũ của {project_id}/{scene_id}: {e}")
 
 
 async def _run_one(project_id: str, scene_id: str, account: Optional[str]) -> str:
@@ -298,6 +307,7 @@ async def _run_all(project_id: str, scene_ids: list[str]) -> None:
                 break
         return
     owner = await asyncio.to_thread(_scene_owners, project_id, queue, accounts)
+    alive = set(accounts)
     logger.info(f"Video cao trào {project_id}: {len(queue)} cảnh, chia cho {len(accounts)} tài khoản {accounts}")
 
     async def worker(account: str, delay: float) -> None:
@@ -313,6 +323,15 @@ async def _run_all(project_id: str, scene_ids: list[str]) -> None:
             error = await _run_one(project_id, scene_id, account)
             if any(w in error for w in STOP_RUN_WORDS + ACCOUNT_DOWN_WORDS):
                 logger.warning(f"Video cao trào {project_id}: {account} nghỉ sau {scene_id} ({error[:200]})")
+                # Cảnh của tài khoản này (kể cả cảnh vừa hỏng vì tài khoản) làm lại từ đầu trên tài khoản khác, chat
+                # mới: trước đây chúng bị bỏ lại vì chỉ tài khoản đã ghim được nhận (rà soát 18/11/2026). Cả cảnh
+                # chuyển sang một tài khoản, không chia một cảnh cho hai tài khoản.
+                for s in [s for s, acc in owner.items() if acc == account]:
+                    owner[s] = None
+                if not any(w in error for w in STOP_RUN_WORDS) and len(alive) > 1:
+                    queue.append(scene_id)
+                    await asyncio.to_thread(_release_scene, project_id, scene_id)
+                alive.discard(account)
                 return
 
     await asyncio.gather(*(worker(a, i * WORKER_STAGGER_S) for i, a in enumerate(accounts)))

@@ -61,7 +61,6 @@ def format_image_prompt(task: Dict[str, Any], has_reference: bool = False) -> st
     params = task.get("parameters", {}) or {}
     aspect_ratio = params.get("aspect_ratio", "16:9")
     anchor = task.get("character_anchor") or params.get("character_anchor")
-    style = params.get("style_preset", "")
     lighting = params.get("lighting", "")
     negative = task.get("negative_prompt", "")
 
@@ -91,8 +90,8 @@ def format_image_prompt(task: Dict[str, Any], has_reference: bool = False) -> st
                     "chép bố cục khung hình của ảnh đó")
     if anchor:
         tags.append(f"Character Anchor: {anchor}")
-    if style:
-        tags.append(f"Style: {style}")
+    # Không ghi mã phong cách trần ("Style: horror_cartoon_2d"): Muse không hiểu mã, câu mô tả phong cách đã nằm trong
+    # prompt (image_service.with_style). Rà soát 18/11/2026.
     tags.append(f"Scene Details: {raw_prompt}")
     if lighting:
         tags.append(f"Atmosphere: {lighting}")

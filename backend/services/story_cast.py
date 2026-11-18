@@ -165,6 +165,8 @@ def _apply(project: Project, found: list[dict]) -> cs.ProjectCast:
                 kept[eid] = sheet
         cast.characters = kept
         for s in eligible_scenes(project):
+            if s.id in cast.manual_scene_ids:   # chủ dự án đã chọn tay (character_sheets.scene_cast: "đã chốt")
+                continue
             cast.scene_cast[s.id] = [it["entity_id"] for it in found if s.id in it["scene_ids"]]
         cast.analyzed_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
         cast.analysis_error = None

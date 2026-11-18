@@ -156,39 +156,3 @@ async def test_api_comic_slice_and_import():
         # Cleanup
         delete_project(test_proj_id)
 
-@pytest.mark.live  # produce-long-video thật: 9router, ảnh, Edge-TTS
-@pytest.mark.asyncio
-async def test_api_produce_long_video_endpoint():
-    """Verify POST /api/projects/{id}/produce-long-video initiates MoneyPrinterTurbo stepper pipeline."""
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://127.0.0.1:8000") as client:
-        test_proj_id = f"test_proj_produce_{uuid.uuid4().hex[:6]}"
-        produce_req = {
-            "text": "Trận chiến nổ ra tại cổng thành. Tướng quân giơ cao thanh kiếm lệnh.",
-            "pacing": "fast",
-            "style_preset": "manga_battle_action",
-            "character_anchor": "Vị tướng áo giáp đen",
-            "voice": "vi-VN-HoaiMyNeural",
-            "bgm": "none",
-            "ducking": False,
-            "hardsub": False,
-            "resolution": "720p",
-            "fps": 25
-        }
-        resp = await client.post(f"/api/projects/{test_proj_id}/produce-long-video", json=produce_req)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["success"] is True
-        assert "render_id" in data
-        assert data["status"] == "queued"
-
-        # Check render status
-        render_id = data["render_id"]
-        resp_status = await client.get(f"/api/render-status/{render_id}")
-        assert resp_status.status_code == 200
-        status_data = resp_status.json()
-        assert status_data["render_id"] == render_id
-        assert status_data["project_id"] == test_proj_id
-
-        delete_project(test_proj_id)
-

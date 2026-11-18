@@ -45,8 +45,9 @@ DOSSIER = (FIXTURES_DIR / "dossier.txt").read_text(encoding="utf-8")
 RETRY_MARK = "LẦN TRƯỚC BỊ LOẠI VÌ"
 FULL_ORDER = [
     "EXTRACT 0", "EXTRACT 1", "CLUSTER", "ALIASES", "DEDUPE", "OUTLINE",
-    "WRITE_VI p1", "kiem_loi_ke", "WRITE_EN p1", "PROMPTS p1", "WRITE_VI p2", "kiem_loi_ke", "WRITE_EN p2", "PROMPTS p2",
-]   # kiem_loi_ke: bước kiểm đủ ý sau mỗi lời Việt (coverage_guard, 02/11/2026)
+    "WRITE_VI p1", "kiem_loi_ke", "WRITE_EN p1", "kiem_loi_ke", "PROMPTS p1", "WRITE_VI p2", "kiem_loi_ke",
+    "WRITE_EN p2", "kiem_loi_ke", "PROMPTS p2",
+]   # kiem_loi_ke: bước kiểm đủ ý sau mỗi lời Việt và (từ 18/11/2026) mỗi lời Anh (coverage_guard, 02/11/2026)
 REAL_NAMES = [n for g in load_fixture("CLUSTER")["groups"] for n in g["real_names"]] + ["Lê Lợi"]
 
 
@@ -436,7 +437,8 @@ def test_outline_prompt_has_events_with_fictional_names_only(isolated_projects_d
     prompt = _prompt_for(llm, "OUTLINE")
     for eid in ALL_EVENTS:
         assert eid in prompt
-    assert "evd_1" in prompt and "35" in prompt and "40" in prompt and "48" in prompt
+    assert "evd_1" in prompt and "35" in prompt and "48" in prompt
+    assert "từ 35 đến 40 cảnh" not in prompt          # bài đủ chất liệu: không còn trần số cảnh (code đã bỏ trần)
     assert "Trịnh Quang Vũ" in prompt and "Cảng Hải Yến" in prompt
     for real in REAL_NAMES:
         assert not _has_word(fold(prompt), fold(real)), real
@@ -738,7 +740,9 @@ def test_write_en_vietnamese_form_of_name_retried(isolated_projects_dir):
     assert "Liu Rongfu" in reason
 
 
-def test_write_prompts_missing_video_prompt_and_short_image_prompt_retried(isolated_projects_dir):
+def test_write_prompts_short_image_prompt_retried_and_video_prompt_not_required(isolated_projects_dir):
+    """Rà soát 18/11/2026: video_prompt không đường nào gửi cho Muse (và đòi 5 giây, trái câu 18 mục 1.2): thiếu nó không
+    còn bị trả lại, không tốn lượt LLM viết lại."""
     pipeline = _new_pipeline()
     bad = copy.deepcopy(load_fixture("PROMPTS p2"))
     bad["scenes"][2]["video_prompt"] = ""
@@ -747,7 +751,7 @@ def test_write_prompts_missing_video_prompt_and_short_image_prompt_retried(isola
     _run_pipeline(pipeline, llm, stop_after="write_prompts_p2")
     assert calls.count("PROMPTS p2") == 2
     reason = _reason(llm)
-    assert "video_prompt" in reason and "cảnh 3" in reason and "image_prompt" in reason and "cảnh 1" in reason
+    assert "video_prompt" not in reason and "image_prompt" in reason and "cảnh 1" in reason
 
 
 def test_write_prompts_names_in_prompt_retried(isolated_projects_dir):
@@ -1043,13 +1047,12 @@ def test_invented_quote_is_sent_back_then_flagged_for_review(isolated_projects_d
         "Run rẩy, bà Hà bấm máy gọi đến trực ban hình sự.", 'Bà nói: "Tôi không tin nổi chuyện này."')
     llm, calls = make_fake_llm({"WRITE_VI p1": quoted})            # cả 3 lần đều còn lời trích bịa
 
-    _run_pipeline(pipeline, llm)
-
+    # Rà soát 18/11/2026: lời bịa đặt vào miệng người thật là lỗi NẶNG; trước là lỗi nhẹ, hết 3 lượt thì bản có lời
+    # bịa vẫn được nhận. Nay bước dừng với lý do rõ, không đi tiếp.
+    with pytest.raises(StepFailed, match="lời trích"):
+        _run_pipeline(pipeline, llm)
     assert calls.count("WRITE_VI p1") == MAX_ATTEMPTS
     assert "lời trích" in _retry_reasons(llm, "WRITE_VI p1")[0]
-    plan = case_store.load_plan(pipeline.case_id)                 # lỗi nhẹ: vẫn nhận, nhưng màn xem lại báo
-    assert any("Tôi không tin nổi chuyện này" in w and "không có nguyên văn" in w for w in plan.check_warnings)
-    assert not has_blocking_flags(plan)
 
 
 def test_prompts_no_longer_allow_made_up_dialogue(isolated_projects_dir):

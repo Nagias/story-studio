@@ -43,6 +43,7 @@ from services.video_service import CAMERA_MOTIONS, build_zoompan_filter
 from tests.case_adaptation_fakes import load_fixture, make_fake_llm
 from tests.test_case_project_builder import REWRITE_3
 from tests.test_case_worker import DOSSIER, _thin_write_vi
+import config  # noqa: E402
 
 BASE = "/api/true-crime"
 VI_VOICE = "vieneu-test-voice"
@@ -208,7 +209,7 @@ def test_analyze_then_progress_then_case(client, small_chunks, monkeypatch):
     assert re.fullmatch(r"case_[0-9a-f]{8}", case_id)
 
     pipeline = case_store.load_pipeline(case_id)                  # mặc định 8 phút, phong cách neo-noir
-    assert (pipeline.target_minutes, pipeline.visual_style) == (8, "neo_noir_silhouette")
+    assert (pipeline.target_minutes, pipeline.visual_style) == (8, config.DEFAULT_STYLE)   # mặc định chung (18/11/2026)
     assert case_store.load_source(case_id) == DOSSIER
 
     progress = client.get(f"{BASE}/cases/{case_id}/progress")

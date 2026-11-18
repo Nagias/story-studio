@@ -331,6 +331,15 @@ def create_location(project_id: str, name_vi: str, design_en: str, scene_ids: li
     return _mutate(project_id, run)
 
 
+# Lượt vẽ đang chạy trong tiến trình này (như character_sheets._active_draws): "drawing" đã lưu mà không có lượt nào chạy
+# là còn sót lại sau khi server tắt giữa chừng, không chặn sửa, bỏ hay vẽ lại.
+_active_draws: set[tuple[str, str]] = set()
+
+
+def drawing_now(project_id: str, location_id: str) -> bool:
+    return (project_id, location_id) in _active_draws
+
+
 def edit_location(project_id: str, location_id: str, name_vi: Optional[str] = None, design_en: Optional[str] = None,
                   scene_ids: Optional[list[str]] = None) -> LocationSheet:
     project = _project(project_id)
@@ -344,14 +353,16 @@ def edit_location(project_id: str, location_id: str, name_vi: Optional[str] = No
         loc = data.locations.get(location_id)
         if loc is None:
             raise LookupError(f"Dự án không có bối cảnh {location_id}")
-        if loc.status == "drawing":
+        if drawing_now(project_id, location_id):
             raise LocationError("Muse đang vẽ ảnh chuẩn của bối cảnh này, chờ xong rồi sửa")
         if name is not None:
             loc.name_vi = name
         if design is not None and design != loc.design_en:
             loc.design_en = design
-            if loc.status == "approved":
-                loc.status = "draft"   # đổi mô tả thì ảnh chuẩn cũ không còn đúng: duyệt lại
+            # đổi mô tả thì ảnh chuẩn cũ (đã duyệt hay đang chờ duyệt) không còn đúng; góp ý cũ cũng hết hiệu lực
+            if loc.status in ("approved", "review", "drawing"):
+                loc.status = "draft"
+            loc.feedback = []
         if ids is not None:
             _take_scenes(data, location_id, ids)
             loc.scene_ids = ids
@@ -365,7 +376,7 @@ def remove_location(project_id: str, location_id: str) -> None:
         loc = data.locations.get(location_id)
         if loc is None:
             raise LookupError(f"Dự án không có bối cảnh {location_id}")
-        if loc.status == "drawing":
+        if drawing_now(project_id, location_id):
             raise LocationError("Muse đang vẽ ảnh chuẩn của bối cảnh này, chờ xong rồi bỏ")
         del data.locations[location_id]
     _mutate(project_id, run)
@@ -391,9 +402,10 @@ def reference_image(project: Project, loc: LocationSheet) -> Optional[Path]:
 
 def _style_text(style_id: str) -> str:
     """Nét vẽ của phong cách dự án, bỏ câu quy tắc tóc nhân vật (ảnh chuẩn không có người)."""
-    from services.image_service import FEMALE_HAIR_RULE_EN, ROUND_HEAD_EXPRESSION_RULE_EN, STYLE_PRESETS  # nạp muộn
+    from services.image_service import STYLE_PRESETS  # nạp muộn
+    from services.prompt_rules import FEMALE_HAIR_RULE_EN, ROUND_HEAD_RULE_EN
     style = (STYLE_PRESETS.get(style_id) or {}).get("prompt_suffix", "")
-    return " ".join(style.replace(FEMALE_HAIR_RULE_EN, " ").replace(ROUND_HEAD_EXPRESSION_RULE_EN, " ").split())
+    return " ".join(style.replace(FEMALE_HAIR_RULE_EN, " ").replace(ROUND_HEAD_RULE_EN, " ").split())
 
 
 def plate_prompt(loc: LocationSheet, style_id: str, has_reference: bool) -> str:
@@ -432,6 +444,7 @@ async def draw_plate(project_id: str, location_id: str, muse_call: MuseCall) -> 
     if loc.thread_url and loc.account_id:
         task.update(thread_url=loc.thread_url, assigned_account=loc.account_id, pin_account=True)
     await asyncio.to_thread(_update, project_id, location_id, lambda s: setattr(s, "status", "drawing"))
+    _active_draws.add((project_id, location_id))
     try:
         result = await muse_call(task)
         got = Path(result.get("output_path") or "") if isinstance(result, dict) else Path()
@@ -449,6 +462,8 @@ async def draw_plate(project_id: str, location_id: str, muse_call: MuseCall) -> 
                 _clear_thread(s)   # chat có thể còn việc dở: lần sau mở chat mới
         logger.warning(f"Ảnh chuẩn bối cảnh {project_id}/{location_id} lỗi: {err}")
         return await asyncio.to_thread(_update, project_id, location_id, failed)
+    finally:
+        _active_draws.discard((project_id, location_id))
 
     def done(s: LocationSheet) -> None:
         s.status, s.error = "review", None
@@ -468,9 +483,12 @@ def mark_draw_crashed(project_id: str, location_id: str, message: str) -> None:
 
 def approve_plate(project_id: str, location_id: str) -> LocationSheet:
     def change(s: LocationSheet) -> None:
+        if drawing_now(project_id, location_id):
+            raise LocationError(f"Muse đang vẽ lại ảnh chuẩn của {s.name_vi}, chờ xong rồi duyệt")
         if not (s.plate_path and Path(s.plate_path).is_file()):
             raise LocationError(f"Bối cảnh {s.name_vi} chưa có ảnh chuẩn để duyệt")
         s.status, s.error = "approved", None
+        s.feedback = []   # góp ý cũ là cho các bản trước
     return _update(project_id, location_id, change)
 
 
@@ -491,8 +509,10 @@ def reject_plate(project_id: str, location_id: str, feedback: str) -> LocationSh
 BATCH_DRAW_STATUSES = ("draft", "failed")
 
 
-def batch_targets(data: ProjectLocations) -> list[LocationSheet]:
-    return [v for v in data.locations.values() if v.status in BATCH_DRAW_STATUSES]
+def batch_targets(data: ProjectLocations, project_id: str = "") -> list[LocationSheet]:
+    def status(v: LocationSheet) -> str:
+        return "failed" if v.status == "drawing" and not drawing_now(project_id, v.location_id) else v.status
+    return [v for v in data.locations.values() if status(v) in BATCH_DRAW_STATUSES]
 
 
 def review_ids(data: ProjectLocations) -> list[str]:

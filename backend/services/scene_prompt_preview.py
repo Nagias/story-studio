@@ -15,15 +15,15 @@ Không tạo việc Muse, không ghi project.json. Ngoại lệ đã biết: kho
 from pathlib import Path
 from typing import Optional
 
+from config import DEFAULT_STYLE
 from models.schemas import Project, Scene
 from services import character_sheets as cs
 from services import climax_video, location_sheets, scene_locks
 from services import dialogue_video as dv
-from services.climax_brief import crowd_brief, landscape_brief, scene_brief, target_seconds
+from services.climax_brief import agent_parts, crowd_brief, landscape_brief, part_panels, scene_brief, target_seconds
 from services.muse_image_task import image_task_fields
 from services.muse_prompt_format import format_image_prompt, task_attachments
 
-JS_DEFAULT_STYLE = "spartan_epic_mythology"   # app.js generateSceneWithMuse() dùng khi dự án không có phong cách
 DONE_TOKEN_PLACEHOLDER = "<MÃ-XONG>"            # mã thật sinh ngẫu nhiên lúc chạy (XONG-xxxxxxxx)
 ATTACHMENT_ROLE_VI = {"characters": "bảng nhân vật", "previous_scene": "khung cảnh trước", "location": "ảnh chuẩn bối cảnh",
                       "person": "ảnh tham chiếu nhân vật", "reference": "ảnh tham chiếu"}
@@ -35,18 +35,16 @@ class PromptPreviewError(ValueError):
 
 def base_image_prompt(project: Project, scene: Scene) -> str:
     """Prompt gốc mà nút "Muse 2K" gửi (app.js generateSceneWithMuse, mode image)."""
-    text = scene.image_prompt or getattr(scene, "visual_prompt", "") or scene.text or ""
-    anchor = project.character_anchor or ""
-    if anchor and anchor not in text:
-        text = f"{anchor}, {text}"
-    return text
+    # Không ghép "nhân vật chính chung" cũ (character_anchor) vào prompt: khoá nhân vật theo cảnh thay nó
+    # (services/scene_locks.py); ghép vào thì ép một người vào cả cảnh không có họ (rà soát 18/11/2026).
+    return scene.image_prompt or getattr(scene, "visual_prompt", "") or scene.text or ""
 
 
 def image_task(project: Project, scene: Scene) -> tuple[dict, dict]:
     """(việc ảnh Muse 2K của cảnh trước khi vào Fleet Runner, khoá đã áp) — đúng như nút "Muse 2K" gửi qua
     `routers/muse_bridge.create_task`. Nút "Tạo hình cho cả dự án" (services/one_pass_visuals.py) gửi đúng việc này."""
     prompt = base_image_prompt(project, scene)
-    style = project.style_preset or JS_DEFAULT_STYLE
+    style = project.style_preset or DEFAULT_STYLE
     params = {"resolution": "2K", "aspect_ratio": "16:9", "style_preset": style, "duration_sec": 5, "fps": 25,
               "action_cues": prompt}
     task = image_task_fields(prompt, params, negative_prompt=getattr(scene, "negative_prompt", "") or "")
@@ -77,6 +75,13 @@ def image_preview(project: Project, scene: Scene) -> dict:
     }
 
 
+def _join_parts(briefs: list[str]) -> str:
+    """Các bản giao việc của một cảnh (mỗi phần lời kể một việc Muse, climax_brief.AGENT_PART_MAX_SEC)."""
+    if len(briefs) == 1:
+        return briefs[0]
+    return "\n\n".join(f"===== VIỆC MUSE {k}/{len(briefs)} =====\n{b}" for k, b in enumerate(briefs, 1))
+
+
 def climax_preview(project: Project, scene: Scene) -> Optional[dict]:
     """Bản giao việc mà nút làm video cao trào (#btn-climax-video-run) sẽ gửi Muse cho cảnh, hoặc None nếu cảnh không
     được chọn. Đường thật sẽ dừng (thiếu giọng, thiếu ảnh, bảng nhân vật chưa duyệt, grid không khớp...) thì
@@ -94,13 +99,16 @@ def climax_preview(project: Project, scene: Scene) -> Optional[dict]:
             kind = climax_video.scene_people_kind(project, scene)
         out.update(brief_kind=kind, needs_grid_first=kind == "cast" and not approved)
         seconds, _image = climax_video.prepare_scene(scene, project.id)
-        out.update(narration_seconds=round(seconds, 2), target_seconds=target_seconds(seconds))
+        parts = agent_parts(scene, seconds)
+        n = len(parts)
+        out.update(narration_seconds=round(seconds, 2), target_seconds=target_seconds(seconds), part_count=n)
         if kind != "cast":
             lock = location_sheets.scene_lock(project.id, scene.id, scene.image_prompt or "")
             plate = (lock or {}).get("plate_path")
             brief = crowd_brief if kind == "unnamed" else landscape_brief
-            out["prompt"] = brief(project, scene, seconds, DONE_TOKEN_PLACEHOLDER, (lock or {}).get("prompt_line"),
-                                  bool(plate))
+            out["prompt"] = _join_parts([brief(project, scene, seconds, DONE_TOKEN_PLACEHOLDER,
+                                               (lock or {}).get("prompt_line"), bool(plate), part=p, n_parts=n)
+                                         for p in parts])
             return out
         people, _positions, _board = climax_video.cast_for(project, scene)
         if approved:
@@ -108,7 +116,13 @@ def climax_preview(project: Project, scene: Scene) -> Optional[dict]:
         else:
             grid_count = len(climax_video.grid_plan(climax_video.clip_count(seconds)))
         out["grid_count"] = grid_count
-        out["prompt"] = scene_brief(project, scene, people, grid_count, seconds, DONE_TOKEN_PLACEHOLDER)
+        grid_slots = [object()] * grid_count   # như run_scene_clips: mỗi phần chỉ đính kèm lưới chứa ô của nó
+        briefs = []
+        for p in parts:
+            grids, panels = climax_video._grids_for(grid_slots, part_panels(p))
+            briefs.append(scene_brief(project, scene, people, len(grids), seconds, DONE_TOKEN_PLACEHOLDER, part=p,
+                                      n_parts=n, panels=panels if n > 1 else None))
+        out["prompt"] = _join_parts(briefs)
     except climax_video.ClimaxVideoError as e:
         out["blocked"] = e.message
     except (cs.CastError, ValueError) as e:   # danh sách nhân vật/bối cảnh hỏng: đường thật cũng dừng ở đây
@@ -131,10 +145,11 @@ def dialogue_preview(project: Project, scene: Scene) -> dict:
     segments = plan["segments"]
     lock = location_sheets.scene_lock(project.id, scene.id, scene.image_prompt or "")
     has_plate = bool((lock or {}).get("plate_path"))
+    characters = scene_locks.character_lock(project.id, scene.id)   # như dialogue_video._run: khoá nhân vật, bảng
     return {"video_count": len(segments), "narration_seconds": plan["narration_seconds"],
             "estimated": plan["estimated"], "blocked": blocked, "error": None,
             "segments": [{"index": seg["index"], "seconds": seg["seconds"], "text": seg["text"],
-                          "prompt": dv.segment_prompt(project, scene, segments, k, lock, has_plate)}
+                          "prompt": dv.segment_prompt(project, scene, segments, k, lock, has_plate, characters)}
                          for k, seg in enumerate(segments, 1)]}
 
 

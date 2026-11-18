@@ -95,7 +95,6 @@ from services.case_adaptation_prompts import (
     MAX_SCENES_PER_EVENT,
     MIN_EVENT_WORDS,
     MIN_IMAGE_PROMPT_WORDS,
-    MIN_VIDEO_PROMPT_WORDS,
     NARRATIVE_BEATS,
     PART_KINDS,
     RELATION_TYPES,
@@ -1158,11 +1157,16 @@ class _TextGuard:
                 for n in find_identifying_numbers(text, self.id_numbers)]
 
     def narration(self, text: str, lang: str) -> list[str]:
-        issues = (self.real_names(text, lang) + self.dates(text) + self.identifying_numbers(text)
-                  + self.unsourced_quotes(text, lang))
+        """Lỗi nhẹ (sửa được ở bước ráp: tên có tên hư cấu được thay tự động, ngày và số bị gắn cờ)."""
+        issues = self.real_names(text, lang) + self.dates(text) + self.identifying_numbers(text)
         if lang == "en":
             issues += self.vi_forms_in_en(text)
         return issues
+
+    def hard(self, text: str, lang: str) -> list[str]:
+        """Lỗi nặng: lời nói bịa đặt vào miệng người thật. Rà soát 18/11/2026: trước là lỗi nhẹ, hết 3 lượt thì bản có
+        lời bịa vẫn được nhận và chỉ bị cảnh báo ở bước ráp."""
+        return self.unsourced_quotes(text, lang)
 
 
 def _raise_if_problems(problems: list[str], soft: list[str], value: Any) -> Any:
@@ -1783,6 +1787,7 @@ def _validate_write_vi(raw: Any, ctx: _PartContext, guard: _TextGuard, budget: O
         if hits:
             problems.append(f'cảnh {k}: người kể xưng "{hits[0]}"; kể ngôi thứ ba kiểu phóng sự, không xưng tôi')
         soft += [f"cảnh {k} {issue}" for issue in guard.narration(scene.narration_vi, "vi")]
+        problems += [f"cảnh {k} {issue}" for issue in guard.hard(scene.narration_vi, "vi")]
         scenes.append({"narration_vi": scene.narration_vi, "visual_kind": visual,
                        "board_reveal": reveal, "covers_event_ids": covers})
     boards = sum(1 for s in scenes if s["visual_kind"] == "board")
@@ -1794,8 +1799,10 @@ def _validate_write_vi(raw: Any, ctx: _PartContext, guard: _TextGuard, budget: O
         problems.append(f"Các sự việc sau chưa được kể ở cảnh nào (covers_event_ids gộp lại còn thiếu): "
                         f"{_id_list(missing)}. Mọi sự việc của nhịp phải được kể")
     if parsed.scenes and next_part_of(ctx.part, ctx.outline.parts) is not None:
+        borrowed = _hook_borrowed(ctx.outline)
+        teasers = sum(1 for e in ctx.part.event_ids if borrowed.get(e) == ctx.part.id)
         soft += _question_issues([s.narration_vi for s in parsed.scenes],
-                                 asks_question(ctx.part, ctx.outline.parts))
+                                 asks_question(ctx.part, ctx.outline.parts), teasers)
     return _raise_if_problems(problems, soft, {"scenes": scenes})
 
 
@@ -1806,13 +1813,15 @@ def ends_with_question(text: str) -> bool:
     return bool(_ENDS_WITH_QUESTION.search(text or ""))
 
 
-def _question_issues(narrations: list[str], wanted: bool) -> list[str]:
-    """Câu hỏi trong lời Việt của một nhịp (lỗi nhẹ). Nhịp được hỏi (asks_question): đúng một câu hỏi, ở cuối cảnh cuối.
-    Nhịp khác: không có câu hỏi nào (chủ dự án 26/10/2026: câu hỏi tu từ nhiều quá thành nhảm)."""
+def _question_issues(narrations: list[str], wanted: bool, teasers: int = 0) -> list[str]:
+    """Câu hỏi trong lời Việt của một nhịp (lỗi nhẹ). Nhịp được hỏi (asks_question): một câu hỏi ở cuối cảnh cuối, cộng
+    tối đa một câu hỏi cho mỗi sự việc [CHỈ GỢI] của đoạn mở đầu (`teasers`, quy tắc 7 cho phép hé lộ bằng câu hỏi;
+    trước 18/11/2026 hai luật đụng nhau nên đoạn mở đầu luôn bị bắt viết lại). Nhịp khác: không có câu hỏi nào (chủ dự
+    án 26/10/2026: câu hỏi tu từ nhiều quá thành nhảm)."""
     count = sum(len(re.findall(r"[?？]", t or "")) for t in narrations)
     if wanted:
         issues = _ending_question_issue(narrations[-1], len(narrations), "narration_vi")
-        if count > 1:
+        if count > 1 + teasers:
             issues.append(f"nhịp có {count} câu hỏi; chỉ giữ một câu hỏi ở cuối cảnh cuối, các câu hỏi khác viết thành "
                           "câu kể")
         return issues
@@ -1924,6 +1933,7 @@ def _validate_write_en(raw: Any, n: int, guard: _TextGuard, *, end_with_question
     for k, scene in enumerate(parsed.scenes, start=1):
         problems += _check_en_words(scene.narration_en, f"cảnh {k}", budget)
         soft += [f"cảnh {k} {issue}" for issue in guard.narration(scene.narration_en, "en")]
+        problems += [f"cảnh {k} {issue}" for issue in guard.hard(scene.narration_en, "en")]
     if end_with_question and parsed.scenes:
         soft += _ending_question_issue(parsed.scenes[-1].narration_en, len(parsed.scenes), "narration_en")
     return _raise_if_problems(problems, soft, {"scenes": [{"narration_en": s.narration_en} for s in parsed.scenes]})
@@ -1936,13 +1946,35 @@ async def _run_write_en(pipeline: CasePipeline, step: PipelineStep, llm: LLMCall
     question = (next_part_of(ctx.part, ctx.outline.parts) is not None and bool(vi_scenes)
                 and ends_with_question(vi_scenes[-1].get("narration_vi", "")))
     budget = _outline_budget(pipeline, ctx.outline)
-    output = await ask_validated(
-        write_en_prompt(ctx.bible, ctx.part, vi_scenes, _part_chunks(pipeline, ctx), part_position=ctx.position,
-                        budget=budget),
-        lambda raw: _validate_write_en(raw, len(vi_scenes), guard, end_with_question=question, budget=budget),
-        llm=llm, temperature=_TEMPERATURE_EN, timeout=STEP_TIMEOUTS["write_en"], step_label=ctx.label,
-    )
-    return StepResult(output=output)
+    base_prompt = write_en_prompt(ctx.bible, ctx.part, vi_scenes, _part_chunks(pipeline, ctx),
+                                  part_position=ctx.position, budget=budget)
+    # Kiểm đủ ý như bản Việt (coverage_guard, đường cấm 15): mỗi cảnh Việt là một ý phải có trong cảnh Anh tương ứng.
+    # Rà soát 18/11/2026: bản Anh trước đây bị dặn "viết gọn hơn, giữ ý chính" và không qua bước kiểm nào.
+    points = [(f"c{k}", str(sc.get("narration_vi") or "")) for k, sc in enumerate(vi_scenes, 1)]
+    vi_text = "\n\n".join(p for _, p in points)
+    note = "Bản tiếng Anh viết lại cho tự nhiên, không dịch sát từng chữ: đổi cách nói KHÔNG phải lỗi, chỉ bỏ ý mới là lỗi."
+    feedback = ""
+    check: dict = {}
+    for round_no in range(1, VERIFY_ROUNDS + 1):
+        prompt = base_prompt + (f"\n\nLẦN VIẾT TRƯỚC CHƯA ĐẠT KHI KIỂM, SỬA ĐÚNG CÁC CHỖ SAU:\n{feedback}"
+                                if feedback else "")
+        output = await ask_validated(
+            prompt, lambda raw: _validate_write_en(raw, len(vi_scenes), guard, end_with_question=question,
+                                                   budget=budget),
+            llm=llm, temperature=_TEMPERATURE_EN, timeout=STEP_TIMEOUTS["write_en"], step_label=ctx.label,
+        )
+        narrations = [sc["narration_en"] for sc in output["scenes"]]
+        check = await ask_validated(
+            coverage_guard.verify_prompt(points, narrations, [], vi_text, note=note),
+            _coverage_validator([pid for pid, _ in points], narrations),
+            llm=llm, temperature=0.1, timeout=STEP_TIMEOUTS["write_en"], step_label=f"kiểm {ctx.label}",
+        )
+        if not check["missing"]:
+            return StepResult(output={**output, "verified": True, "verify_rounds": round_no})
+        feedback = coverage_guard.feedback_for_writer({**check, "issues": []}, dict(points))
+        logger.warning("%s vòng kiểm %d chưa đạt: %s", ctx.label, round_no, feedback[:300])
+    raise StepFailed(f"Bước {ctx.label} thất bại: sau {VERIFY_ROUNDS} lần viết lại lời Anh vẫn thiếu ý so với bản "
+                     f"Việt. Còn: {coverage_guard.feedback_for_writer({**check, 'issues': []}, dict(points))[:600]}")
 
 
 class _PromptScene(_Item):
@@ -1981,9 +2013,6 @@ def _validate_write_prompts(raw: Any, ctx: _PartContext, vi_scenes: list[dict], 
         words = word_count(scene.image_prompt)
         if words < MIN_IMAGE_PROMPT_WORDS:
             problems.append(f"cảnh {k}: image_prompt chỉ có {words} từ, cần ít nhất {MIN_IMAGE_PROMPT_WORDS} từ")
-        if vi.get("visual_kind") == "video" and word_count(scene.video_prompt) < MIN_VIDEO_PROMPT_WORDS:
-            problems.append(f"cảnh {k} là cảnh video nhưng thiếu video_prompt (hoặc quá ngắn, cần ít nhất "
-                            f"{MIN_VIDEO_PROMPT_WORDS} từ tả chuyển động trong 5 giây)")
         for field_name in ("image_prompt", "video_prompt"):
             soft += [f"cảnh {k} ({field_name}) {issue}" for issue in guard.names_in_prompt(getattr(scene, field_name))]
         beat = _norm_token(scene.narrative_beat)

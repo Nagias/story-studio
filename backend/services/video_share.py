@@ -17,12 +17,11 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from models.schemas import Project, Scene
-from services import clip_motion, project_service
-from services.climax_video import CLIMAX_RATIO, GATE_MIN
-from services.dialogue_video import render_seconds
+from services import clip_motion, project_service, video_rules
+from services.climax_video import scene_state as climax_state
+from services.dialogue_video import render_seconds, running_seconds
 from services.render_inputs import scene_render_input
 from services.tts_service import MediaDurationError, get_audio_duration
-from services.video_service import moving_seconds
 
 logger = logging.getLogger("story_studio.video_share")
 
@@ -34,7 +33,7 @@ GATE_CODE = "VIDEO_SHARE_LOW"
 
 
 class VideoShareTooLow(RuntimeError):
-    """Tỉ lệ video Muse dưới GATE_MIN: không dựng thành phẩm."""
+    """Tỉ lệ video Muse dưới video_rules.GATE_SHARE: không dựng thành phẩm."""
 
     def __init__(self, report: dict):
         super().__init__(gate_problem(report) or "Tỉ lệ video Muse quá thấp")
@@ -103,6 +102,33 @@ def _score(path: Path) -> Optional[float]:
         return None
 
 
+def clip_counts(scene: Scene, clip: Path) -> tuple[bool, Optional[float]]:
+    """(clip có được tính là video Muse không, điểm cử động). Nơi duy nhất quyết định: chốt dựng, kế hoạch "Tạo hình
+    cho cả dự án" và thẻ cảnh cùng hỏi hàm này. Được tính khi chủ dự án đã duyệt đúng file clip, hoặc máy đo thấy cử động."""
+    if review_valid(scene, clip):
+        return True, None
+    score = _score(clip)
+    return video_rules.has_real_motion(score), score
+
+
+def climax_done(project_id: str, scene: Scene) -> bool:
+    """Cảnh cao trào đã xong thật: trạng thái "ready" VÀ clip đang dùng được tính là video. Clip đứng hình (vụ xưởng
+    sắt 14/11/2026: cảnh 063 điểm 0,0 vẫn ghi "ready") thì chưa xong: "Tạo hình cho cả dự án" làm lại."""
+    if climax_state(scene).get("status") != "ready":
+        return False
+    source = scene_render_input(scene, project_service.get_scene_media_paths(project_id, scene.id))
+    if not source or Path(source).suffix.lower() not in VIDEO_EXTS or not Path(source).is_file():
+        return False
+    return clip_counts(scene, Path(source))[0]
+
+
+def _running(scene: Scene, path: Path) -> Optional[float]:
+    """Phần clip có hình chạy thật: video theo lời thoại ghép có chèn khung đứng yên thì lấy phần chạy thật đã lưu."""
+    length = _clip_seconds(path)
+    real = running_seconds(scene, path)
+    return min(length, real) if length is not None and real is not None else length
+
+
 # --------------------------------------------------------------------------------------------------------- báo cáo
 def share_report(entries: Iterable[tuple[Scene, float, Optional[str]]]) -> dict:
     """`entries`: (cảnh, số giây cảnh trong video, file đầu vào khi dựng: clip hay ảnh, None nếu chưa có)."""
@@ -119,29 +145,27 @@ def share_report(entries: Iterable[tuple[Scene, float, Optional[str]]]) -> dict:
         path = Path(source)
         clips += seconds
         order = scene.order
-        if review_valid(scene, path):
-            ok = True
+        ok, score = clip_counts(scene, path)
+        if ok and score is None:
             reviewed.append(order)
-        else:
-            score = _score(path)
-            ok = score is not None and clip_motion.has_real_motion(score)
-            if score is None:
-                unmeasured.append(order)
-            elif not ok:
-                still.append(order)
+        elif score is None:
+            unmeasured.append(order)
+        elif not ok:
+            still.append(order)
         if not ok:
             continue
         # Clip ngắn hơn lời kể: lúc dựng chỉ kéo chậm có giới hạn rồi giữ khung cuối đứng yên. Phần đứng yên không phải
-        # video (gặp 13/11/2026: Muse trả clip 9 giây cho lời kể 18 giây, cách đếm cũ tính đủ 18 giây).
-        moved = moving_seconds(_clip_seconds(path), seconds)
+        # video (gặp 13/11/2026: Muse trả clip 9 giây cho lời kể 18 giây, cách đếm cũ tính đủ 18 giây). Video theo lời
+        # thoại ghép có chèn khung đứng yên giữa các đoạn: chỉ đếm phần chạy thật (services/dialogue_video.py).
+        moved = video_rules.moving_seconds(_running(scene, path), seconds)
         counted += moved
         if seconds - moved > SHORT_CLIP_TOLERANCE_S:
             short.append(order)
     percent = round(100 * counted / total, 1) if total > 0 else 0.0
     return {"video_seconds": round(counted, 1), "clip_seconds": round(clips, 1), "total_seconds": round(total, 1),
-            "percent": percent, "target_percent": round(CLIMAX_RATIO * 100), "gate_percent": round(GATE_MIN * 100),
-            "enough": total > 0 and counted >= CLIMAX_RATIO * total - 1e-6,
-            "gate_ok": total > 0 and counted >= GATE_MIN * total - 1e-6,
+            "percent": percent, "target_percent": round(video_rules.TARGET_SHARE * 100), "gate_percent": round(video_rules.GATE_SHARE * 100),
+            "enough": total > 0 and counted >= video_rules.TARGET_SHARE * total - 1e-6,
+            "gate_ok": total > 0 and counted >= video_rules.GATE_SHARE * total - 1e-6,
             "still_scenes": still, "unmeasured_scenes": unmeasured, "reviewed_scenes": reviewed,
             "short_scenes": short}
 
@@ -164,6 +188,27 @@ def project_share(project: Project) -> dict:
     return share_report(project_entries(project))
 
 
+def estimated_share(project: Project) -> dict:
+    """Như project_share nhưng cảnh chưa có giọng thì ước thời lượng theo số chữ (dialogue_video.narration_seconds).
+    Dùng để chặn TRƯỚC khi thu giọng và tạo ảnh: nút dựng không tạo video Muse, nên thiếu clip lúc này thì sau khi tốn
+    quota giọng và ảnh vẫn bị chặn (rà soát 18/11/2026)."""
+    from services.dialogue_video import DialogueVideoError, narration_seconds
+    entries = []
+    for scene in project.scenes:
+        media = project_service.get_scene_media_paths(project.id, scene.id)
+        seconds = render_seconds(scene) or scene.duration
+        if not seconds:
+            try:
+                seconds = narration_seconds(project, scene)[0]
+            except DialogueVideoError as e:   # file giọng hỏng: coi như chưa biết, cảnh không góp vào tổng
+                logger.warning(f"Không ước được thời lượng cảnh {scene.id}: {e}")
+                seconds = 0
+        entries.append((scene, seconds, scene_render_input(scene, media)))
+    report = share_report(entries)
+    report["estimated"] = not has_all_durations(project)
+    return report
+
+
 # ----------------------------------------------------------------------------------------------------------- chốt
 def _vi(x: float) -> str:
     return f"{x:.1f}".replace(".", ",")
@@ -174,14 +219,14 @@ def _need(report: dict, ratio: float) -> float:
 
 
 def gate_problem(report: dict) -> Optional[str]:
-    """Câu báo vì sao chưa dựng được thành phẩm; None khi đạt GATE_MIN."""
+    """Câu báo vì sao chưa dựng được thành phẩm; None khi đạt video_rules.GATE_SHARE."""
     if report["gate_ok"]:
         return None
     parts = [f"Chưa dựng được video thành phẩm: video Muse có cử động chỉ chiếm {_vi(report['percent'])}% "
              f"({_vi(report['video_seconds'])} / {_vi(report['total_seconds'])} giây), cần ít nhất "
              f"{report['gate_percent']}% (mục tiêu {report['target_percent']}%). Thiếu khoảng "
-             f"{_vi(_need(report, GATE_MIN))} giây để đạt {report['gate_percent']}%, "
-             f"{_vi(_need(report, CLIMAX_RATIO))} giây để đạt {report['target_percent']}%."]
+             f"{_vi(_need(report, video_rules.GATE_SHARE))} giây để đạt {report['gate_percent']}%, "
+             f"{_vi(_need(report, video_rules.TARGET_SHARE))} giây để đạt {report['target_percent']}%."]
     waiting = report["still_scenes"] + report["unmeasured_scenes"]
     if waiting:
         parts.append(f"{len(waiting)} cảnh có clip chưa được tính vì gần như đứng hình hoặc không đo được: cảnh "
@@ -193,7 +238,7 @@ def gate_problem(report: dict) -> Optional[str]:
 
 
 def require_gate(report: dict, draft: bool) -> None:
-    """Chốt cuối của mọi đường dựng: dưới GATE_MIN và không phải bản nháp thì ném VideoShareTooLow."""
+    """Chốt cuối của mọi đường dựng: dưới video_rules.GATE_SHARE và không phải bản nháp thì ném VideoShareTooLow."""
     if not draft and not report["gate_ok"]:
         raise VideoShareTooLow(report)
 
@@ -204,7 +249,7 @@ def report_lines(report: dict) -> list[str]:
              f"{_vi(report['percent'])}% thời lượng (mục tiêu {report['target_percent']}%, tối thiểu "
              f"{report['gate_percent']}%). Tổng clip: {_vi(report['clip_seconds'])} giây."]
     if not report["enough"]:
-        lines.append(f"⚠ DƯỚI {report['target_percent']}% VIDEO MUSE: thiếu khoảng {_vi(_need(report, CLIMAX_RATIO))} "
+        lines.append(f"⚠ DƯỚI {report['target_percent']}% VIDEO MUSE: thiếu khoảng {_vi(_need(report, video_rules.TARGET_SHARE))} "
                      "giây. Bấm \"Chọn cảnh cao trào\" rồi \"Tạo video\" cho đủ, sau đó dựng lại.")
     if report["still_scenes"]:
         lines.append(f"⚠ {len(report['still_scenes'])} cảnh có clip gần như đứng hình (người hầu như không cử động "
