@@ -417,7 +417,9 @@ def prepare_run(project_id: str, scene_id: str) -> dict:
     check_ready(project_id, scene)
     plan = scene_plan(project, scene)
     old = scene_state(scene)
-    done = old.get("clips") or []
+    # chỉ tính video đoạn còn file (chạy thật 18/11/2026: bản sao dự án không có file video cũ mà nút vẫn báo "đã xong 3
+    # video, cần 0 lượt Muse" rồi làm lại cả 3)
+    done = [c for c in (old.get("clips") or []) if Path(c).is_file()]
     if not _same_plan(old.get("segments") or [], plan["segments"]):
         done = []
         old = {}

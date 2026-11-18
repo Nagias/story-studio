@@ -277,3 +277,12 @@ def test_autosave_from_ui_keeps_server_owned_video_state(isolated_projects_dir):
     stale[0].metadata.pop(dv.STATE_KEY)
     _keep_server_media(existing, stale)
     assert stale[0].metadata[dv.STATE_KEY]["status"] == "ready"
+
+
+def test_missing_segment_files_are_not_counted_as_done(isolated_projects_dir):
+    """Chạy thật 18/11/2026: trạng thái ghi 3 video đã xong nhưng file không còn: báo đúng số lượt Muse sẽ tốn."""
+    _make_project(voice_sec=20.0)
+    state = dv.prepare_run(PID, "scene_005")
+    dv._merge_state(PID, "scene_005", {"clips": ["D:/khong_co/seg1.mp4", "D:/khong_co/seg2.mp4"]})
+    again = dv.prepare_run(PID, "scene_005")
+    assert again["clips"] == [] and again["video_count"] == state["video_count"]
