@@ -19,7 +19,8 @@ from typing import Optional
 from models.schemas import Project, Scene
 from services.character_sheets import CharacterSheet, hair_rule_for, hair_rule_line, look_text
 from services.character_sheets import prompt_design as cs_prompt_design
-from services.prompt_rules import FEMALE_HAIR_RULE_EN, is_round_head, video_rules_vi
+from services.prompt_rules import (FEMALE_HAIR_RULE_EN, back_view_rule_vi, is_round_head, reject_faults_vi,
+                                   video_rules_vi)
 
 AGENT_MAX_VIDEOS = 6        # giới hạn của Muse cho một yêu cầu (Muse tự khai 28/10/2026)
 AGENT_MAX_IMAGES = 4
@@ -105,9 +106,8 @@ AI_CLIPS_ONLY = (
     "ĐẠT ở phần thiếu; không lấp chỗ thiếu bằng ảnh tĩnh chuyển động.",
 )
 REJECT_RULE = ("Sau mỗi clip: trích khung mỗi giây và khung cuối, tự so với ảnh khởi đầu{board}. Loại nếu có bất kỳ khung "
-               "nào: mặt người hay mặt anime, đầu nhỏ lại hoặc méo, nhân vật nữ mất tóc trên đỉnh đầu, đĩa trắng sau tóc, "
-               "đổi quần áo, thêm người, đổi nét vẽ, cắt cảnh trong clip, máy quay lia hoặc zoom; hoặc so các khung cách "
-               "nhau một giây mà người gần như đứng im. Đầu bắt đầu méo từ giây nào thì cắt bỏ từ giây đó, giữ phần trước "
+               "nào: {faults}, thêm người, cắt cảnh trong clip, máy quay lia hoặc zoom; hoặc so các khung cách "
+               "nhau một giây mà người gần như đứng im. Hình bắt đầu hỏng từ giây nào thì cắt bỏ từ giây đó, giữ phần trước "
                "(ít nhất 2 giây). Bị loại thì tạo lại (viết prompt khác, hành động ngắn hơn, góc trung hoặc xa khi cử động "
                "mạnh), trong ngân sách; không được sửa bằng cách bớt cử động.")
 
@@ -136,7 +136,7 @@ def landscape_brief(project: Project, scene: Scene, seconds: float, done_token: 
     không thêm người. Chủ dự án 11/11/2026: cảnh phong cảnh được làm video và được tính vào tỉ lệ video Muse.
     Đính kèm: khung mở đầu, rồi ảnh chuẩn bối cảnh nếu nơi đó đã khoá."""
     target = target_seconds(part["seconds"] if part else seconds)
-    attachments = [_start_frame_line(part, "bố cục, ánh sáng, nét vẽ 2D, màu sắc")]
+    attachments = [_start_frame_line(part, "bố cục, ánh sáng, nét vẽ, màu sắc")]
     if has_plate:
         attachments.append("- Ảnh 2 — ẢNH CHUẨN CỦA BỐI CẢNH: nơi này phải giữ đúng kiến trúc, đồ vật cố định, màu sắc.")
     parts = [
@@ -149,11 +149,11 @@ def landscape_brief(project: Project, scene: Scene, seconds: float, done_token: 
         "Luật bắt buộc:",
         *video_rules_vi(project, people=False),
         *AI_CLIPS_ONLY,
-        "- Giữ đúng nét vẽ 2D, bố cục, màu sắc và ánh sáng của Ảnh 1 suốt video; không đổi sang ảnh thật.",
+        "- Giữ đúng phong cách vẽ, bố cục, màu sắc và ánh sáng của Ảnh 1 suốt video.",
         "",
         "Các bước:",
         "1. Tự lập danh sách clip (mỗi clip một kiểu chuyển động rõ, dùng Ảnh 1 làm khung đầu). Ghi danh sách vào báo cáo.",
-        "2. Làm từng clip. " + REJECT_RULE.format(board=""),
+        "2. Làm từng clip. " + REJECT_RULE.format(board="", faults="người, con vật hay chữ xuất hiện, đổi phong cách vẽ, đổi màu, đổi nơi chốn"),
         "3. " + _delivery(done_token, False, target)[0],
         *_delivery(done_token, False, target)[1:],
     ]
@@ -166,7 +166,7 @@ def crowd_brief(project: Project, scene: Scene, seconds: float, done_token: str,
     trong ảnh cảnh, cử động thật; không lưới 9 ô, không bảng diễn viên. Gặp 13/11/2026: các cảnh này bị coi là phong cảnh
     và nhận bản giao việc "không có người" dù ảnh có người."""
     target = target_seconds(part["seconds"] if part else seconds)
-    attachments = [_start_frame_line(part, "số người, dáng người, quần áo, bố cục, ánh sáng, nét vẽ 2D, màu sắc")]
+    attachments = [_start_frame_line(part, "số người, dáng người, quần áo, bố cục, ánh sáng, nét vẽ, màu sắc")]
     if has_plate:
         attachments.append("- Ảnh 2 — ẢNH CHUẨN CỦA BỐI CẢNH: nơi này phải giữ đúng kiến trúc, đồ vật cố định, màu sắc.")
     parts = [
@@ -182,13 +182,12 @@ def crowd_brief(project: Project, scene: Scene, seconds: float, done_token: str,
         "Luật bắt buộc:",
         *video_rules_vi(project, people=True),
         *AI_CLIPS_ONLY,
-        "- Không thêm người mới, không thêm con vật. Giữ đúng nét vẽ 2D, bố cục, màu sắc và ánh sáng của Ảnh 1; không "
-        "đổi sang ảnh thật.",
+        "- Không thêm người mới, không thêm con vật. Giữ đúng phong cách vẽ, bố cục, màu sắc và ánh sáng của Ảnh 1.",
         "",
         "Các bước:",
         "1. Tự lập danh sách clip (mỗi clip MỘT hành động đơn giản 3–6 giây, dùng Ảnh 1 hoặc khung cuối của clip trước "
         "làm khung đầu). Ghi danh sách vào báo cáo.",
-        "2. Làm từng clip. " + REJECT_RULE.format(board=""),
+        "2. Làm từng clip. " + REJECT_RULE.format(board="", faults=reject_faults_vi(project)),
         "3. " + _delivery(done_token, False, target)[0],
         *_delivery(done_token, False, target)[1:],
     ]
@@ -203,7 +202,7 @@ def scene_brief(project: Project, scene: Scene, people: list[CharacterSheet], gr
     target = target_seconds(part["seconds"] if part else seconds)
     first_part = not part or part["index"] == 1
     attachments = [
-        _start_frame_line(part, "bố cục, bối cảnh, ánh sáng, nét vẽ 2D, quần áo của cảnh"),
+        _start_frame_line(part, "bố cục, bối cảnh, ánh sáng, nét vẽ, quần áo của cảnh"),
         "- Ảnh 2 — BẢNG DIỄN VIÊN: mỗi nhân vật của cảnh đủ các góc (trước, nghiêng, sau, đỉnh đầu). Đây là chuẩn của "
         "dáng đầu, mái tóc và quần áo ở mọi góc.",
     ]
@@ -213,9 +212,9 @@ def scene_brief(project: Project, scene: Scene, people: list[CharacterSheet], gr
     if panels:
         attachments.append(f"Phần này ứng với các ô storyboard {panels[0]}–{panels[1]} (đếm liền qua các lưới, lưới 2 bắt "
                            "đầu ở ô 10).")
-    redraw = ("- Ảnh 1 khác Ảnh 2 ở dáng đầu hay mái tóc, hoặc có nhân vật nữ đầu trọc (tóc chỉ là một chỏm sau gáy), "
-              "thì vẽ lại Ảnh 1 trước (giữ nguyên mọi thứ khác, chỉ sửa dáng đầu, mái tóc cho đúng), rồi dùng ảnh đã "
-              "sửa làm khung đầu.")
+    bald = ", hoặc có nhân vật nữ đầu trọc (tóc chỉ là một chỏm sau gáy)" if is_round_head(project) else ""
+    redraw = (f"- Ảnh 1 khác Ảnh 2 ở dáng đầu, gương mặt hay mái tóc{bald}, thì vẽ lại Ảnh 1 trước (giữ nguyên mọi thứ "
+              "khác, chỉ sửa cho đúng Ảnh 2), rồi dùng ảnh đã sửa làm khung đầu.")
     parts = [
         *_header(), "", "Ảnh đính kèm, theo thứ tự:", *attachments, "",
         *_narration_lines(scene, part, n_parts, target),
@@ -226,20 +225,20 @@ def scene_brief(project: Project, scene: Scene, people: list[CharacterSheet], gr
         "Luật bắt buộc (đo thật: video hỏng ở đúng các chỗ này):",
         *video_rules_vi(project, people=True),
         *_female_hair_lines(project),
-        "- Đoạn nhân vật quay lưng phải bắt đầu từ một ảnh góc sau vẽ riêng (cùng nhân vật, cùng phong cách, chỉ thấy "
-        "tóc phủ kín đầu, không chút màu trắng nào của đầu), dùng ảnh đó làm khung đầu của clip.",
+        *back_view_rule_vi(project),
         *AI_CLIPS_ONLY,
         *([redraw] if first_part else []),
         "",
         "Các bước:",
-        "1. Tự lập danh sách clip từ lời kể và storyboard: ô nào góc trước/nghiêng, ô nào góc sau, mỗi clip làm gì, cắt "
+        "1. Tự lập danh sách clip từ lời kể và storyboard: ô nào dùng làm khung đầu, khung cuối, mỗi clip làm gì, cắt "
         "giữa clip nào. Ghi danh sách clip đó vào báo cáo.",
-        "2. Vẽ các ảnh khởi đầu cần thiết (ảnh góc sau" + (", ảnh cảnh đã sửa" if first_part else "") +
-        ") và tự kiểm với Ảnh 2.",
+        "2. Vẽ các ảnh khởi đầu cần thiết ("
+        + ", ".join((["ảnh góc sau"] if is_round_head(project) else []) + (["ảnh cảnh đã sửa"] if first_part else []))
+        + ") nếu cần, và tự kiểm với Ảnh 2.",
         "3. Làm từng clip bằng Muse Video, mỗi clip MỘT hành động đơn giản dài 3–6 giây: đưa ô storyboard của lúc bắt "
         "đầu hành động làm khung ĐẦU và ô của lúc hành động xong làm khung CUỐI (ghi rõ trong prompt: ảnh thứ nhất là "
         "khung đầu, ảnh thứ hai là khung cuối), kèm câu khoá: giữ đầu, tóc, quần áo như Ảnh 2; clip sau nối từ khung "
-        "cuối của clip trước (dùng resume_from_snapshot_id khi được). " + REJECT_RULE.format(board=" và Ảnh 2"),
+        "cuối của clip trước (dùng resume_from_snapshot_id khi được). " + REJECT_RULE.format(board=" và Ảnh 2", faults=reject_faults_vi(project)),
         "4. " + _delivery(done_token, first_part, target)[0],
         *_delivery(done_token, first_part, target)[1:],
     ]

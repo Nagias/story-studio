@@ -115,3 +115,20 @@ def test_shared_character_anchor_is_never_glued_into_the_prompt():
     project = project.model_copy(update={"character_anchor": "an old samurai with a red cape"})
     assert "samurai" not in spp.base_image_prompt(project, scene)
     assert "samurai" not in cv.grid_prompt(scene, project, first_grid=True)
+
+
+def test_round_head_rules_never_leak_into_other_styles():
+    """Rà soát 18/11/2026: bản giao việc cao trào ghi cứng lỗi của kiểu đầu tròn ("mặt người hay mặt anime", "đĩa trắng
+    sau tóc", "nét vẽ 2D") cho mọi phong cách: phong cách ảnh thật thì Muse loại mọi clip. Nay luật theo phong cách."""
+    for style in ("cinematic_realistic", "manga_murata_battle", "neo_noir_silhouette"):
+        project, scene = _project(style)
+        segs = dv.plan_segments(scene.text, 24.0)
+        prompts = [scene_brief(project, scene, [_person()], 1, 24.0, "X"),
+                   crowd_brief(project, scene, 12.0, "X", None, False),
+                   landscape_brief(project, scene, 12.0, "X", None, False),
+                   dv.segment_prompt(project, scene, segs, 1, None, False),
+                   cv.grid_prompt(scene, project, first_grid=True)]
+        for p in prompts:
+            for word in ("mặt người", "mặt anime", "đĩa trắng", "đầu trọc", "nét vẽ 2D", "Round-head",
+                         prompt_rules.FEMALE_HAIR_RULE_EN):
+                assert word not in p, f"{style}: '{word[:30]}'"

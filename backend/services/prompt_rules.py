@@ -73,6 +73,24 @@ def round_head_rules_en(project_or_style) -> list[str]:
     return [ROUND_HEAD_RULE_EN, FEMALE_HAIR_RULE_EN] if is_round_head(project_or_style) else []
 
 
+def reject_faults_vi(project_or_style) -> str:
+    """Lỗi hình làm một clip bị loại, theo phong cách. Rà soát 18/11/2026: bản giao việc cao trào ghi cứng lỗi của kiểu
+    đầu tròn ("mặt người hay mặt anime", "đĩa trắng sau tóc") cho MỌI phong cách: với phong cách ảnh thật, Muse sẽ loại
+    mọi clip vì nhân vật nào cũng có mặt người."""
+    if is_round_head(project_or_style):
+        return ("mặt người hay mặt anime, đầu nhỏ lại hoặc méo, nhân vật nữ mất tóc trên đỉnh đầu, đĩa trắng sau tóc, "
+                "đổi quần áo")
+    return "gương mặt, kiểu tóc, vóc dáng hay quần áo của nhân vật khác ảnh chuẩn, mặt hoặc tay méo, đổi phong cách vẽ"
+
+
+def back_view_rule_vi(project_or_style) -> list[str]:
+    """Đoạn quay lưng: chỉ kiểu đầu tròn cần ảnh góc sau vẽ riêng (đầu trắng lộ ra sau tóc thành đĩa trắng)."""
+    if not is_round_head(project_or_style):
+        return []
+    return ["- Đoạn nhân vật quay lưng phải bắt đầu từ một ảnh góc sau vẽ riêng (cùng nhân vật, cùng phong cách, chỉ thấy "
+            "tóc phủ kín đầu, không chút màu trắng nào của đầu), dùng ảnh đó làm khung đầu của clip."]
+
+
 def video_rules_vi(project_or_style, people: bool = True) -> list[str]:
     """Luật của mọi việc làm video gửi Muse (video theo lời thoại, bản giao việc cao trào), theo đúng thứ tự này."""
     rules = [MOTION_VI, SHOT_SIZE_VI] if people else [SCENERY_MOTION_VI]
