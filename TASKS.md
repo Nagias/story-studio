@@ -763,4 +763,10 @@ Kế hoạch chủ dự án đã duyệt: rà luật chồng chéo sau hai video
   - Chốt chặn chạy lại trên dữ liệu thật: tỉ lệ đếm 52,9% / 52,1% / 62,3% (khớp số đã ghi 14/11, cách đếm không đổi với clip cũ); màn chọn cảnh 53,9% / 53,0% / 61,9%, nay sát số của chốt
   - Log thật: 47 câu lỗi khác nhau, luật dò chữ cũ không khoá nhầm câu nào (8 mất đăng nhập, 1 hết hạn mức đều đúng); sửa giai đoạn 2 là chặn trước, không phải nguyên nhân các lần khoá 12–15/11
   - Giao diện 8010 (`proj_crime_59ee682e`): khối "Video gửi Muse" của thẻ cảnh hiện prompt mới, cảnh 19 (16 giây, từng "hết ngân sách") chia 2 việc Muse; console sạch; `projects/` không đổi
-- [ ] Chạy thật 6 cảnh xưởng sắt với Muse
+- [x] Chạy thật với Muse 18/11/2026 (chủ dự án: "Cho khởi động lại"): tắt server 8000 cũ lúc không có việc Muse nào, bật lại bằng code nhánh `sua-luat-goc` (server 8000 nay chạy code nhánh này, chưa gộp master). Bản sao `projects/proj_crime_thu1811` (sao vụ xưởng sắt, lưới cũ đã duyệt 12/11). 07:43 → 08:08 (25 phút), 4 tài khoản chạy song song:
+  - Cảnh 19 (15,5 s, lần cũ "KHÔNG ĐẠT: chỉ 6 giây, hết ngân sách"): chia 2 việc, video 15,8 s, cử động 13,1, Muse tự chấm ĐẠT; 6 video Muse
+  - Cảnh 35 (15,6 s, lần cũ "video chỉ 6 giây thay vì 16"): 2 việc, 16,4 s, cử động 2,7 (trên ngưỡng 1,0), góc xa, Muse ĐẠT; 10 video Muse
+  - Cảnh 3 (14,7 s, 1 việc): 15 s, cử động 13,6; Muse "KHÔNG ĐẠT trọn vẹn" (mắt to ở đoạn 2, sàn thành gỗ ở đoạn cận); 5 video Muse
+  - Xem khung hình (`.cache/sua_luat_goc/khung_1811/`): cả ba có người cử động thật; mặt ông già cảnh 3 và 19 vẫn có mũi, mắt có tròng, nếp nhăn. Nguyên nhân gốc: ảnh cảnh và lưới đã duyệt từ trước (12/11, luật cũ) đã vẽ mặt như vậy (lưới cảnh 19 còn có thêm một người không có trong ảnh cảnh); lưới cũ không có dấu `grid_key` nên app không tự vẽ lại
+  - Cảnh 63 (video thoại): Muse từ chối cảnh cận mặt khóc trong phòng thẩm vấn (MUSE_REPLIED_ERROR, đề nghị góc trung); cảnh ghi lỗi rõ, tài khoản không bị khoá (luật khoá theo mã lỗi đúng). Lộ lỗi nhỏ nút video thoại báo "đã xong 3 video" khi file không còn: đã sửa, commit riêng
+  - Tổng: 5 việc cao trào + 1 lượt video thoại, khoảng 21 video Muse; ảnh trả phí 0; LLM 0
