@@ -16,7 +16,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from models.schemas import Project, Scene  # noqa: E402
-from services import clip_motion, video_share  # noqa: E402
+from services import clip_motion, video_rules, video_share  # noqa: E402
 from services import climax_video as cv  # noqa: E402
 from services.climax_brief import scene_brief  # noqa: E402
 from tests.test_climax_video import FakeMuse, _climax_project, _run_full  # noqa: E402
@@ -72,8 +72,8 @@ def _person_walks(path: Path) -> Path:
 def test_camera_only_clip_scores_low_and_moving_person_scores_high(tmp_path):
     still = clip_motion.measure(_zoom_of_still(tmp_path / "zoom.mp4"))
     moving = clip_motion.measure(_person_walks(tmp_path / "walk.mp4"))
-    assert not clip_motion.has_real_motion(still), still
-    assert clip_motion.has_real_motion(moving), moving
+    assert not video_rules.has_real_motion(still), still
+    assert video_rules.has_real_motion(moving), moving
 
 
 def test_score_is_cached_beside_the_clip_and_redone_when_clip_changes(tmp_path, monkeypatch):

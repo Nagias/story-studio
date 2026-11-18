@@ -1,6 +1,6 @@
 """API video cho cảnh cao trào (dự án vụ án). Xử lý ở services/climax_video.py.
 
-- POST /api/projects/{project_id}/climax-video/pick?mode=ai|score   chọn cảnh đủ CLIMAX_RATIO thời lượng video: "ai" (mặc
+- POST /api/projects/{project_id}/climax-video/pick?mode=ai|score   chọn cảnh đủ video_rules.TARGET_SHARE thời lượng video: "ai" (mặc
                                                                      định, chạy nền, services/climax_ai_pick.py) hoặc
                                                                      "score" (chấm theo nhãn kịch bản, trả ngay)
 - GET  /api/projects/{project_id}/climax-video/pick-status          lượt AI chọn cảnh gần nhất (idle/running/done/failed)

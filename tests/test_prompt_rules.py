@@ -95,10 +95,12 @@ def test_long_scene_is_split_into_jobs_that_leave_room_to_redo():
 
 def test_single_default_style_everywhere():
     assert config.DEFAULT_STYLE == "horror_cartoon_2d"
-    js = (ROOT / "backend" / "static" / "app.js").read_text(encoding="utf-8")
-    m = re.search(r"const DEFAULT_STYLE_PRESET = '([a-z0-9_]+)';", js)
-    assert m and m.group(1) == config.DEFAULT_STYLE
-    assert "spartan_epic_mythology';" not in js and '|| "cinematic_realistic"' not in js
+    # giao diện không tự đặt phong cách mặc định (máy chủ điền config.DEFAULT_STYLE): không còn chuỗi phong cách nào
+    # đứng sau "||" làm giá trị dự phòng
+    for name in ("app.js", "true_crime.js"):
+        src = (ROOT / "backend" / "static" / name).read_text(encoding="utf-8")
+        assert not re.search(r"\|\|\s*['\"](horror_cartoon_2d|cinematic_realistic|spartan_epic_mythology|manga_murata_battle"
+                             r"|neo_noir_silhouette)['\"]", src), name
     from models import schemas
     assert schemas.Project(id="proj_x", name="x").style_preset == config.DEFAULT_STYLE
 

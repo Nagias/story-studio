@@ -24,7 +24,6 @@ from services.climax_brief import agent_parts, crowd_brief, landscape_brief, par
 from services.muse_image_task import image_task_fields
 from services.muse_prompt_format import format_image_prompt, task_attachments
 
-JS_DEFAULT_STYLE = DEFAULT_STYLE   # app.js DEFAULT_STYLE_PRESET (cùng giá trị, test_prompt_rules kiểm)
 DONE_TOKEN_PLACEHOLDER = "<MÃ-XONG>"            # mã thật sinh ngẫu nhiên lúc chạy (XONG-xxxxxxxx)
 ATTACHMENT_ROLE_VI = {"characters": "bảng nhân vật", "previous_scene": "khung cảnh trước", "location": "ảnh chuẩn bối cảnh",
                       "person": "ảnh tham chiếu nhân vật", "reference": "ảnh tham chiếu"}
@@ -45,7 +44,7 @@ def image_task(project: Project, scene: Scene) -> tuple[dict, dict]:
     """(việc ảnh Muse 2K của cảnh trước khi vào Fleet Runner, khoá đã áp) — đúng như nút "Muse 2K" gửi qua
     `routers/muse_bridge.create_task`. Nút "Tạo hình cho cả dự án" (services/one_pass_visuals.py) gửi đúng việc này."""
     prompt = base_image_prompt(project, scene)
-    style = project.style_preset or JS_DEFAULT_STYLE
+    style = project.style_preset or DEFAULT_STYLE
     params = {"resolution": "2K", "aspect_ratio": "16:9", "style_preset": style, "duration_sec": 5, "fps": 25,
               "action_cues": prompt}
     task = image_task_fields(prompt, params, negative_prompt=getattr(scene, "negative_prompt", "") or "")

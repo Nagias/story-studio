@@ -22,6 +22,7 @@ Endpoints (prefix /api/true-crime):
 Thông báo lỗi trả cho client chỉ nêu order cảnh và id thực thể, không bao giờ nêu tên thật. Kế hoạch trả cho màn xem lại
 thì có tên thật (real_names, warnings): đó là dữ liệu của chính người dùng trên máy họ, nằm ngoài các thông báo lỗi.
 """
+from config import DEFAULT_STYLE
 import asyncio
 from typing import Annotated, Optional
 
@@ -49,7 +50,7 @@ MAX_VOICE_CHARS = 100
 class AnalyzeRequest(BaseModel):
     raw_report: str
     target_minutes: int = Field(default=8, ge=1, le=60, description="Độ dài video mong muốn (phút)")
-    visual_style: str = "neo_noir_silhouette"
+    visual_style: str = DEFAULT_STYLE   # một phong cách mặc định cho cả app (config.py)
 
 
 class OutlinePartEdit(BaseModel):

@@ -16,7 +16,6 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from services.video_rules import REAL_MOTION_MIN, has_real_motion  # noqa: F401  (tên công khai cũ)
 
 logger = logging.getLogger("story_studio.clip_motion")
 

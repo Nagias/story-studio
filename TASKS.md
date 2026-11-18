@@ -770,3 +770,9 @@ Kế hoạch chủ dự án đã duyệt: rà luật chồng chéo sau hai video
   - Xem khung hình (`.cache/sua_luat_goc/khung_1811/`): cả ba có người cử động thật; mặt ông già cảnh 3 và 19 vẫn có mũi, mắt có tròng, nếp nhăn. Nguyên nhân gốc: ảnh cảnh và lưới đã duyệt từ trước (12/11, luật cũ) đã vẽ mặt như vậy (lưới cảnh 19 còn có thêm một người không có trong ảnh cảnh); lưới cũ không có dấu `grid_key` nên app không tự vẽ lại
   - Cảnh 63 (video thoại): Muse từ chối cảnh cận mặt khóc trong phòng thẩm vấn (MUSE_REPLIED_ERROR, đề nghị góc trung); cảnh ghi lỗi rõ, tài khoản không bị khoá (luật khoá theo mã lỗi đúng). Lộ lỗi nhỏ nút video thoại báo "đã xong 3 video" khi file không còn: đã sửa, commit riêng
   - Tổng: 5 việc cao trào + 1 lượt video thoại, khoảng 21 video Muse; ảnh trả phí 0; LLM 0
+
+### Sau lượt chạy thật (18/11/2026, chủ dự án: mặt ông già bỏ qua; mục 3 làm theo đề xuất)
+- [x] Luật kiểm clip cao trào theo phong cách: trước đây bản giao việc ghi cứng lỗi của kiểu đầu tròn ("mặt người hay mặt anime", "đĩa trắng sau tóc", "nét vẽ 2D") cho mọi phong cách, phong cách ảnh thật thì Muse loại mọi clip. Nay `prompt_rules.reject_faults_vi`, `back_view_rule_vi`; test `test_round_head_rules_never_leak_into_other_styles` (ảnh thật, manga, noir)
+- [x] Mục 3: bỏ tên phụ `CLIMAX_RATIO`, `GATE_MIN`, `ROUND_HEAD_EXPRESSION_RULE_EN`, `JS_DEFAULT_STYLE` và các tên đặt lại trong `clip_motion`, `video_service`; giao diện (app.js, true_crime.js) và route vụ án không còn tự đặt phong cách mặc định (trước còn `cinematic_realistic`, `neo_noir_silhouette`), thiếu thì máy chủ điền `config.DEFAULT_STYLE`
+- [x] Repo kiểm lại bằng pip trên Python 3.14: PySceneDetect, instructor, Presidio, stable-ts cài được; chỉ WhisperX cần Python dưới 3.14 (3.14 đã là bản mới nhất, phải hạ xuống 3.13). Không thêm vì không thay được phần nào của app gọn hơn (xem báo cáo trong chat)
+- [x] `check.py --full`: ĐẠT, 1186 test

@@ -1,4 +1,4 @@
-"""Clip Muse ngắn hơn lời đọc: kéo chậm clip (tối đa video_service.MAX_CLIP_STRETCH lần) thay vì đứng hình ở cuối.
+"""Clip Muse ngắn hơn lời đọc: kéo chậm clip (tối đa video_rules.MAX_CLIP_STRETCH lần) thay vì đứng hình ở cuối.
 
 Gặp 10/11/2026 (bản Anh vụ Khang Cúc Hoa): clip chép từ bản Việt nên 14/23 cảnh có lời Anh dài hơn clip, khung cuối
 đứng im tới 3,2 giây (cần kéo nhiều nhất 1,18 lần)."""
@@ -14,7 +14,7 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from services import video_service  # noqa: E402
+from services import video_rules, video_service  # noqa: E402
 
 
 def _ffmpeg(*args):
@@ -56,7 +56,7 @@ def test_clip_a_bit_shorter_than_voice_is_slowed_not_frozen(tmp_path):
 
 def test_clip_far_too_short_is_slowed_to_the_cap_then_holds_last_frame(tmp_path):
     out = _render(tmp_path, clip_sec=4.0, voice_sec=7.0)
-    moving_until = 4.0 * video_service.MAX_CLIP_STRETCH
+    moving_until = 4.0 * video_rules.MAX_CLIP_STRETCH
     a = _frame(out, moving_until - 0.45, tmp_path / "a.png")
     b = _frame(out, moving_until - 0.2, tmp_path / "b.png")
     c = _frame(out, 6.5, tmp_path / "c.png")
@@ -67,8 +67,8 @@ def test_clip_far_too_short_is_slowed_to_the_cap_then_holds_last_frame(tmp_path)
 
 
 def test_clip_longer_than_voice_is_not_slowed(tmp_path):
-    assert video_service.clip_stretch(clip_seconds=10.0, scene_seconds=8.0) == 1.0
-    assert video_service.clip_stretch(clip_seconds=8.0, scene_seconds=8.02) == 1.0
-    assert abs(video_service.clip_stretch(clip_seconds=17.0, scene_seconds=20.0) - 20 / 17) < 1e-6
-    assert video_service.clip_stretch(clip_seconds=4.0, scene_seconds=40.0) == video_service.MAX_CLIP_STRETCH
-    assert video_service.clip_stretch(clip_seconds=None, scene_seconds=5.0) == 1.0
+    assert video_rules.clip_stretch(clip_seconds=10.0, scene_seconds=8.0) == 1.0
+    assert video_rules.clip_stretch(clip_seconds=8.0, scene_seconds=8.02) == 1.0
+    assert abs(video_rules.clip_stretch(clip_seconds=17.0, scene_seconds=20.0) - 20 / 17) < 1e-6
+    assert video_rules.clip_stretch(clip_seconds=4.0, scene_seconds=40.0) == video_rules.MAX_CLIP_STRETCH
+    assert video_rules.clip_stretch(clip_seconds=None, scene_seconds=5.0) == 1.0

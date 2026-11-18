@@ -41,10 +41,8 @@ MASTER_NEGATIVE_PROMPT: str = (
     "jpeg artifacts, signature, watermark, username, inconsistent clothing, modern artifacts in historical scene"
 )
 
-# Luật đầu tròn, tóc nữ: services/prompt_rules.py (một nơi cho ảnh, bảng nhân vật, lưới, video). Tên cũ giữ cho
-# code đang dùng.
-from services.prompt_rules import FEMALE_HAIR_RULE_EN, ROUND_HEAD_RULE_EN, ROUND_HEAD_STYLES, negative_for  # noqa: E402, F401
-ROUND_HEAD_EXPRESSION_RULE_EN = ROUND_HEAD_RULE_EN
+# Luật đầu tròn, tóc nữ: services/prompt_rules.py (một nơi cho ảnh, bảng nhân vật, lưới, video).
+from services.prompt_rules import FEMALE_HAIR_RULE_EN, ROUND_HEAD_RULE_EN, negative_for  # noqa: E402
 
 STYLE_PRESETS: Dict[str, Dict[str, Any]] = {
     # 0a. HOẠT HÌNH 2D RÙNG RỢN: chủ dự án 26/10/2026 thích kiểu kênh "Thế Giới Kì Quái" hơn ảnh noir; thử thật trên Muse

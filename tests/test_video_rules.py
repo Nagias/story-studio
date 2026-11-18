@@ -12,11 +12,12 @@ from services import climax_video, clip_motion, dialogue_video, video_rules, vid
 
 
 def test_every_module_reads_the_same_numbers():
-    assert climax_video.CLIMAX_RATIO is video_rules.TARGET_SHARE and climax_video.GATE_MIN is video_rules.GATE_SHARE
-    assert video_share.CLIMAX_RATIO is video_rules.TARGET_SHARE and video_share.GATE_MIN is video_rules.GATE_SHARE
-    assert clip_motion.REAL_MOTION_MIN is video_rules.REAL_MOTION_MIN
-    assert video_service.moving_seconds is video_rules.moving_seconds
-    assert video_service.clip_stretch is video_rules.clip_stretch
+    """Một tên cho mỗi con số (rà soát 18/11/2026: bỏ các tên phụ CLIMAX_RATIO, GATE_MIN, ROUND_HEAD_EXPRESSION_RULE_EN):
+    không module nào còn tự đặt con số hay tên riêng cho mục tiêu, mức chặn, ngưỡng cử động."""
+    for mod in (climax_video, video_share, clip_motion, video_service):
+        for name in ("CLIMAX_RATIO", "GATE_MIN", "REAL_MOTION_MIN", "MAX_CLIP_STRETCH", "moving_seconds"):
+            assert not hasattr(mod, name), f"{mod.__name__}.{name}"
+    assert video_service.clip_stretch is video_rules.clip_stretch          # dùng thẳng hàm của video_rules
 
 
 def test_short_muse_clip_is_accepted_but_counts_only_its_running_part():

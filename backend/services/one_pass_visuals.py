@@ -13,7 +13,7 @@ khung vẽ xong thì tự duyệt và làm clip luôn (`climax_video.run_scene_c
 
 Ảnh một cảnh (`draw_scene_image()`): đúng việc "Muse 2K" mà nút trên thẻ gửi và khối "Prompt đầy đủ gửi Muse" hiện
 (`scene_prompt_preview.image_task()`: `muse_image_task.image_task_fields` + khoá hình `services/scene_locks.py`, CLAUDE.md
-đường cấm 16; phong cách dự án, không có thì `JS_DEFAULT_STYLE`), đưa vào hàng việc Muse và chờ xong như các đường Muse
+đường cấm 16; phong cách dự án, không có thì `config.DEFAULT_STYLE`), đưa vào hàng việc Muse và chờ xong như các đường Muse
 phía máy chủ khác (`muse_call` do router truyền vào). Đường này chỉ có Muse, không rơi sang nguồn ảnh trả phí (đường cấm 4).
 Không còn tài khoản Muse ảnh thì dừng pha ảnh, ghi lý do cho các cảnh còn lại. Video một cảnh cao trào do router truyền
 vào (`run_climax`). Module này không import routers/.

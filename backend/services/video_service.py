@@ -11,7 +11,7 @@ import config
 import pysubs2
 from pysubs2.formats.subrip import SubripFormat
 from services.tts_service import MediaDurationError, get_audio_duration
-from services.video_rules import MAX_CLIP_STRETCH, clip_stretch, moving_seconds  # noqa: F401
+from services.video_rules import clip_stretch
 
 logger = logging.getLogger("story_studio.video_service")
 

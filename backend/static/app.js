@@ -4,9 +4,6 @@
  */
 
 // ================= GLOBAL STATE =================
-// Phong cách mặc định duy nhất: trùng config.DEFAULT_STYLE của máy chủ (tests/test_prompt_rules.py kiểm hai bên khớp)
-const DEFAULT_STYLE_PRESET = 'horror_cartoon_2d';
-
 const AppState = {
   currentProject: null,
   projectsList: [],
@@ -57,7 +54,7 @@ const AppState = {
 // ================= OFFLINE & VECTOR VISUAL GENERATOR =================
 function generateSceneVisualSvg(scene, project, index) {
   const idx = (index !== undefined ? index : (scene?.order ? scene.order - 1 : 0)) + 1;
-  const style = (scene?.style_override || project?.style_preset || project?.character?.style || 'cinematic_realistic');
+  const style = (scene?.style_override || project?.style_preset || project?.character?.style || '');   // chỉ để chọn màu ảnh giữ chỗ
   const textRaw = scene?.visual_prompt || scene?.image_prompt || scene?.text || "Khung cảnh điện ảnh sắc nét 4K";
   const cleanText = escapeHtml(textRaw.length > 115 ? textRaw.substring(0, 112) + '...' : textRaw);
 
@@ -212,7 +209,7 @@ const DEFAULT_PROJECT = {
   aspect_ratio: "16:9",
   resolution: "1080p",
   image_provider: "meta_muse_cloud",
-  style_preset: DEFAULT_STYLE_PRESET,
+  style_preset: undefined,   // máy chủ điền phong cách mặc định (config.DEFAULT_STYLE)
   created_at: new Date().toISOString(),
   character: {
     name: "Lâm (Chiến binh áo lam)",
@@ -1609,7 +1606,7 @@ function renderSettings() {
   if (DOM.selectSubtitleStyle) DOM.selectSubtitleStyle.value = settings?.subtitle_style || project.subtitle_style || "kinetic_pop";
 
   if (DOM.selectProjectStyle && project) {
-    DOM.selectProjectStyle.value = project.style_preset || DEFAULT_STYLE_PRESET;
+    if (project.style_preset) DOM.selectProjectStyle.value = project.style_preset;
     if (typeof window.renderLookStyleLine === "function") window.renderLookStyleLine(); // đặt .value không bắn sự kiện change nên dòng phong cách ở trang Hình mẫu phải vẽ lại tay
   }
 
@@ -2983,7 +2980,7 @@ async function handleStep1ProcessScript() {
     await window.tcStartFromStep1({
       text: caseText,
       minutes: parseInt(DOM.step1CaseDuration?.value || '20', 10),
-      style: DOM.step1StyleSelect?.value || 'horror_cartoon_2d',
+      style: DOM.step1StyleSelect?.value || undefined,   // thiếu thì máy chủ điền config.DEFAULT_STYLE
     });
     return;
   }
@@ -2994,7 +2991,7 @@ async function handleStep1ProcessScript() {
     return;
   }
 
-  const style = DOM.step1StyleSelect?.value || 'horror_cartoon_2d';
+  const style = DOM.step1StyleSelect?.value || undefined;   // thiếu thì máy chủ điền config.DEFAULT_STYLE
   const imageProvider = DOM.step1EngineSelect?.value || DOM.selectImageProvider?.value || 'meta_muse_cloud';
 
   const isEnglish = !(/[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđĐ]/i.test(text));
@@ -3309,7 +3306,7 @@ async function startProduceLongVideo(opts) {
   try {
     const produceReq = {
       pacing: "fast",
-      style_preset: DOM.selectProjectStyle?.value || project.style_preset || DEFAULT_STYLE_PRESET,
+      style_preset: DOM.selectProjectStyle?.value || project.style_preset || undefined,
       image_provider: DOM.selectImageProvider?.value || project.image_provider || "meta_muse_cloud",
       character_anchor: project.character_anchor || (project.character?.prompt || ""),
       character_reference_image: project.character_reference_image || project.character?.reference_image || undefined,
@@ -4213,7 +4210,7 @@ async function generateSceneWithMuse(index, mode = 'image') {
   renderSceneList();
 
   try {
-    const stylePreset = project.style_preset || DOM.selectProjectStyle?.value || DEFAULT_STYLE_PRESET;
+    const stylePreset = project.style_preset || DOM.selectProjectStyle?.value || undefined;
     let promptText = "";
     if (isVideo) {
       if (!scene.video_prompt || scene.video_prompt.trim() === '') {

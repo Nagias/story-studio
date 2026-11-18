@@ -402,9 +402,10 @@ def reference_image(project: Project, loc: LocationSheet) -> Optional[Path]:
 
 def _style_text(style_id: str) -> str:
     """Nét vẽ của phong cách dự án, bỏ câu quy tắc tóc nhân vật (ảnh chuẩn không có người)."""
-    from services.image_service import FEMALE_HAIR_RULE_EN, ROUND_HEAD_EXPRESSION_RULE_EN, STYLE_PRESETS  # nạp muộn
+    from services.image_service import STYLE_PRESETS  # nạp muộn
+    from services.prompt_rules import FEMALE_HAIR_RULE_EN, ROUND_HEAD_RULE_EN
     style = (STYLE_PRESETS.get(style_id) or {}).get("prompt_suffix", "")
-    return " ".join(style.replace(FEMALE_HAIR_RULE_EN, " ").replace(ROUND_HEAD_EXPRESSION_RULE_EN, " ").split())
+    return " ".join(style.replace(FEMALE_HAIR_RULE_EN, " ").replace(ROUND_HEAD_RULE_EN, " ").split())
 
 
 def plate_prompt(loc: LocationSheet, style_id: str, has_reference: bool) -> str:

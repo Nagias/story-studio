@@ -9,7 +9,7 @@ Cách làm (LLM 9router hay làm tắt khi việc lớn: chia nhỏ, kiểm từ
 2. Mỗi nhóm một lượt `ask_validated`: LLM chấm từng cảnh 0–10 "đáng làm video chuyển động" kèm một câu lý do. Code kiểm
    đủ mọi id của nhóm, không id lạ, không trùng, điểm là số 0–10, lý do không rỗng; sai thì hỏi lại kèm lý do.
 3. Gộp điểm, xếp giảm dần (bằng điểm: cảnh có nhân vật trước, rồi cảnh đứng trước), lấy tới khi lời kể của các cảnh
-   chọn đạt CLIMAX_RATIO tổng thời lượng lời kể; chưa có giọng đọc thì lấy ceil(CLIMAX_RATIO * số cảnh).
+   chọn đạt video_rules.TARGET_SHARE tổng thời lượng lời kể; chưa có giọng đọc thì lấy ceil(video_rules.TARGET_SHARE * số cảnh).
 
 AI lỗi hẳn (hết lượt thử) thì StepFailed nổi lên: không âm thầm quay về cách chấm theo nhãn (CLAUDE.md đường cấm 3, 4);
 người dùng tự bấm "Chọn theo nhãn kịch bản" nếu muốn. Module này không ghi project.json (router ghi), không import
@@ -21,6 +21,7 @@ from typing import Any, Optional
 
 from models.schemas import Project, Scene
 from services import climax_video, project_service
+from services import video_rules
 from services.case_adaptation_llm import LLMCall, call_llm_json
 from services.case_adaptation_steps import StepRejected, ask_validated
 
@@ -133,8 +134,8 @@ def validate_group(raw: Any, ids: list[str]) -> dict[str, tuple[float, str]]:
 
 
 def choose(project: Project, scores: dict[str, float], people: dict[str, bool]) -> list[str]:
-    """Cảnh điểm cao trước (bằng điểm: có nhân vật trước, rồi cảnh đứng trước), lấy tới khi đạt CLIMAX_RATIO tổng
-    thời lượng lời kể; chưa có giọng đọc thì ceil(CLIMAX_RATIO * số cảnh được chấm). Trả theo thứ tự cảnh."""
+    """Cảnh điểm cao trước (bằng điểm: có nhân vật trước, rồi cảnh đứng trước), lấy tới khi đạt video_rules.TARGET_SHARE tổng
+    thời lượng lời kể; chưa có giọng đọc thì ceil(video_rules.TARGET_SHARE * số cảnh được chấm). Trả theo thứ tự cảnh."""
     order = {s.id: i for i, s in enumerate(project.scenes)}
     by_id = {s.id: s for s in project.scenes}
     ranked = sorted((sid for sid in scores if sid in by_id),
@@ -144,12 +145,12 @@ def choose(project: Project, scores: dict[str, float], people: dict[str, bool]) 
     if total > 0:
         covered = 0.0
         for sid in ranked:
-            if covered >= climax_video.CLIMAX_RATIO * total:
+            if covered >= video_rules.TARGET_SHARE * total:
                 break
             chosen.add(sid)
             covered += by_id[sid].duration or 0
     else:
-        chosen = set(ranked[:math.ceil(climax_video.CLIMAX_RATIO * len(ranked))])
+        chosen = set(ranked[:math.ceil(video_rules.TARGET_SHARE * len(ranked))])
     return [s.id for s in project.scenes if s.id in chosen]
 
 
@@ -158,7 +159,7 @@ def _people_map(project: Project, scenes: list[Scene]) -> dict[str, bool]:
 
 
 async def ai_pick(project_id: str, llm: Optional[LLMCall] = None) -> dict:
-    """Chấm mọi cảnh đủ điều kiện bằng LLM (từng nhóm, lần lượt) rồi chọn đủ CLIMAX_RATIO thời lượng.
+    """Chấm mọi cảnh đủ điều kiện bằng LLM (từng nhóm, lần lượt) rồi chọn đủ video_rules.TARGET_SHARE thời lượng.
     Trả {chosen, reasons, scores, coverage}. Không ghi gì. LLM hỏng hẳn: StepFailed."""
     project = await asyncio.to_thread(project_service.get_project, project_id)
     if project is None:

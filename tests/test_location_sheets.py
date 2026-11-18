@@ -21,7 +21,7 @@ from models.schemas import Project, Scene  # noqa: E402
 from routers import location_sheets as ls_router  # noqa: E402
 from routers import muse_bridge as mb  # noqa: E402
 from runners.muse_fleet_runner import MusePromptFormatter  # noqa: E402
-from services import image_service, project_service  # noqa: E402
+from services import image_service, prompt_rules, project_service  # noqa: E402
 from services import location_sheets as ls  # noqa: E402
 
 PID = "proj_crime_loc01"
@@ -181,7 +181,7 @@ def test_draw_plate_prompt_reference_and_redraw_in_same_chat(isolated_projects_d
     assert t["raw_prompt"] and t["prompt"].startswith("tạo cho tôi 1 hình ảnh 2K tỉ lệ 16:9")
     assert APARTMENT in t["prompt"] and "no people" in t["prompt"]
     assert "round white heads" in t["prompt"]                                         # nét vẽ của dự án
-    assert image_service.FEMALE_HAIR_RULE_EN not in t["prompt"]                       # ảnh không người: bỏ quy tắc tóc
+    assert prompt_rules.FEMALE_HAIR_RULE_EN not in t["prompt"]                       # ảnh không người: bỏ quy tắc tóc
     assert t["attachments"] == [project_service.get_scene_media_paths(PID, "scene_002")["image"].__str__()]
     assert "thread_url" not in t
     ls.reject_plate(PID, loc_id, "cửa sổ phải ở bên trái")
@@ -373,7 +373,7 @@ def test_round_head_style_allows_expressions_but_never_real_or_anime_faces():
     for allowed in ("eyebrows", "tears", "half of the round white face shaded grey"):
         assert allowed in suffix
     assert "never a realistic human face and never an anime face" in suffix and "no nose" in suffix
-    assert "irises" in suffix and image_service.FEMALE_HAIR_RULE_EN in suffix          # quy tắc tóc nữ giữ nguyên
+    assert "irises" in suffix and prompt_rules.FEMALE_HAIR_RULE_EN in suffix          # quy tắc tóc nữ giữ nguyên
     assert "realistic human face" in style["negative_prompt"] and "anime face" in style["negative_prompt"]
     from services.climax_brief import scene_brief
     project = Project(id="p", name="p", style_preset="horror_cartoon_2d")

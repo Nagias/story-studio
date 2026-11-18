@@ -434,7 +434,7 @@ def create_project_from_plan(plan: CaseAdaptationPlan, language: Lang, voice: st
             name=(plan.bible.title_vi if language == "vi" else plan.bible.title_en) or plan.case_id,
             description=f"Chuyển thể từ một vụ án có thật, {len(scenes)} cảnh.",
             voice=voice,
-            style_preset=visual_style or plan.visual_style or "neo_noir_silhouette",
+            style_preset=visual_style or plan.visual_style or config.DEFAULT_STYLE,
             image_provider=image_provider,
             bgm_overall_genre="mysterious_dark",
             target_aspect_ratio="16:9",

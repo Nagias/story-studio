@@ -16,7 +16,7 @@ from services.character_sheets import CharacterSheet  # noqa: E402
 from services.climax_brief import (AGENT_MAX_IMAGES, AGENT_MAX_VIDEOS, AGENT_PART_MAX_SEC,  # noqa: E402
                                    BRIEF_MAX_CHARS, NEW_SCENE_IMAGE_TAG, agent_parts, part_panels, scene_brief,
                                    target_seconds)
-from services.image_service import FEMALE_HAIR_RULE_EN  # noqa: E402
+from services.prompt_rules import FEMALE_HAIR_RULE_EN  # noqa: E402
 
 NARRATION = ("Khoảng hai giờ sáng, chiếc xe đỗ lại ven đường. Thẩm Nhã Uyên vội vã bước xuống rồi chạy nhanh lên "
              "lầu… Đó là thời khắc cuối cùng có nhân chứng nhìn thấy cô còn sống.")

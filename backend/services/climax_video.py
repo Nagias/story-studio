@@ -44,9 +44,6 @@ from services.tts_service import MediaDurationError, get_audio_duration
 
 logger = logging.getLogger("story_studio.climax_video")
 
-# Mục tiêu và mức chặn tỉ lệ video Muse: services/video_rules.py (một nơi). Tên cũ giữ cho code đang dùng.
-CLIMAX_RATIO = video_rules.TARGET_SHARE
-GATE_MIN = video_rules.GATE_SHARE
 REAL_PHOTO_KEY = "real_photo"   # scene.metadata: cảnh dùng ảnh thật của vụ án, không làm video Muse
 CLIP_SECONDS = 5          # một ô lưới ứng với ~5 giây lời kể (số ô, số lưới); Muse tự quyết độ dài từng clip
 PANELS_PER_GRID = 9
@@ -133,9 +130,9 @@ def _scenes_with_people(project: Project) -> Optional[set[str]]:
 
 
 def pick_climax_scenes(project: Project) -> list[str]:
-    """Id các cảnh nên làm video, đủ để lời kể của chúng chiếm ít nhất CLIMAX_RATIO tổng thời lượng lời kể cả video.
+    """Id các cảnh nên làm video, đủ để lời kể của chúng chiếm ít nhất video_rules.TARGET_SHARE tổng thời lượng lời kể cả video.
     Chỉ cảnh hợp lệ có nhân vật; điểm cao trước, bằng điểm thì cảnh đứng trước; trả theo thứ tự cảnh trong dự án.
-    Chưa có giọng đọc (không biết thời lượng) thì lấy CLIMAX_RATIO số cảnh dùng được, làm tròn lên."""
+    Chưa có giọng đọc (không biết thời lượng) thì lấy video_rules.TARGET_SHARE số cảnh dùng được, làm tròn lên."""
     people = _scenes_with_people(project)
     usable = [(scene_score(s), i, s) for i, s in enumerate(project.scenes)
               if is_eligible(s) and (people is None or s.id in people)]
@@ -150,12 +147,12 @@ def pick_climax_scenes(project: Project) -> list[str]:
     if total > 0:
         covered = 0.0
         for _, _, s in [*ranked, *scenery]:
-            if covered >= CLIMAX_RATIO * total:
+            if covered >= video_rules.TARGET_SHARE * total:
                 break
             chosen.add(s.id)
             covered += s.duration or 0
     else:
-        chosen = {s.id for _, _, s in ranked[:math.ceil(CLIMAX_RATIO * len(ranked))]}
+        chosen = {s.id for _, _, s in ranked[:math.ceil(video_rules.TARGET_SHARE * len(ranked))]}
     return [s.id for s in project.scenes if s.id in chosen]
 
 
@@ -200,21 +197,21 @@ def needs_no_grid(project: Project, scene: Scene) -> bool:
 
 def coverage(project: Project, scene_ids: list[str]) -> dict:
     """Lời kể của các cảnh `scene_ids` chiếm bao nhiêu phần thời lượng lời kể cả video. `enough` sai khi chưa đạt
-    CLIMAX_RATIO (bản Anh vụ Khang Cúc Hoa 11/11/2026: cảnh có người chỉ đủ 49,2%, nút chọn cảnh không báo gì).
+    video_rules.TARGET_SHARE (bản Anh vụ Khang Cúc Hoa 11/11/2026: cảnh có người chỉ đủ 49,2%, nút chọn cảnh không báo gì).
     Chưa có giọng đọc thì không biết: percent None, enough None."""
     total = sum(s.duration or 0 for s in project.scenes)
     ids = set(scene_ids)
     covered = sum(s.duration or 0 for s in project.scenes if s.id in ids)
-    targets = {"target_percent": round(CLIMAX_RATIO * 100), "gate_percent": round(GATE_MIN * 100)}
+    targets = {"target_percent": round(video_rules.TARGET_SHARE * 100), "gate_percent": round(video_rules.GATE_SHARE * 100)}
     if total <= 0:
         return {"seconds": None, "total_seconds": None, "percent": None, "enough": None, "gate_ok": None, **targets}
     return {"seconds": round(covered, 1), "total_seconds": round(total, 1), "percent": round(100 * covered / total, 1),
-            "enough": covered >= CLIMAX_RATIO * total - 1e-6, "gate_ok": covered >= GATE_MIN * total - 1e-6,
+            "enough": covered >= video_rules.TARGET_SHARE * total - 1e-6, "gate_ok": covered >= video_rules.GATE_SHARE * total - 1e-6,
             **targets}
 
 
 def climax_limit(project: Project) -> int:
-    """Số cảnh cần làm video để đạt CLIMAX_RATIO thời lượng (số cảnh `pick_climax_scenes()` chọn)."""
+    """Số cảnh cần làm video để đạt video_rules.TARGET_SHARE thời lượng (số cảnh `pick_climax_scenes()` chọn)."""
     return len(pick_climax_scenes(project))
 
 
@@ -455,7 +452,7 @@ def _mark_ready(project_id: str, scene_id: str, video: Path, state: dict) -> Non
 
 
 def still_clip_warning(score: float) -> str:
-    return (f"Clip gần như đứng hình (điểm cử động {score:.1f}, cần từ {clip_motion.REAL_MOTION_MIN:.0f}): nhân vật "
+    return (f"Clip gần như đứng hình (điểm cử động {score:.1f}, cần từ {video_rules.REAL_MOTION_MIN:.0f}): nhân vật "
             "hầu như không cử động hoặc chỉ có máy quay lia/zoom. Xem clip; đúng vậy thì bấm \"Làm lại cảnh này\".")
 
 

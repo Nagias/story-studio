@@ -27,6 +27,7 @@ from models.schemas import Project, Scene  # noqa: E402
 from routers import climax_video as climax_router  # noqa: E402
 from routers import muse_bridge  # noqa: E402
 from services import climax_video as cv  # noqa: E402
+from services import video_rules  # noqa: E402
 from services import case_store, project_service  # noqa: E402
 from services import character_sheets as cs  # noqa: E402
 
@@ -200,7 +201,7 @@ class FakeMuse:
 
 # ---------------------------------------------------------------------------------------------------- chấm điểm, chọn
 def test_constants_match_contract():
-    assert (cv.CLIMAX_RATIO, cv.CLIP_SECONDS, cv.PANELS_PER_GRID) == (0.5, 5, 9)
+    assert (video_rules.TARGET_SHARE, cv.CLIP_SECONDS, cv.PANELS_PER_GRID) == (0.5, 5, 9)
     assert (cv.SCENE_IMAGE_MIN_SIMILARITY, cv.BACKUP_SUFFIX) == (0.45, ".truoc_sua_toc.jpg")
     lock = cv.STYLE_LOCK_EN.lower()
     for word in ("style", "line", "palette", "character designs", "clothing", "setting", "lighting", "no text",
@@ -257,7 +258,7 @@ def test_pick_covers_half_of_runtime_prefers_score_then_order():
     short = Project(id="proj_s", name="s", scenes=[_scene("scene_001", beat="climax", duration=2.0),
                                                    _scene("scene_002", duration=2.0), _scene("scene_003", duration=10.0)])
     assert cv.pick_climax_scenes(short) == ["scene_001", "scene_002", "scene_003"]
-    # chưa có giọng đọc: CLIMAX_RATIO số cảnh, làm tròn lên
+    # chưa có giọng đọc: video_rules.TARGET_SHARE số cảnh, làm tròn lên
     silent = Project(id="proj_t", name="t", scenes=[_scene(f"scene_00{i}", duration=0.0) for i in range(1, 4)])
     assert cv.pick_climax_scenes(silent) == ["scene_001", "scene_002"]
 

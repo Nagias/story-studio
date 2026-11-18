@@ -22,8 +22,6 @@ from services.climax_video import scene_state as climax_state
 from services.dialogue_video import render_seconds, running_seconds
 from services.render_inputs import scene_render_input
 from services.tts_service import MediaDurationError, get_audio_duration
-from services.video_rules import GATE_SHARE as GATE_MIN
-from services.video_rules import TARGET_SHARE as CLIMAX_RATIO
 
 logger = logging.getLogger("story_studio.video_share")
 
@@ -35,7 +33,7 @@ GATE_CODE = "VIDEO_SHARE_LOW"
 
 
 class VideoShareTooLow(RuntimeError):
-    """Tỉ lệ video Muse dưới GATE_MIN: không dựng thành phẩm."""
+    """Tỉ lệ video Muse dưới video_rules.GATE_SHARE: không dựng thành phẩm."""
 
     def __init__(self, report: dict):
         super().__init__(gate_problem(report) or "Tỉ lệ video Muse quá thấp")
@@ -165,9 +163,9 @@ def share_report(entries: Iterable[tuple[Scene, float, Optional[str]]]) -> dict:
             short.append(order)
     percent = round(100 * counted / total, 1) if total > 0 else 0.0
     return {"video_seconds": round(counted, 1), "clip_seconds": round(clips, 1), "total_seconds": round(total, 1),
-            "percent": percent, "target_percent": round(CLIMAX_RATIO * 100), "gate_percent": round(GATE_MIN * 100),
-            "enough": total > 0 and counted >= CLIMAX_RATIO * total - 1e-6,
-            "gate_ok": total > 0 and counted >= GATE_MIN * total - 1e-6,
+            "percent": percent, "target_percent": round(video_rules.TARGET_SHARE * 100), "gate_percent": round(video_rules.GATE_SHARE * 100),
+            "enough": total > 0 and counted >= video_rules.TARGET_SHARE * total - 1e-6,
+            "gate_ok": total > 0 and counted >= video_rules.GATE_SHARE * total - 1e-6,
             "still_scenes": still, "unmeasured_scenes": unmeasured, "reviewed_scenes": reviewed,
             "short_scenes": short}
 
@@ -221,14 +219,14 @@ def _need(report: dict, ratio: float) -> float:
 
 
 def gate_problem(report: dict) -> Optional[str]:
-    """Câu báo vì sao chưa dựng được thành phẩm; None khi đạt GATE_MIN."""
+    """Câu báo vì sao chưa dựng được thành phẩm; None khi đạt video_rules.GATE_SHARE."""
     if report["gate_ok"]:
         return None
     parts = [f"Chưa dựng được video thành phẩm: video Muse có cử động chỉ chiếm {_vi(report['percent'])}% "
              f"({_vi(report['video_seconds'])} / {_vi(report['total_seconds'])} giây), cần ít nhất "
              f"{report['gate_percent']}% (mục tiêu {report['target_percent']}%). Thiếu khoảng "
-             f"{_vi(_need(report, GATE_MIN))} giây để đạt {report['gate_percent']}%, "
-             f"{_vi(_need(report, CLIMAX_RATIO))} giây để đạt {report['target_percent']}%."]
+             f"{_vi(_need(report, video_rules.GATE_SHARE))} giây để đạt {report['gate_percent']}%, "
+             f"{_vi(_need(report, video_rules.TARGET_SHARE))} giây để đạt {report['target_percent']}%."]
     waiting = report["still_scenes"] + report["unmeasured_scenes"]
     if waiting:
         parts.append(f"{len(waiting)} cảnh có clip chưa được tính vì gần như đứng hình hoặc không đo được: cảnh "
@@ -240,7 +238,7 @@ def gate_problem(report: dict) -> Optional[str]:
 
 
 def require_gate(report: dict, draft: bool) -> None:
-    """Chốt cuối của mọi đường dựng: dưới GATE_MIN và không phải bản nháp thì ném VideoShareTooLow."""
+    """Chốt cuối của mọi đường dựng: dưới video_rules.GATE_SHARE và không phải bản nháp thì ném VideoShareTooLow."""
     if not draft and not report["gate_ok"]:
         raise VideoShareTooLow(report)
 
@@ -251,7 +249,7 @@ def report_lines(report: dict) -> list[str]:
              f"{_vi(report['percent'])}% thời lượng (mục tiêu {report['target_percent']}%, tối thiểu "
              f"{report['gate_percent']}%). Tổng clip: {_vi(report['clip_seconds'])} giây."]
     if not report["enough"]:
-        lines.append(f"⚠ DƯỚI {report['target_percent']}% VIDEO MUSE: thiếu khoảng {_vi(_need(report, CLIMAX_RATIO))} "
+        lines.append(f"⚠ DƯỚI {report['target_percent']}% VIDEO MUSE: thiếu khoảng {_vi(_need(report, video_rules.TARGET_SHARE))} "
                      "giây. Bấm \"Chọn cảnh cao trào\" rồi \"Tạo video\" cho đủ, sau đó dựng lại.")
     if report["still_scenes"]:
         lines.append(f"⚠ {len(report['still_scenes'])} cảnh có clip gần như đứng hình (người hầu như không cử động "
