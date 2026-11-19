@@ -2108,7 +2108,8 @@ async def _run_assemble(pipeline: CasePipeline, step: PipelineStep, llm: LLMCall
     plan = CaseAdaptationPlan(
         case_id=pipeline.case_id, created_at=datetime.now(timezone.utc).isoformat(),
         model=config.NINEROUTER_LLM_MODEL, target_minutes=pipeline.target_minutes,
-        visual_style=pipeline.visual_style, bible=bible, parts=outline.parts, scenes=scenes, warnings=warnings,
+        visual_style=pipeline.visual_style, language=pipeline.language, bible=bible, parts=outline.parts,
+        scenes=scenes, warnings=warnings,
     )
     plan = check_plan(plan, _source_text(pipeline))
     case_store.save_plan(plan)

@@ -73,6 +73,18 @@ def test_groups_split_scenes_and_prompt_has_read_only_context():
     assert "NGỮ CẢNH TRƯỚC" not in first and "Lời kể cảnh 1" in first
 
 
+def test_prompt_ranks_scenes_by_the_owner_climax_signs():
+    """Chủ dự án 19/11/2026 (CLAUDE.md mục 1.2 câu 25 ý 7): cao trào là chỗ nhiều hành động, động từ mạnh (mất tích,
+    biến mất, đánh), bước chuyển trạng thái bất ngờ, hành động mờ ám (đột nhập vào nhà). Cảnh chỉ có cảm xúc không còn
+    được xếp ngang hàng với cảnh hành động."""
+    project = _plain_project(3)
+    prompt = ai.group_prompt(project, project.scenes, 1, 1, {})
+    for words in ("mất tích", "biến mất", "đánh", "chuyển trạng thái bất ngờ", "đột nhập vào nhà", "nhiều hành động"):
+        assert words in prompt, words
+    assert "cảm xúc mạnh" not in prompt
+    assert "chỉ có cảm xúc" in prompt and "điểm trung bình" in prompt
+
+
 def test_validate_group_rejects_unknown_missing_duplicate_bad_score_and_empty_reason():
     ids = ["scene_001", "scene_002"]
     good = {"scenes": [{"id": "scene_001", "score": 7, "reason": "đuổi bắt"},

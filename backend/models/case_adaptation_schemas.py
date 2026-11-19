@@ -141,6 +141,9 @@ class CaseAdaptationPlan(BaseModel):
     model: str
     target_minutes: int
     visual_style: str
+    # Ngôn ngữ người dùng chọn cho dự án dựng từ kế hoạch (CLAUDE.md mục 1.2 câu 25 ý 1). Kế hoạch vẫn có lời cả hai
+    # thứ tiếng (`languages`) để nút tạo bản ngôn ngữ thứ hai dùng lại, không phải viết lại.
+    language: Lang = "vi"
     languages: list[Lang] = ["vi", "en"]
     bible: CaseBible
     parts: list[StoryPart]
@@ -173,6 +176,7 @@ class CasePipeline(BaseModel):
     status: Literal["running", "review", "done", "failed"] = "running"
     target_minutes: int
     visual_style: str
+    language: Lang = "vi"            # chọn lúc gửi bài; vụ cũ chưa có trường này thì là bản Việt như trước
     chunk_chars: int = 3000
     created_at: str
     updated_at: str

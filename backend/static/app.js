@@ -2966,6 +2966,16 @@ function applyStep1ContentKind() {
   }
 }
 
+
+// Bài vụ án khi ô ngôn ngữ để "Theo ngôn ngữ của bài dán vào": chỉ coi là tiếng Anh khi có chữ Latinh, không có chữ có
+// dấu tiếng Việt và không có chữ Hán (bài tiếng Trung thì làm bản Việt, như mặc định của vụ án).
+function caseTextLooksEnglish(text) {
+  const t = text || '';
+  return /[a-z]/i.test(t)
+    && !/[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđĐ]/i.test(t)
+    && !/[㐀-鿿]/.test(t);
+}
+
 async function handleStep1ProcessScript() {
   if (step1ContentKind() === 'case') {
     const caseText = DOM.step1ScriptTextarea?.value.trim();
@@ -2981,6 +2991,8 @@ async function handleStep1ProcessScript() {
       text: caseText,
       minutes: parseInt(DOM.step1CaseDuration?.value || '20', 10),
       style: DOM.step1StyleSelect?.value || undefined,   // thiếu thì máy chủ điền config.DEFAULT_STYLE
+      // Ngôn ngữ dự án (CLAUDE.md mục 1.2 câu 25 ý 1): rỗng = theo ngôn ngữ bài dán vào
+      language: DOM.step1LanguageSelect?.value || (caseTextLooksEnglish(caseText) ? 'en' : 'vi'),
     });
     return;
   }

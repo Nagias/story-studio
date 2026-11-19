@@ -776,3 +776,13 @@ Kế hoạch chủ dự án đã duyệt: rà luật chồng chéo sau hai video
 - [x] Mục 3: bỏ tên phụ `CLIMAX_RATIO`, `GATE_MIN`, `ROUND_HEAD_EXPRESSION_RULE_EN`, `JS_DEFAULT_STYLE` và các tên đặt lại trong `clip_motion`, `video_service`; giao diện (app.js, true_crime.js) và route vụ án không còn tự đặt phong cách mặc định (trước còn `cinematic_realistic`, `neo_noir_silhouette`), thiếu thì máy chủ điền `config.DEFAULT_STYLE`
 - [x] Repo kiểm lại bằng pip trên Python 3.14: PySceneDetect, instructor, Presidio, stable-ts cài được; chỉ WhisperX cần Python dưới 3.14 (3.14 đã là bản mới nhất, phải hạ xuống 3.13). Không thêm vì không thay được phần nào của app gọn hơn (xem báo cáo trong chat)
 - [x] `check.py --full`: ĐẠT, 1186 test
+
+## Ngôn ngữ cho mọi thể loại và tiêu chí cảnh cao trào (19/11/2026, nhánh `ngon-ngu-va-cao-trao`)
+
+Theo câu 25 mục 1.2 CLAUDE.md (chủ dự án duyệt bảng 1.2.1).
+
+- [x] Ý 1: ô "Ngôn ngữ video" `#step1-language-select` hiện cho mọi thể loại. Vụ án gửi `language` khi phân tích (`AnalyzeRequest`, `case_worker.start_analysis`), lưu `CasePipeline.language` rồi `CaseAdaptationPlan.language` (vụ cũ thiếu trường thì là "vi"); nút `#btn-tc-create-vi` dựng dự án đúng ngôn ngữ đó, nhãn và gợi ý đổi theo. Lời Việt và lời Anh vẫn viết cả hai để bản thứ hai không phải viết lại.
+- [x] Ý 7: `climax_ai_pick.CLIMAX_SIGNS` (mất tích, biến mất, đánh; chuyển trạng thái bất ngờ; đột nhập vào nhà; nhiều hành động điểm cao hơn; chỉ có cảm xúc thì điểm trung bình).
+- [x] Test: `test_true_crime_router.py::test_analyze_keeps_the_chosen_language`, `test_case_worker.py::test_english_choice_reaches_the_project_without_a_vietnamese_one`, `test_case_worker.py::test_old_pipeline_without_language_is_vietnamese_and_bad_language_is_refused`, `test_climax_ai_pick.py::test_prompt_ranks_scenes_by_the_owner_climax_signs`. Ba file liên quan: 89 đạt (sau sửa fixture `small_chunks` cho truyền `language`).
+- [x] Giao diện server thử 8010 (chặn yêu cầu gửi đi ngay trong trang, không tạo vụ thật): chọn Anh gửi "en"; để "theo bài" với bài tiếng Anh gửi "en", bài tiếng Trung gửi "vi"; nút tạo dự án hiện "Tạo dự án bản tiếng Anh" và gửi "en" với kế hoạch tiếng Anh, kế hoạch cũ hiện bản tiếng Việt và gửi "vi". Console không lỗi; `projects/` không đổi.
+- [ ] Chưa làm: nút làm thêm bản Việt cho dự án vụ án đã chọn tiếng Anh; tiêu chí cao trào mới chưa chạy thật với Gemini.

@@ -65,7 +65,7 @@ def small_chunks(monkeypatch):
     """Bài mẫu chỉ ~2 KB: cắt đoạn 900 ký tự (như test_case_worker) để ra 2 đoạn khớp fixture EXTRACT_0/1."""
     real = case_worker.start_analysis
     monkeypatch.setattr(case_worker, "start_analysis",
-                        lambda raw, minutes, style, **kw: real(raw, minutes, style, chunk_chars=900))
+                        lambda raw, minutes, style, **kw: real(raw, minutes, style, **{**kw, "chunk_chars": 900}))
 
 
 def use_llm(monkeypatch, overrides=None):
@@ -241,6 +241,13 @@ def test_analyze_takes_minutes_and_style(client, small_chunks, monkeypatch):
     unknown_style = client.post(f"{BASE}/analyze", json={"raw_report": DOSSIER, "visual_style": "khong-co-kieu-nay"})
     assert unknown_style.status_code == 400
     assert len(case_store.list_pipelines()) == 1                  # yêu cầu bị từ chối thì không tạo vụ nào
+
+
+def test_analyze_keeps_the_chosen_language(client, small_chunks, monkeypatch):
+    """Người dùng chọn một ngôn ngữ cho dự án vụ án (CLAUDE.md mục 1.2 câu 25 ý 1); không gửi thì là bản Việt."""
+    assert case_store.load_pipeline(analyze(client, language="en")).language == "en"
+    assert case_store.load_pipeline(analyze(client)).language == "vi"
+    assert client.post(f"{BASE}/analyze", json={"raw_report": DOSSIER, "language": "zh"}).status_code == 422
 
 
 def test_case_not_ready_409(client, small_chunks, monkeypatch):
