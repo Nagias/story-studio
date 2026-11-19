@@ -2,7 +2,7 @@
  * Luồng: dán vụ án -> POST /api/true-crime/analyze -> hỏi tiến độ mỗi 2 giây -> dàn ý xong thì máy chủ dừng chờ
  * duyệt (status "review"): màn duyệt dàn ý (đổi loại nhịp, số cảnh, tóm tắt, chuyển sự việc giữa các nhịp, thêm/xoá
  * nhịp; PUT .../outline, POST .../outline/approve) -> hỏi tiến độ tiếp -> màn xem lại kế hoạch (bảng tên,
- * cảnh báo, dàn ý, lời kể Việt/Anh từng cảnh, sửa được) -> tạo dự án bản Việt -> Bước 2.
+ * cảnh báo, dàn ý, lời kể Việt/Anh từng cảnh, sửa được) -> tạo dự án bằng ngôn ngữ đã chọn -> Bước 2.
  *
  * - Mọi request đi qua tcFetch(). Lỗi HTTP ném Error(detail) với thông báo tiếng Việt của máy chủ. Không có nhánh nào
  *   dựng kế hoạch giả hay dữ liệu mẫu: không có kế hoạch từ máy chủ thì màn xem lại để trống.
@@ -258,8 +258,19 @@ function tcRefreshButtons() {
   if (create) {
     create.disabled = !s.plan || tcPlanHasFlags(s.plan) || busy('create');
     tcSetBusyLabel(create, busy('create'), 'Đang tạo dự án...');
+    if (!busy('create')) create.textContent = `Tạo dự án ${tcPlanLanguageName(s.plan)}`;
   }
   tcRenderCreateHint();
+}
+
+// Ngôn ngữ của dự án sẽ dựng: chọn ở trang Ý tưởng lúc gửi bài, lưu trong kế hoạch (CLAUDE.md mục 1.2 câu 25 ý 1).
+// Kế hoạch cũ chưa có trường này là bản Việt như trước.
+function tcPlanLanguage(plan) {
+  return plan && plan.language === 'en' ? 'en' : 'vi';
+}
+
+function tcPlanLanguageName(plan) {
+  return tcPlanLanguage(plan) === 'en' ? 'bản tiếng Anh' : 'bản tiếng Việt';
 }
 
 function tcRenderCreateHint() {
@@ -267,7 +278,7 @@ function tcRenderCreateHint() {
   const icon = tcEl('tc-create-hint-icon');
   if (!hint || !icon) return;
   const plan = TrueCrimeState.plan;
-  let text = 'Phân tích xong và không còn cảnh bị đánh dấu thì tạo được dự án bản Việt.';
+  let text = `Phân tích xong và không còn cảnh bị đánh dấu thì tạo được dự án ${tcPlanLanguageName(plan)}.`;
   let iconClass = 'fa-solid fa-circle-info text-slate-500';
   if (!plan && TrueCrimeState.caseId) {
     const status = TrueCrimeState.progress?.status;
@@ -284,7 +295,7 @@ function tcRenderCreateHint() {
       text = `Còn mục bị đánh dấu (${where.join('; ')}): sửa lời kể hoặc thêm tên rồi mới tạo được dự án.`;
       iconClass = 'fa-solid fa-triangle-exclamation text-red-400';
     } else {
-      text = `Sẵn sàng tạo dự án bản Việt (${(plan.scenes || []).length} cảnh).`;
+      text = `Sẵn sàng tạo dự án ${tcPlanLanguageName(plan)} (${(plan.scenes || []).length} cảnh).`;
       iconClass = 'fa-solid fa-circle-check text-emerald-400';
     }
   }
@@ -370,7 +381,8 @@ async function tcAnalyze() {
     const body = {
       raw_report: raw,
       target_minutes: parseInt(tcEl('tc-duration-select')?.value || '8', 10),
-      visual_style: tcEl('tc-visual-style')?.value || undefined   // thiếu thì máy chủ điền config.DEFAULT_STYLE
+      visual_style: tcEl('tc-visual-style')?.value || undefined,   // thiếu thì máy chủ điền config.DEFAULT_STYLE
+      language: tcEl('tc-language-select')?.value === 'en' ? 'en' : 'vi'   // CLAUDE.md mục 1.2 câu 25 ý 1
     };
     try {
       const res = await tcFetch(`${TC_API}/analyze`, { method: 'POST', body });
@@ -387,7 +399,7 @@ async function tcAnalyze() {
 // Lối vào chung ở trang Ý tưởng (luồng chung truyện chữ và vụ án, 03/11/2026): chép bài, số phút, phong cách vào các
 // ô ẩn của vụ án rồi gửi phân tích; trang Kịch bản mở để theo dõi tiến độ, duyệt dàn ý và bảng tên. Gửi không được thì
 // về trang Ý tưởng, nơi có ô báo lỗi gửi bài (#tc-input-error).
-async function tcStartFromStep1({ text, minutes, style }) {
+async function tcStartFromStep1({ text, minutes, style, language }) {
   openTrueCrimeModal();
   if (TrueCrimeState.caseId) {
     tcNewCase();                          // hỏi trước khi thôi theo dõi vụ đang làm
@@ -400,6 +412,8 @@ async function tcStartFromStep1({ text, minutes, style }) {
   if (duration && [...duration.options].some(o => o.value === String(minutes))) duration.value = String(minutes);
   const styleSelect = tcEl('tc-visual-style');
   if (styleSelect && [...styleSelect.options].some(o => o.value === style)) styleSelect.value = style;
+  const languageSelect = tcEl('tc-language-select');
+  if (languageSelect) languageSelect.value = language === 'en' ? 'en' : 'vi';
   await tcAnalyze();
   if (!TrueCrimeState.caseId && typeof showPage === 'function') showPage('idea');
   return Boolean(TrueCrimeState.caseId);
@@ -1110,7 +1124,7 @@ function tcRenderSummary(plan) {
   if (stats) {
     const scenes = (plan.scenes || []).length;
     const flagged = (plan.scenes || []).filter(s => (s.flags || []).length).length;
-    stats.textContent = `${plan.target_minutes} phút • ${scenes} cảnh • ${(plan.parts || []).length} nhịp • ${flagged} cảnh bị đánh dấu`;
+    stats.textContent = `${plan.target_minutes} phút • ${tcPlanLanguageName(plan)} • ${scenes} cảnh • ${(plan.parts || []).length} nhịp • ${flagged} cảnh bị đánh dấu`;
   }
 }
 
@@ -1451,9 +1465,9 @@ function tcSaveScene(order, lang, textarea) {
   });
 }
 
-// ================= TẠO DỰ ÁN BẢN VIỆT =================
+// ================= TẠO DỰ ÁN (ngôn ngữ đã chọn lúc gửi bài) =================
 
-async function tcCreateVietnameseProject() {
+async function tcCreateCaseProject() {
   const plan = TrueCrimeState.plan;
   if (!plan) return;
   const caseId = plan.case_id;
@@ -1469,9 +1483,10 @@ async function tcCreateVietnameseProject() {
     const voices = {};
     if (voiceVi) voices.vi = voiceVi;
     if (voiceEn) voices.en = voiceEn;
+    const language = tcPlanLanguage(current);
     const body = {
-      language: 'vi',
-      voice: voiceVi,
+      language,
+      voice: language === 'en' ? voiceEn : voiceVi,
       voices,
       visual_style: tcEl('tc-visual-style')?.value || current.visual_style || undefined,   // thiếu thì máy chủ điền config.DEFAULT_STYLE
       image_provider: tcEl('tc-vision-engine')?.value || 'meta_muse_cloud'
@@ -1503,7 +1518,7 @@ async function tcCreateVietnameseProject() {
     tcDetach();        // dự án đã có trên máy chủ và đã mở xong: thôi theo dõi vụ án này
     closeTrueCrimeModal();
     switchStep(2);
-    showToast('Đã tạo dự án bản Việt và chuyển sang trang Cảnh.', 'success', 6000);
+    showToast(`Đã tạo dự án ${tcPlanLanguageName(current)} và chuyển sang trang Cảnh.`, 'success', 6000);
   }));
 }
 
@@ -2200,7 +2215,7 @@ function initTrueCrimeStudio() {
   on('btn-tc-outline-revert', 'click', tcRevertOutline);
   on('btn-tc-save-entities', 'click', tcSaveEntities);
   on('btn-tc-add-entity', 'click', tcAddEntity);
-  on('btn-tc-create-vi', 'click', tcCreateVietnameseProject);
+  on('btn-tc-create-vi', 'click', tcCreateCaseProject);
   on('btn-create-en-version', 'click', tcCreateEnglishVersion);
   on('btn-cancel-en-version', 'click', tcCancelEnglishVersion);
   on('tc-warnings', 'click', (e) => {

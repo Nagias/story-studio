@@ -95,8 +95,12 @@ def _vn_number(n: int) -> str:
 
 # ---------------------------------------------------------------- tạo hàng việc
 
-def start_analysis(raw_report: str, target_minutes: int, visual_style: str, *, chunk_chars: int = 3000) -> str:
-    """Lưu bài gốc, các đoạn và hàng việc ban đầu; trả case_id. Worker tự nhận và chạy."""
+def start_analysis(raw_report: str, target_minutes: int, visual_style: str, *, chunk_chars: int = 3000,
+                   language: str = "vi") -> str:
+    """Lưu bài gốc, các đoạn và hàng việc ban đầu; trả case_id. Worker tự nhận và chạy.
+    `language`: ngôn ngữ của dự án sẽ dựng ra ('vi' hoặc 'en'), người dùng chọn ở trang Ý tưởng."""
+    if language not in ("vi", "en"):
+        raise ValueError("language phải là 'vi' hoặc 'en'")
     text = raw_report or ""
     if not text.strip():
         raise CaseInputError("empty", "Bài gốc đang trống. Dán nội dung vụ án rồi bấm Phân tích.")
@@ -112,7 +116,8 @@ def start_analysis(raw_report: str, target_minutes: int, visual_style: str, *, c
         case_id = case_store.new_case_id()
     now = _now()
     pipeline = CasePipeline(
-        case_id=case_id, target_minutes=target_minutes, visual_style=visual_style, chunk_chars=chunk_chars,
+        case_id=case_id, target_minutes=target_minutes, visual_style=visual_style, language=language,
+        chunk_chars=chunk_chars,
         created_at=now, updated_at=now, steps=initial_steps(len(chunks)),
     )
     case_store.save_source(case_id, text)

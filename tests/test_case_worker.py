@@ -23,7 +23,8 @@ if str(BACKEND_DIR) not in sys.path:
 
 import config
 from models.case_adaptation_schemas import MAX_SOURCE_CHARS
-from services import case_adaptation_llm, case_adaptation_steps, case_store, case_worker
+from services import case_adaptation_llm, case_adaptation_steps, case_store, case_worker, project_service
+from services.case_project_builder import create_project_from_plan
 from services.case_adaptation_steps import chunk_source
 from services.case_worker import (
     CaseInputError,
@@ -238,6 +239,32 @@ def test_runs_all_steps_sequentially(isolated_projects_dir):
     plan = case_store.load_plan(case_id)
     assert plan is not None and len(plan.scenes) == 7
     assert asyncio.run(run_next_step(llm=llm)) is False
+
+
+def test_english_choice_reaches_the_project_without_a_vietnamese_one(isolated_projects_dir):
+    """Chọn tiếng Anh lúc gửi bài: kế hoạch nhớ lựa chọn, dự án dựng ra là bản Anh ngay, không phải qua bản Việt
+    (CLAUDE.md mục 1.2 câu 25 ý 1). Kế hoạch vẫn có lời cả hai thứ tiếng để sau này tạo bản thứ hai không viết lại."""
+    case_id = start_analysis(DOSSIER, 8, STYLE, chunk_chars=900, language="en")
+    llm, _calls = make_fake_llm()
+    _drain(llm)
+    plan = case_store.load_plan(case_id)
+    assert plan.language == "en"
+    project = create_project_from_plan(plan, plan.language, "")
+    assert project.metadata["language"] == "en"
+    by_order = {s.order: s for s in plan.scenes}
+    stories = [s for s in project.scenes if s.metadata.get("visual_kind") not in ("board", "disclaimer")]
+    assert stories and all(s.text == by_order[s.metadata["plan_order"]].narration_en for s in stories)
+    assert all(by_order[s.metadata["plan_order"]].narration_vi for s in stories)
+    assert [p["id"] for p in project_service.list_projects()] == [project.id]      # chỉ một dự án, không có bản Việt
+
+
+def test_old_pipeline_without_language_is_vietnamese_and_bad_language_is_refused(isolated_projects_dir):
+    case_id = _start()
+    raw = case_store.load_pipeline(case_id).model_dump()
+    raw.pop("language")
+    assert case_store.CasePipeline.model_validate(raw).language == "vi"
+    with pytest.raises(ValueError):
+        start_analysis(DOSSIER, 8, STYLE, language="zh")
 
 
 def test_restart_resumes_without_repeating(isolated_projects_dir):

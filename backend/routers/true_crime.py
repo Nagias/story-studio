@@ -51,6 +51,7 @@ class AnalyzeRequest(BaseModel):
     raw_report: str
     target_minutes: int = Field(default=8, ge=1, le=60, description="Độ dài video mong muốn (phút)")
     visual_style: str = DEFAULT_STYLE   # một phong cách mặc định cho cả app (config.py)
+    language: Lang = "vi"               # ngôn ngữ dự án sẽ dựng ra (CLAUDE.md mục 1.2 câu 25 ý 1)
 
 
 class OutlinePartEdit(BaseModel):
@@ -150,7 +151,8 @@ async def analyze_case(req: AnalyzeRequest):
     """Lưu bài gốc, tạo hàng việc; worker nền tự nhận và chạy. Trả {case_id}."""
     _require_style(req.visual_style)
     try:
-        case_id = await asyncio.to_thread(case_worker.start_analysis, req.raw_report, req.target_minutes, req.visual_style)
+        case_id = await asyncio.to_thread(case_worker.start_analysis, req.raw_report, req.target_minutes, req.visual_style,
+                                          language=req.language)
     except case_worker.CaseInputError as exc:
         raise HTTPException(status_code=400 if exc.reason == "empty" else 413, detail=exc.user_message) from None
     return {"case_id": case_id}
