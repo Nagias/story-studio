@@ -4,6 +4,8 @@ Chủ dự án 15/11/2026: "có nút chọn cảnh cao trào mà người dùng 
 model gemini để làm tác vụ này". Model là NINEROUTER_LLM_MODEL (config.py), gọi qua services/case_adaptation_llm.py.
 
 Cách làm (LLM 9router hay làm tắt khi việc lớn: chia nhỏ, kiểm từng phần, chạy lần lượt):
+0. Chạy sau khi đã có kịch bản (lời kể từng cảnh): chấm theo lời kể, dấu hiệu cao trào là CLIMAX_SIGNS (chủ dự án
+   19/11/2026, CLAUDE.md mục 1.2 câu 25 ý 7).
 1. Cảnh đủ điều kiện (`climax_video.is_eligible`) chia thành nhóm GROUP_SIZE cảnh; mỗi nhóm kèm CONTEXT_SCENES cảnh
    trước và sau làm ngữ cảnh chỉ đọc.
 2. Mỗi nhóm một lượt `ask_validated`: LLM chấm từng cảnh 0–10 "đáng làm video chuyển động" kèm một câu lý do. Code kiểm
@@ -30,6 +32,15 @@ CONTEXT_SCENES = 2       # số cảnh trước và sau nhóm gửi kèm làm ng
 SCORE_MIN, SCORE_MAX = 0, 10
 REASON_MAX = 200
 TASK_MARKER = "CHAM_CAO_TRAO"
+
+# Dấu hiệu cảnh cao trào, theo lời chủ dự án 19/11/2026 (CLAUDE.md mục 1.2 câu 25 ý 7): "nhiều hành động, hành động với
+# các động từ mạnh như mất tích, biến mất, đánh, hoặc 1 bước chuyển trạng thái bất ngờ, hành động mờ ám như đột nhập vào
+# nhà". Ví dụ trong ngoặc ngoài các chữ đó là agent thêm cho cùng loại.
+CLIMAX_SIGNS = (
+    "Hành động với động từ mạnh: mất tích, biến mất, đánh (cả đuổi, giằng co, bỏ chạy, bị bắt đi, ra tay).",
+    "Một bước chuyển trạng thái bất ngờ: đang yên bỗng có chuyện, phát hiện điều không ngờ, sự việc đổi chiều.",
+    "Hành động mờ ám: đột nhập vào nhà (cả lén theo dõi, rình rập, phi tang, lẻn đi trong đêm).",
+)
 
 SYSTEM_PROMPT = """\
 Bạn là đạo diễn dựng video YouTube kể chuyện (truyện, vụ án). Mỗi cảnh hiện là một ảnh tĩnh; chỉ khoảng một nửa thời
@@ -75,8 +86,10 @@ def group_prompt(project: Project, group: list[Scene], index: int, total: int,
         f"Nhóm {index}/{total} của video \"{_one_line(project.name)}\".",
         "",
         "Chấm MỖI cảnh trong mục CẢNH CẦN CHẤM một điểm nguyên hoặc thập phân từ 0 đến 10: cảnh này đáng làm video "
-        "chuyển động đến mức nào. Điểm cao khi cảnh có: kịch tính, căng thẳng; hành động (đuổi, đánh, chạy, phát hiện); "
-        "cảm xúc mạnh (sợ hãi, đau buồn, giận dữ); bước ngoặt của câu chuyện. Điểm thấp khi cảnh chỉ giới thiệu, giải "
+        "chuyển động đến mức nào. Cao trào là chỗ có hành động, chấm theo thứ tự ưu tiên:",
+        *[f"- {line}" for line in CLIMAX_SIGNS],
+        "Cảnh có nhiều hành động nối nhau điểm cao hơn cảnh chỉ một hành động. Cảnh chỉ có cảm xúc (khóc, sợ, buồn) "
+        "hay chỉ có người đứng nói mà không có hành động thì điểm trung bình. Điểm thấp khi cảnh chỉ giới thiệu, giải "
         "thích, kể bối cảnh tĩnh hoặc tóm lại. Cảnh có nhân vật làm video dễ đẹp hơn cảnh không người, nhưng chấm theo "
         "nội dung là chính.",
         "Mỗi cảnh kèm một câu lý do tiếng Việt ngắn (dưới 25 chữ), nói cảnh có gì đáng (hoặc không đáng) làm video.",
